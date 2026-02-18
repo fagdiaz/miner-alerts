@@ -1,4 +1,6 @@
 import json
+import msvcrt
+import os
 import socket
 import sys
 import time
@@ -125,7 +127,103 @@ def now_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def acquire_lock_or_exit() -> Tuple[Optional[object], Optional[Path]]:
+    lock_path = Path(__file__).resolve().parent / "monitor.lock"
+    try:
+        lock_file = lock_path.open("a+b")
+        lock_file.seek(0)
+        msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        return lock_file, lock_path
+    except OSError:
+        log("Ya hay otra instancia del monitor corriendo. Saliendo.")
+        return None, None
+
+
+def release_lock(lock_file: Optional[object], lock_path: Optional[Path]) -> None:
+    if not lock_file:
+        return
+    try:
+        lock_file.seek(0)
+        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass
+    try:
+        lock_file.close()
+    except Exception:
+        pass
+    if lock_path and lock_path.exists():
+        try:
+            lock_path.unlink()
+        except Exception:
+            pass
+
+
+def load_state(state_path: Path) -> Dict[str, MinerState]:
+    if not state_path.exists():
+        return {}
+    try:
+        raw = json.loads(state_path.read_text(encoding="utf-8"))
+        saved_at = raw.get("saved_at")
+        if saved_at:
+            saved_dt = datetime.strptime(saved_at, "%Y-%m-%d %H:%M:%S")
+            if (datetime.now() - saved_dt).total_seconds() > 48 * 3600:
+                log("[WARN] state.json esta stale (>48h). Se ignora.")
+                return {}
+        states = {}
+        raw_states = raw.get("states", {})
+        for key, data in raw_states.items():
+            state = MinerState(
+                low_streak=int(data.get("low_streak", 0)),
+                offline_streak=int(data.get("offline_streak", 0)),
+                ok_streak=int(data.get("ok_streak", 0)),
+                state=str(data.get("state", STATE_OK)),
+                initialized=bool(data.get("initialized", False)),
+                last_elapsed=data.get("last_elapsed"),
+                last_seen_ts=float(data.get("last_seen_ts", 0.0)),
+                reboot_pending_until=float(data.get("reboot_pending_until", 0.0)),
+                reboot_pending_reason=str(data.get("reboot_pending_reason", "")),
+                reboot_pending_elapsed=data.get("reboot_pending_elapsed"),
+                last_reboot_ts=float(data.get("last_reboot_ts", 0.0)),
+            )
+            states[key] = state
+        return states
+    except Exception:
+        log("[WARN] state.json corrupto. Se ignora.")
+        return {}
+
+
+def save_state(state_path: Path, states: Dict[str, MinerState]) -> None:
+    payload = {
+        "saved_at": now_str(),
+        "states": {},
+    }
+    for key, state in states.items():
+        payload["states"][key] = {
+            "state": state.state,
+            "low_streak": state.low_streak,
+            "offline_streak": state.offline_streak,
+            "ok_streak": state.ok_streak,
+            "initialized": state.initialized,
+            "last_elapsed": state.last_elapsed,
+            "last_seen_ts": state.last_seen_ts,
+            "reboot_pending_until": state.reboot_pending_until,
+            "reboot_pending_reason": state.reboot_pending_reason,
+            "reboot_pending_elapsed": state.reboot_pending_elapsed,
+            "last_reboot_ts": state.last_reboot_ts,
+        }
+    tmp_path = state_path.with_suffix(".tmp")
+    try:
+        tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp_path, state_path)
+    except Exception:
+        log("[WARN] No se pudo guardar state.json.")
+
+
 def main() -> None:
+    lock_file, lock_path = acquire_lock_or_exit()
+    if not lock_file:
+        sys.exit(0)
+
     config = load_config()
     miners = config.get("miners", [])
     threshold_ths = float(config.get("threshold_ths", 60.0))
@@ -170,9 +268,11 @@ def main() -> None:
 
     if not valid_miners:
         log("ERROR: No hay mineros validos para monitorear.")
+        release_lock(lock_file, lock_path)
         sys.exit(1)
 
-    states: Dict[str, MinerState] = {}
+    state_path = Path(__file__).resolve().parent / "state.json"
+    states: Dict[str, MinerState] = load_state(state_path)
 
     log("Inicio de monitoreo.")
 
@@ -329,10 +429,13 @@ def main() -> None:
                     message_lines.append(f"Reboots: {', '.join(reboot_names_tick)}")
                 send_telegram(bot_token, str(chat_id), "\n".join(message_lines))
 
+            save_state(state_path, states)
             first_tick = False
             time.sleep(poll_seconds)
     except KeyboardInterrupt:
         log("Detenido por usuario")
+    finally:
+        release_lock(lock_file, lock_path)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ pip install -r requirements.txt
 **Configuración**
 - Copia `app/config.example.json` a `app/config.json`.
 - Completa `telegram.bot_token` y `telegram.chat_id`.
-- `app/config.json` NO se commitea.
+- `app/config.json` y `app/state.json` NO se commitean.
 
 Tabla de claves principales (valores por defecto en `app/config.example.json`):
 | Clave | Descripción |
@@ -47,6 +47,8 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - LOW: hashrate < threshold por N lecturas.
 - OFFLINE: sin respuesta del API 4028 por N lecturas.
 - Al iniciar, si `notify_startup=true`, se envía un STARTUP con snapshot completo (hashrate y etiquetas).
+- El monitor evita instancias duplicadas usando `app/monitor.lock`.
+- El estado se persiste en `app/state.json` para continuidad (streaks, estado y cooldowns).
 
 **Ejecución manual**
 ```powershell
@@ -66,6 +68,10 @@ Para ayuda: `python app\debug_4028.py -h`.
 - Sin respuesta 4028: verificar red, IP, firewall y puerto con `Test-NetConnection`.
 - Telegram no envía: revisar token y `chat_id`.
 - Token inválido: regenerar en `@BotFather`.
+
+**Reset / Limpieza**
+- Borrar `app/state.json` si cambiaste mucho la configuración, agregaste/quitaste mineros o querés reiniciar estados y cooldowns.
+- Si queda `app/monitor.lock` por un cierre abrupto, borrar el archivo antes de reintentar.
 
 **QA manual (rápido)**
 - Verifica que el log muestre TH/s al menos en un minero.

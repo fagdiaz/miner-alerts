@@ -5,6 +5,13 @@
   "fails_before_alert": 3,
   "recovery_successes": 2,
   "alert_cooldown_seconds": 900,
+  "notify_startup": true,
+  "notify_offline": true,
+  "notify_reboot": true,
+  "notify_initial_non_ok": false,
+  "reboot_cooldown_seconds": 1800,
+  "reboot_window_seconds": 300,
+  "offline_is_actionable": true,
   "miners": [
     { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028 },
     { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028 },

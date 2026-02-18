@@ -1,13 +1,24 @@
 import socket
 import sys
 
-HOST = sys.argv[1] if len(sys.argv) > 1 else "192.168.100.23"
+DEFAULT_HOST = "192.168.100.23"
 PORT = 4028
 CMD = b'{"command":"summary"}\n'
 
-s = socket.create_connection((HOST, PORT), timeout=5)
-s.sendall(CMD)
-s.settimeout(5)
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print("Uso: python app\\debug_4028.py [IP]")
+    print(f"Ejemplo: python app\\debug_4028.py {DEFAULT_HOST}")
+    sys.exit(0)
+
+HOST = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_HOST
+
+try:
+    s = socket.create_connection((HOST, PORT), timeout=5)
+    s.sendall(CMD)
+    s.settimeout(5)
+except Exception as exc:
+    print(f"ERROR: No se pudo conectar a {HOST}:{PORT} ({exc})")
+    sys.exit(1)
 
 data = b""
 try:

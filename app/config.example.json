@@ -1,0 +1,14 @@
+{
+  "telegram": { "bot_token": "PONER_TOKEN", "chat_id": "PONER_CHAT_ID" },
+  "poll_seconds": 30,
+  "threshold_ths": 60.0,
+  "fails_before_alert": 3,
+  "recovery_successes": 2,
+  "alert_cooldown_seconds": 900,
+  "miners": [
+    { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028 },
+    { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028 },
+    { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028 },
+    { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028 }
+  ]
+}

@@ -5,6 +5,7 @@
   "fails_before_alert": 3,
   "recovery_successes": 2,
   "alert_cooldown_seconds": 900,
+  "expected_boards": 3,
   "notify_startup": true,
   "notify_offline": true,
   "notify_reboot": true,

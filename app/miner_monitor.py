@@ -181,6 +181,12 @@ def format_rate(rate: Optional[float]) -> str:
     return f"{rate:.2f} TH/s" if rate is not None else "N/A"
 
 
+def display_name(raw_name: str) -> str:
+    if "-" in raw_name:
+        return raw_name.split("-")[-1]
+    return raw_name
+
+
 def now_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -432,6 +438,7 @@ def main() -> None:
             miner_lines = []
             for miner in valid_miners:
                 name = miner["name"]
+                name_display = display_name(name)
                 host = miner["host"]
                 port = miner["port"]
                 state_key = f"{name}|{host}:{port}"
@@ -502,7 +509,7 @@ def main() -> None:
                 if reboot_reason and notify_reboot:
                     if (now_ts - state.last_reboot_ts) >= reboot_cooldown_seconds:
                         if new_state in (STATE_LOW, STATE_OFFLINE):
-                            reboot_names_tick.append(name)
+                            reboot_names_tick.append(name_display)
                             state.last_reboot_ts = now_ts
                             state.reboot_pending_until = 0.0
                             state.reboot_pending_reason = ""
@@ -571,12 +578,12 @@ def main() -> None:
                 elif new_state == STATE_OFFLINE:
                     label = " [OFFLINE]"
                 miner_lines.append(
-                    f"- {name} ({host}:{port}): {format_rate(rate_ths)}{label}"
+                    f"- {name_display} ({host}): {format_rate(rate_ths)}{label}"
                 )
 
             status_lines = [
                 f"STATUS ({now_str()})",
-                f"Threshold: {threshold_ths:.2f} TH/s",
+                "",
             ]
             status_lines.extend(miner_lines)
             with snapshot_lock:
@@ -585,14 +592,14 @@ def main() -> None:
             if first_tick and notify_startup:
                 message_lines = [
                     f"STARTUP ({now_str()})",
-                    f"Threshold: {threshold_ths:.2f} TH/s",
+                    "",
                 ]
                 message_lines.extend(miner_lines)
                 send_telegram(bot_token, str(chat_id), "\n".join(message_lines))
             elif state_message_needed:
                 message_lines = [
                     f"STATE CHANGE ({now_str()})",
-                    f"Threshold: {threshold_ths:.2f} TH/s",
+                    "",
                 ]
                 message_lines.extend(miner_lines)
                 if reboot_names_tick:

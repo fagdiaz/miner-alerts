@@ -60,6 +60,12 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Respuesta inmediata via long polling, sin afectar el loop de mineros.
   - Si Telegram esta lento, la respuesta puede tardar: el monitor no se cuelga porque usa cola de envio.
 
+**Confirm code (operativo)**
+- Comando: `reboot 23`.
+- Bot responde: `confirm reboot 23 <code>`.
+- TTL 60s; si expira, pedir `reboot 23` de nuevo.
+- Si el script reinicia, el pending se pierde: hay que reemitir `reboot 23`.
+
 **Notificaciones**
 - Se envia Telegram solo cuando cambia el estado, en un unico mensaje agrupado por ciclo.
 - Estado OK: hashrate >= threshold.

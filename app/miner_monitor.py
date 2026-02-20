@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 import requests
 
@@ -73,7 +73,7 @@ def log_pid(msg: str) -> None:
     log(f"PID={os.getpid()} {msg}")
 
 
-def qa_enabled(config: dict) -> Tuple[bool, str]:
+def qa_enabled(config: Mapping[str, Any]) -> Tuple[bool, str]:
     force_env = os.getenv("QA_MODE_FORCE", "").strip().lower()
     if force_env in ("1", "true", "yes", "on"):
         env = os.getenv("QA_MODE", "").strip().lower()
@@ -83,7 +83,7 @@ def qa_enabled(config: dict) -> Tuple[bool, str]:
             return False, "env-forced"
     return bool(config.get("qa_mode", False)), "config"
 
-def qa_notify_enabled(config: dict) -> bool:
+def qa_notify_enabled(config: Mapping[str, Any]) -> bool:
     env = os.getenv("QA_NOTIFY", "").strip().lower()
     if env in ("1", "true", "yes", "on"):
         return True
@@ -91,7 +91,7 @@ def qa_notify_enabled(config: dict) -> bool:
         return False
     return bool(config.get("qa_notify", False))
 
-def qa_allow_real_actions(config: dict) -> bool:
+def qa_allow_real_actions(config: Mapping[str, Any]) -> bool:
     env = os.getenv("QA_ALLOW_REAL_ACTIONS", "").strip().lower()
     if env in ("1", "true", "yes", "on"):
         return True
@@ -100,7 +100,7 @@ def qa_allow_real_actions(config: dict) -> bool:
     return bool(config.get("qa_allow_real_actions", False))
 
 
-def qa_verbose_enabled(config: dict) -> bool:
+def qa_verbose_enabled(config: Mapping[str, Any]) -> bool:
     env = os.getenv("QA_VERBOSE", "").strip().lower()
     if env in ("1", "true", "yes", "on"):
         return True
@@ -130,7 +130,7 @@ class MinerState:
     last_hourly_status_ts: Optional[float] = None
 
 
-def load_config() -> dict:
+def load_config() -> Dict[str, Any]:
     config_env = os.getenv("MINER_ALERTS_CONFIG") or os.getenv("CONFIG_PATH")
     if config_env:
         config_path = Path(config_env).expanduser()

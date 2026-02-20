@@ -6,3 +6,5 @@ logs/
 app/state.json
 app/monitor.lock
 monitor.log
+.pyright/
+.mypy_cache/

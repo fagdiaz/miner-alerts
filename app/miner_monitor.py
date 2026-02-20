@@ -109,6 +109,139 @@ def qa_verbose_enabled(config: Mapping[str, Any]) -> bool:
     return bool(config.get("qa_verbose", False))
 
 
+_COMMANDS = [
+    {
+        "name": "help",
+        "usage": "help | help <comando>",
+        "short": "Muestra la lista de comandos o el detalle de uno.",
+        "detail_sections": [
+            ("Que hace", "Muestra ayuda general o detallada de un comando."),
+            ("Cuando usarlo", "Cuando no recordas la sintaxis o el efecto de un comando."),
+            ("Como se usa", "help  /  help reboot"),
+            ("Advertencias", "Ninguna."),
+            ("Ejemplo", "help reboot"),
+        ],
+        "dangerous": False,
+        "enabled": True,
+    },
+    {
+        "name": "status",
+        "usage": "status",
+        "short": "Devuelve el snapshot actual de todos los mineros.",
+        "detail_sections": [
+            ("Que hace", "Responde con el estado actual (hashrate y etiquetas)."),
+            ("Cuando usarlo", "Para ver el estado general sin esperar un cambio."),
+            ("Como se usa", "status"),
+            ("Advertencias", "Ninguna."),
+            ("Ejemplo", "status"),
+        ],
+        "dangerous": False,
+        "enabled": True,
+    },
+    {
+        "name": "info",
+        "usage": "info | info all | info <miner>",
+        "short": "Detalle de mineros (no OK o todos).",
+        "detail_sections": [
+            ("Que hace", "Muestra info resumida del/los mineros."),
+            ("Cuando usarlo", "Para diagnosticar un minero puntual o los no-OK."),
+            ("Como se usa", "info  /  info all  /  info 23"),
+            ("Advertencias", "Depende del firmware para algunos campos."),
+            ("Ejemplo", "info 23"),
+        ],
+        "dangerous": False,
+        "enabled": True,
+    },
+    {
+        "name": "selftest",
+        "usage": "selftest | test",
+        "short": "Chequeo rapido de Telegram/Hashcore/mineros.",
+        "detail_sections": [
+            ("Que hace", "Valida conectividad y reporte basico."),
+            ("Cuando usarlo", "Tras cambios de red o config."),
+            ("Como se usa", "selftest"),
+            ("Advertencias", "Puede tardar unos segundos."),
+            ("Ejemplo", "selftest"),
+        ],
+        "dangerous": False,
+        "enabled": True,
+    },
+    {
+        "name": "reboot",
+        "usage": "reboot <miner>",
+        "short": "Solicita reboot manual (requiere confirmacion).",
+        "detail_sections": [
+            ("Que hace", "Genera un codigo y pide confirmacion."),
+            ("Cuando usarlo", "Cuando un minero no recupera por si solo."),
+            ("Como se usa", "reboot 23"),
+            ("Advertencias", "TTL 60s; si el script reinicia, el pending se pierde."),
+            ("Ejemplo", "confirm reboot 23 123456"),
+        ],
+        "dangerous": True,
+        "enabled": True,
+    },
+    {
+        "name": "restart",
+        "usage": "restart <miner>",
+        "short": "Solicita restart manual (requiere confirmacion).",
+        "detail_sections": [
+            ("Que hace", "Genera un codigo y pide confirmacion."),
+            ("Cuando usarlo", "Para reiniciar servicios del minero."),
+            ("Como se usa", "restart 23"),
+            ("Advertencias", "TTL 60s; si el script reinicia, el pending se pierde."),
+            ("Ejemplo", "confirm restart 23 123456"),
+        ],
+        "dangerous": True,
+        "enabled": True,
+    },
+    {
+        "name": "confirm",
+        "usage": "confirm reboot <miner> <code> | confirm restart <miner> <code>",
+        "short": "Confirma una accion pendiente.",
+        "detail_sections": [
+            ("Que hace", "Ejecuta el reboot/restart pendiente con codigo."),
+            ("Cuando usarlo", "Tras recibir el codigo de confirmacion."),
+            ("Como se usa", "confirm reboot 23 123456"),
+            ("Advertencias", "TTL 60s; si expira, reemitir reboot/restart."),
+            ("Ejemplo", "confirm restart 23 123456"),
+        ],
+        "dangerous": True,
+        "enabled": True,
+    },
+]
+
+
+def render_help_index() -> str:
+    lines = ["Comandos disponibles:"]
+    for cmd in _COMMANDS:
+        if not cmd.get("enabled", True):
+            continue
+        flag = " (peligroso)" if cmd.get("dangerous") else ""
+        lines.append(f"- `{cmd['usage']}`{flag}: {cmd['short']}")
+    lines.append("")
+    lines.append("Usa: help <comando>")
+    return "\n".join(lines)
+
+
+def render_help_detail(cmd_name: str) -> str:
+    needle = (cmd_name or "").strip().lower()
+    for cmd in _COMMANDS:
+        if not cmd.get("enabled", True):
+            continue
+        if str(cmd.get("name", "")).lower() == needle:
+            lines = [
+                f"`{cmd['name']}`",
+                f"Uso: `{cmd['usage']}`",
+                "",
+            ]
+            for title, body in cmd.get("detail_sections", []):
+                lines.append(f"*{title}*")
+                lines.append(body)
+                lines.append("")
+            return "\n".join(lines)
+    return f"Comando desconocido: {cmd_name}. Escribi help para ver la lista."
+
+
 @dataclass
 class MinerState:
     low_streak: int = 0
@@ -965,30 +1098,17 @@ def telegram_polling_worker(
                     )
                     if qa_mode:
                         log_pid(f"[TEL] command=selftest duration={time.monotonic() - cmd_start:.3f}s")
-                elif text == "help":
+                elif text == "help" or text.startswith("help "):
                     cmd_start = time.monotonic()
+                    parts = text.split()
+                    if len(parts) >= 2:
+                        msg = render_help_detail(parts[1])
+                    else:
+                        msg = render_help_index()
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
-                        "Comandos:\n"
-                        "status\n"
-                        "help\n"
-                        "info\n"
-                        "info all\n"
-                        "info <miner>\n"
-                        "selftest\n"
-                        "reboot <miner>\n"
-                        "restart <miner>\n"
-                        "confirm reboot <miner> <code>\n"
-                        "confirm restart <miner> <code>\n"
-                        "Ejemplos:\n"
-                        "status\n"
-                        "info 23\n"
-                        "info all\n"
-                        "selftest\n"
-                        "reboot 23\n"
-                        "restart 23\n"
-                        "confirm reboot 23 123456",
+                        msg,
                         "HELP",
                         "cmd_help",
                     )

@@ -1,6 +1,12 @@
 {
-  "telegram": { "bot_token": "PONER_TOKEN", "chat_id": "PONER_CHAT_ID" },
+  "telegram": {
+    "bot_token": "PONER_TOKEN",
+    "chat_id": "PONER_CHAT_ID",
+    "poll_timeout_seconds": 25,
+    "poll_sleep_seconds": 0.2
+  },
   "poll_seconds": 30,
+  "log_file_path": "",
   "threshold_ths": 60.0,
   "fails_before_alert": 3,
   "recovery_successes": 2,
@@ -12,7 +18,27 @@
   "notify_initial_non_ok": false,
   "reboot_cooldown_seconds": 1800,
   "reboot_window_seconds": 300,
+  "startup_guard_seconds": 600,
+  "auto_reboot_window_seconds": 21600,
+  "max_reboots_per_window": 3,
   "offline_is_actionable": true,
+  "qa_mode": false,
+  "qa_notify": false,
+  "qa_allow_real_actions": false,
+  "qa_poll_seconds": 2,
+  "qa_reboot_cooldown_seconds": 120,
+  "qa_reboot_window_seconds": 30,
+  "qa_low_seconds": 60,
+  "qa_auto_reboot_window_seconds": 600,
+  "qa_force_state": {},
+  "hashcore": {
+    "cli_path": "C:\\Program Files\\Hashcore\\Toolkit\\toolkit_cli.bat",
+    "working_dir": "C:\\Program Files\\Hashcore\\Toolkit",
+    "enabled": true,
+    "settings_path": "C:\\Program Files\\Hashcore\\Toolkit\\toolkit_settings.json",
+    "reboot_args_template": ["reboot", "{host}-{host}"],
+    "restart_args_template": ["restart", "{host}-{host}"]
+  },
   "miners": [
     { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028 },
     { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028 },

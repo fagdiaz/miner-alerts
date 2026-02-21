@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import socket
 import sys
 import threading
@@ -36,6 +37,26 @@ _CLI_MISSING_NOTIFIED: Dict[str, float] = {}
 _QA_BLOCKED_NOTIFIED: Dict[str, float] = {}
 _QA_BLOCKED_LOGGED: bool = False
 _LOGGER: Optional[logging.Logger] = None
+_QA_TX_COUNTS: Dict[int, int] = {}
+_PERF_LOGGED: Dict[int, bool] = {}
+_HTTP_SESSION: Optional[requests.Session] = None
+DBG_TELEGRAM = os.getenv("DBG_TELEGRAM", "0") == "1"
+DBG_TELEGRAM_COMMANDS_ONLY = os.getenv("DBG_TELEGRAM_COMMANDS_ONLY", "1") == "1"
+try:
+    DBG_TELEGRAM_TRUNC = int(os.getenv("DBG_TELEGRAM_TRUNC", "120"))
+except ValueError:
+    DBG_TELEGRAM_TRUNC = 120
+CMD_WHITELIST = {"help", "status", "info", "selftest", "reboot", "restart", "reboot_no_ok", "confirm"}
+
+
+def _is_command_like(cmd_name: str) -> bool:
+    if cmd_name in CMD_WHITELIST:
+        return True
+    if cmd_name.startswith("rb") and cmd_name[2:].isdigit():
+        return True
+    if cmd_name.startswith("c") and cmd_name[1:].isdigit():
+        return True
+    return False
 
 
 def log(msg: str) -> None:
@@ -46,6 +67,37 @@ def log(msg: str) -> None:
     else:
         print(line)
 
+
+def _short_text(text: str, limit: int = 160) -> str:
+    if text is None:
+        return ""
+    clean = text.replace("\n", " ").replace("\r", " ")
+    if len(clean) <= limit:
+        return clean
+    return clean[:limit] + "..."
+
+def _trunc(text: Optional[str], limit: int) -> str:
+    if text is None:
+        return ""
+    raw = repr(str(text))
+    if len(raw) <= limit:
+        return raw
+    return raw[:limit] + "..."
+
+
+def _entities_summary(entities: list) -> str:
+    if not isinstance(entities, list) or not entities:
+        return "none"
+    parts = []
+    for ent in entities[:6]:
+        etype = ent.get("type", "?")
+        off = ent.get("offset", "?")
+        length = ent.get("length", "?")
+        parts.append(f"{etype}@{off}+{length}")
+    more = ""
+    if len(entities) > 6:
+        more = f"+{len(entities) - 6}more"
+    return ",".join(parts) + (f" {more}" if more else "")
 
 def init_logger_from_config(config: dict) -> None:
     global _LOGGER
@@ -112,134 +164,268 @@ def qa_verbose_enabled(config: Mapping[str, Any]) -> bool:
 _COMMANDS = [
     {
         "name": "help",
-        "usage": "help | help <comando>",
-        "short": "Muestra la lista de comandos o el detalle de uno.",
-        "detail_sections": [
-            ("Que hace", "Muestra ayuda general o detallada de un comando."),
-            ("Cuando usarlo", "Cuando no recordas la sintaxis o el efecto de un comando."),
-            ("Como se usa", "help  /  help reboot"),
-            ("Advertencias", "Ninguna."),
-            ("Ejemplo", "help reboot"),
+        "summary": "Muestra ayuda general o detallada.",
+        "usage": "/help  |  /help <comando>",
+        "detail": [
+            "Detalle: lista comandos y muestra ayuda por comando.",
         ],
-        "dangerous": False,
-        "enabled": True,
+        "examples": ["/help reboot"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
     },
     {
         "name": "status",
-        "usage": "status",
-        "short": "Devuelve el snapshot actual de todos los mineros.",
-        "detail_sections": [
-            ("Que hace", "Responde con el estado actual (hashrate y etiquetas)."),
-            ("Cuando usarlo", "Para ver el estado general sin esperar un cambio."),
-            ("Como se usa", "status"),
-            ("Advertencias", "Ninguna."),
-            ("Ejemplo", "status"),
+        "summary": "Snapshot actual de todos los mineros.",
+        "usage": "/status",
+        "detail": [
+            "Detalle: muestra hashrate y etiquetas actuales.",
         ],
-        "dangerous": False,
-        "enabled": True,
+        "examples": ["/status"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
     },
     {
         "name": "info",
-        "usage": "info | info all | info <miner>",
-        "short": "Detalle de mineros (no OK o todos).",
-        "detail_sections": [
-            ("Que hace", "Muestra info resumida del/los mineros."),
-            ("Cuando usarlo", "Para diagnosticar un minero puntual o los no-OK."),
-            ("Como se usa", "info  /  info all  /  info 23"),
-            ("Advertencias", "Depende del firmware para algunos campos."),
-            ("Ejemplo", "info 23"),
+        "summary": "Detalle resumido de mineros.",
+        "usage": "/info  |  /info all  |  /info <miner>",
+        "detail": [
+            "Detalle: info de no-OK o del minero indicado.",
         ],
-        "dangerous": False,
-        "enabled": True,
+        "examples": ["/info", "/info all", "/info 23"],
+        "notes": ["Algunos campos dependen del firmware."],
+        "danger_level": "safe",
+        "aliases": [],
     },
     {
         "name": "selftest",
-        "usage": "selftest | test",
-        "short": "Chequeo rapido de Telegram/Hashcore/mineros.",
-        "detail_sections": [
-            ("Que hace", "Valida conectividad y reporte basico."),
-            ("Cuando usarlo", "Tras cambios de red o config."),
-            ("Como se usa", "selftest"),
-            ("Advertencias", "Puede tardar unos segundos."),
-            ("Ejemplo", "selftest"),
+        "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
+        "usage": "/selftest  |  /test",
+        "detail": [
+            "Detalle: valida conectividad y reporte basico.",
         ],
-        "dangerous": False,
-        "enabled": True,
+        "examples": ["/selftest"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": ["test"],
     },
     {
         "name": "reboot",
-        "usage": "reboot <miner>",
-        "short": "Solicita reboot manual (requiere confirmacion).",
-        "detail_sections": [
-            ("Que hace", "Genera un codigo y pide confirmacion."),
-            ("Cuando usarlo", "Cuando un minero no recupera por si solo."),
-            ("Como se usa", "reboot 23"),
-            ("Advertencias", "TTL 60s; si el script reinicia, el pending se pierde."),
-            ("Ejemplo", "confirm reboot 23 123456"),
+        "summary": "Solicita reboot manual (con confirmacion).",
+        "usage": "/reboot <miner>",
+        "detail": [
+            "Detalle: genera un codigo y pide confirmacion.",
         ],
-        "dangerous": True,
-        "enabled": True,
+        "examples": ["/reboot 23", "/confirm reboot 23 123456"],
+        "notes": [],
+        "danger_level": "danger",
+        "aliases": [],
     },
     {
         "name": "restart",
-        "usage": "restart <miner>",
-        "short": "Solicita restart manual (requiere confirmacion).",
-        "detail_sections": [
-            ("Que hace", "Genera un codigo y pide confirmacion."),
-            ("Cuando usarlo", "Para reiniciar servicios del minero."),
-            ("Como se usa", "restart 23"),
-            ("Advertencias", "TTL 60s; si el script reinicia, el pending se pierde."),
-            ("Ejemplo", "confirm restart 23 123456"),
+        "summary": "Solicita restart manual (con confirmacion).",
+        "usage": "/restart <miner>",
+        "detail": [
+            "Detalle: genera un codigo y pide confirmacion.",
         ],
-        "dangerous": True,
-        "enabled": True,
+        "examples": ["/restart 23", "/confirm restart 23 123456"],
+        "notes": [],
+        "danger_level": "danger",
+        "aliases": [],
     },
     {
         "name": "confirm",
-        "usage": "confirm reboot <miner> <code> | confirm restart <miner> <code>",
-        "short": "Confirma una accion pendiente.",
-        "detail_sections": [
-            ("Que hace", "Ejecuta el reboot/restart pendiente con codigo."),
-            ("Cuando usarlo", "Tras recibir el codigo de confirmacion."),
-            ("Como se usa", "confirm reboot 23 123456"),
-            ("Advertencias", "TTL 60s; si expira, reemitir reboot/restart."),
-            ("Ejemplo", "confirm restart 23 123456"),
+        "summary": "Confirma una accion pendiente.",
+        "usage": "/confirm reboot <miner> <code>  |  /confirm restart <miner> <code>",
+        "detail": [
+            "Detalle: ejecuta la accion pendiente con codigo.",
         ],
-        "dangerous": True,
-        "enabled": True,
+        "examples": ["/confirm reboot 23 123456"],
+        "notes": [],
+        "danger_level": "danger",
+        "aliases": [],
     },
 ]
 
 
 def render_help_index() -> str:
-    lines = ["Comandos disponibles:"]
-    for cmd in _COMMANDS:
-        if not cmd.get("enabled", True):
+    lines = [
+        "Miner Alerts  Comandos disponibles",
+        "",
+        "🔧 Comandos operativos",
+        "",
+    ]
+    by_name = {str(cmd.get("name", "")).lower(): cmd for cmd in _COMMANDS}
+    ordered_operativos = ["status", "info", "reboot", "restart", "confirm", "selftest"]
+    for name in ordered_operativos:
+        cmd = by_name.get(name)
+        if not cmd:
             continue
-        flag = " (peligroso)" if cmd.get("dangerous") else ""
-        lines.append(f"- `{cmd['usage']}`{flag}: {cmd['short']}")
+        prefix = ""
+        if cmd.get("danger_level") == "danger":
+            prefix = "⛔ "
+        elif cmd.get("danger_level") == "warning":
+            prefix = "⚠️ "
+        if name == "info":
+            lines.append(f"{prefix}/info <id|all>  Información de mineros")
+        elif name == "confirm":
+            lines.append(f"{prefix}/confirm <...>  Confirma acción pendiente")
+        elif name == "reboot":
+            lines.append(f"{prefix}/reboot <id>  Reinicia un minero")
+        elif name == "restart":
+            lines.append(f"{prefix}/restart <id>  Reinicia el servicio del minero")
+        else:
+            lines.append(f"{prefix}/{cmd['name']}  {cmd['summary']}")
+    lines.extend(
+        [
+            "",
+            "Sistema",
+            "",
+        ]
+    )
+    if "help" in by_name:
+        lines.append("/help  Muestra este índice")
+    lines.append("/info <comando>  Detalle de un comando")
     lines.append("")
-    lines.append("Usa: help <comando>")
+    lines.append("Usá: /info <comando> para ver cómo funciona uno en detalle.")
     return "\n".join(lines)
 
 
 def render_help_detail(cmd_name: str) -> str:
-    needle = (cmd_name or "").strip().lower()
+    needle = (cmd_name or "").strip().lstrip("/").lower()
     for cmd in _COMMANDS:
-        if not cmd.get("enabled", True):
-            continue
-        if str(cmd.get("name", "")).lower() == needle:
-            lines = [
-                f"`{cmd['name']}`",
-                f"Uso: `{cmd['usage']}`",
-                "",
-            ]
-            for title, body in cmd.get("detail_sections", []):
-                lines.append(f"*{title}*")
-                lines.append(body)
+        name = str(cmd.get("name", "")).lower()
+        aliases = [a.lower() for a in cmd.get("aliases", [])]
+        if needle == name or needle in aliases:
+            lines = [f"/{cmd['name']}", ""]
+            lines.append("Descripción:")
+            lines.append(cmd["summary"])
+            lines.append("")
+            lines.append("Uso:")
+            lines.append(cmd["usage"])
+            examples = cmd.get("examples", [])
+            if examples:
                 lines.append("")
+                lines.append("Ejemplo:")
+                lines.append(examples[0])
+            danger = cmd.get("danger_level", "safe")
+            if danger != "safe":
+                lines.append("")
+                lines.append("Precaución:")
+                lines.append("TTL 60s; si el script reinicia, el pending se pierde.")
             return "\n".join(lines)
-    return f"Comando desconocido: {cmd_name}. Escribi help para ver la lista."
+    return f"Comando desconocido: {cmd_name}\nUsá /help para ver la lista."
+
+
+def _normalize_cmd_token(cmd_token: str) -> str:
+    if not cmd_token:
+        return ""
+    t = cmd_token.strip()
+    if t.startswith("/"):
+        t = t[1:]
+    if "@" in t:
+        t = t.split("@", 1)[0]
+    t = t.lower()
+    if t == "reboot-no-ok":
+        t = "reboot_no_ok"
+    return t
+
+
+def _parse_message_command(item: dict) -> Tuple[dict, str, str, list, str, dict]:
+    if "message" in item:
+        message = item.get("message") or {}
+        msg_key = "message"
+    elif "edited_message" in item:
+        message = item.get("edited_message") or {}
+        msg_key = "edited_message"
+    else:
+        message = {}
+        msg_key = "unknown"
+    text = str(message.get("text", "")).strip()
+    if not text:
+        return message, "", "", [], msg_key, {}
+    entities = message.get("entities") or []
+    cmd_token = ""
+    args = []
+    entity_summary = {"count": len(entities), "bot_cmd_offset0": False, "bot_cmd_len": None}
+    if isinstance(entities, list):
+        for ent in entities:
+            if ent.get("type") != "bot_command":
+                continue
+            if ent.get("offset") != 0:
+                continue
+            length = ent.get("length")
+            if not isinstance(length, int) or length <= 0 or length > len(text):
+                continue
+            cmd_piece = text[:length]
+            if not cmd_piece.startswith("/"):
+                continue
+            cmd_token = cmd_piece
+            rest = text[length:].strip()
+            args = rest.split() if rest else []
+            entity_summary["bot_cmd_offset0"] = True
+            entity_summary["bot_cmd_len"] = length
+            break
+    if not cmd_token:
+        parts = text.split()
+        cmd_token = parts[0]
+        args = parts[1:]
+    cmd_name = _normalize_cmd_token(cmd_token)
+    meta = {
+        "cmd_original": cmd_name,
+        "cmd_normalized": cmd_name,
+        "args_normalized": args[:],
+        "alias_used": None,
+        "entities_summary": entity_summary,
+    }
+    if cmd_name not in ("reboot_no_ok", "reboot-confirm"):
+        match = re.match(r"^rb(\d+)$", cmd_name)
+        if match:
+            alias_id = match.group(1)
+            cmd_name = "reboot"
+            args = [alias_id]
+            meta.update(
+                {
+                    "cmd_normalized": cmd_name,
+                    "args_normalized": args[:],
+                    "alias_used": "rb",
+                }
+            )
+        elif cmd_name == "rb" and args and args[0].isdigit():
+            cmd_name = "reboot"
+            args = [args[0]]
+            meta.update(
+                {
+                    "cmd_normalized": cmd_name,
+                    "args_normalized": args[:],
+                    "alias_used": "rb",
+                }
+            )
+        else:
+            match = re.match(r"^reboot(\d+)$", cmd_name)
+            if match:
+                alias_id = match.group(1)
+                cmd_name = "reboot"
+                args = [alias_id]
+                meta.update(
+                    {
+                        "cmd_normalized": cmd_name,
+                        "args_normalized": args[:],
+                        "alias_used": "stuck",
+                    }
+                )
+    return message, text, cmd_name, args, msg_key, meta
+
+
+def _help_usage_for(cmd_name: str) -> Optional[str]:
+    needle = (cmd_name or "").strip().lstrip("/").lower()
+    for cmd in _COMMANDS:
+        name = str(cmd.get("name", "")).lower()
+        aliases = [a.lower() for a in cmd.get("aliases", [])]
+        if needle == name or needle in aliases:
+            return str(cmd.get("usage", "")).strip()
+    return None
 
 
 @dataclass
@@ -473,21 +659,102 @@ def _fw_hint(*texts: str) -> str:
     return "N/A"
 
 
-def send_telegram(bot_token: str, chat_id: str, message: str, msg_type: str, reason: str = "") -> None:
+def is_miner_no_ok(state: Optional["MinerState"]) -> bool:
+    return bool(state and state.state == STATE_LOW)
+
+
+def send_telegram(
+    bot_token: str,
+    chat_id: str,
+    message: str,
+    msg_type: str,
+    reason: str = "",
+    qa_update_id: Optional[int] = None,
+    qa_cmd: Optional[str] = None,
+    perf_ctx: Optional[dict] = None,
+    is_command: bool = False,
+    dbg_update_id: Optional[int] = None,
+    dbg_cmd: Optional[str] = None,
+) -> None:
     if _TELEGRAM_QUEUE is None:
+        log(
+            f"TG ENQUEUE_FAIL queue=None cmd={dbg_cmd or ''} update_id={dbg_update_id} "
+            f"is_command={is_command} msg_type={msg_type}"
+        )
+        if is_command:
+            tg_send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            if not tg_send_url.startswith("https://api.telegram.org/bot"):
+                log("[ERROR] URL Telegram invalida (sendMessage).")
+                return
+            payload = {
+                "chat_id": chat_id,
+                "text": message,
+                "disable_web_page_preview": True,
+            }
+            session = _HTTP_SESSION or requests.Session()
+            t0 = time.perf_counter()
+            try:
+                resp = session.post(tg_send_url, json=payload, timeout=(1.5, 4.0))
+                ms = int((time.perf_counter() - t0) * 1000)
+                if resp.status_code == 200:
+                    log(
+                        f"TG FALLBACK_SEND ok http=200 ms_send={ms} cmd={dbg_cmd or ''} "
+                        f"update_id={dbg_update_id}"
+                    )
+                else:
+                    body = (resp.text or "")[:200].replace("\n", "\\n")
+                    log(
+                        f"TG FALLBACK_SEND err http={resp.status_code} ms_send={ms} "
+                        f"cmd={dbg_cmd or ''} update_id={dbg_update_id} body=\"{body}\""
+                    )
+            except Exception as exc:
+                ms = int((time.perf_counter() - t0) * 1000)
+                log(
+                    f"TG FALLBACK_SEND exc ms_send={ms} cmd={dbg_cmd or ''} "
+                    f"update_id={dbg_update_id} err={type(exc).__name__}:{exc}"
+                )
         return
     if not msg_type:
         msg_type = "ERROR"
     with _TELEGRAM_QUEUE_LOCK:
         now_ts = time.time()
         _LAST_ENQUEUED[msg_type] = now_ts
+        if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+            log(
+                f"TGQ update_id={dbg_update_id} cmd={dbg_cmd or ''} qsize_before={_TELEGRAM_QUEUE.qsize()} "
+                f"type={msg_type} text_len={len(message or '')}"
+            )
         if _TELEGRAM_QUEUE.full():
             try:
                 _TELEGRAM_QUEUE.get_nowait()
                 log("[WARN] Cola Telegram llena, descartando mensaje mas viejo.")
             except Exception:
                 pass
-        _TELEGRAM_QUEUE.put((now_ts, chat_id, message, msg_type, reason))
+        try:
+            _TELEGRAM_QUEUE.put(
+                (
+                    now_ts,
+                    chat_id,
+                    message,
+                    msg_type,
+                    reason,
+                    qa_update_id,
+                    qa_cmd,
+                    perf_ctx,
+                    is_command,
+                    dbg_update_id,
+                    dbg_cmd,
+                )
+            )
+            if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+                log(
+                    f"TGQ update_id={dbg_update_id} cmd={dbg_cmd or ''} "
+                    f"ENQUEUED qsize_after={_TELEGRAM_QUEUE.qsize()} "
+                    f"type={msg_type}"
+                )
+        except Exception as exc:
+            if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+                log(f"TGQ update_id={dbg_update_id} ENQUEUE_EXC err={type(exc).__name__}:{exc}")
         _LAST_SENT_META["type"] = msg_type
         _LAST_SENT_META["ts"] = now_str()
         if _QA_MODE:
@@ -495,25 +762,58 @@ def send_telegram(bot_token: str, chat_id: str, message: str, msg_type: str, rea
 
 
 def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> None:
-    session = requests.Session()
+    global _HTTP_SESSION
+    if _HTTP_SESSION is None:
+        _HTTP_SESSION = requests.Session()
+    session = _HTTP_SESSION
     tg_send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     if not tg_send_url.startswith("https://api.telegram.org/bot"):
         log("[ERROR] URL Telegram invalida (sendMessage).")
         return
+    last_hb = 0.0
     while True:
         try:
-            enqueue_ts, chat_id, message, msg_type, _reason = q.get()
+            (
+                enqueue_ts,
+                chat_id,
+                message,
+                msg_type,
+                _reason,
+                qa_update_id,
+                qa_cmd,
+                perf_ctx,
+                is_command,
+                dbg_update_id,
+                dbg_cmd,
+            ) = q.get()
+            if DBG_TELEGRAM and (time.time() - last_hb) >= 30:
+                log(f"SENDER_HB alive=1 qsize={q.qsize()}")
+                last_hb = time.time()
             with _TELEGRAM_QUEUE_LOCK:
                 last_ts = _LAST_ENQUEUED.get(msg_type, 0.0)
             window = _COALESCE_WINDOWS.get(msg_type)
-            if window and enqueue_ts < last_ts and (last_ts - enqueue_ts) <= window:
+            if not is_command and window and enqueue_ts < last_ts and (last_ts - enqueue_ts) <= window:
+                if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+                    log(
+                        f"SEND_SKIP update_id={dbg_update_id} reason=coalesce type={msg_type} "
+                        f"window_s={window}"
+                    )
                 continue
             msg_hash = hashlib.sha256(message.encode("utf-8", errors="ignore")).hexdigest()
             last_hash = _LAST_SENT_HASH.get(msg_type)
             last_sent = _LAST_SENT_TS.get(msg_type, 0.0)
-            if msg_type == "STATE_CHANGE" and last_hash == msg_hash:
+            if not is_command and msg_type == "STATE_CHANGE" and last_hash == msg_hash:
+                if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+                    log(
+                        f"SEND_SKIP update_id={dbg_update_id} reason=dedupe type={msg_type} hash={msg_hash[:8]}"
+                    )
                 continue
-            if last_hash == msg_hash and (time.time() - last_sent) < 60:
+            if not is_command and last_hash == msg_hash and (time.time() - last_sent) < 60:
+                if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+                    log(
+                        f"SEND_SKIP update_id={dbg_update_id} reason=dedupe type={msg_type} hash={msg_hash[:8]} "
+                        f"age_s={int(time.time() - last_sent)}"
+                    )
                 continue
             payload = {
                 "chat_id": chat_id,
@@ -521,18 +821,57 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
                 "disable_web_page_preview": True,
             }
             start = time.monotonic()
-            resp = session.post(tg_send_url, json=payload, timeout=(3, 15))
+            resp = session.post(tg_send_url, json=payload, timeout=(2.0, 6.0))
             duration = time.monotonic() - start
             if qa_mode:
                 log_pid(
                     f"[TEL] sendMessage duration={duration:.3f}s status={resp.status_code} "
                     f"qsize={q.qsize()} msg_type={msg_type}"
                 )
+                if qa_update_id is not None:
+                    count = _QA_TX_COUNTS.get(qa_update_id, 0) + 1
+                    _QA_TX_COUNTS[qa_update_id] = count
+                    log_pid(
+                        f"TX id={qa_update_id} n={count} cmd={qa_cmd or 'N/A'} status={resp.status_code}"
+                    )
+            if perf_ctx:
+                perf_id = perf_ctx.get("update_id")
+                if perf_id is None or not _PERF_LOGGED.get(perf_id):
+                    ms_send = int(duration * 1000)
+                    start_ts = perf_ctx.get("start_ts", time.time())
+                    ms_total = int((time.time() - start_ts) * 1000)
+                    log(
+                        f"PERF cmd={perf_ctx.get('cmd','')} handler={perf_ctx.get('handler','')} "
+                        f"ms_total={ms_total} ms_send={ms_send}"
+                    )
+                    if ms_send > 2000:
+                        log(f"SAFETY slow_send cmd={perf_ctx.get('cmd','')} ms_send={ms_send}")
+                    if resp.status_code != 200:
+                        body = (resp.text or "")[:200].replace("\n", " ")
+                        log(f"ERROR telegram_send status={resp.status_code} body=\"{body}\"")
+                    if perf_id is not None:
+                        _PERF_LOGGED[perf_id] = True
+            if resp.status_code != 200:
+                body = (resp.text or "")[:200].replace("\n", " ")
+                log(
+                    f"TG SEND_ERR http={resp.status_code} cmd={dbg_cmd or ''} "
+                    f"update_id={dbg_update_id} body=\"{body}\""
+                )
+            if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+                log(
+                    f"SEND_POST update_id={dbg_update_id} cmd={dbg_cmd or ''} "
+                    f"http={resp.status_code} ms={int(duration*1000)} type={msg_type}"
+                )
+                if resp.status_code != 200:
+                    body = (resp.text or "")[:200].replace("\n", " ")
+                    log(f"SEND_ERR update_id={dbg_update_id} cmd={dbg_cmd or ''} http={resp.status_code} body=\"{body}\"")
             if resp.status_code >= 400:
                 log(f"[WARN] Telegram retorno {resp.status_code}: {resp.text}")
             _LAST_SENT_HASH[msg_type] = msg_hash
             _LAST_SENT_TS[msg_type] = time.time()
         except Exception as exc:
+            if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
+                log(f"SEND_EXC update_id={dbg_update_id} err={type(exc).__name__}:{exc}")
             log(f"[WARN] No se pudo enviar mensaje a Telegram ({exc})")
             time.sleep(2)
 
@@ -861,26 +1200,53 @@ def telegram_polling_worker(
                 log("[ERROR] URL Telegram invalida (getUpdates).")
                 time.sleep(poll_sleep)
                 continue
+            t0 = time.monotonic()
+            last_ref_before = last_update_id_ref["value"]
             resp = requests.get(tg_updates_url, params=params, timeout=timeout_used)
             if resp.status_code >= 400:
                 body = (resp.text or "")[:300]
                 log_pid(
                     f"[WARN] getUpdates HTTP {resp.status_code} body='{body}' timeout={timeout_used}s backoff={backoff}s"
                 )
+                if DBG_TELEGRAM:
+                    log(
+                        f"POLL getUpdates offset={offset} http={resp.status_code} "
+                        f"ms={int((time.monotonic() - t0)*1000)} len=0 last_ref_before={last_ref_before}"
+                    )
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 5.0)
                 continue
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                if DBG_TELEGRAM:
+                    body = (resp.text or "")[:200].replace("\n", " ")
+                    log(
+                        f"POLL_ERR http={resp.status_code} ms={int((time.monotonic() - t0)*1000)} "
+                        f"body=\"{body}\""
+                    )
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 5.0)
+                continue
             if not data.get("ok"):
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 5.0)
                 continue
             backoff = poll_sleep
+            result = data.get("result", [])
+            if DBG_TELEGRAM:
+                log(
+                    f"POLL getUpdates offset={offset} http={resp.status_code} "
+                    f"ms={int((time.monotonic() - t0)*1000)} len={len(result)} last_ref_before={last_ref_before}"
+                )
 
-            for item in data.get("result", []):
+            max_update_id_in_batch = None
+            for item in result:
                 update_id = item.get("update_id")
                 if update_id is None:
                     continue
+                if max_update_id_in_batch is None or update_id > max_update_id_in_batch:
+                    max_update_id_in_batch = update_id
                 text = str(item.get("message", {}).get("text", "")).strip()
                 if qa_mode:
                     log_pid(f"[TEL] update_id={update_id} text='{text}' received_ts={now_str()}")
@@ -897,12 +1263,82 @@ def telegram_polling_worker(
                 with state_lock:
                     save_state(state_path, states, current_last_update_id)
 
-                message = item.get("message", {})
-                text = str(message.get("text", "")).strip().lower()
+                message, raw_text, cmd_name, args, msg_key, cmd_meta = _parse_message_command(item)
+                if DBG_TELEGRAM and not DBG_TELEGRAM_COMMANDS_ONLY:
+                    msg = (
+                        item.get("message")
+                        or item.get("edited_message")
+                        or item.get("channel_post")
+                        or {}
+                    )
+                    msg_chat_id = (msg.get("chat") or {}).get("id")
+                    text_raw = msg.get("text")
+                    entities = msg.get("entities") or []
+                    log(
+                        f"UPD update_id={update_id} chat_id={msg_chat_id} "
+                        f"text={_trunc(text_raw, DBG_TELEGRAM_TRUNC)} entities={_entities_summary(entities)}"
+                    )
+                text = raw_text.lower()
                 msg_chat_id = message.get("chat", {}).get("id")
                 if msg_chat_id is None or str(msg_chat_id) != str(chat_id):
+                    chat_title = None
+                    chat_user = None
+                    try:
+                        msg = message if isinstance(message, dict) else None
+                        if isinstance(msg, dict):
+                            ch = msg.get("chat")
+                            if isinstance(ch, dict):
+                                chat_title = ch.get("title") or ch.get("username") or ch.get("first_name")
+                                chat_user = ch.get("username")
+                    except Exception:
+                        pass
+                    cmd_dbg = None
+                    try:
+                        cmd_dbg = cmd_name
+                    except Exception:
+                        cmd_dbg = None
+                    txt = ""
+                    try:
+                        txt = msg.get("text") or ""
+                    except Exception:
+                        txt = ""
+                    log(
+                        "TG DROP chat_mismatch "
+                        f"update_id={update_id} msg_chat_id={msg_chat_id} config_chat_id={chat_id} "
+                        f"chat='{(chat_title or '')}' user='{(chat_user or '')}' "
+                        f"cmd='{(cmd_dbg or '')}' text='{_trunc(txt, 80)}'"
+                    )
+                    if DBG_TELEGRAM:
+                        log(
+                            f"DROP chat_id mismatch update_id={update_id} "
+                            f"msg_chat_id={msg_chat_id} config_chat_id={chat_id}"
+                        )
                     continue
-                if text == "status":
+                if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
+                    ent = cmd_meta.get("entities_summary", {})
+                    ent_info = (
+                        f"count={ent.get('count', 0)} "
+                        f"bot_cmd_offset0={ent.get('bot_cmd_offset0')} "
+                        f"len={ent.get('bot_cmd_len')}"
+                    )
+                    log(
+                        f"RX update_id={update_id} text={_trunc(raw_text, DBG_TELEGRAM_TRUNC)} "
+                        f"entities={ent_info} parsed cmd='{cmd_name}' args={args}"
+                    )
+                    if cmd_meta.get("alias_used"):
+                        log(
+                            f"BRANCH normalize cmd_original=\"{cmd_meta.get('cmd_original')}\" "
+                            f"cmd=\"{cmd_meta.get('cmd_normalized')}\" args=\"{' '.join(cmd_meta.get('args_normalized', []))}\""
+                        )
+                perf_start_ts = None
+                perf_cmds = {"reboot", "reboot_no_ok", "reboot-confirm"}
+                if cmd_name in perf_cmds or (cmd_name.startswith("c") and cmd_name[1:].isdigit()):
+                    perf_start_ts = time.time()
+                handled = False
+                if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
+                    log(f"DISPATCH update_id={update_id} text_norm={_trunc(raw_text, DBG_TELEGRAM_TRUNC)}")
+                if cmd_name == "status":
+                    handled = True
                     lock_start = time.monotonic()
                     with snapshot_lock:
                         snapshot = snapshot_ref["value"]
@@ -911,7 +1347,16 @@ def telegram_polling_worker(
                         log_pid(f"[TEL] snapshot_lock wait={lock_wait:.3f}s")
                     if snapshot:
                         cmd_start = time.monotonic()
-                        send_telegram(bot_token, str(msg_chat_id), snapshot, "STATUS", "cmd_status")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            snapshot,
+                            "STATUS",
+                            "cmd_status",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="status",
+                        )
                         if qa_mode:
                             if qa_mode:
                                 log_pid(f"[TEL] command=status duration={time.monotonic() - cmd_start:.3f}s")
@@ -923,18 +1368,31 @@ def telegram_polling_worker(
                             "Aun no hay lecturas, espere unos segundos y reintente.",
                             "STATUS",
                             "cmd_status_empty",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="status",
                         )
                         if qa_mode:
                             if qa_mode:
                                 log_pid(f"[TEL] command=status duration={time.monotonic() - cmd_start:.3f}s")
-                elif text == "info" or text.startswith("info "):
+                elif cmd_name == "info":
+                    handled = True
                     now_ts = time.time()
                     if (now_ts - last_info_ts) < 30:
-                        send_telegram(bot_token, str(msg_chat_id), "Info en cooldown. Intente en 30s.", "INFO", "cooldown")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Info en cooldown. Intente en 30s.",
+                            "INFO",
+                            "cooldown",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="info",
+                        )
                         continue
                     last_info_ts = now_ts
                     cmd_start = time.monotonic()
-                    if text == "info":
+                    if not args:
                         lines = [f"INFO ({now_str()})"]
                         any_lines = False
                         with state_lock:
@@ -970,8 +1428,17 @@ def telegram_polling_worker(
                                 any_lines = True
                         if not any_lines:
                             lines.append("Sin mineros en estado no-OK.")
-                        send_telegram(bot_token, str(msg_chat_id), "\n".join(lines), "INFO", "cmd_info")
-                    elif text == "info all":
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "\n".join(lines),
+                            "INFO",
+                            "cmd_info",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="info",
+                        )
+                    elif args and args[0].lower() == "all":
                         lines = [f"INFO ALL ({now_str()})"]
                         for miner in miners:
                             name_display = display_name(miner["name"])
@@ -997,19 +1464,70 @@ def telegram_polling_worker(
                                 f"elapsed={elapsed if elapsed is not None else 'N/A'} "
                                 f"pool={pool_url} user={user} fw={fw_hint}{suffix}"
                             )
-                        send_telegram(bot_token, str(msg_chat_id), "\n".join(lines), "INFO", "cmd_info_all")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "\n".join(lines),
+                            "INFO",
+                            "cmd_info_all",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="info",
+                        )
                     else:
-                        miner_token = text.split(" ", 1)[1].strip()
+                        miner_token = " ".join(args).strip()
+                        if miner_token:
+                            token_norm = miner_token.strip().lstrip("/").lower()
+                            if not token_norm.isdigit():
+                                match = False
+                                for cmd in _COMMANDS:
+                                    name = str(cmd.get("name", "")).lower()
+                                    aliases = [a.lower() for a in cmd.get("aliases", [])]
+                                    if token_norm == name or token_norm in aliases:
+                                        match = True
+                                        break
+                                if match:
+                                    send_telegram(
+                                        bot_token,
+                                        str(msg_chat_id),
+                                        render_help_detail(miner_token),
+                                        "HELP",
+                                        "cmd_info_help",
+                                        is_command=True,
+                                        dbg_update_id=update_id,
+                                        dbg_cmd="info_help",
+                                    )
+                                    if qa_mode:
+                                        log_pid(f"[TEL] command=info_help duration={time.monotonic() - cmd_start:.3f}s")
+                                    continue
                         miner = resolve_miner(miner_token, miners)
                         if not miner:
-                            send_telegram(bot_token, str(msg_chat_id), "Miner no encontrado.", "ERROR", "cmd_info_miner")
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                "Miner no encontrado.",
+                                "ERROR",
+                                "cmd_info_miner",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="info",
+                            )
                             continue
                         name_display = display_name(miner["name"])
                         host = miner["host"]
                         port = miner["port"]
                         rate, elapsed, responded, summary = read_summary(host, port, timeout=5)
                         if not responded:
-                            send_telegram(bot_token, str(msg_chat_id), f"{name_display} ({host}): N/A", "INFO", "cmd_info_miner")
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                f"{name_display} ({host}): N/A",
+                                "INFO",
+                                "cmd_info_miner",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="info",
+                            )
                             continue
                         stats_resp = _read_command(host, port, b'{"command":"stats"}\n', timeout=5) or {}
                         stats = stats_resp.get("STATS")
@@ -1033,13 +1551,32 @@ def telegram_polling_worker(
                         ]
                         if suffix:
                             lines.append(suffix)
-                        send_telegram(bot_token, str(msg_chat_id), "\n".join(lines), "INFO", "cmd_info_miner")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "\n".join(lines),
+                            "INFO",
+                            "cmd_info_miner",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="info",
+                        )
                     if qa_mode:
                         log_pid(f"[TEL] command=info duration={time.monotonic() - cmd_start:.3f}s")
-                elif text == "selftest" or text == "test":
+                elif cmd_name == "selftest" or cmd_name == "test":
+                    handled = True
                     now_ts = time.time()
                     if (now_ts - last_selftest_ts) < 60:
-                        send_telegram(bot_token, str(msg_chat_id), "Selftest en cooldown. Intente en 60s.", "SELFTEST", "cooldown")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Selftest en cooldown. Intente en 60s.",
+                            "SELFTEST",
+                            "cooldown",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="selftest",
+                        )
                         continue
                     last_selftest_ts = now_ts
                     cmd_start = time.monotonic()
@@ -1095,50 +1632,486 @@ def telegram_polling_worker(
                         f"SELFTEST: Telegram=OK Hashcore={hashcore_ok} Miners={responded}/{total}",
                         "SELFTEST",
                         "cmd_selftest",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="selftest",
                     )
                     if qa_mode:
                         log_pid(f"[TEL] command=selftest duration={time.monotonic() - cmd_start:.3f}s")
-                elif text == "help" or text.startswith("help "):
+                elif cmd_name == "help":
+                    handled = True
                     cmd_start = time.monotonic()
-                    parts = text.split()
-                    if len(parts) >= 2:
-                        msg = render_help_detail(parts[1])
-                    else:
-                        msg = render_help_index()
+                    msg = render_help_index()
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
                         msg,
                         "HELP",
                         "cmd_help",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="help",
                     )
                     if qa_mode:
                         log_pid(f"[TEL] command=help duration={time.monotonic() - cmd_start:.3f}s")
-                elif text.startswith("reboot ") or text.startswith("restart "):
-                    action = "reboot" if text.startswith("reboot ") else "restart"
+                elif cmd_name == "reboot_no_ok":
+                    handled = True
                     cmd_start = time.monotonic()
-                    miner_token = text.split(" ", 1)[1].strip()
-                    miner = resolve_miner(miner_token, miners)
-                    if not miner:
-                        send_telegram(bot_token, str(msg_chat_id), "Miner no encontrado.", "ERROR", "cmd_reboot_restart")
-                        continue
-                    if qa_mode and not qa_allow_actions:
-                        log("[WARN] Accion bloqueada por QA (telegram).")
+                    if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
+                        log('BRANCH route cmd="reboot_no_ok" handler="reboot_no_ok_bulk" args=""')
+                    BULK_REBOOT_CAP = 5
+                    targets = []
+                    with state_lock:
+                        for miner in miners:
+                            name_display = display_name(miner["name"])
+                            host = miner["host"]
+                            port = miner["port"]
+                            state_key = f"{miner['name']}|{host}:{port}"
+                            state = states.get(state_key)
+                            if is_miner_no_ok(state):
+                                targets.append(name_display)
+                    if not targets:
                         send_telegram(
                             bot_token,
                             str(msg_chat_id),
-                            "Accion bloqueada (QA). Habilita qa_allow_real_actions=true para permitir reboots reales.",
+                            "No hay mineros en estado NO-OK.",
+                            "REBOOT",
+                            "cmd_reboot_bulk_empty",
+                            perf_ctx={
+                                "cmd": "reboot_no_ok",
+                                "handler": "reboot_bulk_preview",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="reboot_bulk_preview",
+                        )
+                        if qa_mode:
+                            log_pid(f"[TEL] command=reboot_bulk_empty duration={time.monotonic() - cmd_start:.3f}s")
+                        continue
+                    truncated = False
+                    if len(targets) > BULK_REBOOT_CAP:
+                        targets = targets[:BULK_REBOOT_CAP]
+                        truncated = True
+                    code = f"{random.randint(100000, 999999)}"
+                    now_ts = time.time()
+                    pending_key = f"{msg_chat_id}:reboot_no_ok"
+                    with pending_lock:
+                        pending_reboots[pending_key] = {
+                            "type": "bulk",
+                            "action": "reboot_no_ok",
+                            "created_ts": now_ts,
+                            "expires_ts": now_ts + 60,
+                            "code": code,
+                            "target_ids": targets,
+                        }
+                    log(f'action="reboot" target="{",".join(targets)}" mode="bulk"')
+                    preview_lines = [
+                        f"NO-OK detectados: {len(targets)} ({', '.join(targets)})",
+                        f"Confirmar: /c{code}",
+                        "Expira en 60s.",
+                    ]
+                    if truncated:
+                        preview_lines.insert(1, "Se aplico limite: 5 maximos.")
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        "\n".join(preview_lines),
+                        "REBOOT",
+                        "cmd_reboot_bulk_preview",
+                        perf_ctx={
+                            "cmd": "reboot_no_ok",
+                            "handler": "reboot_bulk_preview",
+                            "start_ts": perf_start_ts or time.time(),
+                            "update_id": update_id,
+                        },
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="reboot_no_ok",
+                    )
+                    if qa_mode:
+                        log_pid(f"[TEL] command=reboot_bulk_preview duration={time.monotonic() - cmd_start:.3f}s")
+                elif re.fullmatch(r"c(\d{4,10})", cmd_name):
+                    handled = True
+                    code = re.fullmatch(r"c(\d{4,10})", cmd_name).group(1)
+                    dbg_cmd = f"confirm_code:c{code}"
+                    pending_key = f"{msg_chat_id}:reboot_no_ok"
+                    now_ts = time.time()
+                    with pending_lock:
+                        pending = pending_reboots.get(pending_key)
+                    if not pending:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "No hay confirmación pendiente para reboot_no_ok. Ejecutá /reboot_no_ok primero.",
                             "ERROR",
-                            "qa_block",
+                            "cmd_confirm",
+                            perf_ctx={
+                                "cmd": "confirm",
+                                "handler": "confirm_code",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=dbg_cmd,
                         )
                         continue
+                    if pending.get("expires_ts", 0) < now_ts:
+                        with pending_lock:
+                            pending_reboots.pop(pending_key, None)
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Confirmación expirada. Volvé a ejecutar /reboot_no_ok.",
+                            "ERROR",
+                            "cmd_confirm",
+                            perf_ctx={
+                                "cmd": "confirm",
+                                "handler": "confirm_code",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=dbg_cmd,
+                        )
+                        continue
+                    if str(pending.get("code")) != code:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Código inválido.",
+                            "ERROR",
+                            "cmd_confirm",
+                            perf_ctx={
+                                "cmd": "confirm",
+                                "handler": "confirm_code",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=dbg_cmd,
+                        )
+                        continue
+                    targets = pending.get("target_ids", [])
+                    with pending_lock:
+                        pending_reboots.pop(pending_key, None)
+                    results = []
+                    for token in targets:
+                        miner = resolve_miner(token, miners)
+                        if not miner:
+                            results.append(f"{token}  FAIL (not_found)")
+                            continue
+                        ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                        if ok:
+                            results.append(f"{display_name(miner['name'])}  OK")
+                            state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                            with state_lock:
+                                state = states.get(state_key)
+                                if state:
+                                    state.last_manual_reboot_ts = now_ts
+                                    state.low_since_ts = None
+                        else:
+                            results.append(f"{display_name(miner['name'])}  FAIL (error)")
+                    reply = ["MANUAL-REBOOT-NO-OK ejecutado:", "", *results]
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        "\n".join(reply),
+                        "REBOOT",
+                        "cmd_confirm",
+                        perf_ctx={
+                            "cmd": "confirm",
+                            "handler": "confirm_code",
+                            "start_ts": perf_start_ts or time.time(),
+                            "update_id": update_id,
+                        },
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd=dbg_cmd,
+                    )
+                    continue
+                elif cmd_name == "reboot-confirm":
+                    handled = True
+                    cmd_start = time.monotonic()
+                    if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
+                        log('BRANCH route cmd="reboot-confirm" handler="reboot_bulk_confirm" args=""')
+                    if not args:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Uso: /reboot-confirm <code>",
+                            "HELP",
+                            "cmd_reboot_bulk_confirm",
+                            perf_ctx={
+                                "cmd": "reboot",
+                                "handler": "reboot_bulk_confirm",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="reboot_bulk_confirm",
+                        )
+                        continue
+                    code = args[0].strip()
+                    with pending_lock:
+                        pending = pending_reboots.get("_bulk")
+                    if not pending or pending.get("type") != "bulk":
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Confirmacion expirada.",
+                            "ERROR",
+                            "cmd_reboot_bulk_confirm",
+                            perf_ctx={
+                                "cmd": "reboot",
+                                "handler": "reboot_bulk_confirm",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="reboot_bulk_confirm",
+                        )
+                        continue
+                    now_ts = time.time()
+                    if pending.get("expires_ts", 0) < now_ts:
+                        with pending_lock:
+                            pending_reboots.pop("_bulk", None)
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Confirmacion expirada.",
+                            "ERROR",
+                            "cmd_reboot_bulk_confirm",
+                            perf_ctx={
+                                "cmd": "reboot",
+                                "handler": "reboot_bulk_confirm",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="reboot_bulk_confirm",
+                        )
+                        continue
+                    if pending.get("code") != code:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Codigo invalido.",
+                            "ERROR",
+                            "cmd_reboot_bulk_confirm",
+                            perf_ctx={
+                                "cmd": "reboot",
+                                "handler": "reboot_bulk_confirm",
+                                "start_ts": perf_start_ts or time.time(),
+                                "update_id": update_id,
+                            },
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="reboot_bulk_confirm",
+                        )
+                        continue
+                    targets = pending.get("target_ids", [])
+                    log(f"[EVENT] bulk_reboot_start targets={len(targets)}")
+                    log(f'action="reboot" target="{",".join(targets)}" mode="bulk"')
+                    results = []
+                    for token in targets:
+                        miner = resolve_miner(token, miners)
+                        if not miner:
+                            results.append(f"{token}  FAIL (not_found)")
+                            log(f"[ERROR] bulk_reboot_target_not_found token={token}")
+                            continue
+                        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                        with state_lock:
+                            state = states.get(state_key)
+                            last_manual = state.last_manual_reboot_ts if state else None
+                        if last_manual and (now_ts - last_manual) < 600:
+                            results.append(f"{display_name(miner['name'])}  SKIP (cooldown)")
+                            log(f"SAFETY cooldown_block cmd=reboot remaining={int(600 - (now_ts - last_manual))}")
+                            continue
+                        ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                        if ok:
+                            results.append(f"{display_name(miner['name'])}  OK")
+                            with state_lock:
+                                state = states.get(state_key)
+                                if state:
+                                    state.last_manual_reboot_ts = now_ts
+                                    state.low_since_ts = None
+                        else:
+                            results.append(f"{display_name(miner['name'])}  FAIL (error)")
+                            log(f"[ERROR] bulk_reboot_fail miner={display_name(miner['name'])} msg={msg}")
+                    with pending_lock:
+                        pending_reboots.pop("_bulk", None)
+                    reply = ["Reboot masivo ejecutado:", "", *results]
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        "\n".join(reply),
+                        "REBOOT",
+                        "cmd_reboot_bulk_done",
+                        perf_ctx={
+                            "cmd": "reboot",
+                            "handler": "reboot_bulk_confirm",
+                            "start_ts": perf_start_ts or time.time(),
+                            "update_id": update_id,
+                        },
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="reboot_bulk_confirm",
+                    )
+                    if qa_mode:
+                        log_pid(f"[TEL] command=reboot_bulk_confirm duration={time.monotonic() - cmd_start:.3f}s")
+                elif cmd_name == "restart" and not args:
+                    handled = True
+                    cmd_start = time.monotonic()
+                    cmd = cmd_name
+                    usage = _help_usage_for(cmd) or f"/{cmd} <miner>"
+                    msg = f"Uso: {usage}\nInfo: /info {cmd}"
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        msg,
+                        "HELP",
+                        "cmd_help_usage",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd=f"{cmd}_usage",
+                    )
+                    if qa_mode:
+                        log_pid(f"[TEL] command={cmd}_usage duration={time.monotonic() - cmd_start:.3f}s")
+                elif cmd_name == "reboot" and not args:
+                    handled = True
+                    cmd_start = time.monotonic()
+                    if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
+                        log('BRANCH route cmd="reboot" handler="reboot_guided" args=""')
+                    log('action="reboot" target="-" mode="single"')
+                    lines = ["REBOOT", ""]
+                    def _sort_key(m: dict) -> tuple:
+                        name_display = display_name(m.get("name", ""))
+                        return (0, name_display) if name_display.isdigit() else (1, name_display)
+                    ordered = sorted(miners, key=_sort_key)
+                    with snapshot_lock:
+                        snapshot_text = snapshot_ref.get("value") or ""
+                    snapshot_rates = {}
+                    for line in snapshot_text.splitlines():
+                        if not line.startswith("- "):
+                            continue
+                        try:
+                            after_dash = line[2:]
+                            name_part, rest = after_dash.split(" (", 1)
+                            if "):" not in rest:
+                                continue
+                            rate_part = rest.split("):", 1)[1].strip()
+                            if " [" in rate_part:
+                                rate_part = rate_part.split(" [", 1)[0].strip()
+                            snapshot_rates[name_part.strip()] = rate_part
+                        except ValueError:
+                            continue
+                    has_no_ok = False
+                    now_ts = time.time()
+                    with state_lock:
+                        for miner in ordered:
+                            name_display = display_name(miner["name"])
+                            host = miner["host"]
+                            port = miner["port"]
+                            state_key = f"{miner['name']}|{host}:{port}"
+                            state = states.get(state_key)
+                            status_label = "NO-OK" if is_miner_no_ok(state) else "OK"
+                            if status_label == "NO-OK":
+                                has_no_ok = True
+                            rate_str = snapshot_rates.get(name_display, "N/A")
+                            stale_prefix = ""
+                            if state and state.last_seen_ts:
+                                age = now_ts - state.last_seen_ts
+                                if age > 120:
+                                    status_label = "STALE/DESCONOCIDO"
+                                    rate_str = "N/A"
+                                elif age > 30:
+                                    stale_prefix = "~"
+                            if rate_str != "N/A":
+                                rate_str = f"{stale_prefix}{rate_str}"
+                            pieces = [name_display]
+                            if rate_str:
+                                pieces.append(rate_str)
+                            pieces.append(status_label)
+                            lines.append("  ".join(pieces))
+                            lines.append(f"Reiniciar: /rb{name_display}")
+                            lines.append("")
+                    if has_no_ok:
+                        lines.append("/reboot_no_ok")
+                    lines.append("Manual: /reboot <id>")
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        "\n".join(lines).rstrip(),
+                        "HELP",
+                        "cmd_reboot_guided",
+                        perf_ctx={
+                            "cmd": "reboot",
+                            "handler": "reboot_guided",
+                            "start_ts": perf_start_ts or time.time(),
+                            "update_id": update_id,
+                        },
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="reboot_guided",
+                    )
+                    if qa_mode:
+                        log_pid(f"[TEL] command=reboot_guided duration={time.monotonic() - cmd_start:.3f}s")
+                elif cmd_name in ("reboot", "restart"):
+                    handled = True
+                    action = cmd_name
+                    cmd_start = time.monotonic()
+                    perf_ctx = None
+                    if action == "reboot":
+                        perf_ctx = {
+                            "cmd": "reboot",
+                            "handler": "reboot_single",
+                            "start_ts": perf_start_ts or time.time(),
+                            "update_id": update_id,
+                        }
+                    miner_token = " ".join(args).strip()
+                    miner = resolve_miner(miner_token, miners)
+                    if not miner:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Miner no encontrado.",
+                            "ERROR",
+                            "cmd_reboot_restart",
+                            perf_ctx=perf_ctx,
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"{action}_single",
+                        )
+                        continue
+                    if action == "reboot":
+                        if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
+                            log(f'BRANCH route cmd="reboot" handler="reboot_single" args="{miner_token}"')
+                        log(f'action="reboot" target="{display_name(miner["name"])}" mode="single"')
                     state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
                     now_ts = time.time()
                     with state_lock:
                         state = states.get(state_key)
                         last_manual = state.last_manual_reboot_ts if state else None
                     if last_manual and (now_ts - last_manual) < 600:
-                        send_telegram(bot_token, str(msg_chat_id), "Reboot manual en cooldown.", "REBOOT" if action == "reboot" else "RESTART", "cooldown")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Reboot manual en cooldown.",
+                            "REBOOT" if action == "reboot" else "RESTART",
+                            "cooldown",
+                            perf_ctx=perf_ctx,
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"{action}_single",
+                        )
                         continue
                     code = f"{random.randint(100000, 999999)}"
                     with pending_lock:
@@ -1148,26 +2121,142 @@ def telegram_polling_worker(
                             "miner": miner,
                             "action": action,
                         }
+                    confirm_text = f"Confirma con: confirm {action} {miner_token} {code}"
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
-                        f"Confirma con: confirm {action} {miner_token} {code}",
+                        confirm_text,
                         "REBOOT" if action == "reboot" else "RESTART",
                         "confirm_request",
+                        perf_ctx=perf_ctx,
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd=f"{action}_single",
                     )
-                    if qa_mode:
-                        log_pid(f"[TEL] command={action} duration={time.monotonic() - cmd_start:.3f}s")
-                elif text.startswith("confirm reboot ") or text.startswith("confirm restart "):
+                elif cmd_name == "confirm":
+                    handled = True
                     parts = text.split()
-                    if len(parts) < 4:
+                    if len(parts) < 3:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Uso: /confirm <accion> <codigo>\nEj: /confirm reboot-no-ok 123456",
+                            "HELP",
+                            "cmd_confirm",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="confirm:usage",
+                        )
                         continue
                     action = parts[1]
                     cmd_start = time.monotonic()
-                    miner_token = parts[2]
-                    code = parts[3]
+                    if action == "reboot-no-ok":
+                        action = "reboot_no_ok"
+                    if action == "reboot_no_ok":
+                        if len(parts) < 3:
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                "Uso: /confirm reboot_no_ok <codigo>",
+                                "HELP",
+                                "cmd_confirm",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="confirm:reboot_no_ok",
+                            )
+                            continue
+                        miner_token = ""
+                        code = parts[2]
+                    else:
+                        if len(parts) < 4:
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                "Uso: /confirm <accion> <codigo>\nEj: /confirm reboot 23 123456",
+                                "HELP",
+                                "cmd_confirm",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd=f"confirm:{action}",
+                            )
+                            continue
+                        miner_token = parts[2]
+                        code = parts[3]
+                    if action == "reboot_no_ok":
+                        pending_key = f"{msg_chat_id}:reboot_no_ok"
+                        now_ts = time.time()
+                        with pending_lock:
+                            pending = pending_reboots.get(pending_key)
+                        if not pending or pending.get("expires_ts", 0) < now_ts:
+                            with pending_lock:
+                                pending_reboots.pop(pending_key, None)
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                "Confirmacion expirada.",
+                                "ERROR",
+                                "cmd_confirm",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="confirm:reboot_no_ok",
+                            )
+                            continue
+                        if pending.get("code") != code:
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                "Codigo invalido.",
+                                "ERROR",
+                                "cmd_confirm",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="confirm:reboot_no_ok",
+                            )
+                            continue
+                        targets = pending.get("target_ids", [])
+                        with pending_lock:
+                            pending_reboots.pop(pending_key, None)
+                        results = []
+                        for token in targets:
+                            miner = resolve_miner(token, miners)
+                            if not miner:
+                                results.append(f"{token}  FAIL (not_found)")
+                                continue
+                            ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                            if ok:
+                                results.append(f"{display_name(miner['name'])}  OK")
+                                state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                                with state_lock:
+                                    state = states.get(state_key)
+                                    if state:
+                                        state.last_manual_reboot_ts = now_ts
+                                        state.low_since_ts = None
+                            else:
+                                results.append(f"{display_name(miner['name'])}  FAIL (error)")
+                        reply = ["MANUAL-REBOOT-NO-OK ejecutado:", "", *results]
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "\n".join(reply),
+                            "REBOOT",
+                            "cmd_confirm",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="confirm:reboot_no_ok",
+                        )
+                        continue
                     miner = resolve_miner(miner_token, miners)
                     if not miner:
-                        send_telegram(bot_token, str(msg_chat_id), "Miner no encontrado.", "ERROR", "cmd_confirm")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Miner no encontrado.",
+                            "ERROR",
+                            "cmd_confirm",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"confirm:{action}",
+                        )
                         continue
                     if qa_mode and not qa_allow_actions:
                         log("[WARN] Accion bloqueada por QA (telegram).")
@@ -1177,6 +2266,9 @@ def telegram_polling_worker(
                             "Accion bloqueada (QA). Habilita qa_allow_real_actions=true para permitir reboots reales.",
                             "ERROR",
                             "qa_block",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"confirm:{action}",
                         )
                         continue
                     state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
@@ -1184,17 +2276,53 @@ def telegram_polling_worker(
                     with pending_lock:
                         pending = pending_reboots.get(state_key)
                     if not pending or pending.get("expires_ts", 0) < now_ts:
-                        send_telegram(bot_token, str(msg_chat_id), "Confirmacion expirada.", "ERROR", "cmd_confirm")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Confirmacion expirada.",
+                            "ERROR",
+                            "cmd_confirm",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"confirm:{action}",
+                        )
                         continue
                     if pending.get("code") != code:
-                        send_telegram(bot_token, str(msg_chat_id), "Codigo invalido.", "ERROR", "cmd_confirm")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Codigo invalido.",
+                            "ERROR",
+                            "cmd_confirm",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"confirm:{action}",
+                        )
                         continue
                     if pending.get("action") != action:
-                        send_telegram(bot_token, str(msg_chat_id), "Accion invalida.", "ERROR", "cmd_confirm")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Accion invalida.",
+                            "ERROR",
+                            "cmd_confirm",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"confirm:{action}",
+                        )
                         continue
                     ok, msg = run_hashcore_cli(hashcore_cfg, miner, action, config, qa_mode, qa_allow_actions)
                     if not ok:
-                        send_telegram(bot_token, str(msg_chat_id), msg, "ERROR", "cmd_confirm")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            msg,
+                            "ERROR",
+                            "cmd_confirm",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"confirm:{action}",
+                        )
                         continue
                     with state_lock:
                         state = states.get(state_key)
@@ -1210,7 +2338,23 @@ def telegram_polling_worker(
                         f"MANUAL-{action.upper()}: {display_name(miner['name'])} enviado.",
                         "REBOOT" if action == "reboot" else "RESTART",
                         "cmd_confirm",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd=f"confirm:{action}",
                     )
+                if DBG_TELEGRAM and not handled and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
+                    log(f"UNKNOWN_CMD update_id={update_id} text_norm={_trunc(raw_text, DBG_TELEGRAM_TRUNC)}")
+            if DBG_TELEGRAM:
+                if max_update_id_in_batch is not None:
+                    with last_update_lock:
+                        last_ref_after = last_update_id_ref["value"]
+                    next_offset = (last_ref_after + 1) if last_ref_after is not None else None
+                    log(
+                        f"POLL_ADVANCE last_ref_before={last_ref_before} last_ref_after={last_ref_after} "
+                        f"next_offset={next_offset}"
+                    )
+                else:
+                    log(f"POLL_EMPTY offset={offset} last_ref={last_ref_before}")
                     if qa_mode:
                         log_pid(f"[TEL] command=confirm_{action} duration={time.monotonic() - cmd_start:.3f}s")
         except Exception as exc:

@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY tools/miner_diagnostics.py /app/tools/miner_diagnostics.py
+
+ENTRYPOINT ["python", "/app/tools/miner_diagnostics.py"]
+CMD ["--config", "/config/config.json", "--out", "/out"]

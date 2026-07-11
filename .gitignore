@@ -1,10 +1,51 @@
+# Python / virtualenv
 .venv/
+venv/
+ENV/
 __pycache__/
-*.pyc
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Local runtime config and state
 app/config.json
-logs/
 app/state.json
 app/monitor.lock
+app/*.lock
+
+# Logs and runtime evidence exports
+logs/
 monitor.log
+*.log
+*.out
+*.err
+diagnostics/
+diagnostics*/
+exports/
+artifacts/
+
+# Tooling caches
 .pyright/
 .mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local secrets and env files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+Credenciales*.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+~$*
+Thumbs.db
+.DS_Store

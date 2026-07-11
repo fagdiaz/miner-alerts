@@ -56,3 +56,46 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - `docs/speckit/ROADMAP.md`
   - `docs/speckit/MINER_DIAGNOSTICS.md`
   - `specs/003-read-only-miner-diagnostics/*`
+
+## [2026-07-11] - Spec 002: Miner Diagnostics And Interface Roadmap
+
+* **Objetivo**: Definir el roadmap tecnico para evolucionar Miner Alerts mas alla de alertas Telegram, cubriendo diagnostico antes de reboot, Hashcore Toolkit, Vnish, power telemetry e interfaz read-only.
+* **Resultado**:
+  - Se documento un roadmap por prioridades P0-P7 para reducir falsas alertas, evitar reboots innecesarios y mejorar observabilidad.
+  - Se definio que Telegram permanece como superficie principal de acciones, mientras cualquier interfaz nueva debe empezar read-only.
+  - Se documento una estrategia para Hashcore Toolkit: inventariar capacidades read-only vs acciones antes de integrar nuevos comandos.
+  - Se definio una matriz de diagnostico para Vnish/S19j Pro: hash, boards, temperaturas, pool state, firmware hints, voltage/frequency/power fields y eventos de firmware.
+  - Se aclaro que voltaje AC/input no debe inferirse automaticamente desde firmware salvo evidencia explicita; se deben considerar PDU/UPS/smart meter si hace falta.
+* **Validaciones ejecutadas**:
+  - Revision documental de `docs/speckit/ROADMAP.md`, `INTERFACE_STRATEGY.md`, `MINER_DIAGNOSTICS.md` y `HASHCORE_TOOLKIT_STRATEGY.md`: PASS.
+  - No se realizaron cambios runtime en esta spec.
+* **Estado**:
+  - Roadmap y arquitectura de evolucion documentados. La implementacion real de diagnostico quedo iniciada posteriormente en Specs 003 y 004.
+* **Archivos principales**:
+  - `docs/speckit/ROADMAP.md`
+  - `docs/speckit/INTERFACE_STRATEGY.md`
+  - `docs/speckit/MINER_DIAGNOSTICS.md`
+  - `docs/speckit/HASHCORE_TOOLKIT_STRATEGY.md`
+  - `specs/002-miner-diagnostics-interface-roadmap/*`
+
+## [2026-07-11] - Spec 001: Miner Alerts Quality Hardening
+
+* **Objetivo**: Instalar una forma de trabajo Speckit para Miner Alerts, con foco en quick wins seguros: falsas alertas, seguridad de auto-reboot, confiabilidad Telegram, logs, hygiene de release y compatibilidad Windows/Hashcore.
+* **Resultado**:
+  - Se instalo `.specify/` desde el scaffold local probado en OneITB23.
+  - Se instalaron skills Speckit bajo `.agents/skills/`, incluyendo `speckit-qa` adaptado a Miner Alerts.
+  - Se creo la constitucion del proyecto en `.specify/memory/constitution.md` con reglas de seguridad: no secretos, no reboots sin evidencia, Telegram con confirmaciones y validacion Windows.
+  - Se agrego `AGENTS.md` como instrucciones operativas para futuros agentes/Codex.
+  - Se creo la base documental en `docs/speckit/` y specs iniciales para ordenar auditorias e implementaciones.
+* **Validaciones ejecutadas**:
+  - `& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py`: PASS.
+  - Verificacion de que la instalacion Speckit no cambiaba runtime del monitor: PASS.
+* **Estado**:
+  - Bootstrap Speckit completado. Las auditorias runtime y quick wins derivados quedaron como backlog y fueron desarrollados parcialmente en specs posteriores.
+* **Archivos principales**:
+  - `.specify/*`
+  - `.agents/skills/*`
+  - `.agents/skills/speckit-qa/*`
+  - `AGENTS.md`
+  - `docs/speckit/*`
+  - `specs/001-miner-alerts-quality-hardening/*`

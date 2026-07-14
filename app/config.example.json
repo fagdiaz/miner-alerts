@@ -16,6 +16,8 @@
   "notify_offline": true,
   "notify_reboot": true,
   "notify_initial_non_ok": false,
+  "notify_degraded_hourly": false,
+  "degraded_hourly_seconds": 3600,
   "reboot_cooldown_seconds": 1800,
   "reboot_window_seconds": 300,
   "startup_guard_seconds": 600,

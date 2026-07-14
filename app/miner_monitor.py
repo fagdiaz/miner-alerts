@@ -880,6 +880,32 @@ def format_rate(rate: Optional[float]) -> str:
     return f"{rate:.2f} TH/s" if rate is not None else "N/A"
 
 
+def format_state_event(
+    name_display: str,
+    prev_state: str,
+    new_state: str,
+    rate_ths: Optional[float],
+    threshold_ths: float,
+    active_boards: Optional[int],
+    expected_boards: int,
+    responded: bool,
+) -> str:
+    if new_state == STATE_LOW:
+        return (
+            f"- {name_display}: {prev_state} -> LOW | "
+            f"{format_rate(rate_ths)} < {threshold_ths:.2f} TH/s"
+        )
+    if new_state == STATE_HASHBOARD:
+        boards = f"{active_boards}/{expected_boards}" if active_boards is not None else f"N/A/{expected_boards}"
+        return f"- {name_display}: {prev_state} -> HASHBOARD | boards={boards}"
+    if new_state == STATE_OFFLINE:
+        return f"- {name_display}: {prev_state} -> OFFLINE | sin respuesta API 4028"
+    if new_state == STATE_OK:
+        signal = format_rate(rate_ths) if responded else "N/A"
+        return f"- {name_display}: {prev_state} -> OK | {signal}"
+    return f"- {name_display}: {prev_state} -> {new_state}"
+
+
 def display_name(raw_name: str) -> str:
     if "-" in raw_name:
         return raw_name.split("-")[-1]
@@ -2420,6 +2446,8 @@ def main() -> None:
     notify_offline = bool(config.get("notify_offline", True))
     notify_reboot = bool(config.get("notify_reboot", True))
     notify_initial_non_ok = bool(config.get("notify_initial_non_ok", False))
+    notify_degraded_hourly = bool(config.get("notify_degraded_hourly", False))
+    degraded_hourly_seconds = int(config.get("degraded_hourly_seconds", 3600))
     reboot_cooldown_seconds = int(config.get("reboot_cooldown_seconds", 1800))
     reboot_window_seconds = int(config.get("reboot_window_seconds", 300))
     low_sustained_seconds = 600
@@ -2520,6 +2548,7 @@ def main() -> None:
             state_message_needed = False
             reboot_names_tick = []
             miner_lines = []
+            event_lines = []
             startup_lines = [] if first_tick else None
             degraded_candidates = []
             for miner in valid_miners:
@@ -2775,12 +2804,36 @@ def main() -> None:
                         )
                         if notify_offline and offline_is_actionable:
                             state_message_needed = True
+                            event_lines.append(
+                                format_state_event(
+                                    name_display,
+                                    prev_state,
+                                    new_state,
+                                    rate_ths,
+                                    threshold_ths,
+                                    active_boards,
+                                    expected_boards,
+                                    responded,
+                                )
+                            )
                     elif new_state == STATE_HASHBOARD:
                         log(
                             f"[STATE] {name} ({host}:{port}) -> HASHBOARD "
                             f"boards={active_boards}/{expected_boards} ({now_str()})"
                         )
                         state_message_needed = True
+                        event_lines.append(
+                            format_state_event(
+                                name_display,
+                                prev_state,
+                                new_state,
+                                rate_ths,
+                                threshold_ths,
+                                active_boards,
+                                expected_boards,
+                                responded,
+                            )
+                        )
                     elif new_state == STATE_LOW:
                         log(
                             f"[STATE] {name} ({host}:{port}) OK/OFFLINE -> LOW "
@@ -2788,6 +2841,18 @@ def main() -> None:
                             f"({now_str()})"
                         )
                         state_message_needed = True
+                        event_lines.append(
+                            format_state_event(
+                                name_display,
+                                prev_state,
+                                new_state,
+                                rate_ths,
+                                threshold_ths,
+                                active_boards,
+                                expected_boards,
+                                responded,
+                            )
+                        )
                     elif new_state == STATE_OK and prev_state in (STATE_LOW, STATE_OFFLINE, STATE_HASHBOARD):
                         log(
                             f"[STATE] {name} ({host}:{port}) {prev_state} -> OK "
@@ -2795,6 +2860,18 @@ def main() -> None:
                             f"({now_str()})"
                         )
                         state_message_needed = True
+                        event_lines.append(
+                            format_state_event(
+                                name_display,
+                                prev_state,
+                                new_state,
+                                rate_ths,
+                                threshold_ths,
+                                active_boards,
+                                expected_boards,
+                                responded,
+                            )
+                        )
 
                 if (
                     state.reboot_pending_until
@@ -2851,18 +2928,26 @@ def main() -> None:
                     f"STATE CHANGE ({now_str()})",
                     "",
                 ]
+                if event_lines:
+                    message_lines.append("Eventos:")
+                    message_lines.extend(event_lines)
+                    message_lines.append("")
+                    message_lines.append("Estado actual:")
                 message_lines.extend(miner_lines)
                 if reboot_names_tick:
                     message_lines.append(f"Reboots: {', '.join(reboot_names_tick)}")
                 if (not qa_mode) or qa_notify:
                     send_telegram(bot_token, str(chat_id), "\n".join(message_lines), "STATE_CHANGE", "state_change")
             else:
-                if degraded_candidates:
+                if notify_degraded_hourly and degraded_candidates:
                     ar_now = argentina_now()
                     if 6 <= ar_now.hour < 24:
                         hourly_needed = False
                         for st in degraded_candidates:
-                            if st.last_hourly_status_ts is None or (now_ts - st.last_hourly_status_ts) >= 3600:
+                            if (
+                                st.last_hourly_status_ts is None
+                                or (now_ts - st.last_hourly_status_ts) >= degraded_hourly_seconds
+                            ):
                                 hourly_needed = True
                                 break
                         if hourly_needed:

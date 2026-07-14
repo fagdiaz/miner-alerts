@@ -5,6 +5,28 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-14] - Spec 005: Event-Driven Telegram Alerts
+
+* **Objetivo**: Reducir ruido operativo en Telegram deshabilitando por defecto los resumenes horarios de estado degradado, manteniendo alertas por eventos reales como LOW, OFFLINE, HASHBOARD y recuperacion a OK.
+* **Resultado**:
+  - `notify_degraded_hourly` queda en `false` por defecto.
+  - `degraded_hourly_seconds` queda documentado/configurable para operadores que quieran recordatorios periodicos.
+  - El envio existente `degraded_hourly` ahora solo ocurre si se habilita explicitamente por config.
+  - Los mensajes `STATE_CHANGE` agregan una seccion `Eventos:` con el cambio concreto antes del snapshot completo.
+  - `/status` no cambia: sigue disponible como consulta manual cuando el operador quiere el estado completo.
+* **Validaciones ejecutadas**:
+  - `& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py tools\\miner_diagnostics.py tools\\diagnostics_baseline.py`: PASS.
+  - Smoke import de `format_state_event`: PASS.
+  - `git diff --check`: PASS.
+* **Estado**:
+  - Implementado y validado estaticamente. Requiere reinicio del servicio para cargar la nueva politica de notificaciones.
+* **Archivos principales**:
+  - `app/miner_monitor.py`
+  - `app/config.example.json`
+  - `docs/speckit/RUNBOOK.md`
+  - `docs/speckit/ROADMAP.md`
+  - `specs/005-event-driven-telegram-alerts/*`
+
 ## [2026-07-11] - Spec 004: Diagnostics Baseline Sweet Spot
 
 * **Objetivo**: Convertir snapshots read-only en una linea base por minero para identificar variacion normal, evidencia de Vnish y seniales que deben observarse antes de cambiar politicas de reboot.

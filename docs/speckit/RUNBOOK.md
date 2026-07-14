@@ -91,6 +91,25 @@ TG FALLBACK_SEND
 TG DROP chat_mismatch
 ```
 
+## Telegram Alert Policy
+
+Production Telegram notifications should be event-driven by default:
+
+- Startup notification if `notify_startup=true`.
+- State changes for LOW, OFFLINE, HASHBOARD and recovery to OK.
+- Reboot/restart results and failures.
+- Manual command replies.
+
+Hourly degraded status is disabled by default:
+
+```json
+"notify_degraded_hourly": false,
+"degraded_hourly_seconds": 3600
+```
+
+Enable it only if an operator explicitly wants repeated reminders while a miner
+is in degraded mode.
+
 ## Auto-Reboot Safety Checks
 
 - QA mode with real actions disabled must block manual and automatic real actions.

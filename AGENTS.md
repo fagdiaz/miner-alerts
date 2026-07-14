@@ -9,7 +9,7 @@
 4. Use `docs/speckit/ROADMAP.md` as the working backlog for quick wins, bug fixes, and audit priorities.
 
 Active implementation plan:
-`specs/004-diagnostics-baseline-sweet-spot/plan.md`
+`specs/005-event-driven-telegram-alerts/plan.md`
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

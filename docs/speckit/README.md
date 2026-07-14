@@ -20,7 +20,7 @@ The active feature is declared in `.specify/feature.json`.
 Current active feature:
 
 ```text
-specs/004-diagnostics-baseline-sweet-spot
+specs/005-event-driven-telegram-alerts
 ```
 
 ## Commands And Validation

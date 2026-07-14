@@ -58,6 +58,8 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [ ] Ensure all command replies use command delivery semantics and avoid dedupe/coalesce loss.
 - [ ] Keep no-silence behavior for invalid confirms and expired pending actions.
 - [ ] Document debug flags and expected log traces.
+- [x] Disable noisy degraded hourly status by default and keep Telegram notifications event-driven.
+- [x] Add clearer event context to `STATE_CHANGE` Telegram messages.
 - [ ] Add operator-friendly explanations for blocked actions: QA, startup guard, cooldown, not sustained, window, invalid signal.
 
 ## P6 - Optional Local Interface

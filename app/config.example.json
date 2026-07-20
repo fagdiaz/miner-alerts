@@ -23,6 +23,7 @@
   "telemetry_sample_seconds": 300,
   "telemetry_retention_days": 90,
   "event_retention_days": 365,
+  "decision_retention_days": 180,
   "restart_attribution_window_seconds": 900,
   "notify_unexpected_restarts": true,
   "notify_expected_restarts": false,

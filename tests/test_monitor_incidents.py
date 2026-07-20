@@ -4,6 +4,7 @@ from unittest.mock import patch
 from app.miner_monitor import (
     _parse_message_command,
     format_restart_incident,
+    read_stats_snapshot,
     run_hashcore_cli,
 )
 from app.restart_intelligence import RestartClassification
@@ -97,6 +98,33 @@ class MonitorIncidentMessageTests(unittest.TestCase):
 
         self.assertEqual("event", command)
         self.assertEqual(["42"], args)
+
+    def test_why_command_parses_with_group_suffix(self) -> None:
+        item = {
+            "message": {
+                "text": "/why@MinerAlertsBot 23",
+                "entities": [{"type": "bot_command", "offset": 0, "length": 19}],
+            }
+        }
+
+        _, _, command, args, _, _ = _parse_message_command(item)
+
+        self.assertEqual("why", command)
+        self.assertEqual(["23"], args)
+
+    def test_stats_snapshot_preserves_existing_first_entry_board_signal(self) -> None:
+        response = {
+            "STATS": [
+                {"STATUS": "S"},
+                {"chain_acn": [63, 63, 63], "chain_vol1": 12825},
+            ]
+        }
+        with patch("app.miner_monitor._read_command", return_value=response):
+            active_boards, responded, raw = read_stats_snapshot("h23", 4028)
+
+        self.assertTrue(responded)
+        self.assertIsNone(active_boards)
+        self.assertIs(response, raw)
 
 
 if __name__ == "__main__":

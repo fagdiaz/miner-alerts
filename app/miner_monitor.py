@@ -20,11 +20,23 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 import requests
 
 try:
-    from .event_store import EventStore, render_event_detail, render_event_list
+    from .event_store import (
+        EventStore,
+        render_event_detail,
+        render_event_list,
+        render_reboot_decision,
+    )
     from .restart_intelligence import RestartClassification, classify_restart
+    from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 except ImportError:
-    from event_store import EventStore, render_event_detail, render_event_list
+    from event_store import (
+        EventStore,
+        render_event_detail,
+        render_event_list,
+        render_reboot_decision,
+    )
     from restart_intelligence import RestartClassification, classify_restart
+    from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -59,6 +71,7 @@ CMD_WHITELIST = {
     "info",
     "events",
     "event",
+    "why",
     "selftest",
     "reboot",
     "restart",
@@ -241,6 +254,18 @@ _COMMANDS = [
         "aliases": [],
     },
     {
+        "name": "why",
+        "summary": "Explica la ultima decision de auto-reboot.",
+        "usage": "/why  |  /why <miner>",
+        "detail": [
+            "Detalle: consulta evidencia local sin conectarse al minero.",
+        ],
+        "examples": ["/why", "/why 23"],
+        "notes": ["El voltaje de cadena no representa voltaje AC de entrada."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
         "name": "selftest",
         "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
         "usage": "/selftest  |  /test",
@@ -304,6 +329,7 @@ def render_help_index() -> str:
         "info",
         "events",
         "event",
+        "why",
         "reboot",
         "restart",
         "confirm",
@@ -324,6 +350,8 @@ def render_help_index() -> str:
             lines.append(f"{prefix}/events [miner]  Historial reciente")
         elif name == "event":
             lines.append(f"{prefix}/event <id>  Detalle de un incidente")
+        elif name == "why":
+            lines.append(f"{prefix}/why [miner]  Explica la ultima decision de auto-reboot")
         elif name == "confirm":
             lines.append(f"{prefix}/confirm <...>  Confirma acción pendiente")
         elif name == "reboot":
@@ -651,17 +679,28 @@ def _count_active_boards(stats_entry: dict) -> Optional[int]:
 
 
 def read_stats_active_boards(host: str, port: int, timeout: float = 5.0) -> Tuple[Optional[int], bool]:
+    active_boards, responded, _ = read_stats_snapshot(host, port, timeout=timeout)
+    return active_boards, responded
+
+
+def read_stats_snapshot(
+    host: str,
+    port: int,
+    timeout: float = 5.0,
+) -> Tuple[Optional[int], bool, Optional[dict]]:
     payload = b'{"command":"stats"}\n'
     resp = _read_command(host, port, payload, timeout=timeout)
     if not resp:
-        return None, False
+        return None, False, None
     stats = resp.get("STATS")
     if not stats:
-        return None, True
+        return None, True, resp
     entry = stats[0] if isinstance(stats, list) and stats else stats
     if not isinstance(entry, dict):
-        return None, True
-    return _count_active_boards(entry), True
+        return None, True, resp
+    # Preserve the existing state-machine signal while exposing the full response
+    # to the observational Vnish normalizer.
+    return _count_active_boards(entry), True, resp
 
 
 def read_pools(host: str, port: int, timeout: float = 5.0) -> Optional[dict]:
@@ -1028,6 +1067,53 @@ def record_action_outcome(
             else f"{source} {action} fallo: {_short_text(message, 120)}"
         ),
         details={"ok": ok},
+    )
+
+
+def record_auto_reboot_decision(
+    event_store: Optional[EventStore],
+    *,
+    evaluated_ts: float,
+    miner: dict,
+    state: "MinerState",
+    result: str,
+    responded: bool,
+    rate_ths: Optional[float],
+    threshold_ths: float,
+    active_boards: Optional[int],
+    expected_boards: int,
+    telemetry: VnishTelemetry,
+    startup_guard_active: bool,
+    qa_mode: bool,
+    cooldown_remaining_seconds: Optional[float],
+    window_seconds: int,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    if event_store is None or not event_store.available:
+        return
+    low_elapsed = None
+    if state.low_since_ts is not None:
+        low_elapsed = max(0.0, evaluated_ts - state.low_since_ts)
+    event_store.record_reboot_decision(
+        evaluated_ts=evaluated_ts,
+        miner_key=f"{miner.get('name')}|{miner.get('host')}:{miner.get('port')}",
+        miner_name=display_name(str(miner.get("name", ""))),
+        host=str(miner.get("host", "")),
+        result=result,
+        state=state.state,
+        responded=responded,
+        rate_ths=rate_ths,
+        threshold_ths=threshold_ths,
+        low_elapsed_seconds=low_elapsed,
+        active_boards=active_boards,
+        expected_boards=expected_boards,
+        startup_guard_active=startup_guard_active,
+        qa_mode=qa_mode,
+        cooldown_remaining_seconds=cooldown_remaining_seconds,
+        window_count=len(state.auto_reboot_timestamps),
+        window_seconds=window_seconds,
+        telemetry=telemetry.as_dict(),
+        details=details,
     )
 
 
@@ -1550,6 +1636,43 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="event",
+                    )
+                elif cmd_name == "why":
+                    handled = True
+                    if event_store is None or not event_store.available:
+                        why_text = "Diagnostico historico temporalmente no disponible."
+                    else:
+                        miner_key = None
+                        if args:
+                            miner = resolve_miner(args[0], miners)
+                            if not miner:
+                                send_telegram(
+                                    bot_token,
+                                    str(msg_chat_id),
+                                    "Miner no encontrado.",
+                                    "ERROR",
+                                    "cmd_why",
+                                    is_command=True,
+                                    dbg_update_id=update_id,
+                                    dbg_cmd="why",
+                                )
+                                continue
+                            miner_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                        decision = event_store.latest_reboot_decision(miner_key=miner_key)
+                        why_text = (
+                            "Diagnostico historico temporalmente no disponible."
+                            if event_store.last_error
+                            else render_reboot_decision(decision)
+                        )
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        why_text,
+                        "EVENTS",
+                        "cmd_why",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="why",
                     )
                 elif cmd_name == "status":
                     handled = True
@@ -2683,6 +2806,7 @@ def main() -> None:
     telemetry_sample_seconds = max(30, int(config.get("telemetry_sample_seconds", 300)))
     telemetry_retention_days = max(1, int(config.get("telemetry_retention_days", 90)))
     event_retention_days = max(1, int(config.get("event_retention_days", 365)))
+    decision_retention_days = max(1, int(config.get("decision_retention_days", 180)))
     restart_attribution_window_seconds = max(
         60, int(config.get("restart_attribution_window_seconds", 900))
     )
@@ -2746,17 +2870,18 @@ def main() -> None:
         )
         log(
             f"EVENT_STORE enabled=true path={event_store.path} "
-            f"available={str(event_store.available).lower()} schema=1"
+            f"available={str(event_store.available).lower()} schema={event_store.schema_version}"
         )
         if event_store.available:
             deleted = event_store.prune(
                 now_ts=process_start_ts,
                 sample_retention_days=telemetry_retention_days,
                 event_retention_days=event_retention_days,
+                decision_retention_days=decision_retention_days,
             )
             log(
                 f"EVENT_STORE retention samples_deleted={deleted['samples']} "
-                f"events_deleted={deleted['events']}"
+                f"events_deleted={deleted['events']} decisions_deleted={deleted['decisions']}"
             )
     else:
         log("EVENT_STORE enabled=false")
@@ -2831,8 +2956,13 @@ def main() -> None:
 
                 rate_ths, elapsed, responded, _ = read_summary(host, port)
                 active_boards = None
+                stats_response = None
                 if responded:
-                    active_boards, _ = read_stats_active_boards(host, port)
+                    active_boards, _, stats_response = read_stats_snapshot(host, port)
+                vnish_telemetry = normalize_vnish_stats(
+                    stats_response,
+                    expected_boards=expected_boards,
+                )
                 if qa_mode:
                     qa_force = config.get("qa_force_state", {})
                     if isinstance(qa_force, dict):
@@ -2920,6 +3050,7 @@ def main() -> None:
                             active_boards=active_boards,
                             expected_boards=expected_boards,
                             elapsed_seconds=elapsed,
+                            telemetry=vnish_telemetry.as_dict(),
                         )
 
                 if (
@@ -3020,24 +3151,69 @@ def main() -> None:
                 ]
                 startup_guard_active = (now_ts - process_start_ts) < startup_guard_seconds
                 auto_reboot_candidate = responded and rate_ths is not None and rate_ths < threshold_ths
+                decision_context: Dict[str, Any] = {
+                    "evaluated_ts": now_ts,
+                    "miner": miner,
+                    "state": state,
+                    "responded": responded,
+                    "rate_ths": rate_ths,
+                    "threshold_ths": threshold_ths,
+                    "active_boards": active_boards,
+                    "expected_boards": expected_boards,
+                    "telemetry": vnish_telemetry,
+                    "startup_guard_active": startup_guard_active,
+                    "qa_mode": qa_mode,
+                    "window_seconds": auto_reboot_window_seconds,
+                }
                 if auto_reboot_candidate and new_state != STATE_LOW:
+                    record_auto_reboot_decision(
+                        event_store,
+                        result="not_low",
+                        cooldown_remaining_seconds=None,
+                        details={
+                            "low_streak": state.low_streak,
+                            "fails_before_alert": fails_before_alert,
+                        },
+                        **decision_context,
+                    )
                     log(
                         f"[AUTO-REBOOT] blocked_by=not_low miner={name_display} "
                         f"rate_ths={rate_ths} threshold_ths={threshold_ths} "
                         f"low_streak={state.low_streak}/{fails_before_alert}"
                     )
                 if (not responded or rate_ths is None) and prev_state == STATE_LOW:
+                    record_auto_reboot_decision(
+                        event_store,
+                        result="invalid_signal",
+                        cooldown_remaining_seconds=None,
+                        details={"previous_state": prev_state},
+                        **decision_context,
+                    )
                     log(
                         f"[AUTO-REBOOT] blocked_by=invalid_signal miner={name_display} "
                         f"responded={responded} rate_ths={rate_ths}"
                     )
                 if new_state == STATE_LOW and state.low_since_ts:
                     if startup_guard_active:
+                        record_auto_reboot_decision(
+                            event_store,
+                            result="startup_guard",
+                            cooldown_remaining_seconds=None,
+                            details={"startup_guard_seconds": startup_guard_seconds},
+                            **decision_context,
+                        )
                         log(
                             f"[AUTO-REBOOT] blocked_by=startup_guard miner={name_display} "
                             f"since_start={now_ts - process_start_ts:.1f}s guard={startup_guard_seconds}s"
                         )
                     elif (now_ts - state.low_since_ts) < low_sustained_seconds:
+                        record_auto_reboot_decision(
+                            event_store,
+                            result="not_sustained",
+                            cooldown_remaining_seconds=None,
+                            details={"required_seconds": low_sustained_seconds},
+                            **decision_context,
+                        )
                         log(
                             f"[AUTO-REBOOT] blocked_by=not_sustained miner={name_display} "
                             f"elapsed={(now_ts - state.low_since_ts):.0f}s required={low_sustained_seconds}s"
@@ -3062,12 +3238,30 @@ def main() -> None:
                         if last_reboot_ts is not None:
                             cooldown_delta = max(0.0, now_ts - last_reboot_ts)
                             if cooldown_delta < reboot_cooldown_seconds:
+                                cooldown_remaining = max(
+                                    0.0,
+                                    reboot_cooldown_seconds - cooldown_delta,
+                                )
+                                record_auto_reboot_decision(
+                                    event_store,
+                                    result="cooldown",
+                                    cooldown_remaining_seconds=cooldown_remaining,
+                                    details={"cooldown_seconds": reboot_cooldown_seconds},
+                                    **decision_context,
+                                )
                                 log(
                                     f"[AUTO-REBOOT] blocked_by=cooldown miner={name_display} "
                                     f"cooldown_delta={cooldown_delta:.0f}s cooldown={reboot_cooldown_seconds}s"
                                 )
                                 continue
                         if len(state.auto_reboot_timestamps) >= max_reboots_per_window:
+                            record_auto_reboot_decision(
+                                event_store,
+                                result="window",
+                                cooldown_remaining_seconds=None,
+                                details={"max_reboots_per_window": max_reboots_per_window},
+                                **decision_context,
+                            )
                             log(
                                 f"[AUTO-REBOOT] blocked_by=window miner={name_display} "
                                 f"window_count={len(state.auto_reboot_timestamps)} window_seconds={auto_reboot_window_seconds}"
@@ -3087,6 +3281,13 @@ def main() -> None:
                                     )
                             continue
                         if qa_mode and not qa_allow_actions:
+                            record_auto_reboot_decision(
+                                event_store,
+                                result="qa",
+                                cooldown_remaining_seconds=None,
+                                details={"qa_allow_actions": qa_allow_actions},
+                                **decision_context,
+                            )
                             log(f"[AUTO-REBOOT] blocked_by=qa miner={name_display}")
                             if qa_notify:
                                 send_telegram(
@@ -3098,6 +3299,13 @@ def main() -> None:
                                 )
                             continue
                         ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                        record_auto_reboot_decision(
+                            event_store,
+                            result="executed" if ok else "failed",
+                            cooldown_remaining_seconds=None,
+                            details={"message": _short_text(msg, 120)},
+                            **decision_context,
+                        )
                         record_action_outcome(
                             event_store,
                             occurred_ts=now_ts,
@@ -3355,6 +3563,7 @@ def main() -> None:
                     now_ts=now_ts,
                     sample_retention_days=telemetry_retention_days,
                     event_retention_days=event_retention_days,
+                    decision_retention_days=decision_retention_days,
                 )
                 last_retention_ts = now_ts
 

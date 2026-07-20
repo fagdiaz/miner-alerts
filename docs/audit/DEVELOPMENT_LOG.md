@@ -5,6 +5,36 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 007: Vnish Telemetry And Reboot Decision Audit
+
+* **Objetivo**: Convertir la telemetria Vnish ya disponible en evidencia durable y explicar cada resultado relevante del auto-reboot sin modificar sus condiciones ni ejecutar acciones nuevas.
+* **Resultado**:
+  - SQLite migra de schema v1 a v2 de forma aditiva, preservando muestras y eventos existentes.
+  - Se normalizan todas las entradas `STATS`, incluyendo el caso real donde la evidencia de cadena vive en `STATS[1]`.
+  - Las muestras incorporan temperatura maxima, voltaje y consumo de cadena, frecuencia, errores HW, ventiladores y flags conservadores; nunca se guarda el payload ASIC completo.
+  - Cada rama relevante del auto-reboot registra `not_low`, `invalid_signal`, `startup_guard`, `not_sustained`, `cooldown`, `window`, `qa`, `executed` o `failed` con su evidencia.
+  - `/why` y `/why <miner>` explican la ultima decision usando solo SQLite, sin IO al minero ni Hashcore.
+  - `tools/incident_report.py` genera Markdown o JSON correlacionando muestras, eventos y decisiones con una conexion SQLite read-only.
+  - Se mantiene explicito que `chain_vol` es evidencia de cadena/hashboard y no voltaje AC de entrada.
+  - No se agregaron frameworks ni servicios: FastAPI/dashboard y Prometheus/Grafana quedan diferidos hasta estabilizar el contrato de datos.
+* **Validaciones ejecutadas**:
+  - `py_compile` de monitor, event store, parser Vnish y reporte: PASS.
+  - 30 pruebas `unittest` de migracion, persistencia, concurrencia, normalizacion, reporte, Telegram, restart intelligence y QA: PASS.
+  - Speckit QA preflight inicial HIGH-risk: PASS.
+* **Estado**:
+  - Implementacion y validacion local completas, listas para commit/push. El servicio de Windows no se reinicia hasta el cierre del dia por solicitud del operador.
+* **Hallazgo de auditoria**:
+  - El path preexistente `invalid_signal` registra el problema pero puede continuar evaluando un `LOW` heredado en el mismo tick. Se registra como P0 separado porque corregirlo cambia politica de accion.
+* **Archivos principales**:
+  - `app/vnish_telemetry.py`
+  - `app/event_store.py`
+  - `app/miner_monitor.py`
+  - `tools/incident_report.py`
+  - `tests/test_vnish_telemetry.py`
+  - `tests/test_reboot_decision_audit.py`
+  - `tests/test_incident_report.py`
+  - `specs/007-vnish-decision-audit/*`
+
 ## [2026-07-20] - Spec 006: Incident History And Restart Intelligence
 
 * **Objetivo**: Crear una base durable de evidencia operativa y distinguir reinicios esperados de reinicios no deseados sin cambiar la state machine ni la politica de auto-reboot.

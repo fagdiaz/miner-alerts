@@ -12,9 +12,10 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Send a dedicated evidence-rich alert for unexpected restarts independently of state-change timing.
 - [ ] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
 - [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
+- [ ] Fix the pre-existing invalid-signal path where a persisted LOW state can continue into auto-reboot evaluation after `responded=false` or `rate_ths=None`; require a dedicated policy spec and QA evidence.
 - [ ] Verify `state.json` cannot trigger immediate auto-reboot after restart.
 - [ ] Split "bad signal" from "actionable reboot candidate": LOW alone should not imply reboot.
-- [ ] Add an audit table for every reboot decision: signal, duration, board health, temperature, pool status, firmware hint, cooldown, window.
+- [x] Add an audit table for every reboot decision with signal, duration, board/Vnish evidence, cooldown, window, QA and startup-guard context.
 - [ ] Keep Telegram dangerous actions behind confirmation.
 - [ ] Define "do not reboot" reasons: stale data, no hash but offline, autotune active, firmware restart in progress, high temp protection, pool outage, power anomaly suspected.
 
@@ -22,7 +23,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 - [x] Add a read-only diagnostics collector for API 4028 commands: `summary`, `stats`, `pools`, `version`.
 - [x] Add a diagnostics matrix for each miner: hashrate, elapsed, active boards, temps, pool status, firmware hint, candidate telemetry fields.
-- [ ] Use repeated diagnostics snapshots to inventory Vnish-specific fields: voltage fields, frequency, autotune status, chip errors, chain errors, fan/power indicators.
+- [x] Normalize observed Vnish fields from all `STATS` entries: chain voltage/consumption/frequency/HW errors, temperatures and fan indicators.
 - [x] Add an initial sweet-spot baseline analyzer from diagnostics snapshots: TH/s band, board count, max temp, chain voltage, consumption, frequency and HW errors.
 - [ ] Define production sweet-spot profiles from multiple snapshots per miner: stable TH/s range, temperature band, board count, error rate, reboot history, restart history.
 - [ ] Track "soft symptoms" before reboot: repeated LOW with recovery, board missing, pool reconnects, high reject/stale shares, temperature throttling, watchdog restarts.
@@ -63,7 +64,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [ ] Document debug flags and expected log traces.
 - [x] Disable noisy degraded hourly status by default and keep Telegram notifications event-driven.
 - [x] Add clearer event context to `STATE_CHANGE` Telegram messages.
-- [ ] Add operator-friendly explanations for blocked actions: QA, startup guard, cooldown, not sustained, window, invalid signal.
+- [x] Add read-only `/why [miner]` explanations for QA, startup guard, cooldown, not sustained, window, invalid signal and action outcomes.
 
 ## P6 - Optional Local Interface
 
@@ -76,6 +77,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 ## P7 - Observability And Release Hygiene
 
 - [x] Add a bounded SQLite operational history for telemetry, state transitions, restart incidents, and action outcomes.
+- [x] Add schema-v2 normalized Vnish telemetry, reboot-decision history, retention, and a read-only incident report.
 - [ ] Standardize logs for blocked actions and delivery failures.
 - [ ] Maintain production defaults in `app/config.example.json`.
 - [ ] Keep release checklist current for Windows PowerShell.

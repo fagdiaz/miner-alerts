@@ -1,9 +1,15 @@
+import sqlite3
 import tempfile
 import threading
 import unittest
 from pathlib import Path
 
-from app.event_store import EventStore, render_event_detail, render_event_list
+from app.event_store import (
+    EventStore,
+    render_event_detail,
+    render_event_list,
+    render_reboot_decision,
+)
 
 
 class EventStoreTests(unittest.TestCase):
@@ -59,6 +65,104 @@ class EventStoreTests(unittest.TestCase):
 
         self.assertTrue(ok)
         self.assertEqual(1, self.store.count_rows("telemetry_samples"))
+
+    def test_records_normalized_telemetry_and_reboot_decision(self) -> None:
+        telemetry = {
+            "max_temp_c": 78.0,
+            "chain_voltage_mv_avg": 12825.0,
+            "chain_power_w_total": 2698.0,
+            "frequency_mhz_avg": 515.976,
+            "hw_errors_total": 22,
+            "fan_rpm_max": 6000,
+            "fan_pwm_percent": 100.0,
+            "diagnostic_flags": ["hw_errors_present"],
+        }
+        self.store.record_sample(
+            observed_ts=2_000.0,
+            miner_key="m23",
+            miner_name="23",
+            host="h23",
+            state="LOW",
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=60.0,
+            active_boards=3,
+            expected_boards=3,
+            elapsed_seconds=50_000,
+            telemetry=telemetry,
+        )
+        decision_id = self.store.record_reboot_decision(
+            evaluated_ts=2_001.0,
+            miner_key="m23",
+            miner_name="23",
+            host="h23",
+            result="cooldown",
+            state="LOW",
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=60.0,
+            low_elapsed_seconds=700.0,
+            active_boards=3,
+            expected_boards=3,
+            startup_guard_active=False,
+            qa_mode=False,
+            cooldown_remaining_seconds=120.0,
+            window_count=1,
+            window_seconds=21_600,
+            telemetry=telemetry,
+        )
+
+        samples = self.store.list_samples(miner_key="m23")
+        decision = self.store.latest_reboot_decision(miner_key="m23")
+
+        self.assertIsNotNone(decision_id)
+        self.assertEqual(12825.0, samples[0]["chain_voltage_mv_avg"])
+        self.assertEqual("cooldown", decision["result"])
+        self.assertEqual(120.0, decision["cooldown_remaining_seconds"])
+        rendered = render_reboot_decision(decision)
+        self.assertIn("Resultado: cooldown", rendered)
+        self.assertIn("no es voltaje AC", rendered)
+
+    def test_migrates_schema_v1_without_losing_rows(self) -> None:
+        legacy_path = Path(self.temp_dir.name) / "legacy.db"
+        connection = sqlite3.connect(legacy_path)
+        connection.executescript(
+            """
+            CREATE TABLE telemetry_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                observed_ts REAL NOT NULL,
+                miner_key TEXT NOT NULL,
+                miner_name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                state TEXT NOT NULL,
+                responded INTEGER NOT NULL,
+                rate_ths REAL,
+                threshold_ths REAL NOT NULL,
+                active_boards INTEGER,
+                expected_boards INTEGER NOT NULL,
+                elapsed_seconds INTEGER
+            );
+            INSERT INTO telemetry_samples (
+                observed_ts, miner_key, miner_name, host, state, responded,
+                rate_ths, threshold_ths, active_boards, expected_boards, elapsed_seconds
+            ) VALUES (1000, 'm23', '23', 'h23', 'OK', 1, 99, 60, 3, 3, 50000);
+            PRAGMA user_version=1;
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        migrated = EventStore(legacy_path, on_error=self.errors.append)
+        try:
+            self.assertTrue(migrated.available)
+            self.assertEqual(2, migrated.schema_version)
+            self.assertEqual(1, migrated.count_rows("telemetry_samples"))
+            sample = migrated.list_samples(limit=1)[0]
+            self.assertIn("chain_voltage_mv_avg", sample)
+            self.assertIsNone(sample["chain_voltage_mv_avg"])
+            self.assertEqual(0, migrated.count_rows("reboot_decisions"))
+        finally:
+            migrated.close()
 
     def test_list_events_is_newest_first_and_filterable(self) -> None:
         self.store.record_event(
@@ -121,7 +225,7 @@ class EventStoreTests(unittest.TestCase):
             event_retention_days=365,
         )
 
-        self.assertEqual({"samples": 1, "events": 1}, deleted)
+        self.assertEqual({"samples": 1, "events": 1, "decisions": 0}, deleted)
         self.assertEqual(1, self.store.count_rows("telemetry_samples"))
         self.assertEqual(1, self.store.count_rows("operational_events"))
 

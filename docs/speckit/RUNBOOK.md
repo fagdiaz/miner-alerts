@@ -7,6 +7,7 @@ git status
 git diff --stat
 & ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py
 & ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\miner_diagnostics.py
+& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py tools\\incident_report.py
 ```
 
 ## Read-Only Miner Diagnostics
@@ -124,6 +125,7 @@ Production-safe defaults:
 "telemetry_sample_seconds": 300,
 "telemetry_retention_days": 90,
 "event_retention_days": 365,
+"decision_retention_days": 180,
 "restart_attribution_window_seconds": 900,
 "notify_unexpected_restarts": true,
 "notify_expected_restarts": false
@@ -149,15 +151,18 @@ Read-only Telegram history:
 /events
 /events 23
 /event 42
+/why
+/why 23
 ```
 
 These commands read local SQLite history only. They do not call API 4028 or
-Hashcore Toolkit.
+Hashcore Toolkit. `/why` explains the latest recorded auto-reboot result with
+LOW duration, cooldown/window evidence, boards, and normalized Vnish telemetry.
 
 Startup health log:
 
 ```text
-EVENT_STORE enabled=true path=<absolute-path> available=true schema=1
+EVENT_STORE enabled=true path=<absolute-path> available=true schema=2
 ```
 
 If storage cannot initialize or a write fails, the monitor logs `EVENT_STORE`
@@ -165,6 +170,28 @@ with the operation and exception and continues monitoring. Emergency rollback is
 configuration-only: set `"event_store_enabled": false` in local
 `app/config.json` and restart the service. Existing monitoring remains active;
 history commands reply `Historial no disponible.`
+
+## Vnish Telemetry And Reboot Decision Audit
+
+Schema v2 keeps normalized evidence from the `stats` request already performed
+by the monitor. It does not add another stats request and does not store raw ASIC
+responses. Available fields include maximum temperature, average chain voltage,
+total chain consumption, average frequency, hardware-error counters, fan RPM/PWM,
+and conservative diagnostic flags.
+
+`chain_voltage_mv_avg` is hashboard/firmware evidence. It is not AC input voltage
+and must not be used alone to diagnose utility/PSU fluctuations. AC input quality
+requires a PDU, UPS, smart meter, or an explicitly documented PSU source.
+
+Generate an offline report without loading config or contacting miners:
+
+```powershell
+& ".\\.venv\\Scripts\\python.exe" tools\\incident_report.py --db data\\miner_alerts.db --hours 24 --format markdown
+& ".\\.venv\\Scripts\\python.exe" tools\\incident_report.py --db data\\miner_alerts.db --hours 168 --miner 23 --format json --out diagnostics\\incident-23.json
+```
+
+The report opens SQLite in read-only mode and correlates samples, operational
+events, and auto-reboot decisions. It never invokes Hashcore.
 
 ## Auto-Reboot Safety Checks
 

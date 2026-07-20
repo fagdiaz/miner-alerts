@@ -112,18 +112,18 @@ class MonitorIncidentMessageTests(unittest.TestCase):
         self.assertEqual("why", command)
         self.assertEqual(["23"], args)
 
-    def test_stats_snapshot_preserves_existing_first_entry_board_signal(self) -> None:
+    def test_stats_snapshot_reads_vnish_board_signal_after_metadata_entry(self) -> None:
         response = {
             "STATS": [
                 {"STATUS": "S"},
-                {"chain_acn": [63, 63, 63], "chain_vol1": 12825},
+                {"chain_acn1": 126, "chain_acn2": 126, "chain_acn3": 126},
             ]
         }
         with patch("app.miner_monitor._read_command", return_value=response):
             active_boards, responded, raw = read_stats_snapshot("h23", 4028)
 
         self.assertTrue(responded)
-        self.assertIsNone(active_boards)
+        self.assertEqual(3, active_boards)
         self.assertIs(response, raw)
 
 

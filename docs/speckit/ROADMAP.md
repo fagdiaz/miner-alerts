@@ -13,6 +13,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [ ] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
 - [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
 - [x] Require a current finite below-threshold signal before auto-reboot evaluation; invalid and recovered samples now break the sustained LOW timer.
+- [x] Align production Vnish hashboard detection with real `STATS[1].chain_acn1..N` payloads and the read-only diagnostics parser.
 - [ ] Verify `state.json` cannot trigger immediate auto-reboot after restart.
 - [ ] Split "bad signal" from "actionable reboot candidate": LOW alone should not imply reboot.
 - [x] Add an audit table for every reboot decision with signal, duration, board/Vnish evidence, cooldown, window, QA and startup-guard context.

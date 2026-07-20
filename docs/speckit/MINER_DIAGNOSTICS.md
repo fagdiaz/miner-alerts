@@ -17,6 +17,11 @@ The monitor already reads:
 - `version`: firmware hints, including Vnish/ASIC.to detection.
 - Hashcore Toolkit CLI: currently configured for `reboot` and `restart`.
 
+Production board counting recognizes both legacy cgminer fields and Vnish
+`chain_acn1..N`, scanning all `STATS` entries because deployed Vnish payloads
+place chain evidence after a metadata entry. Unknown board evidence remains
+unknown rather than being treated as zero.
+
 The read-only collector in `tools/miner_diagnostics.py` can export a sanitized
 snapshot of the same API 4028 sources without touching the running monitor:
 

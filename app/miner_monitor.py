@@ -656,9 +656,18 @@ def _count_active_boards(stats_entry: dict) -> Optional[int]:
     count = 0
     found = False
     for i in range(0, 10):
+        key_acn = f"chain_acn{i}"
         key_num = f"chain{i}_asicnum"
         key_alive = f"chain{i}_alive"
         key_status = f"chain{i}_status"
+        if key_acn in stats_entry:
+            found = True
+            try:
+                if int(stats_entry.get(key_acn, 0)) > 0:
+                    count += 1
+            except (TypeError, ValueError):
+                pass
+            continue
         if key_num in stats_entry:
             found = True
             try:
@@ -700,12 +709,14 @@ def read_stats_snapshot(
     stats = resp.get("STATS")
     if not stats:
         return None, True, resp
-    entry = stats[0] if isinstance(stats, list) and stats else stats
-    if not isinstance(entry, dict):
-        return None, True, resp
-    # Preserve the existing state-machine signal while exposing the full response
-    # to the observational Vnish normalizer.
-    return _count_active_boards(entry), True, resp
+    entries = stats if isinstance(stats, list) else [stats]
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        active_boards = _count_active_boards(entry)
+        if active_boards is not None:
+            return active_boards, True, resp
+    return None, True, resp
 
 
 def read_pools(host: str, port: int, timeout: float = 5.0) -> Optional[dict]:

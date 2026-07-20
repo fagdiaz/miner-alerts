@@ -5,6 +5,27 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 009: Vnish Hashboard Detection
+
+* **Objetivo**: Hacer que el monitor de produccion detecte hashboards con el formato Vnish real y diferencie una placa faltante de un LOW generico.
+* **Resultado**:
+  - `_count_active_boards` reconoce `chain_acn0..9`, ademas de los formatos legacy que ya soportaba.
+  - `read_stats_snapshot` recorre todas las entradas `STATS` y usa la primera que contenga evidencia explicita de boards.
+  - No se agrega ninguna llamada API: el mismo response alimenta state machine, telemetria Vnish y auditoria.
+  - Evidencia desconocida sigue siendo `None`; ceros y valores invalidos no cuentan como board activo.
+  - Se conserva la precedencia existente `HASHBOARD` antes de `LOW`; HASHBOARD no entra en el path de auto-reboot LOW.
+* **Validaciones ejecutadas**:
+  - Los snapshots sanitizados reales de S19JPRO-23/24/25/26 cuentan exactamente 3 boards con el parser de produccion: PASS.
+  - 40 pruebas de formatos Vnish/legacy, degradacion, precedencia, seguridad, persistencia, Telegram y reportes: PASS.
+  - `py_compile`, `git diff --check` y Speckit preflight: PASS.
+* **Estado**:
+  - Implementacion y validacion local completas. El servicio sigue sin reiniciarse hasta el cierre controlado del dia.
+* **Archivos principales**:
+  - `app/miner_monitor.py`
+  - `tests/test_vnish_hashboard_detection.py`
+  - `tests/test_monitor_incidents.py`
+  - `specs/009-vnish-hashboard-detection/*`
+
 ## [2026-07-20] - Spec 008: Valid Signal Auto-Reboot Gate
 
 * **Objetivo**: Evitar reboots innecesarios cuando la state machine conserva `LOW` por histeresis pero la lectura actual es invalida o ya recupero el hashrate.

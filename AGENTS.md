@@ -9,7 +9,7 @@
 4. Use `docs/speckit/ROADMAP.md` as the working backlog for quick wins, bug fixes, and audit priorities.
 
 Active implementation plan:
-`specs/009-vnish-hashboard-detection/plan.md`
+`specs/010-fleet-reboot-safety/plan.md`
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

@@ -28,6 +28,7 @@ try:
         render_reboot_decision,
     )
     from .restart_intelligence import RestartClassification, classify_restart
+    from .reboot_safety import evaluate_auto_reboot_interlocks
     from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 except ImportError:
     from event_store import (
@@ -37,6 +38,7 @@ except ImportError:
         render_reboot_decision,
     )
     from restart_intelligence import RestartClassification, classify_restart
+    from reboot_safety import evaluate_auto_reboot_interlocks
     from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 
 STATE_OK = "OK"
@@ -2873,14 +2875,37 @@ def main() -> None:
     low_sustained_seconds = 600
     auto_reboot_window_seconds = int(config.get("auto_reboot_window_seconds", 21600))
     max_reboots_per_window = int(config.get("max_reboots_per_window", 3))
+    auto_reboot_thermal_guard_enabled = bool(
+        config.get("auto_reboot_thermal_guard_enabled", True)
+    )
+    auto_reboot_max_temp_c = float(config.get("auto_reboot_max_temp_c", 85.0))
+    if not math.isfinite(auto_reboot_max_temp_c) or auto_reboot_max_temp_c <= 0:
+        log("[WARN] auto_reboot_max_temp_c invalido; se usa 85.0C")
+        auto_reboot_max_temp_c = 85.0
+    auto_reboot_fleet_guard_enabled = bool(
+        config.get("auto_reboot_fleet_guard_enabled", True)
+    )
+    auto_reboot_fleet_guard_min_affected = max(
+        2,
+        int(config.get("auto_reboot_fleet_guard_min_affected", 2)),
+    )
     if qa_mode:
         poll_seconds = int(config.get("qa_poll_seconds", 2))
         reboot_cooldown_seconds = int(config.get("qa_reboot_cooldown_seconds", 120))
         reboot_window_seconds = int(config.get("qa_reboot_window_seconds", 30))
         low_sustained_seconds = int(config.get("qa_low_seconds", 60))
         auto_reboot_window_seconds = int(config.get("qa_auto_reboot_window_seconds", 600))
+    auto_reboot_fleet_snapshot_max_age_seconds = max(60.0, float(poll_seconds * 2))
     offline_is_actionable = bool(config.get("offline_is_actionable", True))
     hashcore_cfg = config.get("hashcore", {})
+    log(
+        "Auto-reboot interlocks: "
+        f"thermal={str(auto_reboot_thermal_guard_enabled).lower()} "
+        f"max_temp_c={auto_reboot_max_temp_c:.1f} "
+        f"fleet={str(auto_reboot_fleet_guard_enabled).lower()} "
+        f"fleet_min_affected={auto_reboot_fleet_guard_min_affected} "
+        f"fleet_snapshot_max_age_seconds={auto_reboot_fleet_snapshot_max_age_seconds:.0f}"
+    )
 
     telegram_cfg = config.get("telegram", {})
     bot_token = telegram_cfg.get("bot_token")
@@ -2992,6 +3017,8 @@ def main() -> None:
         first_tick = True
         last_sample_ts: Dict[str, float] = {}
         last_retention_ts = process_start_ts
+        previous_tick_signals: Dict[str, str] = {}
+        previous_tick_signals_ts: Optional[float] = None
         while True:
             tick_start = time.monotonic()
             now_ts = time.time()
@@ -3002,6 +3029,7 @@ def main() -> None:
             restart_incident_messages = []
             startup_lines = [] if first_tick else None
             degraded_candidates = []
+            current_tick_signals: Dict[str, str] = {}
             for miner in valid_miners:
                 name = miner["name"]
                 name_display = display_name(name)
@@ -3211,7 +3239,21 @@ def main() -> None:
                     rate_ths,
                     threshold_ths,
                 )
+                current_tick_signals[state_key] = auto_reboot_signal
                 auto_reboot_candidate = auto_reboot_signal == AUTO_REBOOT_SIGNAL_ELIGIBLE
+                interlock_decision = evaluate_auto_reboot_interlocks(
+                    current_miner_key=state_key,
+                    current_signal=auto_reboot_signal,
+                    previous_signals=previous_tick_signals,
+                    previous_signals_observed_ts=previous_tick_signals_ts,
+                    evaluated_ts=now_ts,
+                    fleet_snapshot_max_age_seconds=auto_reboot_fleet_snapshot_max_age_seconds,
+                    max_temp_c=vnish_telemetry.max_temp_c,
+                    thermal_guard_enabled=auto_reboot_thermal_guard_enabled,
+                    thermal_limit_c=auto_reboot_max_temp_c,
+                    fleet_guard_enabled=auto_reboot_fleet_guard_enabled,
+                    fleet_min_affected=auto_reboot_fleet_guard_min_affected,
+                )
                 decision_context: Dict[str, Any] = {
                     "evaluated_ts": now_ts,
                     "miner": miner,
@@ -3300,6 +3342,39 @@ def main() -> None:
                             f"[AUTO-REBOOT] blocked_by=not_sustained miner={name_display} "
                             f"elapsed={(now_ts - state.low_since_ts):.0f}s required={low_sustained_seconds}s"
                         )
+                    elif not interlock_decision.allowed:
+                        interlock_reason = interlock_decision.reason or "safety_interlock"
+                        affected_miners = list(interlock_decision.affected_miners)
+                        record_auto_reboot_decision(
+                            event_store,
+                            result=interlock_reason,
+                            cooldown_remaining_seconds=None,
+                            details={
+                                "affected_miners": affected_miners,
+                                "affected_count": len(affected_miners),
+                                "fleet_min_affected": auto_reboot_fleet_guard_min_affected,
+                                "fleet_snapshot_age_seconds": (
+                                    interlock_decision.fleet_snapshot_age_seconds
+                                ),
+                                "max_temp_c": interlock_decision.max_temp_c,
+                                "thermal_limit_c": auto_reboot_max_temp_c,
+                            },
+                            **decision_context,
+                        )
+                        if interlock_reason == "high_temperature":
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=high_temperature miner={name_display} "
+                                f"max_temp_c={interlock_decision.max_temp_c} "
+                                f"limit_c={auto_reboot_max_temp_c:.1f}"
+                            )
+                        else:
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=fleet_incident miner={name_display} "
+                                f"affected_count={len(affected_miners)} "
+                                f"min_affected={auto_reboot_fleet_guard_min_affected} "
+                                f"snapshot_age={interlock_decision.fleet_snapshot_age_seconds} "
+                                f"affected={','.join(affected_miners)}"
+                            )
                     else:
                         skew_tolerance_seconds = 10
                         last_reboot_ts = None
@@ -3578,6 +3653,8 @@ def main() -> None:
                 if state.degraded_mode:
                     degraded_candidates.append(state)
 
+            previous_tick_signals = current_tick_signals.copy()
+            previous_tick_signals_ts = time.time()
             status_lines = [
                 f"STATUS ({now_str()})",
                 "",

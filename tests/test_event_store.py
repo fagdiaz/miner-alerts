@@ -123,6 +123,39 @@ class EventStoreTests(unittest.TestCase):
         self.assertIn("Resultado: cooldown", rendered)
         self.assertIn("no es voltaje AC", rendered)
 
+    def test_renders_fleet_and_thermal_interlock_evidence(self) -> None:
+        base = {
+            "evaluated_ts": 2_001.0,
+            "miner_key": "m23",
+            "miner_name": "23",
+            "result": "fleet_incident",
+            "state": "LOW",
+            "rate_ths": 50.0,
+            "threshold_ths": 60.0,
+            "low_elapsed_seconds": 700.0,
+            "active_boards": 3,
+            "expected_boards": 3,
+            "max_temp_c": 78.0,
+            "details_json": (
+                '{"affected_count":2,"affected_miners":["m23","m24"],'
+                '"fleet_min_affected":2,"fleet_snapshot_age_seconds":31.0}'
+            ),
+        }
+
+        fleet_rendered = render_reboot_decision(base)
+        self.assertIn("Resultado: fleet_incident", fleet_rendered)
+        self.assertIn("Flota afectada: 2 (minimo 2)", fleet_rendered)
+        self.assertIn("Evidencia compartida: m23, m24", fleet_rendered)
+        self.assertIn("Antiguedad snapshot: 31s", fleet_rendered)
+
+        thermal = dict(base)
+        thermal["result"] = "high_temperature"
+        thermal["max_temp_c"] = 86.5
+        thermal["details_json"] = '{"max_temp_c":86.5,"thermal_limit_c":85.0}'
+        thermal_rendered = render_reboot_decision(thermal)
+        self.assertIn("Resultado: high_temperature", thermal_rendered)
+        self.assertIn("Bloqueo termico: 86.5C / limite 85.0C", thermal_rendered)
+
     def test_migrates_schema_v1_without_losing_rows(self) -> None:
         legacy_path = Path(self.temp_dir.name) / "legacy.db"
         connection = sqlite3.connect(legacy_path)

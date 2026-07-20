@@ -199,7 +199,33 @@ events, and auto-reboot decisions. It never invokes Hashcore.
 - Startup guard must prevent auto-reboot during its configured window.
 - LOW must be sustained from the current process execution before auto-reboot.
 - The current tick must have `responded=true` and a finite hashrate below threshold; no-response, missing/non-finite rate, or a recovered rate resets the sustained LOW timer.
+- A current Vnish maximum temperature at or above `auto_reboot_max_temp_c` blocks automatic action when `auto_reboot_thermal_guard_enabled` is true.
+- If at least `auto_reboot_fleet_guard_min_affected` miners were degraded in the latest fresh completed tick, `auto_reboot_fleet_guard_enabled` blocks a reboot cascade as `fleet_incident`.
+- Fleet evidence expires after `max(60, poll_seconds * 2)`; stale evidence is ignored.
+- Thermal/fleet interlocks use existing summary/stats responses and never add miner IO.
 - Cooldown and reboot window limits must be visible in logs when they block action.
+
+Production-safe defaults:
+
+```json
+{
+  "auto_reboot_thermal_guard_enabled": true,
+  "auto_reboot_max_temp_c": 85.0,
+  "auto_reboot_fleet_guard_enabled": true,
+  "auto_reboot_fleet_guard_min_affected": 2
+}
+```
+
+Expected evidence:
+
+```text
+[AUTO-REBOOT] blocked_by=high_temperature miner=... max_temp_c=... limit_c=85.0
+[AUTO-REBOOT] blocked_by=fleet_incident miner=... affected_count=... min_affected=2 ...
+```
+
+Use `/why` or `/why <miner>` to inspect the durable reason. A fleet block means
+only that degradation was simultaneous; it does not prove a pool, network, or
+power root cause. Manual confirmed actions remain available and unchanged.
 
 ## Evidence Rules
 

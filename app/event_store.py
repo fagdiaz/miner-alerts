@@ -730,5 +730,31 @@ def render_reboot_decision(decision: Optional[Dict[str, Any]]) -> str:
         lines.append(
             f"Ventana: {decision.get('window_count', 0)} en {decision.get('window_seconds', 0)}s"
         )
+    details: Dict[str, Any] = {}
+    details_raw = decision.get("details_json")
+    if isinstance(details_raw, str) and details_raw:
+        try:
+            parsed_details = json.loads(details_raw)
+            if isinstance(parsed_details, dict):
+                details = parsed_details
+        except (TypeError, ValueError, json.JSONDecodeError):
+            details = {}
+    if result == "fleet_incident":
+        affected = details.get("affected_miners")
+        affected_labels = ", ".join(str(item) for item in affected) if isinstance(affected, list) else "N/A"
+        lines.append(
+            f"Flota afectada: {details.get('affected_count', 'N/A')} "
+            f"(minimo {details.get('fleet_min_affected', 'N/A')})"
+        )
+        lines.append(f"Evidencia compartida: {affected_labels}")
+        snapshot_age = details.get("fleet_snapshot_age_seconds")
+        if snapshot_age is not None:
+            lines.append(f"Antiguedad snapshot: {float(snapshot_age):.0f}s")
+    elif result == "high_temperature":
+        observed_temp = details.get("max_temp_c", max_temp)
+        limit_temp = details.get("thermal_limit_c")
+        observed_label = f"{float(observed_temp):.1f}C" if observed_temp is not None else "N/A"
+        limit_label = f"{float(limit_temp):.1f}C" if limit_temp is not None else "N/A"
+        lines.append(f"Bloqueo termico: {observed_label} / limite {limit_label}")
     lines.append(f"Fecha: {evaluated}")
     return "\n".join(lines)

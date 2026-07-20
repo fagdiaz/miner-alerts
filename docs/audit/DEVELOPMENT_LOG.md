@@ -5,6 +5,30 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 010: Fleet-Aware Auto-Reboot Safety
+
+* **Objetivo**: Evitar reboots automaticos innecesarios durante degradacion compartida de flota o evidencia termica alta, sin agregar IO ni modificar controles manuales.
+* **Resultado**:
+  - Un evaluador puro bloquea con `fleet_incident` cuando al menos dos mineros aparecen afectados en el ultimo tick completo y fresco.
+  - La evidencia de flota vence despues de `max(60, poll_seconds * 2)` para impedir decisiones sobre snapshots viejos.
+  - Un LOW sostenido con temperatura Vnish actual igual o superior a 85 C se bloquea como `high_temperature` por defecto.
+  - Ambos interlocks son configurables, estan habilitados por defecto y se aplican despues de startup/sustained LOW pero antes de cooldown/window/QA/Hashcore.
+  - `/why` muestra mineros afectados, antiguedad del snapshot, temperatura observada y limite.
+  - No se agregan requests, dependencias, workers, campos de estado ni cambios a reboot/restart manual.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first: falla inicial por modulo inexistente y luego 19 pruebas dirigidas PASS.
+  - Suite completa de 51 pruebas y `py_compile`: PASS.
+  - Snapshot sanitizado: 4/4 mineros con 3 boards, 92.851-101.265 TH/s y maximos de 72-81 C, todos debajo del limite default.
+* **Estado**:
+  - Implementacion y validacion local completas. El servicio sigue sin reiniciarse hasta el cierre controlado del dia.
+* **Archivos principales**:
+  - `app/reboot_safety.py`
+  - `app/miner_monitor.py`
+  - `app/event_store.py`
+  - `app/config.example.json`
+  - `tests/test_reboot_safety.py`
+  - `specs/010-fleet-reboot-safety/*`
+
 ## [2026-07-20] - Spec 009: Vnish Hashboard Detection
 
 * **Objetivo**: Hacer que el monitor de produccion detecte hashboards con el formato Vnish real y diferencie una placa faltante de un LOW generico.

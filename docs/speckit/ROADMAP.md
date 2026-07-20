@@ -14,8 +14,9 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
 - [x] Require a current finite below-threshold signal before auto-reboot evaluation; invalid and recovered samples now break the sustained LOW timer.
 - [x] Align production Vnish hashboard detection with real `STATS[1].chain_acn1..N` payloads and the read-only diagnostics parser.
+- [x] Block automatic reboot on current high-temperature evidence or fresh shared fleet degradation without adding miner IO.
 - [ ] Verify `state.json` cannot trigger immediate auto-reboot after restart.
-- [ ] Split "bad signal" from "actionable reboot candidate": LOW alone should not imply reboot.
+- [x] Split "bad signal" from "actionable reboot candidate": LOW alone no longer implies reboot.
 - [x] Add an audit table for every reboot decision with signal, duration, board/Vnish evidence, cooldown, window, QA and startup-guard context.
 - [ ] Keep Telegram dangerous actions behind confirmation.
 - [ ] Define "do not reboot" reasons: stale data, no hash but offline, autotune active, firmware restart in progress, high temp protection, pool outage, power anomaly suspected.

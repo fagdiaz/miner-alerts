@@ -20,7 +20,7 @@ The active feature is declared in `.specify/feature.json`.
 Current active feature:
 
 ```text
-specs/005-event-driven-telegram-alerts
+specs/006-incident-history
 ```
 
 ## Commands And Validation

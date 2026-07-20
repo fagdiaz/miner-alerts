@@ -9,7 +9,7 @@
 4. Use `docs/speckit/ROADMAP.md` as the working backlog for quick wins, bug fixes, and audit priorities.
 
 Active implementation plan:
-`specs/005-event-driven-telegram-alerts/plan.md`
+`specs/006-incident-history/plan.md`
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

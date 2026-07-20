@@ -8,6 +8,8 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 ## P0 - Production Safety And No Unnecessary Reboots
 
+- [x] Persist and classify uptime-reset incidents as expected-manual, expected-auto, or unexpected without changing action policy.
+- [x] Send a dedicated evidence-rich alert for unexpected restarts independently of state-change timing.
 - [ ] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
 - [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
 - [ ] Verify `state.json` cannot trigger immediate auto-reboot after restart.
@@ -54,6 +56,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 ## P5 - Telegram Reliability And UX
 
+- [x] Add read-only `/events`, `/events <miner>`, and `/event <id>` incident-history commands.
 - [ ] Validate click-safe commands: `/rb<ID>`, `/reboot_no_ok`, `/c<code>`.
 - [ ] Ensure all command replies use command delivery semantics and avoid dedupe/coalesce loss.
 - [ ] Keep no-silence behavior for invalid confirms and expired pending actions.
@@ -72,6 +75,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 ## P7 - Observability And Release Hygiene
 
+- [x] Add a bounded SQLite operational history for telemetry, state transitions, restart incidents, and action outcomes.
 - [ ] Standardize logs for blocked actions and delivery failures.
 - [ ] Maintain production defaults in `app/config.example.json`.
 - [ ] Keep release checklist current for Windows PowerShell.

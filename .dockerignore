@@ -19,6 +19,10 @@ diagnostics
 diagnostics*
 exports
 artifacts
+data
+*.db
+*.db-wal
+*.db-shm
 *.log
 *.tmp
 *.bak

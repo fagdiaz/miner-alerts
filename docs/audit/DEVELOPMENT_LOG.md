@@ -5,6 +5,33 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 006: Incident History And Restart Intelligence
+
+* **Objetivo**: Crear una base durable de evidencia operativa y distinguir reinicios esperados de reinicios no deseados sin cambiar la state machine ni la politica de auto-reboot.
+* **Resultado**:
+  - Se agrego un event store SQLite versionado, thread-safe y en modo WAL para muestras acotadas, transiciones, reinicios detectados y resultados de acciones.
+  - El detector existente de caida de uptime se conserva y ahora se clasifica como `expected_manual`, `expected_auto` o `unexpected` usando acciones exitosas recientes.
+  - Los reinicios inesperados generan una alerta dedicada con uptime anterior/actual, estado, hashrate, incidente y acceso a `/event <id>`.
+  - Se agregaron `/events`, `/events <miner>` y `/event <id>` como consultas Telegram read-only sin IO al minero ni Hashcore.
+  - La retencion queda acotada a 90 dias de muestras cada cinco minutos y 365 dias de eventos por defecto.
+  - El historial es estrictamente observacional y no participa de decisiones de reboot, cooldown, startup guard o QA.
+* **Validaciones ejecutadas**:
+  - `py_compile` del monitor, event store, clasificador y herramientas: PASS.
+  - 19 pruebas `unittest` de persistencia, reapertura, retencion, concurrencia, clasificacion, parsing, mensajes y bloqueo QA: PASS.
+  - `git diff --check`: PASS.
+  - Speckit QA preflight HIGH-risk con builds: PASS.
+* **Estado**:
+  - Implementacion y validacion local completas. La evidencia de activacion del servicio se registra en `specs/006-incident-history/evidence.md`.
+* **Archivos principales**:
+  - `app/event_store.py`
+  - `app/restart_intelligence.py`
+  - `app/miner_monitor.py`
+  - `app/config.example.json`
+  - `tests/test_event_store.py`
+  - `tests/test_restart_intelligence.py`
+  - `tests/test_monitor_incidents.py`
+  - `specs/006-incident-history/*`
+
 ## [2026-07-14] - Spec 005: Event-Driven Telegram Alerts
 
 * **Objetivo**: Reducir ruido operativo en Telegram deshabilitando por defecto los resumenes horarios de estado degradado, manteniendo alertas por eventos reales como LOW, OFFLINE, HASHBOARD y recuperacion a OK.

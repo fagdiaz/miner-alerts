@@ -110,6 +110,62 @@ Hourly degraded status is disabled by default:
 Enable it only if an operator explicitly wants repeated reminders while a miner
 is in degraded mode.
 
+## Incident History And Restart Intelligence
+
+The monitor keeps a local operational history in SQLite by default. The store is
+observational: it records evidence but is never consulted to trigger a reboot or
+to bypass QA, startup guard, sustained LOW, cooldown, or reboot-window policy.
+
+Production-safe defaults:
+
+```json
+"event_store_enabled": true,
+"event_store_path": "data/miner_alerts.db",
+"telemetry_sample_seconds": 300,
+"telemetry_retention_days": 90,
+"event_retention_days": 365,
+"restart_attribution_window_seconds": 900,
+"notify_unexpected_restarts": true,
+"notify_expected_restarts": false
+```
+
+Relative database paths are resolved from the repository root, not the service
+working directory. The database, `-wal`, and `-shm` files are local runtime
+artifacts ignored by Git.
+
+Restart classifications:
+
+- `unexpected`: uptime reset with no recent successful manual/automatic action.
+- `expected_manual`: uptime reset shortly after a successful Telegram action.
+- `expected_auto`: uptime reset shortly after a successful auto-reboot.
+
+Unexpected restarts produce a dedicated Telegram alert with previous/current
+uptime, current state, signal, incident ID, and `/event <id>` detail link.
+Expected restarts are stored but are not separately notified by default.
+
+Read-only Telegram history:
+
+```text
+/events
+/events 23
+/event 42
+```
+
+These commands read local SQLite history only. They do not call API 4028 or
+Hashcore Toolkit.
+
+Startup health log:
+
+```text
+EVENT_STORE enabled=true path=<absolute-path> available=true schema=1
+```
+
+If storage cannot initialize or a write fails, the monitor logs `EVENT_STORE`
+with the operation and exception and continues monitoring. Emergency rollback is
+configuration-only: set `"event_store_enabled": false` in local
+`app/config.json` and restart the service. Existing monitoring remains active;
+history commands reply `Historial no disponible.`
+
 ## Auto-Reboot Safety Checks
 
 - QA mode with real actions disabled must block manual and automatic real actions.

@@ -19,6 +19,13 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 
 import requests
 
+try:
+    from .event_store import EventStore, render_event_detail, render_event_list
+    from .restart_intelligence import RestartClassification, classify_restart
+except ImportError:
+    from event_store import EventStore, render_event_detail, render_event_list
+    from restart_intelligence import RestartClassification, classify_restart
+
 STATE_OK = "OK"
 STATE_LOW = "LOW"
 STATE_OFFLINE = "OFFLINE"
@@ -46,7 +53,18 @@ try:
     DBG_TELEGRAM_TRUNC = int(os.getenv("DBG_TELEGRAM_TRUNC", "120"))
 except ValueError:
     DBG_TELEGRAM_TRUNC = 120
-CMD_WHITELIST = {"help", "status", "info", "selftest", "reboot", "restart", "reboot_no_ok", "confirm"}
+CMD_WHITELIST = {
+    "help",
+    "status",
+    "info",
+    "events",
+    "event",
+    "selftest",
+    "reboot",
+    "restart",
+    "reboot_no_ok",
+    "confirm",
+}
 
 
 def _is_command_like(cmd_name: str) -> bool:
@@ -199,6 +217,30 @@ _COMMANDS = [
         "aliases": [],
     },
     {
+        "name": "events",
+        "summary": "Historial reciente de eventos e incidentes.",
+        "usage": "/events  |  /events <miner>",
+        "detail": [
+            "Detalle: consulta eventos locales sin conectarse al minero.",
+        ],
+        "examples": ["/events", "/events 23"],
+        "notes": ["Usa /event <id> para abrir un evento."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "event",
+        "summary": "Detalle de un incidente registrado.",
+        "usage": "/event <id>",
+        "detail": [
+            "Detalle: muestra evidencia y clasificacion del evento indicado.",
+        ],
+        "examples": ["/event 42"],
+        "notes": ["Es de solo lectura."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
         "name": "selftest",
         "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
         "usage": "/selftest  |  /test",
@@ -257,7 +299,16 @@ def render_help_index() -> str:
         "",
     ]
     by_name = {str(cmd.get("name", "")).lower(): cmd for cmd in _COMMANDS}
-    ordered_operativos = ["status", "info", "reboot", "restart", "confirm", "selftest"]
+    ordered_operativos = [
+        "status",
+        "info",
+        "events",
+        "event",
+        "reboot",
+        "restart",
+        "confirm",
+        "selftest",
+    ]
     for name in ordered_operativos:
         cmd = by_name.get(name)
         if not cmd:
@@ -269,6 +320,10 @@ def render_help_index() -> str:
             prefix = "⚠️ "
         if name == "info":
             lines.append(f"{prefix}/info <id|all>  Información de mineros")
+        elif name == "events":
+            lines.append(f"{prefix}/events [miner]  Historial reciente")
+        elif name == "event":
+            lines.append(f"{prefix}/event <id>  Detalle de un incidente")
         elif name == "confirm":
             lines.append(f"{prefix}/confirm <...>  Confirma acción pendiente")
         elif name == "reboot":
@@ -906,6 +961,76 @@ def format_state_event(
     return f"- {name_display}: {prev_state} -> {new_state}"
 
 
+def format_restart_incident(
+    *,
+    event_id: Optional[int],
+    name_display: str,
+    previous_elapsed: int,
+    current_elapsed: int,
+    classification: RestartClassification,
+    state: str,
+    rate_ths: Optional[float],
+    attribution_window_seconds: int,
+) -> str:
+    title = (
+        "REINICIO NO ESPERADO"
+        if classification.classification == "unexpected"
+        else "REINICIO DETECTADO"
+    )
+    lines = [
+        title,
+        "",
+        f"Miner: {name_display}",
+        f"Evidencia uptime: {previous_elapsed}s -> {current_elapsed}s",
+        f"Estado actual: {state} | {format_rate(rate_ths)}",
+    ]
+    if classification.action_source:
+        age = int(classification.action_age_seconds or 0)
+        lines.append(
+            f"Accion relacionada: {classification.action_source} hace {age}s"
+        )
+    else:
+        minutes = max(1, int(attribution_window_seconds / 60))
+        lines.append(
+            f"Accion relacionada: ninguna en los ultimos {minutes} min"
+        )
+    if event_id is not None:
+        lines.extend([f"Incidente: #{event_id}", f"Detalle: /event {event_id}"])
+    return "\n".join(lines)
+
+
+def record_action_outcome(
+    event_store: Optional[EventStore],
+    *,
+    occurred_ts: float,
+    miner: dict,
+    action: str,
+    source: str,
+    ok: bool,
+    message: str,
+) -> None:
+    if event_store is None or not event_store.available:
+        return
+    miner_name = display_name(str(miner.get("name", "")))
+    event_store.record_event(
+        occurred_ts=occurred_ts,
+        miner_key=f"{miner.get('name')}|{miner.get('host')}:{miner.get('port')}",
+        miner_name=miner_name,
+        host=str(miner.get("host", "")),
+        event_type=f"{source}_{action}_{'success' if ok else 'failed'}",
+        severity="info" if ok else "warning",
+        classification=f"{source}_{action}",
+        action_source=source,
+        action_ts=occurred_ts,
+        summary=(
+            f"{source} {action} enviado"
+            if ok
+            else f"{source} {action} fallo: {_short_text(message, 120)}"
+        ),
+        details={"ok": ok},
+    )
+
+
 def display_name(raw_name: str) -> str:
     if "-" in raw_name:
         return raw_name.split("-")[-1]
@@ -1204,6 +1329,7 @@ def telegram_polling_worker(
     config: dict,
     qa_mode: bool,
     qa_allow_actions: bool,
+    event_store: Optional[EventStore],
 ) -> None:
     last_info_ts = 0.0
     last_selftest_ts = 0.0
@@ -1363,7 +1489,69 @@ def telegram_polling_worker(
                 handled = False
                 if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
                     log(f"DISPATCH update_id={update_id} text_norm={_trunc(raw_text, DBG_TELEGRAM_TRUNC)}")
-                if cmd_name == "status":
+                if cmd_name == "events":
+                    handled = True
+                    if event_store is None or not event_store.available:
+                        events_text = "Historial no disponible."
+                    else:
+                        miner_key = None
+                        if args:
+                            miner = resolve_miner(args[0], miners)
+                            if not miner:
+                                send_telegram(
+                                    bot_token,
+                                    str(msg_chat_id),
+                                    "Miner no encontrado.",
+                                    "ERROR",
+                                    "cmd_events",
+                                    is_command=True,
+                                    dbg_update_id=update_id,
+                                    dbg_cmd="events",
+                                )
+                                continue
+                            miner_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                        recent_events = event_store.list_events(
+                            limit=8, miner_key=miner_key
+                        )
+                        events_text = (
+                            "Historial temporalmente no disponible."
+                            if event_store.last_error
+                            else render_event_list(recent_events)
+                        )
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        events_text,
+                        "EVENTS",
+                        "cmd_events",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="events",
+                    )
+                elif cmd_name == "event":
+                    handled = True
+                    if not args or not args[0].isdigit():
+                        event_text = "Uso: /event <id>"
+                    elif event_store is None or not event_store.available:
+                        event_text = "Historial no disponible."
+                    else:
+                        stored_event = event_store.get_event(int(args[0]))
+                        event_text = (
+                            "Historial temporalmente no disponible."
+                            if event_store.last_error
+                            else render_event_detail(stored_event)
+                        )
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        event_text,
+                        "EVENTS",
+                        "cmd_event",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="event",
+                    )
+                elif cmd_name == "status":
                     handled = True
                     lock_start = time.monotonic()
                     with snapshot_lock:
@@ -1652,10 +1840,16 @@ def telegram_polling_worker(
                             hashcore_ok = "FAIL"
                     else:
                         hashcore_ok = f"FAIL (cli_path={cli_path or 'VACIO'})"
+                    history_status = (
+                        "DISABLED"
+                        if event_store is None
+                        else ("OK" if event_store.available else "FAIL")
+                    )
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
-                        f"SELFTEST: Telegram=OK Hashcore={hashcore_ok} Miners={responded}/{total}",
+                        f"SELFTEST: Telegram=OK Hashcore={hashcore_ok} "
+                        f"History={history_status} Miners={responded}/{total}",
                         "SELFTEST",
                         "cmd_selftest",
                         is_command=True,
@@ -1832,6 +2026,15 @@ def telegram_polling_worker(
                             results.append(f"{token}  FAIL (not_found)")
                             continue
                         ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                        record_action_outcome(
+                            event_store,
+                            occurred_ts=now_ts,
+                            miner=miner,
+                            action="reboot",
+                            source="manual",
+                            ok=ok,
+                            message=msg,
+                        )
                         if ok:
                             results.append(f"{display_name(miner['name'])}  OK")
                             state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
@@ -1962,6 +2165,15 @@ def telegram_polling_worker(
                             log(f"SAFETY cooldown_block cmd=reboot remaining={int(600 - (now_ts - last_manual))}")
                             continue
                         ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                        record_action_outcome(
+                            event_store,
+                            occurred_ts=now_ts,
+                            miner=miner,
+                            action="reboot",
+                            source="manual",
+                            ok=ok,
+                            message=msg,
+                        )
                         if ok:
                             results.append(f"{display_name(miner['name'])}  OK")
                             with state_lock:
@@ -2249,6 +2461,15 @@ def telegram_polling_worker(
                                 results.append(f"{token}  FAIL (not_found)")
                                 continue
                             ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                            record_action_outcome(
+                                event_store,
+                                occurred_ts=now_ts,
+                                miner=miner,
+                                action="reboot",
+                                source="manual",
+                                ok=ok,
+                                message=msg,
+                            )
                             if ok:
                                 results.append(f"{display_name(miner['name'])}  OK")
                                 state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
@@ -2338,6 +2559,15 @@ def telegram_polling_worker(
                         )
                         continue
                     ok, msg = run_hashcore_cli(hashcore_cfg, miner, action, config, qa_mode, qa_allow_actions)
+                    record_action_outcome(
+                        event_store,
+                        occurred_ts=now_ts,
+                        miner=miner,
+                        action=action,
+                        source="manual",
+                        ok=ok,
+                        message=msg,
+                    )
                     if not ok:
                         send_telegram(
                             bot_token,
@@ -2448,6 +2678,16 @@ def main() -> None:
     notify_initial_non_ok = bool(config.get("notify_initial_non_ok", False))
     notify_degraded_hourly = bool(config.get("notify_degraded_hourly", False))
     degraded_hourly_seconds = int(config.get("degraded_hourly_seconds", 3600))
+    event_store_enabled = bool(config.get("event_store_enabled", True))
+    event_store_path_raw = str(config.get("event_store_path", "data/miner_alerts.db"))
+    telemetry_sample_seconds = max(30, int(config.get("telemetry_sample_seconds", 300)))
+    telemetry_retention_days = max(1, int(config.get("telemetry_retention_days", 90)))
+    event_retention_days = max(1, int(config.get("event_retention_days", 365)))
+    restart_attribution_window_seconds = max(
+        60, int(config.get("restart_attribution_window_seconds", 900))
+    )
+    notify_unexpected_restarts = bool(config.get("notify_unexpected_restarts", True))
+    notify_expected_restarts = bool(config.get("notify_expected_restarts", False))
     reboot_cooldown_seconds = int(config.get("reboot_cooldown_seconds", 1800))
     reboot_window_seconds = int(config.get("reboot_window_seconds", 300))
     low_sustained_seconds = 600
@@ -2495,6 +2735,32 @@ def main() -> None:
         release_mutex()
         sys.exit(1)
 
+    event_store: Optional[EventStore] = None
+    if event_store_enabled:
+        event_store_path = Path(event_store_path_raw).expanduser()
+        if not event_store_path.is_absolute():
+            event_store_path = Path(__file__).resolve().parent.parent / event_store_path
+        event_store = EventStore(
+            event_store_path,
+            on_error=lambda message: log(f"[ERROR] {message}"),
+        )
+        log(
+            f"EVENT_STORE enabled=true path={event_store.path} "
+            f"available={str(event_store.available).lower()} schema=1"
+        )
+        if event_store.available:
+            deleted = event_store.prune(
+                now_ts=process_start_ts,
+                sample_retention_days=telemetry_retention_days,
+                event_retention_days=event_retention_days,
+            )
+            log(
+                f"EVENT_STORE retention samples_deleted={deleted['samples']} "
+                f"events_deleted={deleted['events']}"
+            )
+    else:
+        log("EVENT_STORE enabled=false")
+
     state_path = Path(__file__).resolve().parent / "state.json"
     states, last_update_id = load_state(state_path)
     last_update_id_ref = {"value": last_update_id}
@@ -2533,6 +2799,7 @@ def main() -> None:
             config,
             qa_mode,
             qa_allow_actions,
+            event_store,
         ),
         daemon=True,
     )
@@ -2542,6 +2809,8 @@ def main() -> None:
 
     try:
         first_tick = True
+        last_sample_ts: Dict[str, float] = {}
+        last_retention_ts = process_start_ts
         while True:
             tick_start = time.monotonic()
             now_ts = time.time()
@@ -2549,6 +2818,7 @@ def main() -> None:
             reboot_names_tick = []
             miner_lines = []
             event_lines = []
+            restart_incident_messages = []
             startup_lines = [] if first_tick else None
             degraded_candidates = []
             for miner in valid_miners:
@@ -2581,6 +2851,7 @@ def main() -> None:
                 if responded:
                     state.last_seen_ts = now_ts
 
+                previous_elapsed = state.last_elapsed
                 reboot_reason = ""
                 if responded and elapsed is not None:
                     if state.last_elapsed is not None:
@@ -2632,6 +2903,88 @@ def main() -> None:
                 else:
                     state.low_since_ts = None
                     state.low_streak = 0
+
+                if event_store is not None and event_store.available:
+                    last_sample = last_sample_ts.get(state_key, 0.0)
+                    if (now_ts - last_sample) >= telemetry_sample_seconds:
+                        last_sample_ts[state_key] = now_ts
+                        event_store.record_sample(
+                            observed_ts=now_ts,
+                            miner_key=state_key,
+                            miner_name=name_display,
+                            host=host,
+                            state=new_state,
+                            responded=responded,
+                            rate_ths=rate_ths,
+                            threshold_ths=threshold_ths,
+                            active_boards=active_boards,
+                            expected_boards=expected_boards,
+                            elapsed_seconds=elapsed,
+                        )
+
+                if (
+                    reboot_reason
+                    and previous_elapsed is not None
+                    and elapsed is not None
+                ):
+                    restart_classification = classify_restart(
+                        restart_reason=reboot_reason,
+                        detected_ts=now_ts,
+                        last_manual_action_ts=state.last_manual_reboot_ts,
+                        last_auto_action_ts=state.last_auto_reboot_ts,
+                        attribution_window_seconds=restart_attribution_window_seconds,
+                    )
+                    incident_id = None
+                    if event_store is not None and event_store.available:
+                        incident_id = event_store.record_event(
+                            occurred_ts=now_ts,
+                            miner_key=state_key,
+                            miner_name=name_display,
+                            host=host,
+                            event_type="restart_detected",
+                            severity=restart_classification.severity,
+                            classification=restart_classification.classification,
+                            previous_state=prev_state,
+                            new_state=new_state,
+                            rate_ths=rate_ths,
+                            threshold_ths=threshold_ths,
+                            previous_elapsed=previous_elapsed,
+                            current_elapsed=elapsed,
+                            action_source=restart_classification.action_source,
+                            action_ts=restart_classification.action_ts,
+                            summary=(
+                                f"Uptime reiniciado: {previous_elapsed}s -> {elapsed}s"
+                            ),
+                            details={
+                                "reason": reboot_reason,
+                                "first_tick": first_tick,
+                            },
+                        )
+                    log(
+                        f"[INCIDENT] type=restart_detected miner={name_display} "
+                        f"classification={restart_classification.classification} "
+                        f"elapsed={previous_elapsed}->{elapsed} event_id={incident_id}"
+                    )
+                    should_notify_restart = (
+                        restart_classification.classification == "unexpected"
+                        and notify_unexpected_restarts
+                    ) or (
+                        restart_classification.classification != "unexpected"
+                        and notify_expected_restarts
+                    )
+                    if notify_reboot and should_notify_restart:
+                        restart_incident_messages.append(
+                            format_restart_incident(
+                                event_id=incident_id,
+                                name_display=name_display,
+                                previous_elapsed=previous_elapsed,
+                                current_elapsed=elapsed,
+                                classification=restart_classification,
+                                state=new_state,
+                                rate_ths=rate_ths,
+                                attribution_window_seconds=restart_attribution_window_seconds,
+                            )
+                        )
 
                 if not state.initialized:
                     state.initialized = True
@@ -2745,6 +3098,15 @@ def main() -> None:
                                 )
                             continue
                         ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                        record_action_outcome(
+                            event_store,
+                            occurred_ts=now_ts,
+                            miner=miner,
+                            action="reboot",
+                            source="auto",
+                            ok=ok,
+                            message=msg,
+                        )
                         if ok:
                             state.last_auto_reboot_ts = now_ts
                             state.auto_reboot_timestamps.append(now_ts)
@@ -2791,6 +3153,25 @@ def main() -> None:
                                     )
 
                 if not first_tick and new_state != prev_state:
+                    if event_store is not None and event_store.available:
+                        event_store.record_event(
+                            occurred_ts=now_ts,
+                            miner_key=state_key,
+                            miner_name=name_display,
+                            host=host,
+                            event_type="state_transition",
+                            severity="info" if new_state == STATE_OK else "warning",
+                            previous_state=prev_state,
+                            new_state=new_state,
+                            rate_ths=rate_ths,
+                            threshold_ths=threshold_ths,
+                            summary=f"{prev_state} -> {new_state}",
+                            details={
+                                "responded": responded,
+                                "active_boards": active_boards,
+                                "expected_boards": expected_boards,
+                            },
+                        )
                     if prev_state == STATE_OFFLINE and new_state == STATE_LOW:
                         log(
                             f"[STATE] {name} ({host}:{port}) OFFLINE -> LOW "
@@ -2915,6 +3296,15 @@ def main() -> None:
             with snapshot_lock:
                 snapshot_ref["value"] = "\n".join(status_lines)
 
+            if restart_incident_messages and ((not qa_mode) or qa_notify):
+                send_telegram(
+                    bot_token,
+                    str(chat_id),
+                    "\n\n---\n\n".join(restart_incident_messages),
+                    "RESTART_INCIDENT",
+                    "restart_detected",
+                )
+
             if first_tick and notify_startup:
                 message_lines = [
                     f"STARTUP ({now_str()})",
@@ -2956,6 +3346,18 @@ def main() -> None:
                             for st in degraded_candidates:
                                 st.last_hourly_status_ts = now_ts
 
+            if (
+                event_store is not None
+                and event_store.available
+                and (now_ts - last_retention_ts) >= 86_400
+            ):
+                event_store.prune(
+                    now_ts=now_ts,
+                    sample_retention_days=telemetry_retention_days,
+                    event_retention_days=event_retention_days,
+                )
+                last_retention_ts = now_ts
+
             with last_update_lock:
                 current_last_update_id = last_update_id_ref["value"]
             with state_lock:
@@ -2967,6 +3369,8 @@ def main() -> None:
     except KeyboardInterrupt:
         log("Detenido por usuario")
     finally:
+        if event_store is not None:
+            event_store.close()
         release_mutex()
 
 

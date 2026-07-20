@@ -20,7 +20,7 @@ The active feature is declared in `.specify/feature.json`.
 Current active feature:
 
 ```text
-specs/007-vnish-decision-audit
+specs/008-valid-signal-reboot-gate
 ```
 
 ## Commands And Validation

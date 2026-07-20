@@ -198,6 +198,7 @@ events, and auto-reboot decisions. It never invokes Hashcore.
 - QA mode with real actions disabled must block manual and automatic real actions.
 - Startup guard must prevent auto-reboot during its configured window.
 - LOW must be sustained from the current process execution before auto-reboot.
+- The current tick must have `responded=true` and a finite hashrate below threshold; no-response, missing/non-finite rate, or a recovered rate resets the sustained LOW timer.
 - Cooldown and reboot window limits must be visible in logs when they block action.
 
 ## Evidence Rules

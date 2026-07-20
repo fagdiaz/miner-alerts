@@ -12,6 +12,7 @@ import queue
 import platform
 import hashlib
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -42,6 +43,10 @@ STATE_OK = "OK"
 STATE_LOW = "LOW"
 STATE_OFFLINE = "OFFLINE"
 STATE_HASHBOARD = "HASHBOARD"
+
+AUTO_REBOOT_SIGNAL_ELIGIBLE = "eligible"
+AUTO_REBOOT_SIGNAL_INVALID = "invalid_signal"
+AUTO_REBOOT_SIGNAL_NOT_LOW = "not_low"
 
 _MUTEX_HANDLE: Optional[int] = None
 _TELEGRAM_QUEUE: Optional[queue.Queue] = None
@@ -755,6 +760,46 @@ def _fw_hint(*texts: str) -> str:
 
 def is_miner_no_ok(state: Optional["MinerState"]) -> bool:
     return bool(state and state.state == STATE_LOW)
+
+
+def classify_auto_reboot_signal(
+    responded: bool,
+    rate_ths: Optional[float],
+    threshold_ths: float,
+) -> str:
+    if not responded or rate_ths is None:
+        return AUTO_REBOOT_SIGNAL_INVALID
+    try:
+        numeric_rate = float(rate_ths)
+    except (TypeError, ValueError):
+        return AUTO_REBOOT_SIGNAL_INVALID
+    if not math.isfinite(numeric_rate):
+        return AUTO_REBOOT_SIGNAL_INVALID
+    if numeric_rate >= float(threshold_ths):
+        return AUTO_REBOOT_SIGNAL_NOT_LOW
+    return AUTO_REBOOT_SIGNAL_ELIGIBLE
+
+
+def auto_reboot_signal_allows_evaluation(
+    new_state: str,
+    low_since_ts: Optional[float],
+    signal_classification: str,
+) -> bool:
+    return (
+        new_state == STATE_LOW
+        and low_since_ts is not None
+        and signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE
+    )
+
+
+def reset_sustained_low_if_signal_ineligible(
+    state: "MinerState",
+    signal_classification: str,
+) -> bool:
+    if signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE:
+        return False
+    state.low_since_ts = None
+    return True
 
 
 def send_telegram(
@@ -3150,7 +3195,12 @@ def main() -> None:
                     ts for ts in state.auto_reboot_timestamps if (now_ts - ts) <= auto_reboot_window_seconds
                 ]
                 startup_guard_active = (now_ts - process_start_ts) < startup_guard_seconds
-                auto_reboot_candidate = responded and rate_ths is not None and rate_ths < threshold_ths
+                auto_reboot_signal = classify_auto_reboot_signal(
+                    responded,
+                    rate_ths,
+                    threshold_ths,
+                )
+                auto_reboot_candidate = auto_reboot_signal == AUTO_REBOOT_SIGNAL_ELIGIBLE
                 decision_context: Dict[str, Any] = {
                     "evaluated_ts": now_ts,
                     "miner": miner,
@@ -3181,7 +3231,7 @@ def main() -> None:
                         f"rate_ths={rate_ths} threshold_ths={threshold_ths} "
                         f"low_streak={state.low_streak}/{fails_before_alert}"
                     )
-                if (not responded or rate_ths is None) and prev_state == STATE_LOW:
+                if auto_reboot_signal == AUTO_REBOOT_SIGNAL_INVALID and prev_state == STATE_LOW:
                     record_auto_reboot_decision(
                         event_store,
                         result="invalid_signal",
@@ -3194,7 +3244,28 @@ def main() -> None:
                         f"responded={responded} rate_ths={rate_ths}"
                     )
                 if new_state == STATE_LOW and state.low_since_ts:
-                    if startup_guard_active:
+                    if not auto_reboot_signal_allows_evaluation(
+                        new_state,
+                        state.low_since_ts,
+                        auto_reboot_signal,
+                    ):
+                        if auto_reboot_signal == AUTO_REBOOT_SIGNAL_NOT_LOW:
+                            record_auto_reboot_decision(
+                                event_store,
+                                result="not_low",
+                                cooldown_remaining_seconds=None,
+                                details={"reason": "current_rate_not_below_threshold"},
+                                **decision_context,
+                            )
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=not_low miner={name_display} "
+                                f"state={new_state} rate_ths={rate_ths} threshold_ths={threshold_ths}"
+                            )
+                        reset_sustained_low_if_signal_ineligible(
+                            state,
+                            auto_reboot_signal,
+                        )
+                    elif startup_guard_active:
                         record_auto_reboot_decision(
                             event_store,
                             result="startup_guard",

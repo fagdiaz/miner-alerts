@@ -12,7 +12,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Send a dedicated evidence-rich alert for unexpected restarts independently of state-change timing.
 - [ ] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
 - [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
-- [ ] Fix the pre-existing invalid-signal path where a persisted LOW state can continue into auto-reboot evaluation after `responded=false` or `rate_ths=None`; require a dedicated policy spec and QA evidence.
+- [x] Require a current finite below-threshold signal before auto-reboot evaluation; invalid and recovered samples now break the sustained LOW timer.
 - [ ] Verify `state.json` cannot trigger immediate auto-reboot after restart.
 - [ ] Split "bad signal" from "actionable reboot candidate": LOW alone should not imply reboot.
 - [x] Add an audit table for every reboot decision with signal, duration, board/Vnish evidence, cooldown, window, QA and startup-guard context.

@@ -5,6 +5,30 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 011: Read-Only Operations Dashboard
+
+* **Objetivo**: Agregar una interfaz local visual para correlacionar salud, tendencias, incidentes y decisiones sin convertir el dashboard en superficie de control.
+* **Resultado**:
+  - Un CLI standalone abre SQLite con `mode=ro` y genera HTML autocontenido sin cargar config ni conectarse a mineros.
+  - El dashboard muestra KPIs, cards por minero, freshness, boards, temperatura, potencia de cadena, sparklines, eventos y decisiones.
+  - Todas las cadenas persistidas se escapan; no hay JavaScript, CDN, assets remotos, listener web ni acciones reboot/restart.
+  - Consultas, timelines y tendencias quedan acotadas; se priorizan las muestras mas recientes.
+  - `Dockerfile.dashboard` ofrece ejecucion aislada opcional, manteniendo Python/PowerShell como ruta principal.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first: falla inicial por modulo inexistente y luego 5 pruebas dirigidas PASS.
+  - Suite completa de 56 pruebas, `py_compile`, `git diff --check` y Speckit QA: PASS.
+  - Fixture de cuatro mineros: HTML generado correctamente (10,627 bytes) bajo `diagnostics/` ignorado.
+  - Build Docker y generacion aislada contra el fixture: PASS (10,493 bytes).
+  - La apertura visual automatizada `file://` quedo bloqueada por politica del navegador y se documenta como pendiente manual.
+* **Estado**:
+  - Implementacion local completa. No requiere ni provoca reinicio del servicio.
+* **Archivos principales**:
+  - `tools/operations_dashboard.py`
+  - `Dockerfile.dashboard`
+  - `tests/test_operations_dashboard.py`
+  - `docs/speckit/RUNBOOK.md`
+  - `specs/011-operations-dashboard/*`
+
 ## [2026-07-20] - Spec 010: Fleet-Aware Auto-Reboot Safety
 
 * **Objetivo**: Evitar reboots automaticos innecesarios durante degradacion compartida de flota o evidencia termica alta, sin agregar IO ni modificar controles manuales.

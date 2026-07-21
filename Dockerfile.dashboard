@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY tools/operations_dashboard.py /app/tools/operations_dashboard.py
+
+ENTRYPOINT ["python", "/app/tools/operations_dashboard.py"]
+CMD ["--db", "/data/miner_alerts.db", "--out", "/out/index.html", "--hours", "24"]

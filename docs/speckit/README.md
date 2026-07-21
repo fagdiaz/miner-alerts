@@ -20,7 +20,7 @@ The active feature is declared in `.specify/feature.json`.
 Current active feature:
 
 ```text
-specs/010-fleet-reboot-safety
+specs/011-operations-dashboard
 ```
 
 ## Commands And Validation
@@ -31,6 +31,7 @@ Use Windows PowerShell commands by default.
 & ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py
 & ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\miner_diagnostics.py
 & ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py app\\reboot_safety.py tools\\incident_report.py
+& ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\operations_dashboard.py
 git status
 git diff
 ```

@@ -193,6 +193,38 @@ Generate an offline report without loading config or contacting miners:
 The report opens SQLite in read-only mode and correlates samples, operational
 events, and auto-reboot decisions. It never invokes Hashcore.
 
+## Local Operations Dashboard
+
+Generate a self-contained read-only dashboard from the same SQLite history:
+
+```powershell
+& ".\\.venv\\Scripts\\python.exe" tools\\operations_dashboard.py `
+  --db data\\miner_alerts.db `
+  --out diagnostics\\dashboard\\index.html `
+  --hours 24
+```
+
+Open `diagnostics/dashboard/index.html` locally. Regenerate the file whenever a
+fresh view is required. The page contains fleet KPIs, one card per miner,
+hashrate sparklines, evidence freshness, Vnish metrics, recent incidents, and
+auto-reboot decisions. It has no action controls, JavaScript, remote assets,
+network listener, Telegram token, or miner credentials.
+
+Optional Docker execution keeps this reporting tool isolated from the Windows
+service and Hashcore Toolkit:
+
+```powershell
+docker build -f Dockerfile.dashboard -t miner-alerts-dashboard .
+docker run --rm `
+  -v "${PWD}\\data:/data:ro" `
+  -v "${PWD}\\diagnostics\\dashboard:/out" `
+  miner-alerts-dashboard
+```
+
+Mount the complete `data` directory so SQLite can read WAL/SHM sidecars when the
+monitor is running. Docker is optional; the native PowerShell command is the
+primary Windows path. `data/` and `diagnostics/` are ignored by Git.
+
 ## Auto-Reboot Safety Checks
 
 - QA mode with real actions disabled must block manual and automatic real actions.

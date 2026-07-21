@@ -136,6 +136,14 @@ Adoption rule:
 5. If a server becomes necessary, choose FastAPI.
 6. If long-term metrics become necessary, evaluate Prometheus/Grafana.
 
+## Current Adoption Result
+
+The first local interface is a self-contained static HTML dashboard generated
+read-only from SQLite. This deliberately validates the data contract and operator
+workflow before adding FastAPI, HTMX, React, authentication, or a permanent web
+service. Docker support is limited to the standalone generator; the Windows
+monitor and Hashcore Toolkit remain native.
+
 ## Decision Gate For Any New Technology
 
 Before adding a new dependency or framework, answer:

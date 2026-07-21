@@ -71,7 +71,8 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 ## P6 - Optional Local Interface
 
 - [ ] Keep Telegram as the primary remote-control surface for now.
-- [ ] Evaluate a local read-only dashboard after the diagnostics collector produces stable evidence files.
+- [x] Evaluate and implement a local read-only static dashboard after the diagnostics collector produced stable evidence.
+- [x] Generate a self-contained HTML fleet view with current cards, trends, incidents, and reboot-decision history from SQLite.
 - [ ] Dashboard MVP: miner cards, current state, last event, last reboot, blocked_by reasons, Vnish event timeline, Hashcore capability status.
 - [ ] Do not expose reboot/restart from a web UI until auth, local-only binding, audit logs, and confirmation are designed.
 - [ ] Prefer a local Windows dashboard or static HTML report before a full web app.

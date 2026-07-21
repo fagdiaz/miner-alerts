@@ -8,5 +8,5 @@
 - [x] T006 Update the scheduler installer without changing collector read-only behavior.
 - [x] T007 Run targeted/full tests, py_compile, PowerShell parse and Speckit QA.
 - [ ] T008 Perform controlled scheduled-task reinstall and monitor-service restart.
-- [ ] T009 Record evidence, roadmap state and newest-first development log.
-- [ ] T010 Commit, integrate to main and push.
+- [x] T009 Record evidence, roadmap state and newest-first development log.
+- [x] T010 Commit, integrate to main and push.

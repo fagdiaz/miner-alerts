@@ -18,7 +18,8 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Desarrollo test-first: regresiones de batch, quiet window, wording y scheduler primero en rojo y luego 12/12 dirigidas PASS.
   - Suite completa 104/104, `py_compile`, JSON, parseo PowerShell, `git diff --check`, simbolos duplicados y Speckit QA 11/11: PASS.
 * **Estado**:
-  - Implementacion validada; rollout controlado y evidencia runtime pendientes.
+  - Implementacion integrada y publicada en `main`; tarea Vnish activa con ventana oculta y 30 minutos.
+  - Reinicio del servicio pendiente: Windows rechazo el control directo y el intento UAC fue cancelado sin detener la instancia actual.
 * **Archivos principales**:
   - `app/miner_monitor.py`
   - `app/config.example.json`

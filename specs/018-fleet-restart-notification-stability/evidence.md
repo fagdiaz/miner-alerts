@@ -42,5 +42,11 @@
 
 ## Pending Final Gate
 
-- Commit/integration, controlled monitor-service restart and post-restart startup
-  evidence remain pending.
+- Feature commits `7d246fa` and `105abcd` were pushed on the feature branch,
+  fast-forwarded into `main`, and published to `origin/main`.
+- The direct service restart was rejected by Windows service ACLs before any
+  stop occurred. The elevated UAC attempt was explicitly cancelled by Windows.
+- `MinerAlerts` remains `Running`/`Automatic` on the prior process tree created
+  at `2026-07-20 23:51:06`; no partial stop or duplicate monitor was created.
+- Activation of the new notification behavior and post-restart startup evidence
+  remain blocked only on one approved elevated restart of `MinerAlerts`.

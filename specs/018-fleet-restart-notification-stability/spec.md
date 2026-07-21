@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-21
 
-**Status**: In Progress
+**Status**: Implemented; monitor-service activation pending UAC approval
 
 ## User Scenarios & Testing
 

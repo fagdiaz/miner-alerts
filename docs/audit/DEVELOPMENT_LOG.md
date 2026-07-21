@@ -5,6 +5,28 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-21] - Spec 018: Fleet Restart Notification Stability
+
+* **Objetivo**: Corregir la sobre-notificacion observada durante reinicios coordinados y eliminar la ventana PowerShell visible del collector sin modificar state machine ni politicas de reboot.
+* **Resultado**:
+  - Los resets de uptime cercanos se acumulan durante 180 segundos y, desde dos mineros afectados, se informan como un unico incidente de flota con IDs auditables.
+  - Las transiciones de arranque siguen actualizando estado, logs y SQLite, pero su entrega Telegram se silencia por hasta 600 segundos y termina con un unico resumen de recuperacion.
+  - La ausencia de una accion reciente ya no se presenta como causa probada: el mensaje pasa a `REINICIO SIN ACCION ATRIBUIDA`.
+  - La tarea Vnish solicita `-WindowStyle Hidden`, conserva `IgnoreNew` y pasa de 15 a 30 minutos por defecto.
+  - La auditoria del incidente probo cero acciones Hashcore entre 00:00 y 00:20; el primer collector automatico comenzo a las 00:15:30, despues del reinicio de flota.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first: regresiones de batch, quiet window, wording y scheduler primero en rojo y luego 12/12 dirigidas PASS.
+  - Suite completa 104/104, `py_compile`, JSON, parseo PowerShell, `git diff --check`, simbolos duplicados y Speckit QA 11/11: PASS.
+* **Estado**:
+  - Implementacion validada; rollout controlado y evidencia runtime pendientes.
+* **Archivos principales**:
+  - `app/miner_monitor.py`
+  - `app/config.example.json`
+  - `tools/install_vnish_collector_task.ps1`
+  - `tests/test_monitor_incidents.py`
+  - `tests/test_vnish_scheduler.py`
+  - `specs/018-fleet-restart-notification-stability/*`
+
 ## [2026-07-20] - Spec 017: Vnish Operations Automation
 
 * **Objetivo**: Operacionalizar la evidencia Vnish reciente y correlacionarla con el estado del monitor sin agregar un worker permanente ni nuevas autorizaciones de reboot.
@@ -22,6 +44,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Todos los eventos persistidos en el smoke tienen epoch de origen y procedencia `system_local`; no se guardaron lineas crudas ni secretos.
   - Rollout controlado: tarea Windows `Ready`, `LastTaskResult=0`, `IgnoreNew`; servicio NSSM reiniciado y `Running`, config prod, startup guard 600s, schema v5, collector 16/16 y cero decisiones de reboot inmediatas.
   - Render real SQLite-only de `/diagnose 23`: 8 lineas, estado `OK`, muestra reciente y collector `OK`; invocacion desde el chat queda como smoke manual del operador.
+  - Integracion final: cadena Specs 006-017 aplicada por fast-forward a `main`; 101 tests, compilacion, dependencias, simbolos duplicados, secretos y `git diff --check` auditados, con 28 findings historicos de whitespace documental eliminados.
 * **Estado**:
   - Implementacion y rollout productivo completos, sin ejecutar acciones Hashcore/reboot/restart.
 * **Archivos principales**:

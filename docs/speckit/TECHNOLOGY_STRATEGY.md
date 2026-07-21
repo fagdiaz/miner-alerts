@@ -118,7 +118,7 @@ Adoption rule:
 
 Current use:
 
-- Run the bounded Vnish collector every 15 minutes outside the monitor process.
+- Run the bounded Vnish collector every 30 minutes outside the monitor process in a hidden PowerShell window.
 - Use native `IgnoreNew` overlap protection and a ten-minute execution limit.
 - Persist collector health in SQLite for `/diagnose` and the local dashboard.
 

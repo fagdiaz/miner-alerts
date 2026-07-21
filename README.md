@@ -93,16 +93,16 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - El colector es una CLI separada: el monitor de produccion no mantiene WebSockets Vnish abiertos.
 - Cada corrida persistida deja un resumen acotado en `collector_runs`; schema SQLite actual: v5.
 
-Programar la recoleccion cada 15 minutos como tarea separada del usuario actual:
+Programar la recoleccion cada 30 minutos como tarea separada del usuario actual:
 
 ```powershell
 & ".\tools\install_vnish_collector_task.ps1" -WhatIf
-& ".\tools\install_vnish_collector_task.ps1" -IntervalMinutes 15
+& ".\tools\install_vnish_collector_task.ps1" -IntervalMinutes 30
 Start-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
 Get-ScheduledTaskInfo -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
 ```
 
-La tarea usa `IgnoreNew`, una ejecucion maxima de 10 minutos y el wrapper one-shot
+La tarea solicita una ventana PowerShell oculta, usa `IgnoreNew`, una ejecucion maxima de 10 minutos y el wrapper one-shot
 `tools/run_vnish_collector.ps1`. No mantiene un daemon, no reintenta y no ejecuta
 Hashcore. Se registra con `LogonType Interactive`: corre mientras el usuario que
 la instalo tiene una sesion iniciada.

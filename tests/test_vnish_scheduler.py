@@ -14,6 +14,8 @@ class VnishSchedulerTests(unittest.TestCase):
         self.assertIn("RunLevel Limited", source)
         self.assertIn("ExecutionTimeLimit", source)
         self.assertIn("-WorkingDirectory $repoRoot", source)
+        self.assertIn("[int]$IntervalMinutes = 30", source)
+        self.assertIn("-WindowStyle Hidden", source)
         self.assertNotIn("Highest", source)
         self.assertNotIn("Register-ScheduledJob", source)
 

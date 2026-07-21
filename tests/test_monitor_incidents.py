@@ -2,7 +2,9 @@ import unittest
 from unittest.mock import patch
 
 from app.miner_monitor import (
+    RestartNotificationCoordinator,
     _parse_message_command,
+    format_restart_notification_batch,
     format_restart_incident,
     read_stats_snapshot,
     run_hashcore_cli,
@@ -32,10 +34,97 @@ class MonitorIncidentMessageTests(unittest.TestCase):
             attribution_window_seconds=900,
         )
 
-        self.assertIn("REINICIO NO ESPERADO", message)
+        self.assertIn("REINICIO SIN ACCION ATRIBUIDA", message)
         self.assertIn("86400s -> 120s", message)
         self.assertIn("ninguna en los ultimos 15 min", message)
         self.assertIn("Detalle: /event 42", message)
+
+    def test_restart_batch_groups_fleet_incidents(self) -> None:
+        incidents = [
+            {
+                "detected_ts": 100.0,
+                "name_display": "23",
+                "event_id": 5,
+                "message": "individual 23",
+            },
+            {
+                "detected_ts": 130.0,
+                "name_display": "24",
+                "event_id": 8,
+                "message": "individual 24",
+            },
+            {
+                "detected_ts": 250.0,
+                "name_display": "25",
+                "event_id": 12,
+                "message": "individual 25",
+            },
+        ]
+
+        message = format_restart_notification_batch(
+            incidents,
+            attribution_window_seconds=900,
+            fleet_min_affected=2,
+        )
+
+        self.assertIn("REINICIOS DE FLOTA DETECTADOS", message)
+        self.assertIn("Miners: 23, 24, 25", message)
+        self.assertIn("Ventana de deteccion: 150s", message)
+        self.assertIn("/event 5, /event 8, /event 12", message)
+        self.assertNotIn("individual 23", message)
+
+    def test_restart_batch_preserves_single_incident_message(self) -> None:
+        message = format_restart_notification_batch(
+            [
+                {
+                    "detected_ts": 100.0,
+                    "name_display": "23",
+                    "event_id": 5,
+                    "message": "single incident",
+                }
+            ],
+            attribution_window_seconds=900,
+            fleet_min_affected=2,
+        )
+
+        self.assertEqual("single incident", message)
+
+    def test_restart_notification_coordinator_batches_and_quiets_only_delivery(self) -> None:
+        coordinator = RestartNotificationCoordinator(
+            coalesce_seconds=180,
+            recovery_quiet_seconds=600,
+        )
+        coordinator.add(
+            detected_ts=100.0,
+            name_display="23",
+            event_id=5,
+            message="incident 23",
+        )
+        coordinator.add(
+            detected_ts=250.0,
+            name_display="25",
+            event_id=12,
+            message="incident 25",
+        )
+
+        self.assertIsNone(
+            coordinator.pop_ready(
+                now_ts=279.0,
+                attribution_window_seconds=900,
+                fleet_min_affected=2,
+            )
+        )
+        self.assertTrue(coordinator.suppress_state_change(now_ts=279.0))
+        message = coordinator.pop_ready(
+            now_ts=280.0,
+            attribution_window_seconds=900,
+            fleet_min_affected=2,
+        )
+        self.assertIn("REINICIOS DE FLOTA DETECTADOS", message or "")
+        self.assertFalse(coordinator.recovery_summary_due(now_ts=849.0))
+        self.assertTrue(coordinator.recovery_summary_due(now_ts=850.0))
+        coordinator.mark_recovery_summary_sent()
+        self.assertFalse(coordinator.recovery_summary_due(now_ts=851.0))
 
     def test_expected_restart_message_names_related_action(self) -> None:
         classification = RestartClassification(

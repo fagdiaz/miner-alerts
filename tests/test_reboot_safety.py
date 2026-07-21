@@ -267,6 +267,8 @@ class RebootSafetyInterlockTests(unittest.TestCase):
         self.assertIs(True, config["auto_reboot_fleet_guard_enabled"])
         self.assertEqual(2, config["auto_reboot_fleet_guard_min_affected"])
         self.assertIs(True, config["auto_reboot_firmware_transition_guard_enabled"])
+        self.assertEqual(180, config["restart_notification_coalesce_seconds"])
+        self.assertEqual(600, config["restart_recovery_quiet_seconds"])
 
 
 if __name__ == "__main__":

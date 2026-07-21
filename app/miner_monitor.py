@@ -1148,7 +1148,7 @@ def format_restart_incident(
     attribution_window_seconds: int,
 ) -> str:
     title = (
-        "REINICIO NO ESPERADO"
+        "REINICIO SIN ACCION ATRIBUIDA"
         if classification.classification == "unexpected"
         else "REINICIO DETECTADO"
     )
@@ -1172,6 +1172,115 @@ def format_restart_incident(
     if event_id is not None:
         lines.extend([f"Incidente: #{event_id}", f"Detalle: /event {event_id}"])
     return "\n".join(lines)
+
+
+def format_restart_notification_batch(
+    incidents: list[dict[str, Any]],
+    *,
+    attribution_window_seconds: int,
+    fleet_min_affected: int,
+) -> str:
+    if not incidents:
+        return ""
+    unique_names = list(
+        dict.fromkeys(str(item.get("name_display") or "?") for item in incidents)
+    )
+    if len(unique_names) < max(2, fleet_min_affected):
+        return "\n\n---\n\n".join(
+            str(item.get("message") or "") for item in incidents
+        )
+
+    detected_times = [
+        float(item["detected_ts"])
+        for item in incidents
+        if item.get("detected_ts") is not None
+    ]
+    span_seconds = int(max(detected_times) - min(detected_times)) if detected_times else 0
+    event_links = [
+        f"/event {int(item['event_id'])}"
+        for item in incidents
+        if item.get("event_id") is not None
+    ]
+    minutes = max(1, int(attribution_window_seconds / 60))
+    lines = [
+        "REINICIOS DE FLOTA DETECTADOS",
+        "",
+        f"Miners: {', '.join(unique_names)}",
+        f"Ventana de deteccion: {span_seconds}s",
+        (
+            "Origen: sin accion registrada del monitor/Hashcore "
+            f"en los ultimos {minutes} min."
+        ),
+        "Estado: recuperacion en curso; se enviara un resumen al finalizar.",
+    ]
+    if event_links:
+        lines.append(f"Incidentes: {', '.join(event_links)}")
+    return "\n".join(lines)
+
+
+@dataclass
+class RestartNotificationCoordinator:
+    coalesce_seconds: float
+    recovery_quiet_seconds: float
+    incidents: list[dict[str, Any]] = field(default_factory=list)
+    recovery_quiet_until: float = 0.0
+    suppressed_state_changes: bool = False
+
+    def add(
+        self,
+        *,
+        detected_ts: float,
+        name_display: str,
+        event_id: Optional[int],
+        message: str,
+    ) -> None:
+        self.incidents.append(
+            {
+                "detected_ts": float(detected_ts),
+                "name_display": name_display,
+                "event_id": event_id,
+                "message": message,
+            }
+        )
+        self.recovery_quiet_until = max(
+            self.recovery_quiet_until,
+            float(detected_ts) + self.recovery_quiet_seconds,
+        )
+
+    def pop_ready(
+        self,
+        *,
+        now_ts: float,
+        attribution_window_seconds: int,
+        fleet_min_affected: int,
+    ) -> Optional[str]:
+        if not self.incidents:
+            return None
+        first_ts = min(float(item["detected_ts"]) for item in self.incidents)
+        if (float(now_ts) - first_ts) < self.coalesce_seconds:
+            return None
+        message = format_restart_notification_batch(
+            self.incidents,
+            attribution_window_seconds=attribution_window_seconds,
+            fleet_min_affected=fleet_min_affected,
+        )
+        self.incidents.clear()
+        return message
+
+    def suppress_state_change(self, *, now_ts: float) -> bool:
+        if float(now_ts) >= self.recovery_quiet_until:
+            return False
+        self.suppressed_state_changes = True
+        return True
+
+    def recovery_summary_due(self, *, now_ts: float) -> bool:
+        return (
+            self.suppressed_state_changes
+            and float(now_ts) >= self.recovery_quiet_until
+        )
+
+    def mark_recovery_summary_sent(self) -> None:
+        self.suppressed_state_changes = False
 
 
 def record_action_outcome(
@@ -3370,6 +3479,14 @@ def main() -> None:
     restart_attribution_window_seconds = max(
         60, int(config.get("restart_attribution_window_seconds", 900))
     )
+    restart_notification_coalesce_seconds = max(
+        0.0,
+        float(config.get("restart_notification_coalesce_seconds", 180.0)),
+    )
+    restart_recovery_quiet_seconds = max(
+        restart_notification_coalesce_seconds,
+        float(config.get("restart_recovery_quiet_seconds", 600.0)),
+    )
     notify_unexpected_restarts = bool(config.get("notify_unexpected_restarts", True))
     notify_expected_restarts = bool(config.get("notify_expected_restarts", False))
     reboot_cooldown_seconds = int(config.get("reboot_cooldown_seconds", 1800))
@@ -3523,6 +3640,10 @@ def main() -> None:
 
     try:
         first_tick = True
+        restart_notifications = RestartNotificationCoordinator(
+            coalesce_seconds=restart_notification_coalesce_seconds,
+            recovery_quiet_seconds=restart_recovery_quiet_seconds,
+        )
         last_sample_ts: Dict[str, float] = {}
         last_retention_ts = process_start_ts
         previous_tick_signals: Dict[str, str] = {}
@@ -3534,7 +3655,6 @@ def main() -> None:
             reboot_names_tick = []
             miner_lines = []
             event_lines = []
-            restart_incident_messages = []
             startup_lines = [] if first_tick else None
             degraded_candidates = []
             current_tick_signals: Dict[str, str] = {}
@@ -3703,9 +3823,16 @@ def main() -> None:
                         restart_classification.classification != "unexpected"
                         and notify_expected_restarts
                     )
-                    if notify_reboot and should_notify_restart:
-                        restart_incident_messages.append(
-                            format_restart_incident(
+                    if (
+                        notify_reboot
+                        and should_notify_restart
+                        and ((not qa_mode) or qa_notify)
+                    ):
+                        restart_notifications.add(
+                            detected_ts=now_ts,
+                            name_display=name_display,
+                            event_id=incident_id,
+                            message=format_restart_incident(
                                 event_id=incident_id,
                                 name_display=name_display,
                                 previous_elapsed=previous_elapsed,
@@ -3714,7 +3841,7 @@ def main() -> None:
                                 state=new_state,
                                 rate_ths=rate_ths,
                                 attribution_window_seconds=restart_attribution_window_seconds,
-                            )
+                            ),
                         )
 
                 if not state.initialized:
@@ -4204,14 +4331,38 @@ def main() -> None:
             with snapshot_lock:
                 snapshot_ref["value"] = "\n".join(status_lines)
 
-            if restart_incident_messages and ((not qa_mode) or qa_notify):
+            restart_incident_message = restart_notifications.pop_ready(
+                now_ts=now_ts,
+                attribution_window_seconds=restart_attribution_window_seconds,
+                fleet_min_affected=auto_reboot_fleet_guard_min_affected,
+            )
+            if restart_incident_message:
                 send_telegram(
                     bot_token,
                     str(chat_id),
-                    "\n\n---\n\n".join(restart_incident_messages),
+                    restart_incident_message,
                     "RESTART_INCIDENT",
                     "restart_detected",
                 )
+
+            recovery_summary_due = restart_notifications.recovery_summary_due(
+                now_ts=now_ts
+            )
+            if recovery_summary_due:
+                recovery_lines = [
+                    f"RESTART RECOVERY ({now_str()})",
+                    "",
+                    "Estado actual:",
+                    *miner_lines,
+                ]
+                send_telegram(
+                    bot_token,
+                    str(chat_id),
+                    "\n".join(recovery_lines),
+                    "RESTART_RECOVERY",
+                    "restart_recovery",
+                )
+                restart_notifications.mark_recovery_summary_sent()
 
             if first_tick and notify_startup:
                 message_lines = [
@@ -4221,6 +4372,12 @@ def main() -> None:
                 message_lines.extend(startup_lines or miner_lines)
                 if (not qa_mode) or qa_notify:
                     send_telegram(bot_token, str(chat_id), "\n".join(message_lines), "STARTUP", "startup")
+            elif recovery_summary_due:
+                pass
+            elif state_message_needed and restart_notifications.suppress_state_change(
+                now_ts=now_ts
+            ):
+                log("[NOTIFY] state_change_suppressed reason=restart_recovery")
             elif state_message_needed:
                 message_lines = [
                     f"STATE CHANGE ({now_str()})",

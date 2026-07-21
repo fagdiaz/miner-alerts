@@ -320,12 +320,12 @@ Install the separate current-user scheduled task after a dry run:
 
 ```powershell
 & ".\tools\install_vnish_collector_task.ps1" -WhatIf
-& ".\tools\install_vnish_collector_task.ps1" -IntervalMinutes 15
+& ".\tools\install_vnish_collector_task.ps1" -IntervalMinutes 30
 Start-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
 Get-ScheduledTaskInfo -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
 ```
 
-The task invokes `tools/run_vnish_collector.ps1`, uses `IgnoreNew`, and has a
+The task invokes `tools/run_vnish_collector.ps1` in a hidden PowerShell window, uses `IgnoreNew`, and has a
 ten-minute execution limit. It is current-user `Interactive`, so it requires that
 user to have an active Windows session. It never starts the monitor or Hashcore.
 

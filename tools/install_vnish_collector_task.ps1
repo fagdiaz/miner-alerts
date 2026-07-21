@@ -1,7 +1,7 @@
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Medium")]
 param(
     [ValidateRange(5, 1440)]
-    [int]$IntervalMinutes = 15,
+    [int]$IntervalMinutes = 30,
     [string]$TaskName = "MinerAlertsVnishCollector",
     [string]$TaskPath = "\MinerAlerts\"
 )
@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path -LiteralPath (Split-Path -Parent $PSScriptRoot)).Path
 $runner = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "run_vnish_collector.ps1")).Path
 $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
-$arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$runner`""
+$arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runner`""
 $target = "$TaskPath$TaskName"
 
 if ($WhatIfPreference) {

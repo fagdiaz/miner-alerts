@@ -9,6 +9,6 @@
 Final rollout only:
 
 ```powershell
-& ".\tools\install_vnish_collector_task.ps1" -IntervalMinutes 15
+& ".\tools\install_vnish_collector_task.ps1" -IntervalMinutes 30
 Start-ScheduledTask -TaskName "MinerAlertsVnishCollector"
 ```

@@ -38,6 +38,8 @@
   "event_retention_days": 365,
   "decision_retention_days": 180,
   "restart_attribution_window_seconds": 900,
+  "restart_notification_coalesce_seconds": 180,
+  "restart_recovery_quiet_seconds": 600,
   "notify_unexpected_restarts": true,
   "notify_expected_restarts": false,
   "reboot_cooldown_seconds": 1800,

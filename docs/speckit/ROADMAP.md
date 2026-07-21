@@ -9,7 +9,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 ## P0 - Production Safety And No Unnecessary Reboots
 
 - [x] Persist and classify uptime-reset incidents as expected-manual, expected-auto, or unexpected without changing action policy.
-- [x] Send a dedicated evidence-rich alert for unexpected restarts independently of state-change timing.
+- [x] Send evidence-rich restart alerts without false cause certainty; coalesce fleet restarts and suppress only transient Telegram recovery noise.
 - [ ] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
 - [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
 - [x] Require a current finite below-threshold signal before auto-reboot evaluation; invalid and recovered samples now break the sustained LOW timer.
@@ -70,6 +70,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [ ] Document debug flags and expected log traces.
 - [x] Disable noisy degraded hourly status by default and keep Telegram notifications event-driven.
 - [x] Add clearer event context to `STATE_CHANGE` Telegram messages.
+- [x] Coalesce restart incidents across a bounded fleet window and emit one post-recovery summary without changing persisted transitions.
 - [x] Add read-only `/why [miner]` explanations for QA, startup guard, cooldown, not sustained, window, invalid signal and action outcomes.
 - [x] Add read-only `/health [all|miner]` diagnosis against each miner's learned stable baseline without live miner IO.
 - [x] Add read-only `/quality [all|miner]` interval diagnosis for shares, HW errors, chain faults, and firmware transitions.

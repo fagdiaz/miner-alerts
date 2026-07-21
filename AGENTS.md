@@ -9,7 +9,7 @@
 4. Use `docs/speckit/ROADMAP.md` as the working backlog for quick wins, bug fixes, and audit priorities.
 
 Active implementation plan:
-`specs/014-qa-poll-empty-stability/plan.md`
+`specs/015-vnish-transition-reboot-interlock/plan.md`
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

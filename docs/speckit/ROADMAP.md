@@ -49,7 +49,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [ ] Create a parser plan that stores small normalized events, not full raw logs.
 - [ ] Correlate Vnish events with Miner Alerts state changes and Telegram alerts.
 - [ ] Detect "Vnish working normally" vs "miner actually needs intervention".
-- [ ] Avoid reboot during known autotune/profile transitions unless a sustained hardware fault is confirmed.
+- [x] Avoid reboot during current Vnish chain autotune/profile transitions and require a fresh sustained LOW interval after they end.
 
 ## P4 - Power And Electrical Observability
 

@@ -168,6 +168,17 @@ class EventStoreTests(unittest.TestCase):
         self.assertIn("Resultado: high_temperature", thermal_rendered)
         self.assertIn("Bloqueo termico: 86.5C / limite 85.0C", thermal_rendered)
 
+        transition = dict(base)
+        transition["result"] = "firmware_transition"
+        transition["details_json"] = (
+            '{"chains_transitioning_count":2,'
+            '"firmware_transition_guard_enabled":true}'
+        )
+        transition_rendered = render_reboot_decision(transition)
+        self.assertIn("Resultado: firmware_transition", transition_rendered)
+        self.assertIn("Cadenas en transicion: 2", transition_rendered)
+        self.assertIn("LOW debe sostenerse nuevamente", transition_rendered)
+
     def test_migrates_schema_v1_without_losing_rows(self) -> None:
         legacy_path = Path(self.temp_dir.name) / "legacy.db"
         connection = sqlite3.connect(legacy_path)

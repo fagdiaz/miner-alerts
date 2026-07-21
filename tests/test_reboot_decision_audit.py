@@ -14,6 +14,7 @@ class RebootDecisionAuditTests(unittest.TestCase):
             "invalid_signal",
             "startup_guard",
             "not_sustained",
+            "firmware_transition",
             "cooldown",
             "window",
             "qa",

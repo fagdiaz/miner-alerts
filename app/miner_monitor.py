@@ -3142,6 +3142,9 @@ def main() -> None:
         2,
         int(config.get("auto_reboot_fleet_guard_min_affected", 2)),
     )
+    auto_reboot_firmware_transition_guard_enabled = bool(
+        config.get("auto_reboot_firmware_transition_guard_enabled", True)
+    )
     if qa_mode:
         poll_seconds = int(config.get("qa_poll_seconds", 2))
         reboot_cooldown_seconds = int(config.get("qa_reboot_cooldown_seconds", 120))
@@ -3157,6 +3160,7 @@ def main() -> None:
         f"max_temp_c={auto_reboot_max_temp_c:.1f} "
         f"fleet={str(auto_reboot_fleet_guard_enabled).lower()} "
         f"fleet_min_affected={auto_reboot_fleet_guard_min_affected} "
+        f"firmware_transition={str(auto_reboot_firmware_transition_guard_enabled).lower()} "
         f"fleet_snapshot_max_age_seconds={auto_reboot_fleet_snapshot_max_age_seconds:.0f}"
     )
 
@@ -3514,6 +3518,10 @@ def main() -> None:
                     thermal_limit_c=auto_reboot_max_temp_c,
                     fleet_guard_enabled=auto_reboot_fleet_guard_enabled,
                     fleet_min_affected=auto_reboot_fleet_guard_min_affected,
+                    firmware_transition_guard_enabled=(
+                        auto_reboot_firmware_transition_guard_enabled
+                    ),
+                    chains_transitioning_count=quality_telemetry.chains_transitioning_count,
                 )
                 decision_context: Dict[str, Any] = {
                     "evaluated_ts": now_ts,
@@ -3619,14 +3627,35 @@ def main() -> None:
                                 ),
                                 "max_temp_c": interlock_decision.max_temp_c,
                                 "thermal_limit_c": auto_reboot_max_temp_c,
+                                "chains_transitioning_count": (
+                                    interlock_decision.chains_transitioning_count
+                                ),
+                                "firmware_transition_guard_enabled": (
+                                    auto_reboot_firmware_transition_guard_enabled
+                                ),
+                                "low_timer_reset": bool(
+                                    auto_reboot_firmware_transition_guard_enabled
+                                    and (interlock_decision.chains_transitioning_count or 0) > 0
+                                ),
                             },
                             **decision_context,
                         )
+                        if (
+                            auto_reboot_firmware_transition_guard_enabled
+                            and (interlock_decision.chains_transitioning_count or 0) > 0
+                        ):
+                            state.low_since_ts = now_ts
                         if interlock_reason == "high_temperature":
                             log(
                                 f"[AUTO-REBOOT] blocked_by=high_temperature miner={name_display} "
                                 f"max_temp_c={interlock_decision.max_temp_c} "
                                 f"limit_c={auto_reboot_max_temp_c:.1f}"
+                            )
+                        elif interlock_reason == "firmware_transition":
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=firmware_transition miner={name_display} "
+                                f"transitioning_chains={interlock_decision.chains_transitioning_count} "
+                                f"low_timer_reset=true"
                             )
                         else:
                             log(

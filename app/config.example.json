@@ -45,6 +45,7 @@
   "auto_reboot_max_temp_c": 85.0,
   "auto_reboot_fleet_guard_enabled": true,
   "auto_reboot_fleet_guard_min_affected": 2,
+  "auto_reboot_firmware_transition_guard_enabled": true,
   "offline_is_actionable": true,
   "qa_mode": false,
   "qa_notify": false,

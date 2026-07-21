@@ -786,5 +786,10 @@ def render_reboot_decision(decision: Optional[Dict[str, Any]]) -> str:
         observed_label = f"{float(observed_temp):.1f}C" if observed_temp is not None else "N/A"
         limit_label = f"{float(limit_temp):.1f}C" if limit_temp is not None else "N/A"
         lines.append(f"Bloqueo termico: {observed_label} / limite {limit_label}")
+    elif result == "firmware_transition":
+        lines.append(
+            f"Cadenas en transicion: {details.get('chains_transitioning_count', 'N/A')}"
+        )
+        lines.append("Observacion segura: LOW debe sostenerse nuevamente tras la transicion.")
     lines.append(f"Fecha: {evaluated}")
     return "\n".join(lines)

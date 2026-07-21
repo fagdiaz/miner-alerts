@@ -6,6 +6,7 @@ from pathlib import Path
 
 import app.miner_monitor as monitor
 from app.reboot_safety import (
+    INTERLOCK_FIRMWARE_TRANSITION,
     INTERLOCK_FLEET_INCIDENT,
     INTERLOCK_HIGH_TEMPERATURE,
     evaluate_auto_reboot_interlocks,
@@ -13,6 +14,71 @@ from app.reboot_safety import (
 
 
 class RebootSafetyInterlockTests(unittest.TestCase):
+    def test_current_firmware_transition_blocks_auto_reboot(self) -> None:
+        decision = evaluate_auto_reboot_interlocks(
+            current_miner_key="m23",
+            current_signal="eligible",
+            previous_signals={},
+            previous_signals_observed_ts=None,
+            evaluated_ts=1_000.0,
+            fleet_snapshot_max_age_seconds=60.0,
+            max_temp_c=78.0,
+            thermal_guard_enabled=True,
+            thermal_limit_c=85.0,
+            fleet_guard_enabled=False,
+            fleet_min_affected=2,
+            firmware_transition_guard_enabled=True,
+            chains_transitioning_count=1,
+        )
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual(INTERLOCK_FIRMWARE_TRANSITION, decision.reason)
+        self.assertEqual(1, decision.chains_transitioning_count)
+
+    def test_transition_unknown_zero_or_disabled_does_not_block(self) -> None:
+        for enabled, count in (
+            (True, None),
+            (True, 0),
+            (True, "bad"),
+            (False, 2),
+        ):
+            with self.subTest(enabled=enabled, count=count):
+                decision = evaluate_auto_reboot_interlocks(
+                    current_miner_key="m23",
+                    current_signal="eligible",
+                    previous_signals={},
+                    previous_signals_observed_ts=None,
+                    evaluated_ts=1_000.0,
+                    fleet_snapshot_max_age_seconds=60.0,
+                    max_temp_c=78.0,
+                    thermal_guard_enabled=True,
+                    thermal_limit_c=85.0,
+                    fleet_guard_enabled=False,
+                    fleet_min_affected=2,
+                    firmware_transition_guard_enabled=enabled,
+                    chains_transitioning_count=count,
+                )
+                self.assertTrue(decision.allowed)
+
+    def test_thermal_guard_precedes_firmware_transition(self) -> None:
+        decision = evaluate_auto_reboot_interlocks(
+            current_miner_key="m23",
+            current_signal="eligible",
+            previous_signals={},
+            previous_signals_observed_ts=None,
+            evaluated_ts=1_000.0,
+            fleet_snapshot_max_age_seconds=60.0,
+            max_temp_c=90.0,
+            thermal_guard_enabled=True,
+            thermal_limit_c=85.0,
+            fleet_guard_enabled=False,
+            fleet_min_affected=2,
+            firmware_transition_guard_enabled=True,
+            chains_transitioning_count=1,
+        )
+
+        self.assertEqual(INTERLOCK_HIGH_TEMPERATURE, decision.reason)
+
     def test_single_low_candidate_remains_allowed(self) -> None:
         decision = evaluate_auto_reboot_interlocks(
             current_miner_key="m23",
@@ -175,8 +241,21 @@ class RebootSafetyInterlockTests(unittest.TestCase):
         self.assertLess(sustained, interlock)
         self.assertLess(interlock, cooldown)
         self.assertLess(cooldown, hashcore)
+        self.assertIn(
+            "chains_transitioning_count=quality_telemetry.chains_transitioning_count",
+            source,
+        )
+        interlock_branch = source.index("elif not interlock_decision.allowed")
+        transition_reset = source.index("state.low_since_ts = now_ts", interlock_branch)
+        thermal_branch = source.index('interlock_reason == "high_temperature"', interlock_branch)
+        self.assertLess(transition_reset, thermal_branch)
+        self.assertLess(transition_reset, cooldown)
         self.assertIn("current_tick_signals[state_key] = auto_reboot_signal", source)
         self.assertIn("previous_tick_signals = current_tick_signals.copy()", source)
+        self.assertNotIn(
+            "firmware_transition_guard",
+            inspect.getsource(monitor.telegram_polling_worker),
+        )
 
     def test_production_example_enables_conservative_defaults(self) -> None:
         config = json.loads(
@@ -187,6 +266,7 @@ class RebootSafetyInterlockTests(unittest.TestCase):
         self.assertEqual(85.0, config["auto_reboot_max_temp_c"])
         self.assertIs(True, config["auto_reboot_fleet_guard_enabled"])
         self.assertEqual(2, config["auto_reboot_fleet_guard_min_affected"])
+        self.assertIs(True, config["auto_reboot_firmware_transition_guard_enabled"])
 
 
 if __name__ == "__main__":

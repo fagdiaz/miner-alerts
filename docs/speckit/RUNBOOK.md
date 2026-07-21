@@ -303,6 +303,7 @@ primary Windows path. `data/` and `diagnostics/` are ignored by Git.
 - LOW must be sustained from the current process execution before auto-reboot.
 - The current tick must have `responded=true` and a finite hashrate below threshold; no-response, missing/non-finite rate, or a recovered rate resets the sustained LOW timer.
 - A current Vnish maximum temperature at or above `auto_reboot_max_temp_c` blocks automatic action when `auto_reboot_thermal_guard_enabled` is true.
+- A current Vnish chain transition blocks automatic action when `auto_reboot_firmware_transition_guard_enabled` is true. The sustained-LOW timer restarts, so LOW must persist for a full interval after tuning/startup ends; manual confirmed actions are unchanged.
 - If at least `auto_reboot_fleet_guard_min_affected` miners were degraded in the latest fresh completed tick, `auto_reboot_fleet_guard_enabled` blocks a reboot cascade as `fleet_incident`.
 - Fleet evidence expires after `max(60, poll_seconds * 2)`; stale evidence is ignored.
 - Thermal/fleet interlocks use existing summary/stats responses and never add miner IO.
@@ -315,7 +316,8 @@ Production-safe defaults:
   "auto_reboot_thermal_guard_enabled": true,
   "auto_reboot_max_temp_c": 85.0,
   "auto_reboot_fleet_guard_enabled": true,
-  "auto_reboot_fleet_guard_min_affected": 2
+  "auto_reboot_fleet_guard_min_affected": 2,
+  "auto_reboot_firmware_transition_guard_enabled": true
 }
 ```
 
@@ -323,6 +325,7 @@ Expected evidence:
 
 ```text
 [AUTO-REBOOT] blocked_by=high_temperature miner=... max_temp_c=... limit_c=85.0
+[AUTO-REBOOT] blocked_by=firmware_transition miner=... transitioning_chains=... low_timer_reset=true
 [AUTO-REBOOT] blocked_by=fleet_incident miner=... affected_count=... min_affected=2 ...
 ```
 

@@ -5,6 +5,26 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 015: Vnish Transition Reboot Interlock
+
+* **Objetivo**: Evitar auto-reboots innecesarios mientras Vnish informa una transicion actual de tuning, calibracion, inicio o warm-up de cadenas.
+* **Resultado**:
+  - El interlock puro bloquea solo con evidencia actual positiva y conserva precedencia termica; datos ausentes, invalidos o cero no inventan bloqueos.
+  - El bloqueo se persiste como `firmware_transition`, expone cantidad acotada de cadenas y reinicia solo `low_since_ts` para exigir LOW sostenido nuevamente.
+  - `/why` explica la decision; acciones manuales Telegram, confirmaciones y Hashcore manual no incorporan este gate.
+  - Default conservador `auto_reboot_firmware_transition_guard_enabled=true`, sin nuevas llamadas al minero ni cambios de esquema.
+* **Validaciones ejecutadas**:
+  - Fase roja reproducida para contrato/interlock/render y 25 pruebas dirigidas PASS tras implementar.
+  - Suite completa 84/84, `py_compile`, JSON y `git diff --check`: PASS.
+  - Probe sintetico: `allowed=False reason=firmware_transition transitioning_chains=1`.
+  - Evidencia live actual sin transiciones; activacion y observacion runtime diferidas al rollout final.
+* **Archivos principales**:
+  - `app/reboot_safety.py`
+  - `app/miner_monitor.py`
+  - `app/event_store.py`
+  - `tests/test_reboot_safety.py`
+  - `specs/015-vnish-transition-reboot-interlock/*`
+
 ## [2026-07-20] - Spec 014: QA Poll-Empty Stability
 
 * **Objetivo**: Evitar que un lote vacio de Telegram en QA intente usar variables locales de ramas de comandos y degrade el polling con excepciones/backoff.

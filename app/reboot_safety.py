@@ -6,6 +6,7 @@ from typing import Any, Mapping, Optional
 
 
 INTERLOCK_HIGH_TEMPERATURE = "high_temperature"
+INTERLOCK_FIRMWARE_TRANSITION = "firmware_transition"
 INTERLOCK_FLEET_INCIDENT = "fleet_incident"
 
 _AFFECTED_SIGNAL_CLASSES = frozenset(("eligible", "invalid_signal"))
@@ -18,6 +19,7 @@ class RebootInterlockDecision:
     affected_miners: tuple[str, ...] = ()
     max_temp_c: Optional[float] = None
     fleet_snapshot_age_seconds: Optional[float] = None
+    chains_transitioning_count: Optional[int] = None
 
 
 def _finite_number(value: Any) -> Optional[float]:
@@ -28,6 +30,13 @@ def _finite_number(value: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _nonnegative_integer(value: Any) -> Optional[int]:
+    number = _finite_number(value)
+    if number is None or number < 0 or not number.is_integer():
+        return None
+    return int(number)
 
 
 def evaluate_auto_reboot_interlocks(
@@ -43,9 +52,12 @@ def evaluate_auto_reboot_interlocks(
     thermal_limit_c: float,
     fleet_guard_enabled: bool,
     fleet_min_affected: int,
+    firmware_transition_guard_enabled: bool = True,
+    chains_transitioning_count: Any = None,
 ) -> RebootInterlockDecision:
     """Evaluate conservative no-action gates using already collected evidence."""
     current_temp = _finite_number(max_temp_c)
+    current_transition_count = _nonnegative_integer(chains_transitioning_count)
     safe_thermal_limit = _finite_number(thermal_limit_c)
     if safe_thermal_limit is None:
         safe_thermal_limit = 85.0
@@ -84,6 +96,21 @@ def evaluate_auto_reboot_interlocks(
             affected_miners=affected,
             max_temp_c=current_temp,
             fleet_snapshot_age_seconds=snapshot_age,
+            chains_transitioning_count=current_transition_count,
+        )
+
+    if (
+        firmware_transition_guard_enabled
+        and current_transition_count is not None
+        and current_transition_count > 0
+    ):
+        return RebootInterlockDecision(
+            allowed=False,
+            reason=INTERLOCK_FIRMWARE_TRANSITION,
+            affected_miners=affected,
+            max_temp_c=current_temp,
+            fleet_snapshot_age_seconds=snapshot_age,
+            chains_transitioning_count=current_transition_count,
         )
 
     safe_min_affected = max(2, int(fleet_min_affected))
@@ -94,6 +121,7 @@ def evaluate_auto_reboot_interlocks(
             affected_miners=affected,
             max_temp_c=current_temp,
             fleet_snapshot_age_seconds=snapshot_age,
+            chains_transitioning_count=current_transition_count,
         )
 
     return RebootInterlockDecision(
@@ -101,4 +129,5 @@ def evaluate_auto_reboot_interlocks(
         affected_miners=affected,
         max_temp_c=current_temp,
         fleet_snapshot_age_seconds=snapshot_age,
+        chains_transitioning_count=current_transition_count,
     )

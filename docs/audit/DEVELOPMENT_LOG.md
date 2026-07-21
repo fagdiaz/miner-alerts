@@ -5,6 +5,29 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 016: Vnish Log Intelligence
+
+* **Objetivo**: Incorporar evidencia historica del firmware Vnish para distinguir transiciones normales, watchdog/restarts y fallas de cadena, energia, temperatura o pool sin acoplarla a acciones automaticas.
+* **Resultado**:
+  - Un parser puro y acotado normaliza solo evidencia conocida y descarta lineas desconocidas; la base guarda resumen generado y fingerprint, nunca el log crudo.
+  - Una CLI Windows separada consume secuencialmente los WebSockets confirmados `status`, `miner`, `autotune` y `system`, con timeouts, limites y dry-run, sin retries ni acciones.
+  - SQLite migra aditivamente a schema v4 con `firmware_events` idempotentes y retencion; recolectar el mismo historial dos veces no duplica filas.
+  - `/firmware [all|miner]` y la timeline del dashboard leen solo SQLite; el monitor no abre WebSockets Vnish y ningun evento modifica state machine, alertas o reboots.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first, 24 pruebas dirigidas y suite completa 93/93: PASS.
+  - `py_compile`, `git diff --check`, Speckit QA 11/11, dependencia `websocket-client 1.9.0`, build y dashboard Docker: PASS.
+  - Smoke live read-only: 16/16 combinaciones miner/tab completadas; persistencia aislada 800 inserts y segunda pasada 800 duplicados, cero fallas y cero hits sensibles.
+* **Estado**:
+  - Implementacion y evidencia completas; activacion de `/firmware` diferida al reinicio controlado final del servicio.
+* **Archivos principales**:
+  - `app/vnish_logs.py`
+  - `app/event_store.py`
+  - `app/miner_monitor.py`
+  - `tools/vnish_log_collector.py`
+  - `tools/operations_dashboard.py`
+  - `tests/test_vnish_logs.py`
+  - `specs/016-vnish-log-intelligence/*`
+
 ## [2026-07-20] - Spec 015: Vnish Transition Reboot Interlock
 
 * **Objetivo**: Evitar auto-reboots innecesarios mientras Vnish informa una transicion actual de tuning, calibracion, inicio o warm-up de cadenas.

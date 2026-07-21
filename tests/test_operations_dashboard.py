@@ -112,6 +112,19 @@ class OperationsDashboardTests(unittest.TestCase):
             telemetry=telemetry,
             details={"affected_count": 2},
         )
+        self.store.record_firmware_event(
+            collected_ts=9_997.0,
+            source_ts_text="2025/09/08 08:51:59",
+            miner_key="S19JPRO-23|h23:4028",
+            miner_name="<Miner 23>",
+            host="h23",
+            source_tab="status",
+            source_fingerprint="b" * 64,
+            category="restart",
+            severity="warning",
+            code="watchdog_chain_restart",
+            summary="Reinicio interno por corte de cadena",
+        )
 
     def test_builds_bounded_fleet_view_model(self) -> None:
         self._record_fixture()
@@ -134,6 +147,8 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertEqual(1, report["summary"]["degraded"])
         self.assertEqual(1, report["summary"]["events"])
         self.assertEqual(1, report["summary"]["decisions"])
+        self.assertEqual(1, report["summary"]["firmware_events"])
+        self.assertEqual("watchdog_chain_restart", report["firmware_events"][0]["code"])
         self.assertEqual("<Miner 23>", report["miners"][0]["miner_name"])
         self.assertEqual("Miner 24", report["miners"][1]["miner_name"])
         self.assertEqual([82.0, 54.0, 48.0], report["miners"][0]["rate_history"])
@@ -171,6 +186,8 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertIn("<svg", rendered)
         self.assertIn("Stability Advisor", rendered)
         self.assertIn("Mining Quality", rendered)
+        self.assertIn("Vnish Firmware Timeline", rendered)
+        self.assertIn("watchdog_chain_restart", rendered)
         self.assertIn("Shares rechazadas", rendered)
         self.assertIn("CRITICAL", rendered)
         self.assertIn("LEARNING", rendered)

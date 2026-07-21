@@ -94,6 +94,26 @@ Adoption rule:
 - Keep Telegram as the action/control plane.
 - Use Grafana read-only at first.
 
+### WebSocket Client
+
+Current use:
+
+- `websocket-client` is isolated to the native read-only Vnish log collector.
+- The monitor process does not import it or hold firmware log connections.
+
+Why it matters:
+
+- WebSocket is a standard real-time protocol used across contemporary backend,
+  operations and frontend systems.
+- A maintained RFC 6455 client handles frames, ping/pong, close behavior and
+  socket timeouts more safely than a project-specific implementation.
+
+Adoption rule:
+
+- Keep acquisition bounded, sequential and outside production action paths.
+- Do not add retries or permanent workers until collection cost and failure
+  behavior are proven from production evidence.
+
 ### HTMX Or Static HTML Reports
 
 Potential use:
@@ -154,6 +174,12 @@ accepted/rejected/stale shares, hardware-error growth, and bounded Vnish chain
 evidence. It intentionally stays on Python and SQLite: adding Prometheus, Grafana,
 or a time-series database before these metric semantics are proven would increase
 operations cost without improving the current reboot decision boundary.
+
+Vnish Log Intelligence adds one focused market-standard dependency,
+`websocket-client`, only to a separate Windows CLI. Normalized idempotent events
+land in the existing SQLite store and feed `/firmware` plus the static dashboard.
+This avoids a persistent WebSocket worker, message broker, or streaming platform
+until the fleet produces enough evidence to justify that operational complexity.
 
 ## Decision Gate For Any New Technology
 

@@ -66,6 +66,45 @@ class EventStoreTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(1, self.store.count_rows("telemetry_samples"))
 
+    def test_firmware_events_are_idempotent_filterable_and_raw_free(self) -> None:
+        values = {
+            "collected_ts": 2_000.0,
+            "source_ts_text": "2025/09/08 08:51:59",
+            "miner_key": "m23",
+            "miner_name": "23",
+            "host": "h23",
+            "source_tab": "status",
+            "source_fingerprint": "a" * 64,
+            "category": "restart",
+            "severity": "warning",
+            "code": "watchdog_chain_restart",
+            "summary": "Reinicio interno por corte de cadena",
+        }
+
+        first = self.store.record_firmware_event(**values)
+        duplicate = self.store.record_firmware_event(**values)
+        rows = self.store.list_firmware_events(miner_key="m23", limit=10)
+
+        self.assertGreater(first or 0, 0)
+        self.assertEqual(0, duplicate)
+        self.assertEqual(1, len(rows))
+        self.assertEqual("watchdog_chain_restart", rows[0]["code"])
+        self.assertNotIn("raw", rows[0])
+        self.assertEqual(1, self.store.count_rows("firmware_events"))
+
+    def test_migrates_schema_v3_to_firmware_events(self) -> None:
+        legacy_path = Path(self.temp_dir.name) / "schema-v3.db"
+        connection = sqlite3.connect(legacy_path)
+        connection.execute("PRAGMA user_version=3")
+        connection.close()
+
+        migrated = EventStore(legacy_path)
+        try:
+            self.assertEqual(4, migrated.schema_version)
+            self.assertEqual(0, migrated.count_rows("firmware_events"))
+        finally:
+            migrated.close()
+
     def test_records_normalized_telemetry_and_reboot_decision(self) -> None:
         telemetry = {
             "max_temp_c": 78.0,
@@ -211,7 +250,7 @@ class EventStoreTests(unittest.TestCase):
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
             self.assertTrue(migrated.available)
-            self.assertEqual(3, migrated.schema_version)
+            self.assertEqual(4, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertIn("chain_voltage_mv_avg", sample)
@@ -263,7 +302,7 @@ class EventStoreTests(unittest.TestCase):
 
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
-            self.assertEqual(3, migrated.schema_version)
+            self.assertEqual(4, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertEqual(22, sample["hw_errors_total"])
@@ -326,6 +365,20 @@ class EventStoreTests(unittest.TestCase):
                 severity="info",
                 summary="event",
             )
+        for index, collected_ts in enumerate((now - 366 * day, now - 364 * day)):
+            self.store.record_firmware_event(
+                collected_ts=float(collected_ts),
+                source_ts_text=f"2025/01/0{index + 1} 00:00:00",
+                miner_key="m23",
+                miner_name="23",
+                host="h23",
+                source_tab="status",
+                source_fingerprint=str(index) * 64,
+                category="transition",
+                severity="info",
+                code="firmware_initializing",
+                summary="Firmware inicializando",
+            )
 
         deleted = self.store.prune(
             now_ts=float(now),
@@ -333,9 +386,13 @@ class EventStoreTests(unittest.TestCase):
             event_retention_days=365,
         )
 
-        self.assertEqual({"samples": 1, "events": 1, "decisions": 0}, deleted)
+        self.assertEqual(
+            {"samples": 1, "events": 1, "decisions": 0, "firmware_events": 1},
+            deleted,
+        )
         self.assertEqual(1, self.store.count_rows("telemetry_samples"))
         self.assertEqual(1, self.store.count_rows("operational_events"))
+        self.assertEqual(1, self.store.count_rows("firmware_events"))
 
     def test_threaded_writes_are_serialized(self) -> None:
         def write_event(index: int) -> None:

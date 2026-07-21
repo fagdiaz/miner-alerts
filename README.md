@@ -51,6 +51,7 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
   - `/events [miner]`, `/event <id>`, `/why [miner]` (historial local).
   - `/health [all|miner]` (baseline estable por minero).
   - `/quality [all|miner]` (shares, errores y estado de cadenas por intervalo).
+  - `/firmware [all|miner]` (evidencia Vnish normalizada almacenada localmente).
   - `/reboot` (guiado) y `/rb<ID>` (seleccion click-safe) -> piden confirmacion.
   - `/reboot_no_ok` -> preview bulk; `/c<code>` confirma de forma click-safe.
   - `/restart <miner>` -> pide confirmacion.
@@ -76,6 +77,14 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Auto-reboot: si un minero permanece LOW por 10 minutos continuos y supera todos los guardrails, se envia reboot automatico.
   - Limite recomendado: max 3 auto-reboots por 6 horas. Luego entra en degraded mode.
 - Degraded mode se registra siempre; el STATUS horario esta deshabilitado por defecto con `notify_degraded_hourly=false`.
+
+**Vnish log intelligence (read-only)**
+- Instalar dependencias: `& ".\.venv\Scripts\python.exe" -m pip install -r requirements.txt`.
+- Probar sin persistencia: `& ".\.venv\Scripts\python.exe" tools\vnish_log_collector.py --config app\config.json --dry-run --tabs status --idle-timeout 1 --max-bytes 262144`.
+- Persistir eventos normalizados: `& ".\.venv\Scripts\python.exe" tools\vnish_log_collector.py --config app\config.json --tabs status,miner,autotune,system`.
+- El colector procesa mineros y tabs secuencialmente, sin reintentos ni acciones. Guarda solo categoria, severidad, codigo, resumen generado y fingerprint; no guarda lineas crudas, workers ni payloads del firmware.
+- `/firmware`, `/firmware all` y `/firmware <miner>` consultan SQLite solamente. No abren conexiones a los mineros ni ejecutan Hashcore.
+- El colector es una CLI separada: el monitor de produccion no mantiene WebSockets Vnish abiertos.
 
 **Hashcore Toolkit CLI**
 - Configurar en `app/config.json`:
@@ -173,7 +182,7 @@ Para ayuda: `python tools\debug_4028.py -h`.
 - Comando Telegram `status` responde con snapshot.
 - Comando Telegram `info` / `info all` devuelve datos (depende del firmware).
 - Comando Telegram `selftest` responde OK/FAIL.
-- Comandos Telegram `health` y `quality` leen historial SQLite sin IO al minero.
+- Comandos Telegram `health`, `quality` y `firmware` leen historial SQLite sin IO al minero.
 - Comando Telegram `reboot 23` solicita confirmacion y ejecuta reboot al confirmar.
 
 **QA / Pruebas (modo QA)**
@@ -191,7 +200,7 @@ Para ayuda: `python tools\debug_4028.py -h`.
 - Checklist:
   - `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py`
   - Mutex: ejecutar dos instancias, la segunda debe salir.
-  - Telegram: `help/status/info/selftest/health/quality` responden en <5s tipicamente.
+  - Telegram: `help/status/info/selftest/health/quality/firmware` responden en <5s tipicamente.
   - Reboot/restart: `reboot 23` -> confirmar con `confirm reboot 23 <code>` (timeout 60s, cooldown 10 min).
   - Auto-reboot: forzar LOW sostenido y verificar disparo (QA: `qa_low_seconds=60`).
   - Degraded: forzar 3 auto-reboots en ventana y observar STATUS horario (06:00-00:00 AR).
@@ -201,7 +210,7 @@ Para ayuda: `python tools\debug_4028.py -h`.
 **Release checklist**
 1. `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py`
 2. Ejecutar bot en produccion y verificar startup.
-3. Telegram: `help/status/info/selftest/health/quality`.
+3. Telegram: `help/status/info/selftest/health/quality/firmware`.
 4. (Opcional) `reboot 23` + confirm (si queres probar).
 5. `git status` / `git diff`
 6. commit + push

@@ -36,6 +36,7 @@ try:
     )
     from .stability_profile import analyze_stability, render_stability_assessment
     from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
+    from .vnish_logs import render_firmware_events
 except ImportError:
     from event_store import (
         EventStore,
@@ -52,6 +53,7 @@ except ImportError:
     )
     from stability_profile import analyze_stability, render_stability_assessment
     from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
+    from vnish_logs import render_firmware_events
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -93,6 +95,7 @@ CMD_WHITELIST = {
     "why",
     "health",
     "quality",
+    "firmware",
     "selftest",
     "reboot",
     "restart",
@@ -311,6 +314,18 @@ _COMMANDS = [
         "aliases": [],
     },
     {
+        "name": "firmware",
+        "summary": "Muestra evidencia Vnish normalizada desde SQLite.",
+        "usage": "/firmware  |  /firmware all  |  /firmware <miner>",
+        "detail": [
+            "Detalle: consulta eventos de firmware recolectados sin conectarse al minero.",
+        ],
+        "examples": ["/firmware", "/firmware 23"],
+        "notes": ["Es de solo lectura y no ejecuta acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
         "name": "selftest",
         "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
         "usage": "/selftest  |  /test",
@@ -377,6 +392,7 @@ def render_help_index() -> str:
         "why",
         "health",
         "quality",
+        "firmware",
         "reboot",
         "restart",
         "confirm",
@@ -403,6 +419,8 @@ def render_help_index() -> str:
             lines.append(f"{prefix}/health [miner|all]  Diagnostico contra baseline estable")
         elif name == "quality":
             lines.append(f"{prefix}/quality [miner|all]  Calidad de shares y cadenas")
+        elif name == "firmware":
+            lines.append(f"{prefix}/firmware [miner|all]  Eventos normalizados de Vnish")
         elif name == "confirm":
             lines.append(f"{prefix}/confirm <...>  Confirma acción pendiente")
         elif name == "reboot":
@@ -1357,6 +1375,41 @@ def build_mining_quality_text(
     return "\n\n".join(blocks)
 
 
+def build_firmware_events_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+) -> str:
+    """Render bounded Vnish evidence from SQLite without miner IO or actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico de firmware temporalmente no disponible."
+
+    token = str(miner_token or "").strip()
+    miner_key: Optional[str] = None
+    title = "FIRMWARE EVENTS"
+    severities: Optional[tuple[str, ...]] = ("warning", "critical")
+    limit = 6
+    if token and token.lower() != "all":
+        miner = resolve_miner(token, miners)
+        if not miner:
+            return "Miner no encontrado."
+        miner_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        title = f"FIRMWARE EVENTS - {display_name(str(miner['name']))}"
+        severities = None
+    elif token.lower() == "all":
+        severities = None
+        limit = 10
+
+    rows = event_store.list_firmware_events(
+        limit=limit,
+        miner_key=miner_key,
+        severities=severities,
+    )
+    if event_store.last_error:
+        return "Diagnostico de firmware temporalmente no disponible."
+    return render_firmware_events(rows, title=title, limit=limit)
+
+
 def _hashcore_cli_path(hashcore_cfg: dict) -> str:
     return hashcore_cfg.get("cli_bat_path") or hashcore_cfg.get("cli_path") or ""
 
@@ -1889,6 +1942,23 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="why",
+                    )
+                elif cmd_name == "firmware":
+                    handled = True
+                    firmware_text = build_firmware_events_text(
+                        event_store,
+                        miners,
+                        args[0] if args else None,
+                    )
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        firmware_text,
+                        "FIRMWARE",
+                        "cmd_firmware",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="firmware",
                     )
                 elif cmd_name == "quality":
                     handled = True
@@ -3219,7 +3289,8 @@ def main() -> None:
             )
             log(
                 f"EVENT_STORE retention samples_deleted={deleted['samples']} "
-                f"events_deleted={deleted['events']} decisions_deleted={deleted['decisions']}"
+                f"events_deleted={deleted['events']} decisions_deleted={deleted['decisions']} "
+                f"firmware_events_deleted={deleted['firmware_events']}"
             )
     else:
         log("EVENT_STORE enabled=false")

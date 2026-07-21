@@ -44,9 +44,9 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 ## P3 - Vnish Firmware Logs And Miner-Side Evidence
 
-- [ ] Identify how Vnish exposes logs on the deployed firmware: web UI export, API endpoint, SSH file path, syslog, or toolkit export.
-- [ ] Build a log taxonomy: autotune, voltage/frequency changes, chain restarts, miner process restarts, fan/temp protections, pool reconnects, watchdog actions.
-- [ ] Create a parser plan that stores small normalized events, not full raw logs.
+- [x] Identify how Vnish exposes logs on the deployed firmware: confirmed read-only WebSockets at `/api/v1/logs-ws/{status|miner|autotune|system}`.
+- [x] Build a log taxonomy: autotune, voltage/frequency changes, chain restarts, miner process restarts, fan/temp protections, pool reconnects, watchdog actions.
+- [x] Create a bounded parser and schema-v4 store for normalized events without full raw logs.
 - [ ] Correlate Vnish events with Miner Alerts state changes and Telegram alerts.
 - [ ] Detect "Vnish working normally" vs "miner actually needs intervention".
 - [x] Avoid reboot during current Vnish chain autotune/profile transitions and require a fresh sustained LOW interval after they end.
@@ -90,6 +90,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Add a bounded SQLite operational history for telemetry, state transitions, restart incidents, and action outcomes.
 - [x] Add schema-v2 normalized Vnish telemetry, reboot-decision history, retention, and a read-only incident report.
 - [x] Add additive schema-v3 mining-quality counters and chain-health evidence without raw firmware payloads.
+- [x] Add additive schema-v4 idempotent Vnish firmware events with bounded read-only collector and views.
 - [ ] Standardize logs for blocked actions and delivery failures.
 - [ ] Maintain production defaults in `app/config.example.json`.
 - [ ] Keep release checklist current for Windows PowerShell.

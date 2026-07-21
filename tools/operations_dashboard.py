@@ -23,7 +23,9 @@ from app.mining_quality import analyze_mining_quality
 from app.stability_profile import analyze_stability
 
 
-_KNOWN_TABLES = frozenset(("telemetry_samples", "operational_events", "reboot_decisions"))
+_KNOWN_TABLES = frozenset(
+    ("telemetry_samples", "operational_events", "reboot_decisions", "firmware_events")
+)
 
 
 def open_read_only(path: Path) -> sqlite3.Connection:
@@ -144,6 +146,13 @@ def build_dashboard_data(
         since_ts=since_ts,
         limit=min(safe_limit, 500),
     )
+    firmware_events = _window_rows(
+        connection,
+        "firmware_events",
+        "collected_ts",
+        since_ts=since_ts,
+        limit=min(safe_limit, 500),
+    )
 
     histories: dict[str, list[float]] = defaultdict(list)
     sample_histories: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -240,6 +249,7 @@ def build_dashboard_data(
             "stale": stale_count,
             "events": len(events),
             "decisions": len(decisions),
+            "firmware_events": len(firmware_events),
         },
         "state_counts": dict(sorted(state_counts.items())),
         "event_counts": dict(sorted(event_counts.items())),
@@ -249,6 +259,7 @@ def build_dashboard_data(
         "miners": miners,
         "events": events[:50],
         "decisions": decisions[:50],
+        "firmware_events": firmware_events[:50],
     }
 
 
@@ -453,6 +464,24 @@ def _render_decision_rows(decisions: list[dict[str, Any]]) -> str:
     return "".join(rows)
 
 
+def _render_firmware_rows(events: list[dict[str, Any]]) -> str:
+    if not events:
+        return '<tr><td colspan="6" class="empty-cell">Sin eventos Vnish en la ventana</td></tr>'
+    rows = []
+    for event in events:
+        rows.append(
+            "<tr>"
+            f"<td>{_esc(event.get('source_ts_text') or _timestamp(event.get('collected_ts')))}</td>"
+            f"<td>{_esc(event.get('miner_name') or event.get('miner_key'))}</td>"
+            f"<td><span class=\"severity severity-{_state_class(str(event.get('severity') or 'unknown'))}\">{_esc(event.get('severity') or 'N/A')}</span></td>"
+            f"<td>{_esc(event.get('category') or 'firmware')}</td>"
+            f"<td>{_esc(event.get('code') or 'firmware_event')}</td>"
+            f"<td>{_esc(event.get('summary') or '')}</td>"
+            "</tr>"
+        )
+    return "".join(rows)
+
+
 def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts Operations") -> str:
     generated = _timestamp(report.get("generated_ts"))
     summary = report["summary"]
@@ -519,6 +548,7 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
   </section>
   <section><div class="section-head"><div><h2>Estado actual</h2><p class="eyebrow">Stability Advisor + Mining Quality</p></div><div class="chips">{state_counts} {stability_counts} {quality_counts}</div></div><div class="miner-grid">{miner_cards}</div></section>
   <section><div class="section-head"><h2>Incidentes recientes</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Severidad</th><th>Tipo</th><th>Resumen</th></tr></thead><tbody>{_render_event_rows(report['events'])}</tbody></table></div></section>
+  <section><div class="section-head"><h2>Vnish Firmware Timeline</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha origen</th><th>Miner</th><th>Severidad</th><th>Categoria</th><th>Codigo</th><th>Resumen</th></tr></thead><tbody>{_render_firmware_rows(report['firmware_events'])}</tbody></table></div></section>
   <section><div class="section-head"><h2>Decisiones de auto-reboot</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Resultado</th><th>Hashrate</th><th>Temp</th></tr></thead><tbody>{_render_decision_rows(report['decisions'])}</tbody></table></div></section>
   <footer>Reporte read-only. `chain_voltage` representa evidencia de hashboard, no voltaje AC de entrada. Telegram permanece como superficie de control.</footer>
 </main>

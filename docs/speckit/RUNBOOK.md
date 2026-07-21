@@ -7,7 +7,7 @@ git status
 git diff --stat
 & ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py
 & ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\miner_diagnostics.py
-& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py app\\mining_quality.py tools\\incident_report.py
+& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py app\\vnish_logs.py app\\mining_quality.py tools\\incident_report.py tools\\vnish_log_collector.py tools\\operations_dashboard.py
 ```
 
 ## Read-Only Miner Diagnostics
@@ -162,7 +162,7 @@ LOW duration, cooldown/window evidence, boards, and normalized Vnish telemetry.
 Startup health log:
 
 ```text
-EVENT_STORE enabled=true path=<absolute-path> available=true schema=3
+EVENT_STORE enabled=true path=<absolute-path> available=true schema=4
 ```
 
 If storage cannot initialize or a write fails, the monitor logs `EVENT_STORE`
@@ -263,6 +263,54 @@ from accepted, rejected, and stale deltas; lifetime totals are retained only as
 bounded numeric counters. Raw firmware payloads, pool URLs, workers, and secrets
 are not persisted.
 
+## Vnish Firmware Log Intelligence
+
+Install the focused synchronous WebSocket client in the project venv:
+
+```powershell
+& ".\\.venv\\Scripts\\python.exe" -m pip install -r requirements.txt
+```
+
+Run a bounded read-only dry run first:
+
+```powershell
+& ".\\.venv\\Scripts\\python.exe" tools\\vnish_log_collector.py `
+  --config app\\config.json `
+  --dry-run `
+  --tabs status `
+  --connect-timeout 2 `
+  --idle-timeout 1 `
+  --max-bytes 262144
+```
+
+Persist normalized events to the configured schema-v4 SQLite store:
+
+```powershell
+& ".\\.venv\\Scripts\\python.exe" tools\\vnish_log_collector.py `
+  --config app\\config.json `
+  --tabs status,miner,autotune,system
+```
+
+The CLI opens only `ws://<miner>/api/v1/logs-ws/<tab>`, processes one
+miner/tab at a time, uses strict time/byte/event limits, and has no reconnect or
+retry loop. It stores generated categories and summaries plus a SHA-256
+fingerprint for idempotency. Raw lines, pool workers, arbitrary firmware
+payloads, and credentials are neither persisted nor printed.
+
+Read-only Telegram views:
+
+```text
+/firmware
+/firmware all
+/firmware 23
+```
+
+The monitor never opens the Vnish WebSocket. Telegram reads SQLite only, and
+firmware events cannot change state, notifications, or reboot/restart policy.
+The source timestamp remains text because its timezone provenance is unknown.
+Use the collector manually or from a separate scheduled task after observing its
+runtime cost; do not schedule overlapping invocations.
+
 ## Local Operations Dashboard
 
 Generate a self-contained read-only dashboard from the same SQLite history:
@@ -276,8 +324,8 @@ Generate a self-contained read-only dashboard from the same SQLite history:
 
 Open `diagnostics/dashboard/index.html` locally. Regenerate the file whenever a
 fresh view is required. The page contains fleet KPIs, one card per miner,
-hashrate sparklines, evidence freshness, Vnish metrics, recent incidents, and
-auto-reboot decisions. Each card also shows the shared Stability Advisor and
+hashrate sparklines, evidence freshness, Vnish metrics, recent incidents, a
+bounded Vnish firmware timeline, and auto-reboot decisions. Each card also shows the shared Stability Advisor and
 Mining Quality status, interval deltas, baseline, and bounded evidence. It has no action controls, JavaScript, remote assets,
 network listener, Telegram token, or miner credentials.
 

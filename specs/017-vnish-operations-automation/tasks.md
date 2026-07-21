@@ -12,4 +12,4 @@
 - [x] T010 Update README, runbook, roadmap and technology strategy.
 - [x] T011 Run targeted/full tests, compile, migration, scheduler dry-run and live smoke.
 - [x] T012 Record evidence and newest-first development log.
-- [ ] T013 Commit and push; perform final controlled rollout only after all gates pass.
+- [x] T013 Commit and push; perform final controlled rollout only after all gates pass.

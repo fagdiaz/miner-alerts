@@ -98,3 +98,5 @@ No required runtime gate remains.
 - No real Hashcore/reboot/restart action was requested or executed by this
   rollout. Telegram delivery of `/diagnose` from the operator's phone was not
   automated and remains a manual smoke.
+- Feature implementation committed as `7108192` and pushed to
+  `origin/codex/017-vnish-operations-automation`.

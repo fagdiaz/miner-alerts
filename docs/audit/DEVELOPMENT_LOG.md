@@ -5,6 +5,22 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 014: QA Poll-Empty Stability
+
+* **Objetivo**: Evitar que un lote vacio de Telegram en QA intente usar variables locales de ramas de comandos y degrade el polling con excepciones/backoff.
+* **Resultado**:
+  - Se elimino exclusivamente el log de duracion mal ubicado debajo de `POLL_EMPTY`; el diagnostico idle existente se conserva.
+  - Offset, dispatch, sleeps, backoff, state machine, auto-reboot, Hashcore y persistencia no cambiaron.
+  - Una prueba AST de regresion impide reintroducir referencias a `action` o `cmd_start` en la rama vacia.
+* **Validaciones ejecutadas**:
+  - Fase roja reproducida contra el bloque defectuoso y regresion 1/1 PASS tras el parche.
+  - Suite completa 81/81, `py_compile` y `git diff --check`: PASS.
+  - `MinerAlerts` continuo `Running/Automatic`; activacion diferida al rollout final.
+* **Archivos principales**:
+  - `app/miner_monitor.py`
+  - `tests/test_telegram_polling_stability.py`
+  - `specs/014-qa-poll-empty-stability/*`
+
 ## [2026-07-20] - Spec 013: Mining Quality Intelligence
 
 * **Objetivo**: Convertir contadores acumulados de shares y evidencia Vnish de cadenas en diagnostico por intervalos, evitando confundir resets de uptime/contadores con degradacion real.

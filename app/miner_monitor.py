@@ -3047,8 +3047,6 @@ def telegram_polling_worker(
                     )
                 else:
                     log(f"POLL_EMPTY offset={offset} last_ref={last_ref_before}")
-                    if qa_mode:
-                        log_pid(f"[TEL] command=confirm_{action} duration={time.monotonic() - cmd_start:.3f}s")
         except Exception as exc:
             log_pid(
                 f"[WARN] getUpdates exception type={type(exc).__name__} msg='{exc}' timeout={timeout_used}s backoff={backoff}s"

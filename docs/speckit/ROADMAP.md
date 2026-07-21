@@ -62,6 +62,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 ## P5 - Telegram Reliability And UX
 
+- [x] Keep empty QA polling batches free of command-local references and exception backoff.
 - [x] Add read-only `/events`, `/events <miner>`, and `/event <id>` incident-history commands.
 - [ ] Validate click-safe commands: `/rb<ID>`, `/reboot_no_ok`, `/c<code>`.
 - [ ] Ensure all command replies use command delivery semantics and avoid dedupe/coalesce loss.

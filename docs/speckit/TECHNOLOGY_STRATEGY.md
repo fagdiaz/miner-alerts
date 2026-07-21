@@ -144,6 +144,11 @@ workflow before adding FastAPI, HTMX, React, authentication, or a permanent web
 service. Docker support is limited to the standalone generator; the Windows
 monitor and Hashcore Toolkit remain native.
 
+The first adaptive analysis uses explainable robust statistics (median and MAD)
+from SQLite rather than a machine-learning framework. For this fleet size, that
+keeps decisions deterministic, testable, and understandable while establishing
+the data quality needed before considering forecasting or anomaly platforms.
+
 ## Decision Gate For Any New Technology
 
 Before adding a new dependency or framework, answer:

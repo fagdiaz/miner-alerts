@@ -28,6 +28,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Normalize observed Vnish fields from all `STATS` entries: chain voltage/consumption/frequency/HW errors, temperatures and fan indicators.
 - [x] Add an initial sweet-spot baseline analyzer from diagnostics snapshots: TH/s band, board count, max temp, chain voltage, consumption, frequency and HW errors.
 - [ ] Define production sweet-spot profiles from multiple snapshots per miner: stable TH/s range, temperature band, board count, error rate, reboot history, restart history.
+- [x] Add a robust read-only per-miner baseline (median/MAD) with learning, stable, watch, and critical diagnosis from persisted healthy samples.
 - [ ] Track "soft symptoms" before reboot: repeated LOW with recovery, board missing, pool reconnects, high reject/stale shares, temperature throttling, watchdog restarts.
 - [ ] Decide whether a restart is safer than reboot when firmware/miner service is alive but hash is degraded.
 
@@ -67,12 +68,14 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Disable noisy degraded hourly status by default and keep Telegram notifications event-driven.
 - [x] Add clearer event context to `STATE_CHANGE` Telegram messages.
 - [x] Add read-only `/why [miner]` explanations for QA, startup guard, cooldown, not sustained, window, invalid signal and action outcomes.
+- [x] Add read-only `/health [all|miner]` diagnosis against each miner's learned stable baseline without live miner IO.
 
 ## P6 - Optional Local Interface
 
 - [ ] Keep Telegram as the primary remote-control surface for now.
 - [x] Evaluate and implement a local read-only static dashboard after the diagnostics collector produced stable evidence.
 - [x] Generate a self-contained HTML fleet view with current cards, trends, incidents, and reboot-decision history from SQLite.
+- [x] Reuse the Stability Advisor in dashboard cards so Telegram and local HTML share the same diagnosis.
 - [ ] Dashboard MVP: miner cards, current state, last event, last reboot, blocked_by reasons, Vnish event timeline, Hashcore capability status.
 - [ ] Do not expose reboot/restart from a web UI until auth, local-only binding, audit logs, and confirmation are designed.
 - [ ] Prefer a local Windows dashboard or static HTML report before a full web app.

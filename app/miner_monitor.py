@@ -29,6 +29,7 @@ try:
     )
     from .restart_intelligence import RestartClassification, classify_restart
     from .reboot_safety import evaluate_auto_reboot_interlocks
+    from .stability_profile import analyze_stability, render_stability_assessment
     from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 except ImportError:
     from event_store import (
@@ -39,6 +40,7 @@ except ImportError:
     )
     from restart_intelligence import RestartClassification, classify_restart
     from reboot_safety import evaluate_auto_reboot_interlocks
+    from stability_profile import analyze_stability, render_stability_assessment
     from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 
 STATE_OK = "OK"
@@ -79,6 +81,7 @@ CMD_WHITELIST = {
     "events",
     "event",
     "why",
+    "health",
     "selftest",
     "reboot",
     "restart",
@@ -273,6 +276,18 @@ _COMMANDS = [
         "aliases": [],
     },
     {
+        "name": "health",
+        "summary": "Compara la telemetria con el baseline estable del minero.",
+        "usage": "/health  |  /health all  |  /health <miner>",
+        "detail": [
+            "Detalle: diagnostico historico read-only sin conectarse al minero.",
+        ],
+        "examples": ["/health", "/health 23"],
+        "notes": ["WATCH es evidencia para revisar; no ejecuta acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
         "name": "selftest",
         "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
         "usage": "/selftest  |  /test",
@@ -337,6 +352,7 @@ def render_help_index() -> str:
         "events",
         "event",
         "why",
+        "health",
         "reboot",
         "restart",
         "confirm",
@@ -359,6 +375,8 @@ def render_help_index() -> str:
             lines.append(f"{prefix}/event <id>  Detalle de un incidente")
         elif name == "why":
             lines.append(f"{prefix}/why [miner]  Explica la ultima decision de auto-reboot")
+        elif name == "health":
+            lines.append(f"{prefix}/health [miner|all]  Diagnostico contra baseline estable")
         elif name == "confirm":
             lines.append(f"{prefix}/confirm <...>  Confirma acción pendiente")
         elif name == "reboot":
@@ -1199,6 +1217,61 @@ def resolve_miner(input_name: str, miners: list) -> Optional[dict]:
     return None
 
 
+def build_stability_health_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+    *,
+    now_ts: float,
+    window_hours: float = 168.0,
+    min_samples: int = 12,
+    stale_after_seconds: float = 900.0,
+) -> str:
+    """Render bounded historical health without contacting miners or running actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico historico temporalmente no disponible."
+    selected_miners = miners
+    token = str(miner_token or "").strip()
+    if token and token.lower() != "all":
+        selected = resolve_miner(token, miners)
+        if not selected:
+            return "Miner no encontrado."
+        selected_miners = [selected]
+    omitted_miners = max(0, len(selected_miners) - 10)
+    selected_miners = selected_miners[:10]
+
+    safe_hours = max(1.0, min(float(window_hours), 720.0))
+    safe_min_samples = max(3, min(int(min_samples), 288))
+    safe_stale = max(30.0, float(stale_after_seconds))
+    since_ts = float(now_ts) - safe_hours * 3600.0
+    sample_limit = min(2_500, max(288, safe_min_samples * 20))
+    blocks = ["HEALTH (historial local)"]
+    for miner in selected_miners:
+        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        samples = event_store.list_samples(
+            miner_key=state_key,
+            since_ts=since_ts,
+            limit=sample_limit,
+        )
+        if event_store.last_error:
+            return "Diagnostico historico temporalmente no disponible."
+        assessment = analyze_stability(
+            samples,
+            now_ts=now_ts,
+            stale_after_seconds=safe_stale,
+            min_samples=safe_min_samples,
+        )
+        blocks.append(
+            render_stability_assessment(
+                display_name(str(miner["name"])),
+                assessment,
+            )
+        )
+    if omitted_miners:
+        blocks.append(f"... {omitted_miners} mineros omitidos por limite de salida.")
+    return "\n\n".join(blocks)
+
+
 def _hashcore_cli_path(hashcore_cfg: dict) -> str:
     return hashcore_cfg.get("cli_bat_path") or hashcore_cfg.get("cli_path") or ""
 
@@ -1731,6 +1804,43 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="why",
+                    )
+                elif cmd_name == "health":
+                    handled = True
+                    try:
+                        window_hours = float(
+                            config.get("stability_window_hours", 168.0)
+                        )
+                    except (TypeError, ValueError):
+                        window_hours = 168.0
+                    try:
+                        min_samples = int(config.get("stability_min_samples", 12))
+                    except (TypeError, ValueError):
+                        min_samples = 12
+                    try:
+                        stale_seconds = float(
+                            config.get("stability_stale_seconds", 900.0)
+                        )
+                    except (TypeError, ValueError):
+                        stale_seconds = 900.0
+                    health_text = build_stability_health_text(
+                        event_store,
+                        miners,
+                        args[0] if args else None,
+                        now_ts=time.time(),
+                        window_hours=window_hours,
+                        min_samples=min_samples,
+                        stale_after_seconds=stale_seconds,
+                    )
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        health_text,
+                        "HEALTH",
+                        "cmd_health",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="health",
                     )
                 elif cmd_name == "status":
                     handled = True

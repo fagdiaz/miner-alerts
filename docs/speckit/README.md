@@ -20,7 +20,7 @@ The active feature is declared in `.specify/feature.json`.
 Current active feature:
 
 ```text
-specs/011-operations-dashboard
+specs/012-stability-advisor
 ```
 
 ## Commands And Validation
@@ -32,6 +32,7 @@ Use Windows PowerShell commands by default.
 & ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\miner_diagnostics.py
 & ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py app\\reboot_safety.py tools\\incident_report.py
 & ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\operations_dashboard.py
+& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\stability_profile.py
 git status
 git diff
 ```

@@ -5,6 +5,30 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 012: Stability Advisor
+
+* **Objetivo**: Convertir la telemetria historica en un sweet spot robusto por minero y separar fallas actuales de drift o histeresis, sin agregar acciones automaticas.
+* **Resultado**:
+  - Un analizador puro construye bandas por mediana/MAD desde muestras previas saludables y excluye la muestra actual de su propio baseline.
+  - Los resultados `LEARNING`, `STABLE`, `WATCH` y `CRITICAL` incluyen razones acotadas para hashrate, temperatura, boards, voltaje/potencia de cadena, frecuencia, freshness y falta de respuesta.
+  - Un estado persistido LOW con hashrate actual recuperado se clasifica como `WATCH/state_recovery_hysteresis`, evitando repetir una falsa severidad critica.
+  - `/health`, `/health all` y `/health <miner>` consultan solo SQLite, responden con semantica de comando y no hacen IO live hacia mineros.
+  - El dashboard reutiliza exactamente el mismo analizador y muestra baseline y diagnostico por card.
+  - El voltaje de cadena se presenta explicitamente como evidencia board-side, no como voltaje AC de entrada.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first con fallas iniciales para modulo, dashboard, comando y caso de histeresis.
+  - 17 pruebas dirigidas y suite completa de 68 pruebas: PASS.
+  - Benchmark de 5.000 muestras: 17,84 ms en el equipo objetivo.
+  - CLI Windows, HTML fixture, build Docker y generacion Docker read-only: PASS.
+* **Estado**:
+  - Implementacion local completa; activacion runtime diferida al reinicio controlado de fin de dia.
+* **Archivos principales**:
+  - `app/stability_profile.py`
+  - `app/miner_monitor.py`
+  - `tools/operations_dashboard.py`
+  - `tests/test_stability_profile.py`
+  - `specs/012-stability-advisor/*`
+
 ## [2026-07-20] - Spec 011: Read-Only Operations Dashboard
 
 * **Objetivo**: Agregar una interfaz local visual para correlacionar salud, tendencias, incidentes y decisiones sin convertir el dashboard en superficie de control.

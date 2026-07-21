@@ -123,6 +123,14 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertEqual("Miner 24", report["miners"][1]["miner_name"])
         self.assertEqual([82.0, 54.0, 48.0], report["miners"][0]["rate_history"])
         self.assertEqual("fleet_incident", report["miners"][0]["latest_decision"])
+        self.assertEqual("critical", report["miners"][0]["stability"]["status"])
+        self.assertIn(
+            "rate_below_threshold",
+            report["miners"][0]["stability"]["reason_codes"],
+        )
+        self.assertEqual("learning", report["miners"][1]["stability"]["status"])
+        self.assertEqual(1, report["stability_counts"]["critical"])
+        self.assertEqual(1, report["stability_counts"]["learning"])
 
     def test_html_is_self_contained_responsive_and_escaped(self) -> None:
         self._record_fixture()
@@ -138,6 +146,9 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertIn("<!doctype html>", rendered.lower())
         self.assertIn('name="viewport"', rendered)
         self.assertIn("<svg", rendered)
+        self.assertIn("Stability Advisor", rendered)
+        self.assertIn("CRITICAL", rendered)
+        self.assertIn("LEARNING", rendered)
         self.assertIn("&lt;Miner 23&gt;", rendered)
         self.assertIn("&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;", rendered)
         self.assertNotIn("<script>alert", rendered)

@@ -193,6 +193,43 @@ Generate an offline report without loading config or contacting miners:
 The report opens SQLite in read-only mode and correlates samples, operational
 events, and auto-reboot decisions. It never invokes Hashcore.
 
+## Stability Advisor
+
+The Stability Advisor compares the latest persisted sample with each miner's own
+healthy history. It uses robust median/MAD bands and never triggers or authorizes
+a restart or reboot.
+
+Production defaults:
+
+```json
+"stability_window_hours": 168,
+"stability_min_samples": 12,
+"stability_stale_seconds": 900
+```
+
+At the default five-minute telemetry interval, a miner needs about one hour of
+prior healthy evidence before leaving `LEARNING`. Available results are:
+
+- `STABLE`: no meaningful deviation from the learned healthy range.
+- `WATCH`: soft drift or a recovered current signal while state hysteresis still
+  retains a prior non-OK label.
+- `CRITICAL`: current stale/no-response, below-threshold, missing-board, or high
+  temperature evidence.
+- `LEARNING`: there is not enough healthy history to claim stability.
+
+Read-only Telegram commands:
+
+```text
+/health
+/health all
+/health 23
+```
+
+The command queries local SQLite only. It does not call API 4028 or Hashcore.
+Hashrate, maximum temperature, chain voltage, chain power, and frequency are
+compared when finite evidence exists. Chain voltage remains board-side telemetry;
+it is explicitly not AC input voltage.
+
 ## Local Operations Dashboard
 
 Generate a self-contained read-only dashboard from the same SQLite history:
@@ -207,7 +244,8 @@ Generate a self-contained read-only dashboard from the same SQLite history:
 Open `diagnostics/dashboard/index.html` locally. Regenerate the file whenever a
 fresh view is required. The page contains fleet KPIs, one card per miner,
 hashrate sparklines, evidence freshness, Vnish metrics, recent incidents, and
-auto-reboot decisions. It has no action controls, JavaScript, remote assets,
+auto-reboot decisions. Each card also shows the shared Stability Advisor status,
+baseline and bounded evidence. It has no action controls, JavaScript, remote assets,
 network listener, Telegram token, or miner credentials.
 
 Optional Docker execution keeps this reporting tool isolated from the Windows

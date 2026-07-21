@@ -1,7 +1,7 @@
 # Evidence: Fleet-Aware Auto-Reboot Safety
 
-**Status**: Implementation and local validation complete  
-**Service activation**: Deferred to the controlled end-of-day restart.
+**Status**: Implementation and local validation complete
+**Service activation**: Completed by the controlled Spec 017 rollout.
 
 ## Baseline
 

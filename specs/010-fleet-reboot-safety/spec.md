@@ -1,7 +1,7 @@
 # Feature Specification: Fleet-Aware Auto-Reboot Safety
 
-**Feature Branch**: `010-fleet-reboot-safety`  
-**Created**: 2026-07-20  
+**Feature Branch**: `010-fleet-reboot-safety`
+**Created**: 2026-07-20
 **Status**: Complete
 
 ## Problem

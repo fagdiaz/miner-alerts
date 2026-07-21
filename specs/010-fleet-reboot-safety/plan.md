@@ -12,14 +12,14 @@ SQLite decision details provide durable evidence without a schema migration.
 
 ## Technical Context
 
-**Language/Version**: Python in the existing Windows virtualenv  
-**Primary Dependencies**: Python standard library and existing Vnish telemetry model  
-**Storage**: Existing SQLite `reboot_decisions.details_json`; no schema change  
-**Testing**: `unittest`, source-level policy wiring checks, `py_compile`  
-**Target Platform**: Windows service, PowerShell, ASIC API 4028, Hashcore Toolkit CLI  
-**Project Type**: Single Python monitor with local operational tools  
-**Performance Goals**: Constant-time fleet evaluation over the configured miner count; no added IO  
-**Constraints**: No manual-action changes, no service restart, no secret/config runtime edits  
+**Language/Version**: Python in the existing Windows virtualenv
+**Primary Dependencies**: Python standard library and existing Vnish telemetry model
+**Storage**: Existing SQLite `reboot_decisions.details_json`; no schema change
+**Testing**: `unittest`, source-level policy wiring checks, `py_compile`
+**Target Platform**: Windows service, PowerShell, ASIC API 4028, Hashcore Toolkit CLI
+**Project Type**: Single Python monitor with local operational tools
+**Performance Goals**: Constant-time fleet evaluation over the configured miner count; no added IO
+**Constraints**: No manual-action changes, no service restart, no secret/config runtime edits
 **Scale/Scope**: Current small local fleet; deterministic behavior for arbitrary configured counts
 
 ## Constitution Check

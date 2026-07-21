@@ -1,7 +1,7 @@
 # Evidence: Vnish Hashboard Detection
 
-**Status**: Implementation in progress  
-**Service activation**: Deferred to end-of-day controlled restart.
+**Status**: Complete
+**Service activation**: Completed by the controlled Spec 017 rollout.
 
 ## Current Payload Evidence
 

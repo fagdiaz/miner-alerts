@@ -2,8 +2,7 @@
 
 ## Status
 
-Implementation and local validation complete. Production activation remains
-deferred until the controlled end-of-day service restart.
+Implementation, local validation and controlled production activation complete.
 
 ## Baseline
 

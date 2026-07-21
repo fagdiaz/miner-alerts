@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-20
 
-**Status**: Complete; production monitor rollout pending final controlled restart
+**Status**: Complete; activated by the controlled Spec 017 rollout
 
 **Input**: Collect the deployed Vnish log stream read-only, retain only bounded normalized operational events, and expose them in Telegram and the local dashboard without creating automatic actions.
 

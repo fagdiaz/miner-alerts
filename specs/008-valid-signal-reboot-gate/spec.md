@@ -1,8 +1,8 @@
 # Feature Specification: Valid Signal Auto-Reboot Gate
 
-**Feature Branch**: `008-valid-signal-reboot-gate`  
-**Created**: 2026-07-20  
-**Status**: Draft
+**Feature Branch**: `008-valid-signal-reboot-gate`
+**Created**: 2026-07-20
+**Status**: Complete
 
 ## Problem
 

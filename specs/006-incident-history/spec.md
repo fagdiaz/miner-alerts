@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-20
 
-**Status**: Implemented; Windows service activation pending elevated restart
+**Status**: Complete; activated by the controlled Spec 017 service rollout
 
 **Input**: User description: "Persist operational history, detect and explain unwanted miner restarts, improve Telegram evidence, and establish a database foundation without changing monitoring or reboot policy."
 

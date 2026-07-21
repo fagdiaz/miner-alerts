@@ -100,3 +100,7 @@ No required runtime gate remains.
   automated and remains a manual smoke.
 - Feature implementation committed as `7108192` and pushed to
   `origin/codex/017-vnish-operations-automation`.
+- Final integration audit fast-forwarded the complete Spec 006-017 chain into
+  `main`, reran 101 tests and compilation, confirmed no duplicate top-level
+  monitor symbols, no broken requirements or secret-like diff content, and
+  removed 28 pre-existing trailing-whitespace findings from historical specs.

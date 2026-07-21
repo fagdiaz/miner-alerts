@@ -1,8 +1,8 @@
 # Feature Specification: Vnish Telemetry And Reboot Decision Audit
 
-**Feature Branch**: `007-vnish-decision-audit`  
-**Created**: 2026-07-20  
-**Status**: Draft  
+**Feature Branch**: `007-vnish-decision-audit`
+**Created**: 2026-07-20
+**Status**: Complete
 **Input**: Persist normalized Vnish/S19j Pro telemetry and explain every relevant auto-reboot evaluation without changing action policy.
 
 ## User Scenarios & Testing

@@ -2,8 +2,7 @@
 
 ## Status
 
-Implementation and local validation complete. Runtime activation remains deferred
-until the controlled end-of-day service restart.
+Implementation, local validation and controlled runtime activation complete.
 
 ## Baseline Defect
 

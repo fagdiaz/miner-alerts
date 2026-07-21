@@ -1,7 +1,7 @@
 # Evidence: Vnish Telemetry And Reboot Decision Audit
 
-**Status**: Implementation and local validation complete  
-**Service activation**: Deferred to end-of-day restart by operator request.
+**Status**: Implementation and local validation complete
+**Service activation**: Completed by the controlled Spec 017 rollout.
 
 ## Static Validation
 

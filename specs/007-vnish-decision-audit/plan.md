@@ -12,13 +12,13 @@ No condition in the state machine or action policy changes.
 
 ## Technical Context
 
-**Language/Version**: Existing Python 3 virtualenv on Windows  
-**Primary Dependencies**: Python standard library, existing `requests`; no new dependency  
-**Storage**: Existing SQLite database, migrated from schema v1 to v2 in place  
-**Testing**: `unittest`, `py_compile`, JSON parse, Speckit QA preflight  
-**Target Platform**: Existing Windows service and PowerShell operations  
-**Performance Goal**: No extra `stats` network request; local `/why` and report under two seconds  
-**Constraints**: Observation-only; no raw payload storage; no service restart until end-of-day release  
+**Language/Version**: Existing Python 3 virtualenv on Windows
+**Primary Dependencies**: Python standard library, existing `requests`; no new dependency
+**Storage**: Existing SQLite database, migrated from schema v1 to v2 in place
+**Testing**: `unittest`, `py_compile`, JSON parse, Speckit QA preflight
+**Target Platform**: Existing Windows service and PowerShell operations
+**Performance Goal**: No extra `stats` network request; local `/why` and report under two seconds
+**Constraints**: Observation-only; no raw payload storage; no service restart until end-of-day release
 **Scale**: Four miners today, tens of miners within current retention design
 
 ## Constitution Check

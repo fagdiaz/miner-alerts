@@ -1,7 +1,7 @@
 # Evidence: Valid Signal Auto-Reboot Gate
 
-**Status**: Implementation and local validation complete  
-**Service activation**: Deferred to the end-of-day controlled restart.
+**Status**: Implementation and local validation complete
+**Service activation**: Completed by the controlled Spec 017 rollout.
 
 ## Validation
 

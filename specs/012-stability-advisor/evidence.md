@@ -1,7 +1,7 @@
 # Evidence: Stability Advisor
 
 **Status**: Implementation and local validation complete.
-**Service activation**: Deferred to the controlled end-of-day restart.
+**Service activation**: Completed by the controlled Spec 017 rollout.
 
 ## Test-First Evidence
 

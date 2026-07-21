@@ -19,6 +19,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+from app.mining_quality import analyze_mining_quality
 from app.stability_profile import analyze_stability
 
 
@@ -112,6 +113,7 @@ def build_dashboard_data(
     stale_after_seconds: float = 900.0,
     row_limit: int = 5_000,
     min_stability_samples: int = 12,
+    min_quality_intervals: int = 3,
 ) -> dict[str, Any]:
     effective_now = time.time() if now_ts is None else float(now_ts)
     safe_hours = max(0.1, min(float(hours), 24.0 * 365.0))
@@ -181,6 +183,10 @@ def build_dashboard_data(
             stale_after_seconds=safe_stale_after,
             min_samples=min_stability_samples,
         )
+        quality = analyze_mining_quality(
+            [sample, *prior_rows],
+            min_intervals=min_quality_intervals,
+        )
         miners.append(
             {
                 "miner_key": miner_key,
@@ -204,6 +210,7 @@ def build_dashboard_data(
                 "rate_history": histories.get(miner_key, [])[-288:],
                 "latest_decision": latest_decisions.get(miner_key),
                 "stability": stability.as_dict(),
+                "quality": quality.as_dict(),
             }
         )
     miners.sort(key=lambda item: _natural_key(item["miner_name"]))
@@ -218,6 +225,7 @@ def build_dashboard_data(
     stability_counts = Counter(
         str(miner["stability"]["status"]) for miner in miners
     )
+    quality_counts = Counter(str(miner["quality"]["status"]) for miner in miners)
 
     return {
         "generated_ts": effective_now,
@@ -237,6 +245,7 @@ def build_dashboard_data(
         "event_counts": dict(sorted(event_counts.items())),
         "decision_counts": dict(sorted(decision_counts.items())),
         "stability_counts": dict(sorted(stability_counts.items())),
+        "quality_counts": dict(sorted(quality_counts.items())),
         "miners": miners,
         "events": events[:50],
         "decisions": decisions[:50],
@@ -349,6 +358,34 @@ def _render_miner_card(miner: dict[str, Any]) -> str:
             f'<p class="baseline">Base hash: {_number(rate_band.get("lower"), 1)}-'
             f'{_number(rate_band.get("upper"), 1)} TH/s</p>'
         )
+    quality = miner.get("quality") or {}
+    quality_status = str(quality.get("status") or "learning")
+    quality_label = quality_status.upper()
+    if quality_status == "learning":
+        quality_label = "LEARNING {}/{}".format(
+            int(quality.get("comparable_intervals") or 0),
+            int(quality.get("required_intervals") or 0),
+        )
+    quality_reasons = list(quality.get("reasons") or [])[:3]
+    quality_reasons_html = (
+        "".join(
+            f"<li>{_esc(reason.get('message') or reason.get('code') or 'evidencia')}</li>"
+            for reason in quality_reasons
+        )
+        if quality_reasons
+        else "<li>Sin degradacion de calidad en el ultimo intervalo.</li>"
+    )
+    quality_delta = quality.get("delta") or {}
+    quality_interval = _number(quality_delta.get("interval_seconds"), 0, "s")
+    quality_delta_html = (
+        "<p class=\"baseline\">Intervalo {interval}: accepted {accepted}, "
+        "rejected {rejected}, stale {stale}</p>"
+    ).format(
+        interval=_esc(quality_interval),
+        accepted=_esc(quality_delta.get("accepted")),
+        rejected=_esc(quality_delta.get("rejected")),
+        stale=_esc(quality_delta.get("stale")),
+    )
     return f"""
       <article class="miner-card state-{_state_class(state)}">
         <div class="miner-head">
@@ -369,6 +406,11 @@ def _render_miner_card(miner: dict[str, Any]) -> str:
           <div><span>Stability Advisor</span><strong>{_esc(stability_label)}</strong></div>
           {baseline_html}
           <ul>{reasons_html}</ul>
+        </div>
+        <div class="quality quality-{_esc(quality_status)}">
+          <div><span>Mining Quality</span><strong>{_esc(quality_label)}</strong></div>
+          {quality_delta_html}
+          <ul>{quality_reasons_html}</ul>
         </div>
         {_sparkline(miner.get('rate_history') or [], miner.get('threshold_ths'))}
         <div class="decision"><span>Ultima decision</span><strong>{_esc(decision)}</strong></div>
@@ -425,6 +467,10 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
         f'<span class="count-chip">{_esc(name).upper()} {_esc(count)}</span>'
         for name, count in report.get("stability_counts", {}).items()
     ) or '<span class="count-chip">sin baseline</span>'
+    quality_counts = " ".join(
+        f'<span class="count-chip">QUALITY {_esc(name).upper()} {_esc(count)}</span>'
+        for name, count in report.get("quality_counts", {}).items()
+    ) or '<span class="count-chip">sin calidad</span>'
     return f"""<!doctype html>
 <html lang="es">
 <head>
@@ -452,7 +498,7 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
     .miner-head {{ display:flex; justify-content:space-between; gap:12px; align-items:start; }} .state-pill {{ color:white; background:var(--accent); border-radius:999px; padding:6px 9px; font-size:.72rem; font-weight:700; }}
     .primary-rate {{ font:700 2.25rem Georgia,serif; margin-top:20px; }} .primary-rate small {{ font:600 .82rem Bahnschrift,sans-serif; color:var(--muted); }} .freshness {{ margin:2px 0 16px; color:var(--muted); font-size:.82rem; }}
     .metrics {{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }} .metrics div {{ background:#f1efe6; border-radius:9px; padding:9px; }} .metrics span,.decision span {{ display:block; color:var(--muted); font-size:.7rem; }} .metrics strong {{ font-size:.88rem; }}
-    .stability {{ margin-top:12px; padding:11px; border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:10px; background:#f8f6ee; }} .stability-watch {{ border-left-color:var(--amber); }} .stability-critical {{ border-left-color:var(--red); }} .stability-stable {{ border-left-color:var(--green); }} .stability div {{ display:flex; justify-content:space-between; gap:12px; }} .stability span {{ color:var(--muted); font-size:.72rem; }} .stability strong {{ font-size:.78rem; }} .stability ul {{ margin:7px 0 0; padding-left:18px; color:var(--muted); font-size:.74rem; }} .baseline {{ margin:6px 0 0; color:var(--muted); font-size:.72rem; }}
+    .stability,.quality {{ margin-top:12px; padding:11px; border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:10px; background:#f8f6ee; }} .stability-watch,.quality-watch {{ border-left-color:var(--amber); }} .stability-critical,.quality-critical {{ border-left-color:var(--red); }} .stability-stable,.quality-stable {{ border-left-color:var(--green); }} .stability div,.quality div {{ display:flex; justify-content:space-between; gap:12px; }} .stability span,.quality span {{ color:var(--muted); font-size:.72rem; }} .stability strong,.quality strong {{ font-size:.78rem; }} .stability ul,.quality ul {{ margin:7px 0 0; padding-left:18px; color:var(--muted); font-size:.74rem; }} .baseline {{ margin:6px 0 0; color:var(--muted); font-size:.72rem; }}
     .spark {{ width:100%; height:72px; margin:13px 0 6px; overflow:visible; }} .spark polyline {{ fill:none; stroke:var(--accent); stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }} .threshold-line {{ stroke:#a9a395; stroke-width:1; stroke-dasharray:4 4; }} .spark-empty {{ height:72px; display:grid; place-items:center; color:var(--muted); font-size:.78rem; }}
     .decision {{ display:flex; justify-content:space-between; align-items:end; gap:10px; border-top:1px solid var(--line); padding-top:11px; }} .decision strong {{ text-align:right; font-size:.82rem; }}
     .table-wrap {{ overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:14px; }} table {{ width:100%; border-collapse:collapse; min-width:760px; }} th,td {{ text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); font-size:.82rem; }} th {{ color:var(--muted); text-transform:uppercase; letter-spacing:.07em; font-size:.68rem; }} tr:last-child td {{ border-bottom:0; }}
@@ -471,7 +517,7 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
     <div class="kpi"><span>Eventos</span><strong>{_esc(summary['events'])}</strong></div>
     <div class="kpi"><span>Decisiones</span><strong>{_esc(summary['decisions'])}</strong></div>
   </section>
-  <section><div class="section-head"><div><h2>Estado actual</h2><p class="eyebrow">Stability Advisor</p></div><div class="chips">{state_counts} {stability_counts}</div></div><div class="miner-grid">{miner_cards}</div></section>
+  <section><div class="section-head"><div><h2>Estado actual</h2><p class="eyebrow">Stability Advisor + Mining Quality</p></div><div class="chips">{state_counts} {stability_counts} {quality_counts}</div></div><div class="miner-grid">{miner_cards}</div></section>
   <section><div class="section-head"><h2>Incidentes recientes</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Severidad</th><th>Tipo</th><th>Resumen</th></tr></thead><tbody>{_render_event_rows(report['events'])}</tbody></table></div></section>
   <section><div class="section-head"><h2>Decisiones de auto-reboot</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Resultado</th><th>Hashrate</th><th>Temp</th></tr></thead><tbody>{_render_decision_rows(report['decisions'])}</tbody></table></div></section>
   <footer>Reporte read-only. `chain_voltage` representa evidencia de hashboard, no voltaje AC de entrada. Telegram permanece como superficie de control.</footer>
@@ -491,6 +537,7 @@ def generate_dashboard(
     row_limit: int = 5_000,
     title: str = "Miner Alerts Operations",
     min_stability_samples: int = 12,
+    min_quality_intervals: int = 3,
 ) -> Path:
     connection = open_read_only(db_path)
     try:
@@ -501,6 +548,7 @@ def generate_dashboard(
             stale_after_seconds=stale_after_seconds,
             row_limit=row_limit,
             min_stability_samples=min_stability_samples,
+            min_quality_intervals=min_quality_intervals,
         )
     finally:
         connection.close()
@@ -519,6 +567,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--stale-after-seconds", type=float, default=900.0)
     parser.add_argument("--row-limit", type=int, default=5_000)
     parser.add_argument("--min-stability-samples", type=int, default=12)
+    parser.add_argument("--min-quality-intervals", type=int, default=3)
     parser.add_argument("--title", default="Miner Alerts Operations")
     return parser.parse_args(argv)
 
@@ -534,6 +583,7 @@ def main(argv: list[str]) -> int:
             row_limit=args.row_limit,
             title=args.title,
             min_stability_samples=args.min_stability_samples,
+            min_quality_intervals=args.min_quality_intervals,
         )
     except (FileNotFoundError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

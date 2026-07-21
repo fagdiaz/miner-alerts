@@ -47,16 +47,14 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Crear bot con `@BotFather` y obtener token.
 - Obtener `chat_id` con `@userinfobot` o via `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 - Comandos disponibles:
-  - `status` (responde con snapshot actual).
-  - `help` (lista de comandos y ejemplos).
-  - `info` (solo mineros en estado no-OK).
-  - `info all` (todos los mineros).
-  - `info <miner>` (detalle corto).
-  - `selftest` o `test` (chequeo rapido).
-  - `reboot <miner>` (ej: `reboot 23` o `reboot S19JPRO-23`) -> pide confirmacion.
-  - `restart <miner>` -> pide confirmacion.
-  - `confirm reboot <miner> <code>` -> ejecuta reboot manual.
-  - `confirm restart <miner> <code>` -> ejecuta restart manual.
+  - `/help`, `/status`, `/info [all|miner]`, `/selftest`.
+  - `/events [miner]`, `/event <id>`, `/why [miner]` (historial local).
+  - `/health [all|miner]` (baseline estable por minero).
+  - `/quality [all|miner]` (shares, errores y estado de cadenas por intervalo).
+  - `/reboot` (guiado) y `/rb<ID>` (seleccion click-safe) -> piden confirmacion.
+  - `/reboot_no_ok` -> preview bulk; `/c<code>` confirma de forma click-safe.
+  - `/restart <miner>` -> pide confirmacion.
+  - `/confirm reboot <miner> <code>` y `/confirm restart <miner> <code>`.
 - Respuesta inmediata via long polling, sin afectar el loop de mineros.
   - Si Telegram esta lento, la respuesta puede tardar: el monitor no se cuelga porque usa cola de envio.
 
@@ -67,7 +65,7 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Si el script reinicia, el pending se pierde: hay que reemitir `reboot 23`.
 
 **Notificaciones**
-- Se envia Telegram solo cuando cambia el estado, en un unico mensaje agrupado por ciclo.
+- Se envia Telegram ante eventos relevantes, en un unico mensaje agrupado por ciclo.
 - Estado OK: hashrate >= threshold.
 - Estado LOW: hashrate < threshold por N lecturas.
 - Estado OFFLINE: sin respuesta del API 4028 por N lecturas.
@@ -75,9 +73,9 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Al iniciar, si `notify_startup=true`, se envia un STARTUP con snapshot completo (hashrate y etiquetas).
 - El monitor evita instancias duplicadas usando un mutex de sistema (Win32).
 - El estado se persiste en `app/state.json` para continuidad (streaks, estado y cooldowns).
-- Auto-reboot: si un minero permanece LOW por 10 minutos continuos, se envia reboot automatico.
-  - Limite: max 3 auto-reboots por 60 minutos. Luego entra en degraded mode.
-- Degraded mode: si persiste LOW tras el limite, envia STATUS automatico cada 1 hora entre 06:00 y 00:00 (hora Argentina, UTC-3).
+- Auto-reboot: si un minero permanece LOW por 10 minutos continuos y supera todos los guardrails, se envia reboot automatico.
+  - Limite recomendado: max 3 auto-reboots por 6 horas. Luego entra en degraded mode.
+- Degraded mode se registra siempre; el STATUS horario esta deshabilitado por defecto con `notify_degraded_hourly=false`.
 
 **Hashcore Toolkit CLI**
 - Configurar en `app/config.json`:
@@ -175,6 +173,7 @@ Para ayuda: `python tools\debug_4028.py -h`.
 - Comando Telegram `status` responde con snapshot.
 - Comando Telegram `info` / `info all` devuelve datos (depende del firmware).
 - Comando Telegram `selftest` responde OK/FAIL.
+- Comandos Telegram `health` y `quality` leen historial SQLite sin IO al minero.
 - Comando Telegram `reboot 23` solicita confirmacion y ejecuta reboot al confirmar.
 
 **QA / Pruebas (modo QA)**
@@ -192,7 +191,7 @@ Para ayuda: `python tools\debug_4028.py -h`.
 - Checklist:
   - `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py`
   - Mutex: ejecutar dos instancias, la segunda debe salir.
-  - Telegram: `help/status/info/selftest` responden en <5s tipicamente.
+  - Telegram: `help/status/info/selftest/health/quality` responden en <5s tipicamente.
   - Reboot/restart: `reboot 23` -> confirmar con `confirm reboot 23 <code>` (timeout 60s, cooldown 10 min).
   - Auto-reboot: forzar LOW sostenido y verificar disparo (QA: `qa_low_seconds=60`).
   - Degraded: forzar 3 auto-reboots en ventana y observar STATUS horario (06:00-00:00 AR).
@@ -202,7 +201,7 @@ Para ayuda: `python tools\debug_4028.py -h`.
 **Release checklist**
 1. `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py`
 2. Ejecutar bot en produccion y verificar startup.
-3. Telegram: `help/status/info/selftest`.
+3. Telegram: `help/status/info/selftest/health/quality`.
 4. (Opcional) `reboot 23` + confirm (si queres probar).
 5. `git status` / `git diff`
 6. commit + push

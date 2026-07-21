@@ -149,6 +149,12 @@ from SQLite rather than a machine-learning framework. For this fleet size, that
 keeps decisions deterministic, testable, and understandable while establishing
 the data quality needed before considering forecasting or anomaly platforms.
 
+Mining Quality Intelligence extends that contract with interval deltas for
+accepted/rejected/stale shares, hardware-error growth, and bounded Vnish chain
+evidence. It intentionally stays on Python and SQLite: adding Prometheus, Grafana,
+or a time-series database before these metric semantics are proven would increase
+operations cost without improving the current reboot decision boundary.
+
 ## Decision Gate For Any New Technology
 
 Before adding a new dependency or framework, answer:

@@ -7,7 +7,7 @@ git status
 git diff --stat
 & ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py
 & ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\miner_diagnostics.py
-& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py tools\\incident_report.py
+& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py app\\mining_quality.py tools\\incident_report.py
 ```
 
 ## Read-Only Miner Diagnostics
@@ -162,7 +162,7 @@ LOW duration, cooldown/window evidence, boards, and normalized Vnish telemetry.
 Startup health log:
 
 ```text
-EVENT_STORE enabled=true path=<absolute-path> available=true schema=2
+EVENT_STORE enabled=true path=<absolute-path> available=true schema=3
 ```
 
 If storage cannot initialize or a write fails, the monitor logs `EVENT_STORE`
@@ -173,7 +173,7 @@ history commands reply `Historial no disponible.`
 
 ## Vnish Telemetry And Reboot Decision Audit
 
-Schema v2 keeps normalized evidence from the `stats` request already performed
+Schema v3 keeps normalized evidence from the `summary` and `stats` requests already performed
 by the monitor. It does not add another stats request and does not store raw ASIC
 responses. Available fields include maximum temperature, average chain voltage,
 total chain consumption, average frequency, hardware-error counters, fan RPM/PWM,
@@ -230,6 +230,39 @@ Hashrate, maximum temperature, chain voltage, chain power, and frequency are
 compared when finite evidence exists. Chain voltage remains board-side telemetry;
 it is explicitly not AC input voltage.
 
+## Mining Quality Intelligence
+
+Mining Quality compares cumulative counters only between samples from the same
+uptime epoch. Counter or uptime regression starts a new learning interval instead
+of producing a negative rate or a false fault. Current Vnish chain faults and
+non-mining chains remain explicit evidence; known transition/autotune states are
+reported as `WATCH` for observation and never trigger an action.
+
+Production advisory defaults:
+
+```json
+"quality_window_hours": 24,
+"quality_min_intervals": 3,
+"quality_reject_warning_percent": 1.0,
+"quality_stale_warning_percent": 1.0,
+"quality_hw_error_delta_warning": 50,
+"quality_no_share_warning_seconds": 900
+```
+
+Read-only Telegram commands:
+
+```text
+/quality
+/quality all
+/quality 23
+```
+
+The command reads at most 100 local SQLite samples per miner and contacts neither
+the miner nor Hashcore. Rejected/stale percentages are interval values derived
+from accepted, rejected, and stale deltas; lifetime totals are retained only as
+bounded numeric counters. Raw firmware payloads, pool URLs, workers, and secrets
+are not persisted.
+
 ## Local Operations Dashboard
 
 Generate a self-contained read-only dashboard from the same SQLite history:
@@ -244,8 +277,8 @@ Generate a self-contained read-only dashboard from the same SQLite history:
 Open `diagnostics/dashboard/index.html` locally. Regenerate the file whenever a
 fresh view is required. The page contains fleet KPIs, one card per miner,
 hashrate sparklines, evidence freshness, Vnish metrics, recent incidents, and
-auto-reboot decisions. Each card also shows the shared Stability Advisor status,
-baseline and bounded evidence. It has no action controls, JavaScript, remote assets,
+auto-reboot decisions. Each card also shows the shared Stability Advisor and
+Mining Quality status, interval deltas, baseline, and bounded evidence. It has no action controls, JavaScript, remote assets,
 network listener, Telegram token, or miner credentials.
 
 Optional Docker execution keeps this reporting tool isolated from the Windows

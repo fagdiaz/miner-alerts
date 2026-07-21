@@ -34,7 +34,12 @@ class OperationsDashboardTests(unittest.TestCase):
             "fan_pwm_percent": 90.0,
             "diagnostic_flags": ["hw_errors_present"],
         }
-        for observed_ts, rate in ((9_400.0, 82.0), (9_700.0, 54.0), (9_990.0, 48.0)):
+        quality_points = (
+            (9_400.0, 82.0, 1_000, 5, 2, 2),
+            (9_700.0, 54.0, 1_090, 15, 7, 20),
+            (9_990.0, 48.0, 1_180, 25, 12, 25),
+        )
+        for observed_ts, rate, accepted, rejected, stale, hw_errors in quality_points:
             self.store.record_sample(
                 observed_ts=observed_ts,
                 miner_key="S19JPRO-23|h23:4028",
@@ -46,8 +51,18 @@ class OperationsDashboardTests(unittest.TestCase):
                 threshold_ths=60.0,
                 active_boards=3,
                 expected_boards=3,
-                elapsed_seconds=50_000,
-                telemetry=telemetry,
+                elapsed_seconds=int(40_000 + observed_ts),
+                telemetry={
+                    **telemetry,
+                    "accepted_shares_total": accepted,
+                    "rejected_shares_total": rejected,
+                    "stale_shares_total": stale,
+                    "hw_errors_total": hw_errors,
+                    "chain_fault_count": 0,
+                    "chains_not_mining_count": 0,
+                    "chains_transitioning_count": 0,
+                    "quality_flags": [],
+                },
             )
         self.store.record_sample(
             observed_ts=9_980.0,
@@ -131,6 +146,14 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertEqual("learning", report["miners"][1]["stability"]["status"])
         self.assertEqual(1, report["stability_counts"]["critical"])
         self.assertEqual(1, report["stability_counts"]["learning"])
+        self.assertEqual("watch", report["miners"][0]["quality"]["status"])
+        self.assertIn(
+            "rejected_share_rate",
+            report["miners"][0]["quality"]["reason_codes"],
+        )
+        self.assertEqual("learning", report["miners"][1]["quality"]["status"])
+        self.assertEqual(1, report["quality_counts"]["watch"])
+        self.assertEqual(1, report["quality_counts"]["learning"])
 
     def test_html_is_self_contained_responsive_and_escaped(self) -> None:
         self._record_fixture()
@@ -147,6 +170,8 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertIn('name="viewport"', rendered)
         self.assertIn("<svg", rendered)
         self.assertIn("Stability Advisor", rendered)
+        self.assertIn("Mining Quality", rendered)
+        self.assertIn("Shares rechazadas", rendered)
         self.assertIn("CRITICAL", rendered)
         self.assertIn("LEARNING", rendered)
         self.assertIn("&lt;Miner 23&gt;", rendered)
@@ -187,6 +212,7 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertNotIn("import requests", source)
         self.assertNotIn("import socket", source)
         self.assertNotIn("subprocess", source)
+        self.assertIn("analyze_mining_quality", source)
         self.assertNotIn("INSERT INTO", source)
         self.assertNotIn("UPDATE ", source)
         self.assertNotIn("DELETE FROM", source)

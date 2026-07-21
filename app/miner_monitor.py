@@ -29,6 +29,11 @@ try:
     )
     from .restart_intelligence import RestartClassification, classify_restart
     from .reboot_safety import evaluate_auto_reboot_interlocks
+    from .mining_quality import (
+        analyze_mining_quality,
+        normalize_mining_quality,
+        render_mining_quality,
+    )
     from .stability_profile import analyze_stability, render_stability_assessment
     from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 except ImportError:
@@ -40,6 +45,11 @@ except ImportError:
     )
     from restart_intelligence import RestartClassification, classify_restart
     from reboot_safety import evaluate_auto_reboot_interlocks
+    from mining_quality import (
+        analyze_mining_quality,
+        normalize_mining_quality,
+        render_mining_quality,
+    )
     from stability_profile import analyze_stability, render_stability_assessment
     from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
 
@@ -82,6 +92,7 @@ CMD_WHITELIST = {
     "event",
     "why",
     "health",
+    "quality",
     "selftest",
     "reboot",
     "restart",
@@ -288,6 +299,18 @@ _COMMANDS = [
         "aliases": [],
     },
     {
+        "name": "quality",
+        "summary": "Analiza shares, errores y estado de cadenas por intervalo.",
+        "usage": "/quality  |  /quality all  |  /quality <miner>",
+        "detail": [
+            "Detalle: diagnostico historico read-only de calidad de minado.",
+        ],
+        "examples": ["/quality", "/quality 23"],
+        "notes": ["Una transicion/autotune se observa; no ejecuta acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
         "name": "selftest",
         "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
         "usage": "/selftest  |  /test",
@@ -353,6 +376,7 @@ def render_help_index() -> str:
         "event",
         "why",
         "health",
+        "quality",
         "reboot",
         "restart",
         "confirm",
@@ -377,6 +401,8 @@ def render_help_index() -> str:
             lines.append(f"{prefix}/why [miner]  Explica la ultima decision de auto-reboot")
         elif name == "health":
             lines.append(f"{prefix}/health [miner|all]  Diagnostico contra baseline estable")
+        elif name == "quality":
+            lines.append(f"{prefix}/quality [miner|all]  Calidad de shares y cadenas")
         elif name == "confirm":
             lines.append(f"{prefix}/confirm <...>  Confirma acción pendiente")
         elif name == "reboot":
@@ -1272,6 +1298,65 @@ def build_stability_health_text(
     return "\n\n".join(blocks)
 
 
+def build_mining_quality_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+    *,
+    now_ts: Optional[float] = None,
+    window_hours: float = 24.0,
+    min_intervals: int = 3,
+    reject_warning_percent: float = 1.0,
+    stale_warning_percent: float = 1.0,
+    hw_error_delta_warning: int = 50,
+    no_share_warning_seconds: float = 900.0,
+) -> str:
+    """Render bounded mining quality from SQLite without miner IO or actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico de calidad temporalmente no disponible."
+    selected_miners = miners
+    token = str(miner_token or "").strip()
+    if token and token.lower() != "all":
+        selected = resolve_miner(token, miners)
+        if not selected:
+            return "Miner no encontrado."
+        selected_miners = [selected]
+    omitted_miners = max(0, len(selected_miners) - 10)
+    selected_miners = selected_miners[:10]
+
+    safe_now = time.time() if now_ts is None else float(now_ts)
+    safe_hours = max(1.0, min(float(window_hours), 720.0))
+    safe_min_intervals = max(1, min(int(min_intervals), 48))
+    since_ts = safe_now - safe_hours * 3600.0
+    blocks = ["QUALITY (historial local)"]
+    for miner in selected_miners:
+        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        samples = event_store.list_samples(
+            miner_key=state_key,
+            since_ts=since_ts,
+            limit=100,
+        )
+        if event_store.last_error:
+            return "Diagnostico de calidad temporalmente no disponible."
+        assessment = analyze_mining_quality(
+            samples,
+            min_intervals=safe_min_intervals,
+            reject_warning_percent=reject_warning_percent,
+            stale_warning_percent=stale_warning_percent,
+            hw_error_delta_warning=hw_error_delta_warning,
+            no_share_warning_seconds=no_share_warning_seconds,
+        )
+        blocks.append(
+            render_mining_quality(
+                display_name(str(miner["name"])),
+                assessment,
+            )
+        )
+    if omitted_miners:
+        blocks.append(f"... {omitted_miners} mineros omitidos por limite de salida.")
+    return "\n\n".join(blocks)
+
+
 def _hashcore_cli_path(hashcore_cfg: dict) -> str:
     return hashcore_cfg.get("cli_bat_path") or hashcore_cfg.get("cli_path") or ""
 
@@ -1804,6 +1889,66 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="why",
+                    )
+                elif cmd_name == "quality":
+                    handled = True
+                    try:
+                        quality_window_hours = float(
+                            config.get("quality_window_hours", 24.0)
+                        )
+                    except (TypeError, ValueError):
+                        quality_window_hours = 24.0
+                    try:
+                        quality_min_intervals = int(
+                            config.get("quality_min_intervals", 3)
+                        )
+                    except (TypeError, ValueError):
+                        quality_min_intervals = 3
+                    try:
+                        reject_warning_percent = float(
+                            config.get("quality_reject_warning_percent", 1.0)
+                        )
+                    except (TypeError, ValueError):
+                        reject_warning_percent = 1.0
+                    try:
+                        stale_warning_percent = float(
+                            config.get("quality_stale_warning_percent", 1.0)
+                        )
+                    except (TypeError, ValueError):
+                        stale_warning_percent = 1.0
+                    try:
+                        hw_error_delta_warning = int(
+                            config.get("quality_hw_error_delta_warning", 50)
+                        )
+                    except (TypeError, ValueError):
+                        hw_error_delta_warning = 50
+                    try:
+                        no_share_warning_seconds = float(
+                            config.get("quality_no_share_warning_seconds", 900.0)
+                        )
+                    except (TypeError, ValueError):
+                        no_share_warning_seconds = 900.0
+                    quality_text = build_mining_quality_text(
+                        event_store,
+                        miners,
+                        args[0] if args else None,
+                        now_ts=time.time(),
+                        window_hours=quality_window_hours,
+                        min_intervals=quality_min_intervals,
+                        reject_warning_percent=reject_warning_percent,
+                        stale_warning_percent=stale_warning_percent,
+                        hw_error_delta_warning=hw_error_delta_warning,
+                        no_share_warning_seconds=no_share_warning_seconds,
+                    )
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        quality_text,
+                        "QUALITY",
+                        "cmd_quality",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="quality",
                     )
                 elif cmd_name == "health":
                     handled = True
@@ -3148,12 +3293,17 @@ def main() -> None:
                 state_key = f"{name}|{host}:{port}"
                 state = states.setdefault(state_key, MinerState())
 
-                rate_ths, elapsed, responded, _ = read_summary(host, port)
+                rate_ths, elapsed, responded, summary_entry = read_summary(host, port)
                 active_boards = None
                 stats_response = None
                 if responded:
                     active_boards, _, stats_response = read_stats_snapshot(host, port)
                 vnish_telemetry = normalize_vnish_stats(
+                    stats_response,
+                    expected_boards=expected_boards,
+                )
+                quality_telemetry = normalize_mining_quality(
+                    summary_entry,
                     stats_response,
                     expected_boards=expected_boards,
                 )
@@ -3244,7 +3394,10 @@ def main() -> None:
                             active_boards=active_boards,
                             expected_boards=expected_boards,
                             elapsed_seconds=elapsed,
-                            telemetry=vnish_telemetry.as_dict(),
+                            telemetry={
+                                **vnish_telemetry.as_dict(),
+                                **quality_telemetry.as_dict(),
+                            },
                         )
 
                 if (

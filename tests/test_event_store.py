@@ -76,6 +76,13 @@ class EventStoreTests(unittest.TestCase):
             "fan_rpm_max": 6000,
             "fan_pwm_percent": 100.0,
             "diagnostic_flags": ["hw_errors_present"],
+            "accepted_shares_total": 1200,
+            "rejected_shares_total": 12,
+            "stale_shares_total": 3,
+            "chain_fault_count": 0,
+            "chains_not_mining_count": 0,
+            "chains_transitioning_count": 1,
+            "quality_flags": ["firmware_transition"],
         }
         self.store.record_sample(
             observed_ts=2_000.0,
@@ -117,6 +124,11 @@ class EventStoreTests(unittest.TestCase):
 
         self.assertIsNotNone(decision_id)
         self.assertEqual(12825.0, samples[0]["chain_voltage_mv_avg"])
+        self.assertEqual(1200, samples[0]["accepted_shares_total"])
+        self.assertEqual(12, samples[0]["rejected_shares_total"])
+        self.assertEqual(3, samples[0]["stale_shares_total"])
+        self.assertEqual(1, samples[0]["chains_transitioning_count"])
+        self.assertEqual('["firmware_transition"]', samples[0]["quality_flags_json"])
         self.assertEqual("cooldown", decision["result"])
         self.assertEqual(120.0, decision["cooldown_remaining_seconds"])
         rendered = render_reboot_decision(decision)
@@ -188,12 +200,64 @@ class EventStoreTests(unittest.TestCase):
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
             self.assertTrue(migrated.available)
-            self.assertEqual(2, migrated.schema_version)
+            self.assertEqual(3, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertIn("chain_voltage_mv_avg", sample)
             self.assertIsNone(sample["chain_voltage_mv_avg"])
+            self.assertIn("accepted_shares_total", sample)
+            self.assertIsNone(sample["accepted_shares_total"])
+            self.assertEqual("[]", sample["quality_flags_json"])
             self.assertEqual(0, migrated.count_rows("reboot_decisions"))
+        finally:
+            migrated.close()
+
+    def test_migrates_schema_v2_quality_columns_without_losing_rows(self) -> None:
+        legacy_path = Path(self.temp_dir.name) / "legacy-v2.db"
+        connection = sqlite3.connect(legacy_path)
+        connection.executescript(
+            """
+            CREATE TABLE telemetry_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                observed_ts REAL NOT NULL,
+                miner_key TEXT NOT NULL,
+                miner_name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                state TEXT NOT NULL,
+                responded INTEGER NOT NULL,
+                rate_ths REAL,
+                threshold_ths REAL NOT NULL,
+                active_boards INTEGER,
+                expected_boards INTEGER NOT NULL,
+                elapsed_seconds INTEGER,
+                max_temp_c REAL,
+                chain_voltage_mv_avg REAL,
+                chain_power_w_total REAL,
+                frequency_mhz_avg REAL,
+                hw_errors_total INTEGER,
+                fan_rpm_max INTEGER,
+                fan_pwm_percent REAL,
+                diagnostic_flags_json TEXT NOT NULL DEFAULT '[]'
+            );
+            INSERT INTO telemetry_samples (
+                observed_ts, miner_key, miner_name, host, state, responded,
+                rate_ths, threshold_ths, active_boards, expected_boards,
+                elapsed_seconds, hw_errors_total
+            ) VALUES (1000, 'm23', '23', 'h23', 'OK', 1, 99, 60, 3, 3, 50000, 22);
+            PRAGMA user_version=2;
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        migrated = EventStore(legacy_path, on_error=self.errors.append)
+        try:
+            self.assertEqual(3, migrated.schema_version)
+            self.assertEqual(1, migrated.count_rows("telemetry_samples"))
+            sample = migrated.list_samples(limit=1)[0]
+            self.assertEqual(22, sample["hw_errors_total"])
+            self.assertIsNone(sample["accepted_shares_total"])
+            self.assertEqual("[]", sample["quality_flags_json"])
         finally:
             migrated.close()
 

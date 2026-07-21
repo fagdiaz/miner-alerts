@@ -29,6 +29,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Add an initial sweet-spot baseline analyzer from diagnostics snapshots: TH/s band, board count, max temp, chain voltage, consumption, frequency and HW errors.
 - [ ] Define production sweet-spot profiles from multiple snapshots per miner: stable TH/s range, temperature band, board count, error rate, reboot history, restart history.
 - [x] Add a robust read-only per-miner baseline (median/MAD) with learning, stable, watch, and critical diagnosis from persisted healthy samples.
+- [x] Persist and classify interval accepted/rejected/stale shares, HW-error growth, chain faults, and firmware transitions from existing Vnish telemetry.
 - [ ] Track "soft symptoms" before reboot: repeated LOW with recovery, board missing, pool reconnects, high reject/stale shares, temperature throttling, watchdog restarts.
 - [ ] Decide whether a restart is safer than reboot when firmware/miner service is alive but hash is degraded.
 
@@ -54,6 +55,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 - [ ] Determine whether S19j Pro/Vnish exposes PSU input voltage, PSU output voltage, current, or power draw through API/logs.
 - [ ] If miner firmware does not expose AC input voltage, document the limitation and use external PDU/UPS/smart meter integration as the source.
+- [x] Confirm current API 4028 voltage fields are chain-side only and keep AC-input diagnosis outside miner telemetry.
 - [ ] Track symptoms that suggest power instability: simultaneous miner drops, board resets, PSU warnings, fan spikes, hashboard disappear/reappear events.
 - [ ] Decide data source for electrical telemetry: firmware stats, PDU API, UPS API, smart plug, or manual CSV import.
 - [ ] Add power anomaly as a separate diagnosis; do not auto-reboot based only on suspected voltage fluctuation.
@@ -69,6 +71,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Add clearer event context to `STATE_CHANGE` Telegram messages.
 - [x] Add read-only `/why [miner]` explanations for QA, startup guard, cooldown, not sustained, window, invalid signal and action outcomes.
 - [x] Add read-only `/health [all|miner]` diagnosis against each miner's learned stable baseline without live miner IO.
+- [x] Add read-only `/quality [all|miner]` interval diagnosis for shares, HW errors, chain faults, and firmware transitions.
 
 ## P6 - Optional Local Interface
 
@@ -76,6 +79,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Evaluate and implement a local read-only static dashboard after the diagnostics collector produced stable evidence.
 - [x] Generate a self-contained HTML fleet view with current cards, trends, incidents, and reboot-decision history from SQLite.
 - [x] Reuse the Stability Advisor in dashboard cards so Telegram and local HTML share the same diagnosis.
+- [x] Reuse Mining Quality assessments in dashboard cards with interval deltas and bounded reasons.
 - [ ] Dashboard MVP: miner cards, current state, last event, last reboot, blocked_by reasons, Vnish event timeline, Hashcore capability status.
 - [ ] Do not expose reboot/restart from a web UI until auth, local-only binding, audit logs, and confirmation are designed.
 - [ ] Prefer a local Windows dashboard or static HTML report before a full web app.
@@ -84,6 +88,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 - [x] Add a bounded SQLite operational history for telemetry, state transitions, restart incidents, and action outcomes.
 - [x] Add schema-v2 normalized Vnish telemetry, reboot-decision history, retention, and a read-only incident report.
+- [x] Add additive schema-v3 mining-quality counters and chain-health evidence without raw firmware payloads.
 - [ ] Standardize logs for blocked actions and delivery failures.
 - [ ] Maintain production defaults in `app/config.example.json`.
 - [ ] Keep release checklist current for Windows PowerShell.

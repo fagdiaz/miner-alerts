@@ -5,6 +5,29 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 013: Mining Quality Intelligence
+
+* **Objetivo**: Convertir contadores acumulados de shares y evidencia Vnish de cadenas en diagnostico por intervalos, evitando confundir resets de uptime/contadores con degradacion real.
+* **Resultado**:
+  - SQLite migra aditivamente a schema v3 y persiste accepted/rejected/stale, fallas/estados de cadena y flags acotados sin guardar payloads crudos.
+  - Un analizador puro calcula deltas solo dentro del mismo uptime epoch; resets producen `LEARNING/counter_reset`, nunca porcentajes negativos ni criticidad falsa.
+  - `WATCH` identifica rejected/stale altos, crecimiento de HW errors, falta de progreso y transicion/autotune; fallas de cadena actuales conservan precedencia `CRITICAL`.
+  - `/quality`, `/quality all` y `/quality <miner>` leen SQLite solamente y el dashboard reutiliza exactamente el mismo diagnostico.
+  - Dos snapshots reales separados 761-762s clasificaron los cuatro mineros `STABLE`, sin rejected/stale ni crecimiento HW en el intervalo.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first, 27 pruebas dirigidas y suite completa de 80 pruebas: PASS.
+  - `py_compile`, JSON config, `git diff --check`, Speckit QA, benchmark, HTML nativo y Docker read-only: PASS.
+  - State machine y bloque de auto-reboot: sin cambios respecto de `9b8e793`.
+* **Estado**:
+  - Implementacion local completa; activacion y prueba Telegram diferidas al reinicio controlado de fin de dia.
+* **Archivos principales**:
+  - `app/mining_quality.py`
+  - `app/event_store.py`
+  - `app/miner_monitor.py`
+  - `tools/operations_dashboard.py`
+  - `tests/test_mining_quality.py`
+  - `specs/013-mining-quality-intelligence/*`
+
 ## [2026-07-20] - Spec 012: Stability Advisor
 
 * **Objetivo**: Convertir la telemetria historica en un sweet spot robusto por minero y separar fallas actuales de drift o histeresis, sin agregar acciones automaticas.

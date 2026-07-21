@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 _TELEMETRY_COLUMNS = {
@@ -19,6 +19,13 @@ _TELEMETRY_COLUMNS = {
     "fan_rpm_max": "INTEGER",
     "fan_pwm_percent": "REAL",
     "diagnostic_flags_json": "TEXT NOT NULL DEFAULT '[]'",
+    "accepted_shares_total": "INTEGER",
+    "rejected_shares_total": "INTEGER",
+    "stale_shares_total": "INTEGER",
+    "chain_fault_count": "INTEGER",
+    "chains_not_mining_count": "INTEGER",
+    "chains_transitioning_count": "INTEGER",
+    "quality_flags_json": "TEXT NOT NULL DEFAULT '[]'",
 }
 
 
@@ -110,7 +117,14 @@ class EventStore:
                     hw_errors_total INTEGER,
                     fan_rpm_max INTEGER,
                     fan_pwm_percent REAL,
-                    diagnostic_flags_json TEXT NOT NULL DEFAULT '[]'
+                    diagnostic_flags_json TEXT NOT NULL DEFAULT '[]',
+                    accepted_shares_total INTEGER,
+                    rejected_shares_total INTEGER,
+                    stale_shares_total INTEGER,
+                    chain_fault_count INTEGER,
+                    chains_not_mining_count INTEGER,
+                    chains_transitioning_count INTEGER,
+                    quality_flags_json TEXT NOT NULL DEFAULT '[]'
                 );
 
                 CREATE INDEX IF NOT EXISTS ix_samples_miner_time
@@ -221,6 +235,11 @@ class EventStore:
                 ensure_ascii=True,
                 separators=(",", ":"),
             )
+            quality_flags_json = json.dumps(
+                list(normalized.get("quality_flags") or []),
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
             with self._lock, connection:
                 connection.execute(
                     """
@@ -229,8 +248,12 @@ class EventStore:
                         rate_ths, threshold_ths, active_boards, expected_boards,
                         elapsed_seconds, max_temp_c, chain_voltage_mv_avg,
                         chain_power_w_total, frequency_mhz_avg, hw_errors_total,
-                        fan_rpm_max, fan_pwm_percent, diagnostic_flags_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        fan_rpm_max, fan_pwm_percent, diagnostic_flags_json,
+                        accepted_shares_total, rejected_shares_total,
+                        stale_shares_total, chain_fault_count,
+                        chains_not_mining_count, chains_transitioning_count,
+                        quality_flags_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         float(observed_ts),
@@ -252,6 +275,13 @@ class EventStore:
                         normalized.get("fan_rpm_max"),
                         normalized.get("fan_pwm_percent"),
                         flags_json,
+                        normalized.get("accepted_shares_total"),
+                        normalized.get("rejected_shares_total"),
+                        normalized.get("stale_shares_total"),
+                        normalized.get("chain_fault_count"),
+                        normalized.get("chains_not_mining_count"),
+                        normalized.get("chains_transitioning_count"),
+                        quality_flags_json,
                     ),
                 )
             self._last_error = None

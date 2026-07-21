@@ -5,6 +5,35 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-20] - Spec 017: Vnish Operations Automation
+
+* **Objetivo**: Operacionalizar la evidencia Vnish reciente y correlacionarla con el estado del monitor sin agregar un worker permanente ni nuevas autorizaciones de reboot.
+* **Resultado**:
+  - El parser acotado conserva los eventos reconocidos mas recientes del replay Vnish en orden cronologico y normaliza su timestamp con procedencia de reloj explicita.
+  - SQLite migra aditivamente a schema v5, completa metadata temporal sin duplicar eventos y registra salud acotada de cada corrida en `collector_runs`.
+  - El collector one-shot puede instalarse como tarea Windows separada cada 15 minutos, con `IgnoreNew`, limite de ejecucion, sin retries, sin Hashcore y sin acoplarse al servicio del monitor.
+  - `/diagnose [all|miner]` combina senal, calidad, firmware reciente, eventos, decisiones de auto-reboot y frescura del collector desde SQLite solamente; el resultado es asesor y no ejecuta acciones.
+  - El dashboard local incorpora frescura y resultado de la ultima corrida del collector.
+  - El rollout corrigio dos fallas de operacion Windows reproducidas: resolucion temprana de `$PSScriptRoot` bajo `powershell.exe -File` y buffering de stdout bajo NSSM; la tarea ahora finaliza en cero y los logs centrales se fuerzan con flush.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first, 32 pruebas dirigidas y suite completa final 101/101: PASS.
+  - `py_compile`, parseo PowerShell, JSON, `git diff --check`, Speckit QA 11/11, `-WhatIf` del scheduler y scan de secretos: PASS.
+  - Smoke live read-only aislado: 16/16 streams, schema v5, 6.560 inserts iniciales, segunda corrida 6.600 duplicados y cero inserts/fallas/truncacion.
+  - Todos los eventos persistidos en el smoke tienen epoch de origen y procedencia `system_local`; no se guardaron lineas crudas ni secretos.
+  - Rollout controlado: tarea Windows `Ready`, `LastTaskResult=0`, `IgnoreNew`; servicio NSSM reiniciado y `Running`, config prod, startup guard 600s, schema v5, collector 16/16 y cero decisiones de reboot inmediatas.
+  - Render real SQLite-only de `/diagnose 23`: 8 lineas, estado `OK`, muestra reciente y collector `OK`; invocacion desde el chat queda como smoke manual del operador.
+* **Estado**:
+  - Implementacion y rollout productivo completos, sin ejecutar acciones Hashcore/reboot/restart.
+* **Archivos principales**:
+  - `app/vnish_logs.py`
+  - `app/event_store.py`
+  - `app/miner_monitor.py`
+  - `tools/vnish_log_collector.py`
+  - `tools/run_vnish_collector.ps1`
+  - `tools/install_vnish_collector_task.ps1`
+  - `tools/operations_dashboard.py`
+  - `specs/017-vnish-operations-automation/*`
+
 ## [2026-07-20] - Spec 016: Vnish Log Intelligence
 
 * **Objetivo**: Incorporar evidencia historica del firmware Vnish para distinguir transiciones normales, watchdog/restarts y fallas de cadena, energia, temperatura o pool sin acoplarla a acciones automaticas.

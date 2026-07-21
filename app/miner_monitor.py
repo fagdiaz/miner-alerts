@@ -95,6 +95,7 @@ CMD_WHITELIST = {
     "why",
     "health",
     "quality",
+    "diagnose",
     "firmware",
     "selftest",
     "reboot",
@@ -120,7 +121,7 @@ def log(msg: str) -> None:
     if _LOGGER:
         _LOGGER.info(line)
     else:
-        print(line)
+        print(line, flush=True)
 
 
 def _short_text(text: str, limit: int = 160) -> str:
@@ -326,6 +327,18 @@ _COMMANDS = [
         "aliases": [],
     },
     {
+        "name": "diagnose",
+        "summary": "Correlaciona evidencia operativa local por minero.",
+        "usage": "/diagnose  |  /diagnose all  |  /diagnose <miner>",
+        "detail": [
+            "Detalle: combina senal, eventos, decisiones y Vnish desde SQLite.",
+        ],
+        "examples": ["/diagnose", "/diagnose 23"],
+        "notes": ["Es advisory, de solo lectura y no autoriza acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
         "name": "selftest",
         "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
         "usage": "/selftest  |  /test",
@@ -392,6 +405,7 @@ def render_help_index() -> str:
         "why",
         "health",
         "quality",
+        "diagnose",
         "firmware",
         "reboot",
         "restart",
@@ -419,6 +433,8 @@ def render_help_index() -> str:
             lines.append(f"{prefix}/health [miner|all]  Diagnostico contra baseline estable")
         elif name == "quality":
             lines.append(f"{prefix}/quality [miner|all]  Calidad de shares y cadenas")
+        elif name == "diagnose":
+            lines.append(f"{prefix}/diagnose [miner|all]  Diagnostico operativo correlacionado")
         elif name == "firmware":
             lines.append(f"{prefix}/firmware [miner|all]  Eventos normalizados de Vnish")
         elif name == "confirm":
@@ -1410,6 +1426,130 @@ def build_firmware_events_text(
     return render_firmware_events(rows, title=title, limit=limit)
 
 
+def build_miner_diagnosis_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+    *,
+    now_ts: Optional[float] = None,
+    stale_after_seconds: float = 900.0,
+    firmware_window_hours: float = 24.0,
+    collector_stale_seconds: float = 3_600.0,
+) -> str:
+    """Correlate bounded persisted evidence without live miner IO or actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico operativo temporalmente no disponible."
+    selected_miners = miners
+    token = str(miner_token or "").strip()
+    if token and token.lower() != "all":
+        selected = resolve_miner(token, miners)
+        if not selected:
+            return "Miner no encontrado."
+        selected_miners = [selected]
+    omitted = max(0, len(selected_miners) - 10)
+    selected_miners = selected_miners[:10]
+
+    effective_now = time.time() if now_ts is None else float(now_ts)
+    safe_stale = max(30.0, min(float(stale_after_seconds), 86_400.0))
+    safe_firmware_window = max(1.0, min(float(firmware_window_hours), 720.0))
+    safe_collector_stale = max(60.0, min(float(collector_stale_seconds), 86_400.0))
+    firmware_since = effective_now - safe_firmware_window * 3_600.0
+    collector_run = event_store.latest_collector_run()
+    collector_text = "SIN EJECUCIONES"
+    if collector_run:
+        collector_age = max(
+            0.0,
+            effective_now - float(collector_run.get("completed_ts") or 0.0),
+        )
+        collector_status = str(collector_run.get("status") or "unknown").upper()
+        if collector_age > safe_collector_stale:
+            collector_status = f"STALE/{collector_status}"
+        collector_text = f"{collector_status} age={int(collector_age)}s"
+
+    blocks: list[str] = []
+    for miner in selected_miners:
+        miner_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        samples = event_store.list_samples(miner_key=miner_key, limit=24)
+        events = event_store.list_events(miner_key=miner_key, limit=1)
+        decision = event_store.latest_reboot_decision(miner_key=miner_key)
+        firmware = event_store.list_firmware_events(
+            miner_key=miner_key,
+            source_since_ts=firmware_since,
+            severities=("warning", "critical"),
+            limit=3,
+        )
+        if event_store.last_error:
+            return "Diagnostico operativo temporalmente no disponible."
+
+        name = display_name(str(miner["name"]))
+        status = "NO_DATA"
+        signal = "sin muestras persistidas"
+        quality_label = "N/A"
+        conclusion = "Esperar una muestra valida antes de diagnosticar."
+        if samples:
+            latest = samples[0]
+            observed_ts = float(latest.get("observed_ts") or 0.0)
+            age = max(0.0, effective_now - observed_ts)
+            state = str(latest.get("state") or "UNKNOWN").upper()
+            responded = bool(latest.get("responded"))
+            rate = latest.get("rate_ths")
+            threshold = latest.get("threshold_ths")
+            signal = (
+                f"{state} rate={format_rate(rate)} threshold={format_rate(threshold)} "
+                f"age={int(age)}s"
+            )
+            quality = analyze_mining_quality(samples, min_intervals=3)
+            quality_label = quality.status.upper()
+            if age > safe_stale:
+                status = "STALE"
+                conclusion = "Telemetria vencida; no inferir necesidad de reboot."
+            elif not responded or state in (STATE_OFFLINE, STATE_HASHBOARD):
+                status = "CRITICAL"
+                conclusion = "Falla actual verificable; revisar evidencia antes de actuar."
+            elif state == STATE_LOW:
+                status = "WATCH"
+                conclusion = "Hashrate bajo actual; respetar sustained LOW y guardrails."
+            elif firmware or quality.status in ("watch", "critical"):
+                status = "WATCH"
+                conclusion = "Senal actual estable con evidencia reciente para revisar."
+            else:
+                status = "OK"
+                conclusion = "Sin evidencia operativa reciente que justifique intervenir."
+
+        firmware_text = "sin warning/critical en ventana"
+        if firmware:
+            latest_firmware = firmware[0]
+            firmware_text = (
+                f"{len(firmware)} fresh; {latest_firmware.get('severity')} "
+                f"{latest_firmware.get('code')} @ {latest_firmware.get('source_ts_text')}"
+            )
+        event_text = "sin evento"
+        if events:
+            latest_event = events[0]
+            event_text = (
+                f"{latest_event.get('event_type')} - "
+                f"{_short_text(str(latest_event.get('summary') or ''), 80)}"
+            )
+        decision_text = str(decision.get("result")) if decision else "sin decision"
+        blocks.append(
+            "\n".join(
+                [
+                    f"DIAGNOSE {name} - {status}",
+                    f"Signal: {signal}",
+                    f"Quality: {quality_label}",
+                    f"Firmware {safe_firmware_window:g}h: {firmware_text}",
+                    f"Evento: {event_text}",
+                    f"Auto-reboot: {decision_text}",
+                    f"Collector: {collector_text}",
+                    f"Conclusion: {conclusion}",
+                ]
+            )
+        )
+    if omitted:
+        blocks.append(f"... {omitted} mineros omitidos por limite de salida.")
+    return "\n\n".join(blocks)
+
+
 def _hashcore_cli_path(hashcore_cfg: dict) -> str:
     return hashcore_cfg.get("cli_bat_path") or hashcore_cfg.get("cli_path") or ""
 
@@ -1942,6 +2082,45 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="why",
+                    )
+                elif cmd_name == "diagnose":
+                    handled = True
+                    try:
+                        diagnosis_stale_seconds = float(
+                            config.get("diagnosis_stale_seconds", 900.0)
+                        )
+                    except (TypeError, ValueError):
+                        diagnosis_stale_seconds = 900.0
+                    try:
+                        diagnosis_firmware_window_hours = float(
+                            config.get("diagnosis_firmware_window_hours", 24.0)
+                        )
+                    except (TypeError, ValueError):
+                        diagnosis_firmware_window_hours = 24.0
+                    try:
+                        diagnosis_collector_stale_seconds = float(
+                            config.get("diagnosis_collector_stale_seconds", 3600.0)
+                        )
+                    except (TypeError, ValueError):
+                        diagnosis_collector_stale_seconds = 3600.0
+                    diagnosis_text = build_miner_diagnosis_text(
+                        event_store,
+                        miners,
+                        args[0] if args else None,
+                        now_ts=time.time(),
+                        stale_after_seconds=diagnosis_stale_seconds,
+                        firmware_window_hours=diagnosis_firmware_window_hours,
+                        collector_stale_seconds=diagnosis_collector_stale_seconds,
+                    )
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        diagnosis_text,
+                        "DIAGNOSE",
+                        "cmd_diagnose",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="diagnose",
                     )
                 elif cmd_name == "firmware":
                     handled = True
@@ -3290,7 +3469,8 @@ def main() -> None:
             log(
                 f"EVENT_STORE retention samples_deleted={deleted['samples']} "
                 f"events_deleted={deleted['events']} decisions_deleted={deleted['decisions']} "
-                f"firmware_events_deleted={deleted['firmware_events']}"
+                f"firmware_events_deleted={deleted['firmware_events']} "
+                f"collector_runs_deleted={deleted['collector_runs']}"
             )
     else:
         log("EVENT_STORE enabled=false")

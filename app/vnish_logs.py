@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping, Optional
 
 
@@ -20,6 +21,8 @@ _CHAIN_RE = re.compile(r"\bchain\s*\[?(\d+)\]?", re.IGNORECASE)
 class VnishLogEvent:
     collected_ts: float
     source_ts_text: str
+    source_ts_epoch: Optional[float]
+    source_clock: str
     source_tab: str
     source_fingerprint: str
     category: str
@@ -31,6 +34,8 @@ class VnishLogEvent:
         return {
             "collected_ts": self.collected_ts,
             "source_ts_text": self.source_ts_text,
+            "source_ts_epoch": self.source_ts_epoch,
+            "source_clock": self.source_clock,
             "source_tab": self.source_tab,
             "source_fingerprint": self.source_fingerprint,
             "category": self.category,
@@ -114,6 +119,24 @@ def _classified(message: str) -> Optional[tuple[str, str, str, str]]:
     return None
 
 
+def _parse_source_timestamp(
+    value: str,
+    source_utc_offset_hours: Optional[float],
+) -> tuple[Optional[float], str]:
+    try:
+        parsed = datetime.strptime(value, "%Y/%m/%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return None, "unparsed"
+    if source_utc_offset_hours is None:
+        return parsed.astimezone().timestamp(), "system_local"
+    try:
+        safe_offset = max(-14.0, min(float(source_utc_offset_hours), 14.0))
+    except (TypeError, ValueError):
+        return None, "unparsed"
+    aware = parsed.replace(tzinfo=timezone(timedelta(hours=safe_offset)))
+    return aware.timestamp(), "fixed_utc_offset"
+
+
 def parse_vnish_log_text(
     text: Any,
     *,
@@ -121,6 +144,7 @@ def parse_vnish_log_text(
     collected_ts: float,
     max_lines: int = 5_000,
     max_events: int = 1_000,
+    source_utc_offset_hours: Optional[float] = None,
 ) -> list[VnishLogEvent]:
     """Parse recognized evidence without retaining source lines or arbitrary payloads."""
     if not isinstance(text, str) or source_tab not in ALLOWED_LOG_TABS:
@@ -128,9 +152,8 @@ def parse_vnish_log_text(
     safe_lines = max(1, min(int(max_lines), 20_000))
     safe_events = max(1, min(int(max_events), 5_000))
     events: list[VnishLogEvent] = []
-    for index, raw_line in enumerate(text.splitlines()):
-        if index >= safe_lines or len(events) >= safe_events:
-            break
+    bounded_lines = text.splitlines()[-safe_lines:]
+    for raw_line in bounded_lines:
         line = raw_line.strip()
         if not line or len(line) > 4_096:
             continue
@@ -141,13 +164,20 @@ def parse_vnish_log_text(
         if classified is None:
             continue
         category, severity, code, summary = classified
+        source_ts_text = match.group("timestamp")[:32]
+        source_ts_epoch, source_clock = _parse_source_timestamp(
+            source_ts_text,
+            source_utc_offset_hours,
+        )
         fingerprint = hashlib.sha256(
             f"{source_tab}\0{line}".encode("utf-8", errors="replace")
         ).hexdigest()
         events.append(
             VnishLogEvent(
                 collected_ts=float(collected_ts),
-                source_ts_text=match.group("timestamp")[:32],
+                source_ts_text=source_ts_text,
+                source_ts_epoch=source_ts_epoch,
+                source_clock=source_clock,
                 source_tab=source_tab,
                 source_fingerprint=fingerprint,
                 category=category,
@@ -156,7 +186,7 @@ def parse_vnish_log_text(
                 summary=summary[:160],
             )
         )
-    return events
+    return events[-safe_events:]
 
 
 def render_firmware_events(

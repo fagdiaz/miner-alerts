@@ -125,6 +125,20 @@ class OperationsDashboardTests(unittest.TestCase):
             code="watchdog_chain_restart",
             summary="Reinicio interno por corte de cadena",
         )
+        self.store.record_collector_run(
+            started_ts=9_970.0,
+            completed_ts=9_998.0,
+            status="ok",
+            attempted=16,
+            succeeded=16,
+            failed=0,
+            events_parsed=1,
+            events_inserted=1,
+            events_duplicate=0,
+            events_failed=0,
+            truncated_streams=0,
+            summary="Coleccion ok: 16/16 streams.",
+        )
 
     def test_builds_bounded_fleet_view_model(self) -> None:
         self._record_fixture()
@@ -149,6 +163,8 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertEqual(1, report["summary"]["decisions"])
         self.assertEqual(1, report["summary"]["firmware_events"])
         self.assertEqual("watchdog_chain_restart", report["firmware_events"][0]["code"])
+        self.assertEqual("ok", report["collector_run"]["status"])
+        self.assertEqual(2.0, report["collector_run"]["age_seconds"])
         self.assertEqual("<Miner 23>", report["miners"][0]["miner_name"])
         self.assertEqual("Miner 24", report["miners"][1]["miner_name"])
         self.assertEqual([82.0, 54.0, 48.0], report["miners"][0]["rate_history"])
@@ -187,6 +203,8 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertIn("Stability Advisor", rendered)
         self.assertIn("Mining Quality", rendered)
         self.assertIn("Vnish Firmware Timeline", rendered)
+        self.assertIn("Collector Vnish", rendered)
+        self.assertIn("16/16 streams", rendered)
         self.assertIn("watchdog_chain_restart", rendered)
         self.assertIn("Shares rechazadas", rendered)
         self.assertIn("CRITICAL", rendered)

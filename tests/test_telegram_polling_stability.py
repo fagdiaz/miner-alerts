@@ -8,6 +8,27 @@ MONITOR_PATH = ROOT / "app" / "miner_monitor.py"
 
 
 class TelegramPollingStabilityTests(unittest.TestCase):
+    def test_stdout_log_flushes_under_windows_service_redirection(self) -> None:
+        tree = ast.parse(MONITOR_PATH.read_text(encoding="utf-8"))
+        log_function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "log"
+        )
+        print_call = next(
+            node
+            for node in ast.walk(log_function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "print"
+        )
+        flush = next(
+            (keyword.value for keyword in print_call.keywords if keyword.arg == "flush"),
+            None,
+        )
+        self.assertIsInstance(flush, ast.Constant)
+        self.assertIs(flush.value, True)
+
     def test_poll_empty_branch_has_no_command_local_references(self) -> None:
         source = MONITOR_PATH.read_text(encoding="utf-8")
         tree = ast.parse(source)

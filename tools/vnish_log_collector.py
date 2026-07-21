@@ -170,6 +170,8 @@ def _store_events(
         result = store.record_firmware_event(
             collected_ts=event.collected_ts,
             source_ts_text=event.source_ts_text,
+            source_ts_epoch=event.source_ts_epoch,
+            source_clock=event.source_clock,
             miner_key=miner_key,
             miner_name=miner_name,
             host=host,
@@ -199,12 +201,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--max-bytes", type=int, default=1_048_576)
     parser.add_argument("--max-lines", type=int, default=5_000)
     parser.add_argument("--max-events", type=int, default=1_000)
+    parser.add_argument("--source-utc-offset-hours", type=float)
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    started_ts = time.time()
     config = _load_config(args.config.resolve())
     miners = config.get("miners")
     if not isinstance(miners, list) or not miners:
@@ -221,6 +225,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("VNISH_LOG_COLLECTOR error=event_store_unavailable")
         return 2
     failures = 0
+    attempted = 0
+    succeeded = 0
+    events_parsed = 0
+    events_inserted = 0
+    events_duplicate = 0
+    events_failed = 0
+    truncated_streams = 0
+    configured_offset = config.get("vnish_log_utc_offset_hours")
+    source_utc_offset_hours = (
+        args.source_utc_offset_hours
+        if args.source_utc_offset_hours is not None
+        else configured_offset
+    )
     try:
         for miner in miners:
             if not isinstance(miner, dict):
@@ -228,6 +245,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 continue
             miner_key, miner_name, host = _miner_identity(miner)
             for tab in tabs:
+                attempted += 1
                 collected_ts = time.time()
                 result = collect_vnish_tab(
                     host,
@@ -243,13 +261,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                         f"bytes={result.bytes_received} error={result.error}"
                     )
                     continue
+                succeeded += 1
+                if result.truncated:
+                    truncated_streams += 1
                 events = parse_vnish_log_text(
                     result.text,
                     source_tab=tab,
                     collected_ts=collected_ts,
                     max_lines=args.max_lines,
                     max_events=args.max_events,
+                    source_utc_offset_hours=source_utc_offset_hours,
                 )
+                events_parsed += len(events)
                 inserted = duplicates = failed = 0
                 if store is not None:
                     inserted, duplicates, failed = _store_events(
@@ -260,6 +283,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                         host=host,
                     )
                     failures += failed
+                    events_inserted += inserted
+                    events_duplicate += duplicates
+                    events_failed += failed
                 print(
                     f"VNISH_LOG miner={miner_name} tab={tab} ok=true "
                     f"bytes={result.bytes_received} parsed={len(events)} "
@@ -268,6 +294,33 @@ def main(argv: Optional[list[str]] = None) -> int:
                 )
     finally:
         if store is not None:
+            completed_ts = time.time()
+            status = (
+                "ok"
+                if failures == 0
+                else ("failed" if succeeded == 0 else "partial")
+            )
+            summary = (
+                f"Coleccion {status}: {succeeded}/{attempted} streams; "
+                f"inserted={events_inserted} duplicate={events_duplicate} "
+                f"failed={failures}."
+            )
+            run_id = store.record_collector_run(
+                started_ts=started_ts,
+                completed_ts=completed_ts,
+                status=status,
+                attempted=attempted,
+                succeeded=succeeded,
+                failed=max(0, attempted - succeeded),
+                events_parsed=events_parsed,
+                events_inserted=events_inserted,
+                events_duplicate=events_duplicate,
+                events_failed=events_failed,
+                truncated_streams=truncated_streams,
+                summary=summary,
+            )
+            if run_id is None:
+                failures += 1
             store.close()
     return 0 if failures == 0 else 1
 

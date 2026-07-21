@@ -162,7 +162,7 @@ LOW duration, cooldown/window evidence, boards, and normalized Vnish telemetry.
 Startup health log:
 
 ```text
-EVENT_STORE enabled=true path=<absolute-path> available=true schema=4
+EVENT_STORE enabled=true path=<absolute-path> available=true schema=5
 ```
 
 If storage cannot initialize or a write fails, the monitor logs `EVENT_STORE`
@@ -283,7 +283,7 @@ Run a bounded read-only dry run first:
   --max-bytes 262144
 ```
 
-Persist normalized events to the configured schema-v4 SQLite store:
+Persist normalized events to the configured schema-v5 SQLite store:
 
 ```powershell
 & ".\\.venv\\Scripts\\python.exe" tools\\vnish_log_collector.py `
@@ -293,9 +293,15 @@ Persist normalized events to the configured schema-v4 SQLite store:
 
 The CLI opens only `ws://<miner>/api/v1/logs-ws/<tab>`, processes one
 miner/tab at a time, uses strict time/byte/event limits, and has no reconnect or
-retry loop. It stores generated categories and summaries plus a SHA-256
-fingerprint for idempotency. Raw lines, pool workers, arbitrary firmware
-payloads, and credentials are neither persisted nor printed.
+retry loop. Limits retain the newest recognized tail while preserving
+chronological order. It stores generated categories and summaries, parsed source
+time with clock provenance, and a SHA-256 fingerprint for idempotency. Raw lines,
+pool workers, arbitrary firmware payloads, and credentials are neither persisted
+nor printed.
+
+Each persisted invocation writes one bounded `collector_runs` health record with
+stream success/failure, parsed/inserted/duplicate counts and truncation. It does
+not contain raw firmware content.
 
 Read-only Telegram views:
 
@@ -307,9 +313,34 @@ Read-only Telegram views:
 
 The monitor never opens the Vnish WebSocket. Telegram reads SQLite only, and
 firmware events cannot change state, notifications, or reboot/restart policy.
-The source timestamp remains text because its timezone provenance is unknown.
-Use the collector manually or from a separate scheduled task after observing its
-runtime cost; do not schedule overlapping invocations.
+Set `vnish_log_utc_offset_hours` only when the firmware clock offset is known;
+otherwise `null` records the collector host local timezone as provenance.
+
+Install the separate current-user scheduled task after a dry run:
+
+```powershell
+& ".\tools\install_vnish_collector_task.ps1" -WhatIf
+& ".\tools\install_vnish_collector_task.ps1" -IntervalMinutes 15
+Start-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
+Get-ScheduledTaskInfo -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
+```
+
+The task invokes `tools/run_vnish_collector.ps1`, uses `IgnoreNew`, and has a
+ten-minute execution limit. It is current-user `Interactive`, so it requires that
+user to have an active Windows session. It never starts the monitor or Hashcore.
+
+Read-only correlated diagnosis:
+
+```text
+/diagnose
+/diagnose all
+/diagnose 23
+```
+
+`/diagnose` uses only SQLite and returns bounded signal, quality, fresh firmware,
+latest event, reboot-decision and collector-health evidence. Replayed firmware
+events outside `diagnosis_firmware_window_hours` are excluded from current
+evidence. The command is advisory and cannot execute reboot/restart.
 
 ## Local Operations Dashboard
 

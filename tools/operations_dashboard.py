@@ -24,7 +24,13 @@ from app.stability_profile import analyze_stability
 
 
 _KNOWN_TABLES = frozenset(
-    ("telemetry_samples", "operational_events", "reboot_decisions", "firmware_events")
+    (
+        "telemetry_samples",
+        "operational_events",
+        "reboot_decisions",
+        "firmware_events",
+        "collector_runs",
+    )
 )
 
 
@@ -107,6 +113,15 @@ def _window_rows(
     return [dict(row) for row in rows]
 
 
+def _latest_collector_run(connection: sqlite3.Connection) -> Optional[dict[str, Any]]:
+    if not _table_exists(connection, "collector_runs"):
+        return None
+    row = connection.execute(
+        "SELECT * FROM collector_runs ORDER BY completed_ts DESC, id DESC LIMIT 1"
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def build_dashboard_data(
     connection: sqlite3.Connection,
     *,
@@ -153,6 +168,14 @@ def build_dashboard_data(
         since_ts=since_ts,
         limit=min(safe_limit, 500),
     )
+    collector_run = _latest_collector_run(connection)
+    if collector_run:
+        completed_ts = _finite(collector_run.get("completed_ts"))
+        collector_run["age_seconds"] = (
+            None
+            if completed_ts is None
+            else max(0.0, effective_now - completed_ts)
+        )
 
     histories: dict[str, list[float]] = defaultdict(list)
     sample_histories: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -260,6 +283,7 @@ def build_dashboard_data(
         "events": events[:50],
         "decisions": decisions[:50],
         "firmware_events": firmware_events[:50],
+        "collector_run": collector_run,
     }
 
 
@@ -482,6 +506,20 @@ def _render_firmware_rows(events: list[dict[str, Any]]) -> str:
     return "".join(rows)
 
 
+def _render_collector_health(run: Optional[dict[str, Any]]) -> str:
+    if not run:
+        return '<div class="empty-panel">Sin ejecuciones registradas del colector Vnish</div>'
+    return (
+        '<div class="collector-health">'
+        f'<strong>{_esc(str(run.get("status") or "unknown").upper())}</strong> '
+        f'<span>{_esc(run.get("succeeded"))}/{_esc(run.get("attempted"))} streams</span> '
+        f'<span>age {_esc(_age(run.get("age_seconds")))}</span> '
+        f'<span>inserted {_esc(run.get("events_inserted"))}</span> '
+        f'<span>duplicate {_esc(run.get("events_duplicate"))}</span>'
+        '</div>'
+    )
+
+
 def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts Operations") -> str:
     generated = _timestamp(report.get("generated_ts"))
     summary = report["summary"]
@@ -532,6 +570,7 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
     .decision {{ display:flex; justify-content:space-between; align-items:end; gap:10px; border-top:1px solid var(--line); padding-top:11px; }} .decision strong {{ text-align:right; font-size:.82rem; }}
     .table-wrap {{ overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:14px; }} table {{ width:100%; border-collapse:collapse; min-width:760px; }} th,td {{ text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); font-size:.82rem; }} th {{ color:var(--muted); text-transform:uppercase; letter-spacing:.07em; font-size:.68rem; }} tr:last-child td {{ border-bottom:0; }}
     .severity,.decision-tag {{ display:inline-block; border-radius:999px; padding:4px 7px; background:#e8e6dd; font-size:.7rem; font-weight:700; }} .empty-panel,.empty-cell {{ padding:36px; text-align:center; color:var(--muted); background:var(--card); border:1px dashed var(--line); border-radius:14px; }}
+    .collector-health {{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:16px 18px; background:var(--card); border:1px solid var(--line); border-radius:14px; }} .collector-health span {{ color:var(--muted); }}
     footer {{ margin-top:36px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:.78rem; }}
     @media (max-width:800px) {{ header {{ align-items:start; flex-direction:column; }} .generated {{ text-align:left; }} .kpis {{ grid-template-columns:repeat(2,1fr); }} main {{ width:min(100% - 20px,1440px); padding-top:22px; }} }}
   </style>
@@ -548,6 +587,7 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
   </section>
   <section><div class="section-head"><div><h2>Estado actual</h2><p class="eyebrow">Stability Advisor + Mining Quality</p></div><div class="chips">{state_counts} {stability_counts} {quality_counts}</div></div><div class="miner-grid">{miner_cards}</div></section>
   <section><div class="section-head"><h2>Incidentes recientes</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Severidad</th><th>Tipo</th><th>Resumen</th></tr></thead><tbody>{_render_event_rows(report['events'])}</tbody></table></div></section>
+  <section><div class="section-head"><h2>Collector Vnish</h2></div>{_render_collector_health(report.get('collector_run'))}</section>
   <section><div class="section-head"><h2>Vnish Firmware Timeline</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha origen</th><th>Miner</th><th>Severidad</th><th>Categoria</th><th>Codigo</th><th>Resumen</th></tr></thead><tbody>{_render_firmware_rows(report['firmware_events'])}</tbody></table></div></section>
   <section><div class="section-head"><h2>Decisiones de auto-reboot</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Resultado</th><th>Hashrate</th><th>Temp</th></tr></thead><tbody>{_render_decision_rows(report['decisions'])}</tbody></table></div></section>
   <footer>Reporte read-only. `chain_voltage` representa evidencia de hashboard, no voltaje AC de entrada. Telegram permanece como superficie de control.</footer>

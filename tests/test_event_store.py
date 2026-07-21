@@ -79,6 +79,8 @@ class EventStoreTests(unittest.TestCase):
             "severity": "warning",
             "code": "watchdog_chain_restart",
             "summary": "Reinicio interno por corte de cadena",
+            "source_ts_epoch": 1_757_333_519.0,
+            "source_clock": "fixed_utc_offset",
         }
 
         first = self.store.record_firmware_event(**values)
@@ -89,6 +91,8 @@ class EventStoreTests(unittest.TestCase):
         self.assertEqual(0, duplicate)
         self.assertEqual(1, len(rows))
         self.assertEqual("watchdog_chain_restart", rows[0]["code"])
+        self.assertEqual(1_757_333_519.0, rows[0]["source_ts_epoch"])
+        self.assertEqual("fixed_utc_offset", rows[0]["source_clock"])
         self.assertNotIn("raw", rows[0])
         self.assertEqual(1, self.store.count_rows("firmware_events"))
 
@@ -100,7 +104,7 @@ class EventStoreTests(unittest.TestCase):
 
         migrated = EventStore(legacy_path)
         try:
-            self.assertEqual(4, migrated.schema_version)
+            self.assertEqual(5, migrated.schema_version)
             self.assertEqual(0, migrated.count_rows("firmware_events"))
         finally:
             migrated.close()
@@ -250,7 +254,7 @@ class EventStoreTests(unittest.TestCase):
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
             self.assertTrue(migrated.available)
-            self.assertEqual(4, migrated.schema_version)
+            self.assertEqual(5, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertIn("chain_voltage_mv_avg", sample)
@@ -302,7 +306,7 @@ class EventStoreTests(unittest.TestCase):
 
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
-            self.assertEqual(4, migrated.schema_version)
+            self.assertEqual(5, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertEqual(22, sample["hw_errors_total"])
@@ -337,6 +341,89 @@ class EventStoreTests(unittest.TestCase):
 
         self.assertEqual(second_id, all_events[0]["id"])
         self.assertEqual(["m23"], [event["miner_key"] for event in filtered])
+
+    def test_schema_v4_migration_backfills_metadata_without_duplicate_rows(self) -> None:
+        legacy_path = Path(self.temp_dir.name) / "schema-v4.db"
+        connection = sqlite3.connect(legacy_path)
+        connection.executescript(
+            """
+            CREATE TABLE firmware_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                collected_ts REAL NOT NULL,
+                source_ts_text TEXT NOT NULL,
+                miner_key TEXT NOT NULL,
+                miner_name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                source_tab TEXT NOT NULL,
+                source_fingerprint TEXT NOT NULL,
+                category TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                code TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                UNIQUE(miner_key, source_tab, source_fingerprint)
+            );
+            INSERT INTO firmware_events (
+                collected_ts, source_ts_text, miner_key, miner_name, host,
+                source_tab, source_fingerprint, category, severity, code, summary
+            ) VALUES (
+                1000, '2026/07/20 10:00:00', 'm23', '23', 'h23',
+                'status', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                'restart', 'warning', 'watchdog_restart', 'Watchdog reinicio el proceso'
+            );
+            PRAGMA user_version=4;
+            """
+        )
+        connection.commit()
+        connection.close()
+
+        migrated = EventStore(legacy_path)
+        try:
+            duplicate = migrated.record_firmware_event(
+                collected_ts=2_000.0,
+                source_ts_text="2026/07/20 10:00:00",
+                source_ts_epoch=1_758_000_000.0,
+                source_clock="system_local",
+                miner_key="m23",
+                miner_name="23",
+                host="h23",
+                source_tab="status",
+                source_fingerprint="a" * 64,
+                category="restart",
+                severity="warning",
+                code="watchdog_restart",
+                summary="Watchdog reinicio el proceso",
+            )
+            rows = migrated.list_firmware_events(miner_key="m23")
+            self.assertEqual(5, migrated.schema_version)
+            self.assertEqual(0, duplicate)
+            self.assertEqual(1, len(rows))
+            self.assertEqual(1_758_000_000.0, rows[0]["source_ts_epoch"])
+            self.assertEqual("system_local", rows[0]["source_clock"])
+        finally:
+            migrated.close()
+
+    def test_records_bounded_collector_run_health(self) -> None:
+        run_id = self.store.record_collector_run(
+            started_ts=1_000.0,
+            completed_ts=1_005.0,
+            status="partial",
+            attempted=16,
+            succeeded=15,
+            failed=1,
+            events_parsed=200,
+            events_inserted=20,
+            events_duplicate=180,
+            events_failed=0,
+            truncated_streams=2,
+            summary="Coleccion parcial: 15/16 streams.",
+        )
+        latest = self.store.latest_collector_run()
+
+        self.assertGreater(run_id or 0, 0)
+        self.assertEqual("partial", latest["status"])
+        self.assertEqual(16, latest["attempted"])
+        self.assertEqual(2, latest["truncated_streams"])
+        self.assertEqual(1, self.store.count_rows("collector_runs"))
 
     def test_retention_prunes_only_expired_rows(self) -> None:
         day = 86_400
@@ -387,7 +474,13 @@ class EventStoreTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            {"samples": 1, "events": 1, "decisions": 0, "firmware_events": 1},
+            {
+                "samples": 1,
+                "events": 1,
+                "decisions": 0,
+                "firmware_events": 1,
+                "collector_runs": 0,
+            },
             deleted,
         )
         self.assertEqual(1, self.store.count_rows("telemetry_samples"))

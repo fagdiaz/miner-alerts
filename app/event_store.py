@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 _TELEMETRY_COLUMNS = {
@@ -26,6 +26,11 @@ _TELEMETRY_COLUMNS = {
     "chains_not_mining_count": "INTEGER",
     "chains_transitioning_count": "INTEGER",
     "quality_flags_json": "TEXT NOT NULL DEFAULT '[]'",
+}
+
+_FIRMWARE_EVENT_COLUMNS = {
+    "source_ts_epoch": "REAL",
+    "source_clock": "TEXT NOT NULL DEFAULT 'unparsed'",
 }
 
 
@@ -201,6 +206,8 @@ class EventStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     collected_ts REAL NOT NULL,
                     source_ts_text TEXT NOT NULL,
+                    source_ts_epoch REAL,
+                    source_clock TEXT NOT NULL DEFAULT 'unparsed',
                     miner_key TEXT NOT NULL,
                     miner_name TEXT NOT NULL,
                     host TEXT NOT NULL,
@@ -219,6 +226,25 @@ class EventStore:
                     ON firmware_events(miner_key, source_tab, source_ts_text DESC);
                 CREATE INDEX IF NOT EXISTS ix_firmware_events_category_time
                     ON firmware_events(category, collected_ts DESC);
+
+                CREATE TABLE IF NOT EXISTS collector_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    started_ts REAL NOT NULL,
+                    completed_ts REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    attempted INTEGER NOT NULL,
+                    succeeded INTEGER NOT NULL,
+                    failed INTEGER NOT NULL,
+                    events_parsed INTEGER NOT NULL,
+                    events_inserted INTEGER NOT NULL,
+                    events_duplicate INTEGER NOT NULL,
+                    events_failed INTEGER NOT NULL,
+                    truncated_streams INTEGER NOT NULL,
+                    summary TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_collector_runs_completed
+                    ON collector_runs(completed_ts DESC);
                 """
             )
             existing_columns = {
@@ -230,6 +256,19 @@ class EventStore:
                     connection.execute(
                         f"ALTER TABLE telemetry_samples ADD COLUMN {column_name} {column_type}"
                     )
+            firmware_columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(firmware_events)").fetchall()
+            }
+            for column_name, column_type in _FIRMWARE_EVENT_COLUMNS.items():
+                if column_name not in firmware_columns:
+                    connection.execute(
+                        f"ALTER TABLE firmware_events ADD COLUMN {column_name} {column_type}"
+                    )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS ix_firmware_events_source_epoch "
+                "ON firmware_events(source_ts_epoch DESC)"
+            )
             connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     def record_sample(
@@ -526,6 +565,8 @@ class EventStore:
         *,
         collected_ts: float,
         source_ts_text: str,
+        source_ts_epoch: Optional[float] = None,
+        source_clock: str = "unparsed",
         miner_key: str,
         miner_name: str,
         host: str,
@@ -545,18 +586,27 @@ class EventStore:
                 character not in "0123456789abcdef" for character in safe_fingerprint
             ):
                 raise ValueError("source_fingerprint must be a SHA-256 hex digest")
+            safe_clock = str(source_clock).strip().lower()
+            if safe_clock not in ("system_local", "fixed_utc_offset", "unparsed"):
+                safe_clock = "unparsed"
+            safe_source_epoch = (
+                None if source_ts_epoch is None else float(source_ts_epoch)
+            )
             with self._lock, connection:
                 cursor = connection.execute(
                     """
                     INSERT OR IGNORE INTO firmware_events (
-                        collected_ts, source_ts_text, miner_key, miner_name, host,
+                        collected_ts, source_ts_text, source_ts_epoch, source_clock,
+                        miner_key, miner_name, host,
                         source_tab, source_fingerprint, category, severity, code,
                         summary
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         float(collected_ts),
                         str(source_ts_text)[:32],
+                        safe_source_epoch,
+                        safe_clock,
                         str(miner_key)[:200],
                         str(miner_name)[:80],
                         str(host)[:255],
@@ -568,6 +618,25 @@ class EventStore:
                         str(summary)[:160],
                     ),
                 )
+                if not cursor.rowcount and safe_source_epoch is not None:
+                    connection.execute(
+                        """
+                        UPDATE firmware_events
+                        SET source_ts_epoch = COALESCE(source_ts_epoch, ?),
+                            source_clock = CASE
+                                WHEN source_ts_epoch IS NULL THEN ?
+                                ELSE source_clock
+                            END
+                        WHERE miner_key = ? AND source_tab = ? AND source_fingerprint = ?
+                        """,
+                        (
+                            safe_source_epoch,
+                            safe_clock,
+                            str(miner_key)[:200],
+                            str(source_tab)[:20],
+                            safe_fingerprint,
+                        ),
+                    )
                 self._last_error = None
                 return int(cursor.lastrowid) if cursor.rowcount else 0
         except (TypeError, ValueError, sqlite3.Error) as exc:
@@ -580,6 +649,7 @@ class EventStore:
         limit: int = 20,
         miner_key: Optional[str] = None,
         since_ts: Optional[float] = None,
+        source_since_ts: Optional[float] = None,
         severities: Optional[Iterable[str]] = None,
     ) -> list[Dict[str, Any]]:
         connection = self._connection
@@ -594,6 +664,9 @@ class EventStore:
         if since_ts is not None:
             clauses.append("collected_ts >= ?")
             params.append(float(since_ts))
+        if source_since_ts is not None:
+            clauses.append("source_ts_epoch >= ?")
+            params.append(float(source_since_ts))
         normalized_severities = tuple(
             str(value).lower() for value in (severities or ()) if str(value).strip()
         )
@@ -619,6 +692,84 @@ class EventStore:
         except (TypeError, ValueError, sqlite3.Error) as exc:
             self._report_error("list_firmware_events", exc)
             return []
+
+    def record_collector_run(
+        self,
+        *,
+        started_ts: float,
+        completed_ts: float,
+        status: str,
+        attempted: int,
+        succeeded: int,
+        failed: int,
+        events_parsed: int,
+        events_inserted: int,
+        events_duplicate: int,
+        events_failed: int,
+        truncated_streams: int,
+        summary: str,
+    ) -> Optional[int]:
+        connection = self._connection
+        if connection is None:
+            return None
+        safe_status = str(status).strip().lower()
+        if safe_status not in ("ok", "partial", "failed"):
+            safe_status = "failed"
+        try:
+            with self._lock, connection:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO collector_runs (
+                        started_ts, completed_ts, status, attempted, succeeded,
+                        failed, events_parsed, events_inserted, events_duplicate,
+                        events_failed, truncated_streams, summary
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        float(started_ts),
+                        float(completed_ts),
+                        safe_status,
+                        max(0, int(attempted)),
+                        max(0, int(succeeded)),
+                        max(0, int(failed)),
+                        max(0, int(events_parsed)),
+                        max(0, int(events_inserted)),
+                        max(0, int(events_duplicate)),
+                        max(0, int(events_failed)),
+                        max(0, int(truncated_streams)),
+                        str(summary)[:200],
+                    ),
+                )
+            self._last_error = None
+            return int(cursor.lastrowid)
+        except (TypeError, ValueError, sqlite3.Error) as exc:
+            self._report_error("record_collector_run", exc)
+            return None
+
+    def list_collector_runs(self, *, limit: int = 20) -> list[Dict[str, Any]]:
+        connection = self._connection
+        if connection is None:
+            return []
+        safe_limit = max(1, min(int(limit), 1_000))
+        try:
+            with self._lock:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM collector_runs
+                    ORDER BY completed_ts DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (safe_limit,),
+                ).fetchall()
+            self._last_error = None
+            return [dict(row) for row in rows]
+        except (TypeError, ValueError, sqlite3.Error) as exc:
+            self._report_error("list_collector_runs", exc)
+            return []
+
+    def latest_collector_run(self) -> Optional[Dict[str, Any]]:
+        rows = self.list_collector_runs(limit=1)
+        return rows[0] if rows else None
 
     def list_samples(
         self,
@@ -714,7 +865,13 @@ class EventStore:
     ) -> Dict[str, int]:
         connection = self._connection
         if connection is None:
-            return {"samples": 0, "events": 0, "decisions": 0, "firmware_events": 0}
+            return {
+                "samples": 0,
+                "events": 0,
+                "decisions": 0,
+                "firmware_events": 0,
+                "collector_runs": 0,
+            }
         sample_cutoff = float(now_ts) - max(1, int(sample_retention_days)) * 86_400
         event_cutoff = float(now_ts) - max(1, int(event_retention_days)) * 86_400
         decision_days = event_retention_days if decision_retention_days is None else decision_retention_days
@@ -737,16 +894,27 @@ class EventStore:
                     "DELETE FROM firmware_events WHERE collected_ts < ?",
                     (event_cutoff,),
                 )
+                collector_cursor = connection.execute(
+                    "DELETE FROM collector_runs WHERE completed_ts < ?",
+                    (event_cutoff,),
+                )
             self._last_error = None
             return {
                 "samples": max(0, int(sample_cursor.rowcount)),
                 "events": max(0, int(event_cursor.rowcount)),
                 "decisions": max(0, int(decision_cursor.rowcount)),
                 "firmware_events": max(0, int(firmware_cursor.rowcount)),
+                "collector_runs": max(0, int(collector_cursor.rowcount)),
             }
         except sqlite3.Error as exc:
             self._report_error("prune", exc)
-            return {"samples": 0, "events": 0, "decisions": 0, "firmware_events": 0}
+            return {
+                "samples": 0,
+                "events": 0,
+                "decisions": 0,
+                "firmware_events": 0,
+                "collector_runs": 0,
+            }
 
     def count_rows(self, table_name: str) -> int:
         if table_name not in (
@@ -754,6 +922,7 @@ class EventStore:
             "operational_events",
             "reboot_decisions",
             "firmware_events",
+            "collector_runs",
         ):
             raise ValueError("Unsupported table")
         connection = self._connection

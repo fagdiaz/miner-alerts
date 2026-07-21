@@ -3,6 +3,7 @@ import io
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,6 +46,30 @@ class _FakeWebSocket:
 
 
 class VnishLogTests(unittest.TestCase):
+    def test_parser_limits_keep_newest_events_in_chronological_order(self) -> None:
+        lines = [
+            f"[2026/07/20 10:0{index}:00] INFO: Initializing cycle {index}"
+            for index in range(6)
+        ]
+        events = parse_vnish_log_text(
+            "\n".join(lines),
+            source_tab="status",
+            collected_ts=10_000.0,
+            max_lines=4,
+            max_events=2,
+            source_utc_offset_hours=-3,
+        )
+
+        self.assertEqual(
+            ["2026/07/20 10:04:00", "2026/07/20 10:05:00"],
+            [event.source_ts_text for event in events],
+        )
+        expected = datetime(
+            2026, 7, 20, 10, 5, tzinfo=timezone(timedelta(hours=-3))
+        ).timestamp()
+        self.assertEqual(expected, events[-1].source_ts_epoch)
+        self.assertEqual("fixed_utc_offset", events[-1].source_clock)
+
     def test_parser_classifies_known_evidence_and_ignores_unknown(self) -> None:
         events = parse_vnish_log_text(SAMPLE_LOG, source_tab="status", collected_ts=10_000.0)
         by_code = {event.code: event for event in events}
@@ -146,6 +171,47 @@ class VnishLogTests(unittest.TestCase):
         self.assertIn("miner=23 tab=status ok=false", rendered)
         self.assertIn("miner=24 tab=status ok=true", rendered)
 
+    def test_collector_persists_one_bounded_partial_run_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = root / "config.json"
+            db_path = root / "collector.db"
+            config_path.write_text(
+                '{"miners": [{"name":"23","host":"h23"},'
+                '{"name":"24","host":"h24"}],'
+                '"vnish_log_utc_offset_hours":-3}',
+                encoding="utf-8",
+            )
+            results = [
+                CollectionResult(False, "h23", "status", 0, error="TimeoutError"),
+                CollectionResult(True, "h24", "status", len(SAMPLE_LOG), text=SAMPLE_LOG),
+            ]
+            with patch.object(collector, "collect_vnish_tab", side_effect=results):
+                exit_code = collector.main(
+                    [
+                        "--config",
+                        str(config_path),
+                        "--db",
+                        str(db_path),
+                        "--tabs",
+                        "status",
+                    ]
+                )
+            store = EventStore(db_path)
+            try:
+                run = store.latest_collector_run()
+                events = store.list_firmware_events(miner_key="24|h24:4028")
+            finally:
+                store.close()
+
+        self.assertEqual(1, exit_code)
+        self.assertEqual("partial", run["status"])
+        self.assertEqual(2, run["attempted"])
+        self.assertEqual(1, run["succeeded"])
+        self.assertEqual(1, run["failed"])
+        self.assertEqual(8, run["events_inserted"])
+        self.assertEqual("fixed_utc_offset", events[0]["source_clock"])
+
     def test_firmware_command_reads_sqlite_only_and_is_bounded(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = EventStore(Path(temp_dir) / "firmware.db")
@@ -184,6 +250,102 @@ class VnishLogTests(unittest.TestCase):
             'elif cmd_name == "quality":', 1
         )[0]
         self.assertIn("build_firmware_events_text", branch)
+        self.assertIn("is_command=True", branch)
+        for forbidden in ("read_summary", "read_stats", "websocket", "run_hashcore_cli"):
+            self.assertNotIn(forbidden, branch)
+
+    def test_diagnose_correlates_only_fresh_source_evidence_from_sqlite(self) -> None:
+        now_ts = 2_000_000.0
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = EventStore(Path(temp_dir) / "diagnose.db")
+            try:
+                store.record_sample(
+                    observed_ts=now_ts - 60,
+                    miner_key="S19JPRO-23|h23:4028",
+                    miner_name="23",
+                    host="h23",
+                    state="LOW",
+                    responded=True,
+                    rate_ths=52.0,
+                    threshold_ths=60.0,
+                    active_boards=3,
+                    expected_boards=3,
+                    elapsed_seconds=50_000,
+                )
+                common = {
+                    "collected_ts": now_ts - 30,
+                    "source_ts_text": "2026/07/20 10:00:00",
+                    "source_clock": "system_local",
+                    "miner_key": "S19JPRO-23|h23:4028",
+                    "miner_name": "23",
+                    "host": "h23",
+                    "source_tab": "status",
+                    "category": "restart",
+                    "severity": "warning",
+                    "summary": "Watchdog reinicio el proceso",
+                }
+                store.record_firmware_event(
+                    **common,
+                    source_ts_epoch=now_ts - 100,
+                    source_fingerprint="c" * 64,
+                    code="watchdog_restart",
+                )
+                store.record_firmware_event(
+                    **common,
+                    source_ts_epoch=now_ts - 172_800,
+                    source_fingerprint="d" * 64,
+                    code="old_watchdog_restart",
+                )
+                store.record_event(
+                    occurred_ts=now_ts - 50,
+                    miner_key="S19JPRO-23|h23:4028",
+                    miner_name="23",
+                    host="h23",
+                    event_type="state_transition",
+                    severity="warning",
+                    previous_state="OK",
+                    new_state="LOW",
+                    summary="OK -> LOW",
+                )
+                store.record_collector_run(
+                    started_ts=now_ts - 120,
+                    completed_ts=now_ts - 90,
+                    status="ok",
+                    attempted=16,
+                    succeeded=16,
+                    failed=0,
+                    events_parsed=2,
+                    events_inserted=2,
+                    events_duplicate=0,
+                    events_failed=0,
+                    truncated_streams=0,
+                    summary="Coleccion ok: 16/16 streams.",
+                )
+                miners = [{"name": "S19JPRO-23", "host": "h23", "port": 4028}]
+                rendered = monitor.build_miner_diagnosis_text(
+                    store,
+                    miners,
+                    "23",
+                    now_ts=now_ts,
+                    firmware_window_hours=24,
+                )
+            finally:
+                store.close()
+
+        self.assertIn("DIAGNOSE 23 - WATCH", rendered)
+        self.assertIn("watchdog_restart", rendered)
+        self.assertNotIn("old_watchdog_restart", rendered)
+        self.assertIn("Collector: OK", rendered)
+        self.assertIn("Evento: state_transition", rendered)
+        self.assertLessEqual(len(rendered.splitlines()), 12)
+
+        names = {entry["name"] for entry in monitor._COMMANDS}
+        self.assertIn("diagnose", names)
+        worker_source = inspect.getsource(monitor.telegram_polling_worker)
+        branch = worker_source.split('elif cmd_name == "diagnose":', 1)[1].split(
+            'elif cmd_name == "firmware":', 1
+        )[0]
+        self.assertIn("build_miner_diagnosis_text", branch)
         self.assertIn("is_command=True", branch)
         for forbidden in ("read_summary", "read_stats", "websocket", "run_hashcore_cli"):
             self.assertNotIn(forbidden, branch)

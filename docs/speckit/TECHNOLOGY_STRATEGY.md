@@ -114,6 +114,28 @@ Adoption rule:
 - Do not add retries or permanent workers until collection cost and failure
   behavior are proven from production evidence.
 
+### Windows Scheduled Tasks
+
+Current use:
+
+- Run the bounded Vnish collector every 15 minutes outside the monitor process.
+- Use native `IgnoreNew` overlap protection and a ten-minute execution limit.
+- Persist collector health in SQLite for `/diagnose` and the local dashboard.
+
+Why it matters:
+
+- It matches the native Windows service and Hashcore Toolkit deployment.
+- It provides production scheduling without adding a Python daemon, broker, or
+  framework dependency.
+
+Adoption rule:
+
+- Keep the collector one-shot, sequential, read-only, and independently
+  disableable.
+- Use current-user interactive scheduling for this deployment; evaluate a
+  dedicated service identity separately if unattended collection while logged
+  out becomes a requirement.
+
 ### HTMX Or Static HTML Reports
 
 Potential use:
@@ -180,6 +202,11 @@ Vnish Log Intelligence adds one focused market-standard dependency,
 land in the existing SQLite store and feed `/firmware` plus the static dashboard.
 This avoids a persistent WebSocket worker, message broker, or streaming platform
 until the fleet produces enough evidence to justify that operational complexity.
+
+Vnish Operations Automation keeps that boundary: native Windows Scheduled Tasks
+run the one-shot collector with overlap protection, schema v5 records timestamp
+provenance and collector health, and `/diagnose` correlates the evidence from
+SQLite only. No new service, queue, database server, or action path was added.
 
 ## Decision Gate For Any New Technology
 

@@ -47,8 +47,8 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Identify how Vnish exposes logs on the deployed firmware: confirmed read-only WebSockets at `/api/v1/logs-ws/{status|miner|autotune|system}`.
 - [x] Build a log taxonomy: autotune, voltage/frequency changes, chain restarts, miner process restarts, fan/temp protections, pool reconnects, watchdog actions.
 - [x] Create a bounded parser and schema-v4 store for normalized events without full raw logs.
-- [ ] Correlate Vnish events with Miner Alerts state changes and Telegram alerts.
-- [ ] Detect "Vnish working normally" vs "miner actually needs intervention".
+- [x] Correlate Vnish events with Miner Alerts state changes and Telegram alerts through bounded SQLite-only `/diagnose` evidence.
+- [x] Detect "Vnish working normally" vs "miner actually needs intervention" with advisory OK/WATCH/CRITICAL diagnosis that never authorizes actions.
 - [x] Avoid reboot during current Vnish chain autotune/profile transitions and require a fresh sustained LOW interval after they end.
 
 ## P4 - Power And Electrical Observability
@@ -91,6 +91,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Add schema-v2 normalized Vnish telemetry, reboot-decision history, retention, and a read-only incident report.
 - [x] Add additive schema-v3 mining-quality counters and chain-health evidence without raw firmware payloads.
 - [x] Add additive schema-v4 idempotent Vnish firmware events with bounded read-only collector and views.
+- [x] Add additive schema-v5 source-time provenance, collector-run health and a non-overlapping Windows scheduled collector.
 - [ ] Standardize logs for blocked actions and delivery failures.
 - [ ] Maintain production defaults in `app/config.example.json`.
 - [ ] Keep release checklist current for Windows PowerShell.

@@ -5,6 +5,29 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-21] - Spec 019: Persistent Outage Alerts
+
+* **Objetivo**: Evitar que un minero confirmado OFFLINE/LOW/HASHBOARD quede olvidado despues de la primera alerta, agrupar transiciones cercanas y eliminar definitivamente las ventanas de consola del collector y Hashcore.
+* **Resultado**:
+  - Los cambios de estado se acumulan durante 30 segundos y se envian en un unico mensaje aunque ocurran en ticks consecutivos; estado, SQLite, persistencia y auto-reboot siguen siendo inmediatos.
+  - Una falla confirmada recuerda a los 15 minutos y luego cada 30 minutos hasta volver a OK, agrupando todos los mineros vencidos en el mismo mensaje.
+  - La ventana silenciosa posterior a un reboot conserva prioridad, descarta transiciones intermedias y reinicia el plazo del recordatorio desde su resumen.
+  - La tarea Vnish ejecuta `pythonw.exe` directamente, sin PowerShell, y todos los `subprocess.run` del monitor usan `CREATE_NO_WINDOW` en Windows.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first: fallas iniciales por coordinadores/flags ausentes y 21/21 pruebas dirigidas finales PASS.
+  - Suite completa 113/113, `py_compile`, JSON, parseo PowerShell, `git diff --check`, AST, Speckit QA y bloqueo Hashcore en QA: PASS.
+  - Tarea real reinstalada: ejecutable `pythonw.exe`, 30 minutos, `Ready`, `LastTaskResult=0`, collector 16/16 streams y cero fallas.
+* **Estado**:
+  - Implementacion y collector validados; activacion del monitor pendiente del reinicio controlado del servicio.
+* **Archivos principales**:
+  - `app/miner_monitor.py`
+  - `app/config.example.json`
+  - `tools/install_vnish_collector_task.ps1`
+  - `tests/test_notification_stability.py`
+  - `tests/test_monitor_incidents.py`
+  - `tests/test_vnish_scheduler.py`
+  - `specs/019-persistent-outage-alerts/*`
+
 ## [2026-07-21] - Spec 018: Fleet Restart Notification Stability
 
 * **Objetivo**: Corregir la sobre-notificacion observada durante reinicios coordinados y eliminar la ventana PowerShell visible del collector sin modificar state machine ni politicas de reboot.

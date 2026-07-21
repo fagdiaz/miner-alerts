@@ -80,6 +80,7 @@ _LOGGER: Optional[logging.Logger] = None
 _QA_TX_COUNTS: Dict[int, int] = {}
 _PERF_LOGGED: Dict[int, bool] = {}
 _HTTP_SESSION: Optional[requests.Session] = None
+_NO_WINDOW_CREATION_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DBG_TELEGRAM = os.getenv("DBG_TELEGRAM", "0") == "1"
 DBG_TELEGRAM_COMMANDS_ONLY = os.getenv("DBG_TELEGRAM_COMMANDS_ONLY", "1") == "1"
 try:
@@ -1273,6 +1274,9 @@ class RestartNotificationCoordinator:
         self.suppressed_state_changes = True
         return True
 
+    def recovery_quiet_active(self, *, now_ts: float) -> bool:
+        return float(now_ts) < self.recovery_quiet_until
+
     def recovery_summary_due(self, *, now_ts: float) -> bool:
         return (
             self.suppressed_state_changes
@@ -1281,6 +1285,161 @@ class RestartNotificationCoordinator:
 
     def mark_recovery_summary_sent(self) -> None:
         self.suppressed_state_changes = False
+
+
+@dataclass
+class StateChangeNotificationCoordinator:
+    coalesce_seconds: float
+    first_event_ts: Optional[float] = None
+    event_lines: list[str] = field(default_factory=list)
+    reboot_names: list[str] = field(default_factory=list)
+
+    def add(
+        self,
+        *,
+        detected_ts: float,
+        event_lines: list[str],
+        reboot_names: list[str],
+    ) -> None:
+        if not event_lines and not reboot_names:
+            return
+        if self.first_event_ts is None:
+            self.first_event_ts = float(detected_ts)
+        self.event_lines.extend(str(line) for line in event_lines if line)
+        for name in reboot_names:
+            normalized = str(name)
+            if normalized and normalized not in self.reboot_names:
+                self.reboot_names.append(normalized)
+
+    def has_pending(self) -> bool:
+        return self.first_event_ts is not None
+
+    def pop_ready(self, *, now_ts: float) -> Optional[dict[str, list[str]]]:
+        if self.first_event_ts is None:
+            return None
+        if (float(now_ts) - self.first_event_ts) < max(0.0, self.coalesce_seconds):
+            return None
+        batch = {
+            "event_lines": self.event_lines[:],
+            "reboot_names": self.reboot_names[:],
+        }
+        self.clear()
+        return batch
+
+    def clear(self) -> None:
+        self.first_event_ts = None
+        self.event_lines.clear()
+        self.reboot_names.clear()
+
+
+@dataclass
+class PersistentOutageNotificationCoordinator:
+    initial_seconds: float
+    repeat_seconds: float
+    active: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def observe(
+        self,
+        *,
+        miner_key: str,
+        name_display: str,
+        host: str,
+        state: str,
+        rate_ths: Optional[float],
+        threshold_ths: float,
+        now_ts: float,
+    ) -> None:
+        if state not in (STATE_LOW, STATE_OFFLINE, STATE_HASHBOARD):
+            self.active.pop(miner_key, None)
+            return
+        safe_rate: Optional[float] = None
+        try:
+            numeric_rate = float(rate_ths) if rate_ths is not None else None
+            if numeric_rate is not None and math.isfinite(numeric_rate):
+                safe_rate = numeric_rate
+        except (TypeError, ValueError):
+            safe_rate = None
+        current = self.active.get(miner_key)
+        if current is None:
+            current = {
+                "miner_key": miner_key,
+                "first_seen_ts": float(now_ts),
+                "last_reminder_ts": None,
+            }
+            self.active[miner_key] = current
+        current.update(
+            {
+                "name_display": str(name_display),
+                "host": str(host),
+                "state": str(state),
+                "rate_ths": safe_rate,
+                "threshold_ths": float(threshold_ths),
+            }
+        )
+
+    def pop_due(self, *, now_ts: float) -> list[dict[str, Any]]:
+        due: list[dict[str, Any]] = []
+        safe_initial = max(0.0, float(self.initial_seconds))
+        safe_repeat = max(1.0, float(self.repeat_seconds))
+        for item in self.active.values():
+            last_reminder_ts = item.get("last_reminder_ts")
+            reference_ts = (
+                float(last_reminder_ts)
+                if last_reminder_ts is not None
+                else float(item["first_seen_ts"])
+            )
+            required = safe_repeat if last_reminder_ts is not None else safe_initial
+            if (float(now_ts) - reference_ts) < required:
+                continue
+            item["last_reminder_ts"] = float(now_ts)
+            due.append(dict(item))
+        return sorted(
+            due,
+            key=lambda item: (
+                not str(item.get("name_display", "")).isdigit(),
+                int(item["name_display"])
+                if str(item.get("name_display", "")).isdigit()
+                else str(item.get("name_display", "")),
+            ),
+        )
+
+    def defer_active(self, *, now_ts: float) -> None:
+        for item in self.active.values():
+            item["first_seen_ts"] = float(now_ts)
+            item["last_reminder_ts"] = None
+
+
+def format_persistent_outage_reminder(
+    outages: list[dict[str, Any]],
+    *,
+    now_ts: float,
+) -> str:
+    lines = ["FALLA PERSISTENTE", "", "Miners afectados:"]
+    for item in outages:
+        state = str(item.get("state") or "N/A")
+        rate_ths = item.get("rate_ths")
+        threshold_ths = float(item.get("threshold_ths") or 0.0)
+        age_minutes = max(
+            1,
+            int((float(now_ts) - float(item.get("first_seen_ts") or now_ts)) / 60),
+        )
+        if state == STATE_OFFLINE:
+            evidence = "sin respuesta API 4028"
+        elif state == STATE_LOW and rate_ths is not None:
+            evidence = f"{float(rate_ths):.2f} TH/s < {threshold_ths:.2f} TH/s"
+        else:
+            evidence = format_rate(rate_ths)
+        lines.append(
+            f"- {item.get('name_display', '?')}: {state} | {evidence} | {age_minutes} min"
+        )
+    lines.extend(
+        [
+            "",
+            "Accion: revisar energia, red y firmware.",
+            "Diagnostico: /diagnose",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def record_action_outcome(
@@ -1687,6 +1846,7 @@ def run_hashcore_discovery(hashcore_cfg: dict) -> None:
                 text=True,
                 timeout=30,
                 shell=False,
+                creationflags=_NO_WINDOW_CREATION_FLAGS,
             )
             if qa_verbose_enabled(hashcore_cfg):
                 if result.stdout:
@@ -1759,6 +1919,7 @@ def run_hashcore_cli(
             text=True,
             timeout=30,
             shell=False,
+            creationflags=_NO_WINDOW_CREATION_FLAGS,
         )
         duration = time.monotonic() - start
         log(f"[HASHCORE] action={action} host={miner['host']} rc={result.returncode} duration={duration:.3f}s")
@@ -2607,6 +2768,7 @@ def telegram_polling_worker(
                                 text=True,
                                 timeout=10,
                                 shell=False,
+                                creationflags=_NO_WINDOW_CREATION_FLAGS,
                             )
                             if result.returncode != 0:
                                 # fallback to --help
@@ -2619,6 +2781,7 @@ def telegram_polling_worker(
                                     text=True,
                                     timeout=10,
                                     shell=False,
+                                    creationflags=_NO_WINDOW_CREATION_FLAGS,
                                 )
                             if result.returncode != 0:
                                 if result.stderr:
@@ -3470,6 +3633,19 @@ def main() -> None:
     notify_initial_non_ok = bool(config.get("notify_initial_non_ok", False))
     notify_degraded_hourly = bool(config.get("notify_degraded_hourly", False))
     degraded_hourly_seconds = int(config.get("degraded_hourly_seconds", 3600))
+    state_change_coalesce_seconds = min(
+        300.0,
+        max(0.0, float(config.get("state_change_coalesce_seconds", 30.0))),
+    )
+    notify_persistent_outage = bool(config.get("notify_persistent_outage", True))
+    persistent_outage_initial_seconds = max(
+        60.0,
+        float(config.get("persistent_outage_initial_seconds", 900.0)),
+    )
+    persistent_outage_repeat_seconds = max(
+        300.0,
+        float(config.get("persistent_outage_repeat_seconds", 1800.0)),
+    )
     event_store_enabled = bool(config.get("event_store_enabled", True))
     event_store_path_raw = str(config.get("event_store_path", "data/miner_alerts.db"))
     telemetry_sample_seconds = max(30, int(config.get("telemetry_sample_seconds", 300)))
@@ -3643,6 +3819,13 @@ def main() -> None:
         restart_notifications = RestartNotificationCoordinator(
             coalesce_seconds=restart_notification_coalesce_seconds,
             recovery_quiet_seconds=restart_recovery_quiet_seconds,
+        )
+        state_change_notifications = StateChangeNotificationCoordinator(
+            coalesce_seconds=state_change_coalesce_seconds,
+        )
+        outage_notifications = PersistentOutageNotificationCoordinator(
+            initial_seconds=persistent_outage_initial_seconds,
+            repeat_seconds=persistent_outage_repeat_seconds,
         )
         last_sample_ts: Dict[str, float] = {}
         last_retention_ts = process_start_ts
@@ -4298,6 +4481,17 @@ def main() -> None:
                     state.reboot_pending_reason = ""
                     state.reboot_pending_elapsed = None
 
+                if notify_persistent_outage:
+                    outage_notifications.observe(
+                        miner_key=state_key,
+                        name_display=name_display,
+                        host=host,
+                        state=new_state,
+                        rate_ths=rate_ths,
+                        threshold_ths=threshold_ths,
+                        now_ts=now_ts,
+                    )
+
                 label = ""
                 if new_state == STATE_HASHBOARD:
                     label = " [HASHBOARD]"
@@ -4331,6 +4525,22 @@ def main() -> None:
             with snapshot_lock:
                 snapshot_ref["value"] = "\n".join(status_lines)
 
+            if state_message_needed:
+                state_change_notifications.add(
+                    detected_ts=now_ts,
+                    event_lines=event_lines,
+                    reboot_names=reboot_names_tick,
+                )
+
+            restart_quiet_active = restart_notifications.recovery_quiet_active(
+                now_ts=now_ts
+            )
+            if state_change_notifications.has_pending() and restart_quiet_active:
+                was_suppressed = restart_notifications.suppressed_state_changes
+                restart_notifications.suppress_state_change(now_ts=now_ts)
+                if not was_suppressed:
+                    log("[NOTIFY] state_change_suppressed reason=restart_recovery")
+
             restart_incident_message = restart_notifications.pop_ready(
                 now_ts=now_ts,
                 attribution_window_seconds=restart_attribution_window_seconds,
@@ -4363,6 +4573,14 @@ def main() -> None:
                     "restart_recovery",
                 )
                 restart_notifications.mark_recovery_summary_sent()
+                state_change_notifications.clear()
+                outage_notifications.defer_active(now_ts=now_ts)
+
+            state_change_batch = None
+            if not restart_quiet_active and not recovery_summary_due:
+                state_change_batch = state_change_notifications.pop_ready(
+                    now_ts=now_ts
+                )
 
             if first_tick and notify_startup:
                 message_lines = [
@@ -4374,23 +4592,21 @@ def main() -> None:
                     send_telegram(bot_token, str(chat_id), "\n".join(message_lines), "STARTUP", "startup")
             elif recovery_summary_due:
                 pass
-            elif state_message_needed and restart_notifications.suppress_state_change(
-                now_ts=now_ts
-            ):
-                log("[NOTIFY] state_change_suppressed reason=restart_recovery")
-            elif state_message_needed:
+            elif state_change_batch:
                 message_lines = [
                     f"STATE CHANGE ({now_str()})",
                     "",
                 ]
-                if event_lines:
+                batched_event_lines = state_change_batch["event_lines"]
+                if batched_event_lines:
                     message_lines.append("Eventos:")
-                    message_lines.extend(event_lines)
+                    message_lines.extend(batched_event_lines)
                     message_lines.append("")
                     message_lines.append("Estado actual:")
                 message_lines.extend(miner_lines)
-                if reboot_names_tick:
-                    message_lines.append(f"Reboots: {', '.join(reboot_names_tick)}")
+                batched_reboots = state_change_batch["reboot_names"]
+                if batched_reboots:
+                    message_lines.append(f"Reboots: {', '.join(batched_reboots)}")
                 if (not qa_mode) or qa_notify:
                     send_telegram(bot_token, str(chat_id), "\n".join(message_lines), "STATE_CHANGE", "state_change")
             else:
@@ -4410,6 +4626,26 @@ def main() -> None:
                                 send_telegram(bot_token, str(chat_id), "\n".join(status_lines), "STATUS", "degraded_hourly")
                             for st in degraded_candidates:
                                 st.last_hourly_status_ts = now_ts
+
+            if (
+                notify_persistent_outage
+                and not first_tick
+                and not restart_quiet_active
+                and not recovery_summary_due
+                and ((not qa_mode) or qa_notify)
+            ):
+                due_outages = outage_notifications.pop_due(now_ts=now_ts)
+                if due_outages:
+                    send_telegram(
+                        bot_token,
+                        str(chat_id),
+                        format_persistent_outage_reminder(
+                            due_outages,
+                            now_ts=now_ts,
+                        ),
+                        "PERSISTENT_OUTAGE",
+                        "persistent_outage",
+                    )
 
             if (
                 event_store is not None

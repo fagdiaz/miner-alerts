@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from app.miner_monitor import (
@@ -13,6 +14,15 @@ from app.restart_intelligence import RestartClassification
 
 
 class MonitorIncidentMessageTests(unittest.TestCase):
+    def test_all_monitor_subprocesses_request_no_window(self) -> None:
+        source = Path("app/miner_monitor.py").read_text(encoding="utf-8")
+
+        self.assertGreater(source.count("subprocess.run("), 0)
+        self.assertEqual(
+            source.count("subprocess.run("),
+            source.count("creationflags=_NO_WINDOW_CREATION_FLAGS"),
+        )
+
     def test_unexpected_restart_message_has_actionable_evidence(self) -> None:
         classification = RestartClassification(
             classification="unexpected",

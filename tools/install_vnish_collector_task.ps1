@@ -8,9 +8,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path -LiteralPath (Split-Path -Parent $PSScriptRoot)).Path
-$runner = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "run_vnish_collector.ps1")).Path
-$powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
-$arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runner`""
+$pythonw = (Resolve-Path -LiteralPath (Join-Path $repoRoot ".venv\Scripts\pythonw.exe")).Path
+$collector = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "vnish_log_collector.py")).Path
+$config = (Resolve-Path -LiteralPath (Join-Path $repoRoot "app\config.json")).Path
+$arguments = (
+    "`"$collector`" --config `"$config`" " +
+    "--tabs status,miner,autotune,system " +
+    "--connect-timeout 3 --idle-timeout 1 " +
+    "--max-bytes 1048576 --max-lines 20000 --max-events 1000"
+)
 $target = "$TaskPath$TaskName"
 
 if ($WhatIfPreference) {
@@ -19,7 +25,7 @@ if ($WhatIfPreference) {
 }
 
 $action = New-ScheduledTaskAction `
-    -Execute $powershell `
+    -Execute $pythonw `
     -Argument $arguments `
     -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger `
@@ -44,7 +50,7 @@ if ($PSCmdlet.ShouldProcess($target, "Register Vnish read-only collector")) {
         -Trigger $trigger `
         -Settings $settings `
         -Principal $principal `
-        -Description "Bounded read-only Vnish log collection for Miner Alerts" `
+        -Description "Bounded read-only Vnish log collection for Miner Alerts (no console)" `
         -Force | Out-Null
     Write-Output "VNISH_TASK registered=$TaskPath$TaskName interval_minutes=$IntervalMinutes"
 }

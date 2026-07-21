@@ -41,6 +41,10 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 | `reboot_cooldown_seconds` | Cooldown de reboot por minero. |
 | `reboot_window_seconds` | Ventana para reboot si cae a LOW/OFFLINE. |
 | `notify_initial_non_ok` | Si `notify_startup=false`, puede notificar el estado inicial no OK. |
+| `state_change_coalesce_seconds` | Espera breve para agrupar cambios relacionados antes de enviarlos. |
+| `notify_persistent_outage` | Repite alertas acotadas mientras un minero siga LOW/OFFLINE/HASHBOARD. |
+| `persistent_outage_initial_seconds` | Demora hasta el primer recordatorio persistente (900s). |
+| `persistent_outage_repeat_seconds` | Intervalo entre recordatorios posteriores (1800s). |
 | `hashcore` | Configuracion del Hashcore Toolkit CLI (reboot/restart). |
 | `diagnosis_stale_seconds` | Antiguedad maxima de una muestra para `/diagnose`. |
 | `diagnosis_firmware_window_hours` | Ventana de evidencia Vnish considerada reciente por `/diagnose`. |
@@ -71,11 +75,13 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Si el script reinicia, el pending se pierde: hay que reemitir `reboot 23`.
 
 **Notificaciones**
-- Se envia Telegram ante eventos relevantes, en un unico mensaje agrupado por ciclo.
+- Se envia Telegram ante eventos relevantes. Los cambios cercanos se agrupan durante 30 segundos por defecto, incluso si caen en ticks consecutivos.
 - Estado OK: hashrate >= threshold.
 - Estado LOW: hashrate < threshold por N lecturas.
 - Estado OFFLINE: sin respuesta del API 4028 por N lecturas.
 - Estado HASHBOARD: boards activos < `expected_boards` (segun `stats`).
+- Un estado LOW/OFFLINE/HASHBOARD que persiste genera un recordatorio a los 15 minutos y luego cada 30 minutos hasta volver a OK; los mineros vencidos en el mismo tick salen en un unico mensaje.
+- Durante recuperacion posterior a un reboot, el resumen de recuperacion existente tiene prioridad y evita cascadas OFFLINE -> LOW -> OK.
 - Al iniciar, si `notify_startup=true`, se envia un STARTUP con snapshot completo (hashrate y etiquetas).
 - El monitor evita instancias duplicadas usando un mutex de sistema (Win32).
 - El estado se persiste en `app/state.json` para continuidad (streaks, estado y cooldowns).
@@ -102,10 +108,11 @@ Start-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollect
 Get-ScheduledTaskInfo -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
 ```
 
-La tarea solicita una ventana PowerShell oculta, usa `IgnoreNew`, una ejecucion maxima de 10 minutos y el wrapper one-shot
-`tools/run_vnish_collector.ps1`. No mantiene un daemon, no reintenta y no ejecuta
-Hashcore. Se registra con `LogonType Interactive`: corre mientras el usuario que
-la instalo tiene una sesion iniciada.
+La tarea ejecuta `.venv\Scripts\pythonw.exe` directamente, sin crear una consola
+PowerShell, usa `IgnoreNew` y conserva una ejecucion maxima de 10 minutos. No
+mantiene un daemon, no reintenta y no ejecuta Hashcore. Se registra con
+`LogonType Interactive`: corre mientras el usuario que la instalo tiene una
+sesion iniciada.
 
 **Hashcore Toolkit CLI**
 - Configurar en `app/config.json`:

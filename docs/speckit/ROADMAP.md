@@ -71,6 +71,8 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Disable noisy degraded hourly status by default and keep Telegram notifications event-driven.
 - [x] Add clearer event context to `STATE_CHANGE` Telegram messages.
 - [x] Coalesce restart incidents across a bounded fleet window and emit one post-recovery summary without changing persisted transitions.
+- [x] Coalesce confirmed state transitions across adjacent ticks with a bounded delay while state persistence remains immediate.
+- [x] Send grouped bounded reminders while confirmed LOW, OFFLINE, or HASHBOARD outages remain active.
 - [x] Add read-only `/why [miner]` explanations for QA, startup guard, cooldown, not sustained, window, invalid signal and action outcomes.
 - [x] Add read-only `/health [all|miner]` diagnosis against each miner's learned stable baseline without live miner IO.
 - [x] Add read-only `/quality [all|miner]` interval diagnosis for shares, HW errors, chain faults, and firmware transitions.
@@ -98,3 +100,4 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [ ] Keep release checklist current for Windows PowerShell.
 - [ ] Record validation evidence per spec.
 - [ ] Keep raw runtime logs, exported Vnish logs, and electrical telemetry out of git unless anonymized samples are explicitly needed.
+- [x] Run the scheduled Vnish collector and monitor-owned CLI subprocesses without foreground console windows.

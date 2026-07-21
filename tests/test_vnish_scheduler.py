@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 class VnishSchedulerTests(unittest.TestCase):
-    def test_scheduler_is_non_overlapping_current_user_and_read_only(self) -> None:
+    def test_scheduler_is_non_overlapping_no_console_and_read_only(self) -> None:
         source = Path("tools/install_vnish_collector_task.ps1").read_text(
             encoding="utf-8"
         )
@@ -15,7 +15,11 @@ class VnishSchedulerTests(unittest.TestCase):
         self.assertIn("ExecutionTimeLimit", source)
         self.assertIn("-WorkingDirectory $repoRoot", source)
         self.assertIn("[int]$IntervalMinutes = 30", source)
-        self.assertIn("-WindowStyle Hidden", source)
+        self.assertIn("pythonw.exe", source)
+        self.assertIn("vnish_log_collector.py", source)
+        self.assertIn("--config", source)
+        self.assertNotIn("Get-Command powershell.exe", source)
+        self.assertNotIn("-WindowStyle", source)
         self.assertNotIn("Highest", source)
         self.assertNotIn("Register-ScheduledJob", source)
 

@@ -97,7 +97,10 @@ TG DROP chat_mismatch
 Production Telegram notifications should be event-driven by default:
 
 - Startup notification if `notify_startup=true`.
-- State changes for LOW, OFFLINE, HASHBOARD and recovery to OK.
+- State changes for LOW, OFFLINE, HASHBOARD and recovery to OK, coalesced across
+  a bounded 30-second window by default.
+- Persistent outage reminders after 15 minutes and every 30 minutes thereafter
+  while a confirmed LOW, OFFLINE, or HASHBOARD condition remains active.
 - Reboot/restart results and failures.
 - Manual command replies.
 
@@ -105,11 +108,16 @@ Hourly degraded status is disabled by default:
 
 ```json
 "notify_degraded_hourly": false,
-"degraded_hourly_seconds": 3600
+"degraded_hourly_seconds": 3600,
+"state_change_coalesce_seconds": 30,
+"notify_persistent_outage": true,
+"persistent_outage_initial_seconds": 900,
+"persistent_outage_repeat_seconds": 1800
 ```
 
-Enable it only if an operator explicitly wants repeated reminders while a miner
-is in degraded mode.
+The persistent-outage reminder is independent from degraded hourly status and
+stops as soon as the miner returns to confirmed OK. Restart-recovery quieting
+has priority and resets the reminder interval after its consolidated summary.
 
 ## Incident History And Restart Intelligence
 
@@ -325,9 +333,12 @@ Start-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollect
 Get-ScheduledTaskInfo -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsVnishCollector"
 ```
 
-The task invokes `tools/run_vnish_collector.ps1` in a hidden PowerShell window, uses `IgnoreNew`, and has a
-ten-minute execution limit. It is current-user `Interactive`, so it requires that
-user to have an active Windows session. It never starts the monitor or Hashcore.
+The task invokes `.venv\Scripts\pythonw.exe` directly with the bounded collector
+arguments, so it does not create a PowerShell or console window. It uses
+`IgnoreNew` and has a ten-minute execution limit. It is current-user
+`Interactive`, so it requires that user to have an active Windows session. It
+never starts the monitor or Hashcore. `tools/run_vnish_collector.ps1` remains a
+manual diagnostics wrapper only.
 
 Read-only correlated diagnosis:
 

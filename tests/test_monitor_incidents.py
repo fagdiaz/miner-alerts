@@ -3,14 +3,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.miner_monitor import (
-    RestartNotificationCoordinator,
     _parse_message_command,
-    format_restart_notification_batch,
-    format_restart_incident,
     read_stats_snapshot,
     run_hashcore_cli,
 )
-from app.restart_intelligence import RestartClassification
 
 
 class MonitorIncidentMessageTests(unittest.TestCase):
@@ -22,143 +18,6 @@ class MonitorIncidentMessageTests(unittest.TestCase):
             source.count("subprocess.run("),
             source.count("creationflags=_NO_WINDOW_CREATION_FLAGS"),
         )
-
-    def test_unexpected_restart_message_has_actionable_evidence(self) -> None:
-        classification = RestartClassification(
-            classification="unexpected",
-            severity="critical",
-            restart_reason="elapsed_reset",
-            action_source=None,
-            action_ts=None,
-            action_age_seconds=None,
-        )
-
-        message = format_restart_incident(
-            event_id=42,
-            name_display="23",
-            previous_elapsed=86_400,
-            current_elapsed=120,
-            classification=classification,
-            state="OK",
-            rate_ths=99.2,
-            attribution_window_seconds=900,
-        )
-
-        self.assertIn("REINICIO SIN ACCION ATRIBUIDA", message)
-        self.assertIn("86400s -> 120s", message)
-        self.assertIn("ninguna en los ultimos 15 min", message)
-        self.assertIn("Detalle: /event 42", message)
-
-    def test_restart_batch_groups_fleet_incidents(self) -> None:
-        incidents = [
-            {
-                "detected_ts": 100.0,
-                "name_display": "23",
-                "event_id": 5,
-                "message": "individual 23",
-            },
-            {
-                "detected_ts": 130.0,
-                "name_display": "24",
-                "event_id": 8,
-                "message": "individual 24",
-            },
-            {
-                "detected_ts": 250.0,
-                "name_display": "25",
-                "event_id": 12,
-                "message": "individual 25",
-            },
-        ]
-
-        message = format_restart_notification_batch(
-            incidents,
-            attribution_window_seconds=900,
-            fleet_min_affected=2,
-        )
-
-        self.assertIn("REINICIOS DE FLOTA DETECTADOS", message)
-        self.assertIn("Miners: 23, 24, 25", message)
-        self.assertIn("Ventana de deteccion: 150s", message)
-        self.assertIn("/event 5, /event 8, /event 12", message)
-        self.assertNotIn("individual 23", message)
-
-    def test_restart_batch_preserves_single_incident_message(self) -> None:
-        message = format_restart_notification_batch(
-            [
-                {
-                    "detected_ts": 100.0,
-                    "name_display": "23",
-                    "event_id": 5,
-                    "message": "single incident",
-                }
-            ],
-            attribution_window_seconds=900,
-            fleet_min_affected=2,
-        )
-
-        self.assertEqual("single incident", message)
-
-    def test_restart_notification_coordinator_batches_and_quiets_only_delivery(self) -> None:
-        coordinator = RestartNotificationCoordinator(
-            coalesce_seconds=180,
-            recovery_quiet_seconds=600,
-        )
-        coordinator.add(
-            detected_ts=100.0,
-            name_display="23",
-            event_id=5,
-            message="incident 23",
-        )
-        coordinator.add(
-            detected_ts=250.0,
-            name_display="25",
-            event_id=12,
-            message="incident 25",
-        )
-
-        self.assertIsNone(
-            coordinator.pop_ready(
-                now_ts=279.0,
-                attribution_window_seconds=900,
-                fleet_min_affected=2,
-            )
-        )
-        self.assertTrue(coordinator.suppress_state_change(now_ts=279.0))
-        message = coordinator.pop_ready(
-            now_ts=280.0,
-            attribution_window_seconds=900,
-            fleet_min_affected=2,
-        )
-        self.assertIn("REINICIOS DE FLOTA DETECTADOS", message or "")
-        self.assertFalse(coordinator.recovery_summary_due(now_ts=849.0))
-        self.assertTrue(coordinator.recovery_summary_due(now_ts=850.0))
-        coordinator.mark_recovery_summary_sent()
-        self.assertFalse(coordinator.recovery_summary_due(now_ts=851.0))
-
-    def test_expected_restart_message_names_related_action(self) -> None:
-        classification = RestartClassification(
-            classification="expected_manual",
-            severity="info",
-            restart_reason="elapsed_drop",
-            action_source="manual",
-            action_ts=9_900.0,
-            action_age_seconds=100.0,
-        )
-
-        message = format_restart_incident(
-            event_id=7,
-            name_display="24",
-            previous_elapsed=20_000,
-            current_elapsed=80,
-            classification=classification,
-            state="LOW",
-            rate_ths=15.0,
-            attribution_window_seconds=900,
-        )
-
-        self.assertIn("REINICIO DETECTADO", message)
-        self.assertIn("manual hace 100s", message)
 
     def test_qa_guard_blocks_before_hashcore_process(self) -> None:
         with patch("app.miner_monitor.subprocess.run") as process_run:
@@ -197,6 +56,23 @@ class MonitorIncidentMessageTests(unittest.TestCase):
 
         self.assertEqual("event", command)
         self.assertEqual(["42"], args)
+
+    def test_click_safe_event_alias_normalizes_before_dispatch(self) -> None:
+        item = {
+            "message": {
+                "text": "/e37@MinerAlertsBot",
+                "entities": [
+                    {"type": "bot_command", "offset": 0, "length": 19}
+                ],
+            }
+        }
+
+        _, _, command, args, _, meta = _parse_message_command(item)
+
+        self.assertEqual("event", command)
+        self.assertEqual(["37"], args)
+        self.assertEqual("event", meta["cmd_normalized"])
+        self.assertEqual("event", meta["alias_used"])
 
     def test_why_command_parses_with_group_suffix(self) -> None:
         item = {

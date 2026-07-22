@@ -342,6 +342,82 @@ class EventStoreTests(unittest.TestCase):
         self.assertEqual(second_id, all_events[0]["id"])
         self.assertEqual(["m23"], [event["miner_key"] for event in filtered])
 
+    def test_episode_timeline_is_chronological_and_includes_related_miners(self) -> None:
+        first_id = self.store.record_event(
+            occurred_ts=1_000.0,
+            miner_key="m25",
+            miner_name="25",
+            host="h25",
+            event_type="state_transition",
+            severity="warning",
+            previous_state="OK",
+            new_state="OFFLINE",
+            summary="OK -> OFFLINE",
+        )
+        restart_id = self.store.record_event(
+            occurred_ts=1_100.0,
+            miner_key="m25",
+            miner_name="25",
+            host="h25",
+            event_type="restart_detected",
+            severity="critical",
+            classification="unexpected",
+            previous_state="OFFLINE",
+            new_state="HASHBOARD",
+            previous_elapsed=40_000,
+            current_elapsed=1,
+            summary="Uptime reiniciado",
+        )
+        related_id = self.store.record_event(
+            occurred_ts=1_120.0,
+            miner_key="m24",
+            miner_name="24",
+            host="h24",
+            event_type="restart_detected",
+            severity="critical",
+            classification="unexpected",
+            summary="Uptime reiniciado",
+        )
+        final_id = self.store.record_event(
+            occurred_ts=1_200.0,
+            miner_key="m25",
+            miner_name="25",
+            host="h25",
+            event_type="state_transition",
+            severity="info",
+            previous_state="LOW",
+            new_state="OK",
+            rate_ths=95.0,
+            summary="LOW -> OK",
+        )
+
+        timeline = self.store.list_episode_events(int(restart_id or 0))
+
+        self.assertEqual(
+            [first_id, restart_id, related_id, final_id],
+            [row["id"] for row in timeline],
+        )
+        rendered = render_event_detail(
+            self.store.get_event(int(restart_id or 0)),
+            related_events=timeline,
+        )
+        self.assertIn("EPISODIO RELACIONADO", rendered)
+        self.assertIn("25 OK -> OFFLINE", rendered)
+        self.assertIn("24 REINICIO INESPERADO", rendered)
+
+    def test_event_list_uses_click_safe_detail_alias(self) -> None:
+        event_id = self.store.record_event(
+            occurred_ts=1_000.0,
+            event_type="state_transition",
+            severity="warning",
+            summary="OK -> LOW",
+        )
+
+        rendered = render_event_list(self.store.list_events(limit=1))
+
+        self.assertIn(f"/e{event_id}", rendered)
+        self.assertNotIn("Detalle: /event <id>", rendered)
+
     def test_schema_v4_migration_backfills_metadata_without_duplicate_rows(self) -> None:
         legacy_path = Path(self.temp_dir.name) / "schema-v4.db"
         connection = sqlite3.connect(legacy_path)
@@ -545,7 +621,7 @@ class EventStoreTests(unittest.TestCase):
         listing = render_event_list([event] if event else [])
         detail = render_event_detail(event)
 
-        self.assertIn(f"#{event_id}", listing)
+        self.assertIn(f"/e{event_id}", listing)
         self.assertIn("REINICIO INESPERADO", listing)
         self.assertIn("INCIDENTE", detail)
         self.assertIn("80000s -> 120s", detail)

@@ -10,7 +10,7 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 
 - [x] Persist and classify uptime-reset incidents as expected-manual, expected-auto, or unexpected without changing action policy.
 - [x] Send evidence-rich restart alerts without false cause certainty; coalesce fleet restarts and suppress only transient Telegram recovery noise.
-- [ ] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
+- [x] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
 - [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
 - [x] Require a current finite below-threshold signal before auto-reboot evaluation; invalid and recovered samples now break the sustained LOW timer.
 - [x] Align production Vnish hashboard detection with real `STATS[1].chain_acn1..N` payloads and the read-only diagnostics parser.
@@ -73,6 +73,8 @@ reboots, expose useful diagnostics, and keep dangerous actions controlled.
 - [x] Coalesce restart incidents across a bounded fleet window and emit one post-recovery summary without changing persisted transitions.
 - [x] Coalesce confirmed state transitions across adjacent ticks with a bounded delay while state persistence remains immediate.
 - [x] Send grouped bounded reminders while confirmed LOW, OFFLINE, or HASHBOARD outages remain active.
+- [x] Consolidate irregular states and restart evidence into bounded OK-to-OK episodes with 5/10/15/30/60/120-minute escalation.
+- [x] Render `/status` from current signal evidence and expose click-safe `/e<ID>` episode detail without live miner IO.
 - [x] Add read-only `/why [miner]` explanations for QA, startup guard, cooldown, not sustained, window, invalid signal and action outcomes.
 - [x] Add read-only `/health [all|miner]` diagnosis against each miner's learned stable baseline without live miner IO.
 - [x] Add read-only `/quality [all|miner]` interval diagnosis for shares, HW errors, chain faults, and firmware transitions.

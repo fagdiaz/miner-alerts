@@ -97,10 +97,12 @@ TG DROP chat_mismatch
 Production Telegram notifications should be event-driven by default:
 
 - Startup notification if `notify_startup=true`.
-- State changes for LOW, OFFLINE, HASHBOARD and recovery to OK, coalesced across
-  a bounded 30-second window by default.
-- Persistent outage reminders after 15 minutes and every 30 minutes thereafter
-  while a confirmed LOW, OFFLINE, or HASHBOARD condition remains active.
+- Irregular episodes for LOW, OFFLINE, or board loss, coalesced across a bounded
+  30-second window for all affected miners.
+- Persistent reminders at episode ages 5, 10, 15, 30, 60 and 120 minutes, then
+  hourly while the condition remains active.
+- One concise recovery sequence from OK back to OK, including restart evidence
+  when detected. User-facing board loss is rendered as `PLACAS x/y`.
 - Reboot/restart results and failures.
 - Manual command replies.
 
@@ -111,13 +113,14 @@ Hourly degraded status is disabled by default:
 "degraded_hourly_seconds": 3600,
 "state_change_coalesce_seconds": 30,
 "notify_persistent_outage": true,
-"persistent_outage_initial_seconds": 900,
-"persistent_outage_repeat_seconds": 1800
+"persistent_outage_schedule_seconds": [300, 600, 900, 1800, 3600, 7200],
+"persistent_outage_repeat_seconds": 3600
 ```
 
-The persistent-outage reminder is independent from degraded hourly status and
-stops as soon as the miner returns to confirmed OK. Restart-recovery quieting
-has priority and resets the reminder interval after its consolidated summary.
+The episode reminder is independent from degraded hourly status and stops as
+soon as the miner returns to confirmed OK. `/status` renders current response,
+rate, and board evidence: healthy evidence under recovery hysteresis is
+`RECUPERANDO`, never a positive rate labeled `OFFLINE`.
 
 ## Incident History And Restart Intelligence
 
@@ -149,8 +152,8 @@ Restart classifications:
 - `expected_manual`: uptime reset shortly after a successful Telegram action.
 - `expected_auto`: uptime reset shortly after a successful auto-reboot.
 
-Unexpected restarts produce a dedicated Telegram alert with previous/current
-uptime, current state, signal, incident ID, and `/event <id>` detail link.
+Unexpected restarts join the active episode after the 30-second grouping window,
+with previous/current uptime, attribution and a click-safe `/e<ID>` detail link.
 Expected restarts are stored but are not separately notified by default.
 
 Read-only Telegram history:
@@ -159,6 +162,7 @@ Read-only Telegram history:
 /events
 /events 23
 /event 42
+/e42
 /why
 /why 23
 ```
@@ -166,6 +170,8 @@ Read-only Telegram history:
 These commands read local SQLite history only. They do not call API 4028 or
 Hashcore Toolkit. `/why` explains the latest recorded auto-reboot result with
 LOW duration, cooldown/window evidence, boards, and normalized Vnish telemetry.
+`/e<ID>` is an alias for `/event <id>` and includes a bounded chronological
+episode timeline with related fleet events.
 
 Startup health log:
 

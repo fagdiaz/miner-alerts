@@ -560,6 +560,82 @@ class EventStore:
             self._report_error("get_event", exc)
             return None
 
+    def list_episode_events(
+        self,
+        event_id: int,
+        *,
+        max_window_seconds: float = 21_600.0,
+        limit: int = 50,
+    ) -> list[Dict[str, Any]]:
+        connection = self._connection
+        if connection is None:
+            return []
+        safe_window = max(300.0, min(float(max_window_seconds), 86_400.0))
+        safe_limit = max(1, min(int(limit), 100))
+        try:
+            with self._lock:
+                anchor = connection.execute(
+                    "SELECT * FROM operational_events WHERE id = ?",
+                    (int(event_id),),
+                ).fetchone()
+                if anchor is None:
+                    return []
+                anchor_ts = float(anchor["occurred_ts"])
+                start_ts = anchor_ts - safe_window
+                end_ts = min(time.time(), anchor_ts + safe_window)
+                miner_key = anchor["miner_key"]
+                if miner_key:
+                    start_row = connection.execute(
+                        """
+                        SELECT occurred_ts FROM operational_events
+                        WHERE miner_key = ?
+                          AND event_type = 'state_transition'
+                          AND previous_state = 'OK'
+                          AND new_state IN ('LOW', 'OFFLINE', 'HASHBOARD')
+                          AND occurred_ts <= ?
+                          AND occurred_ts >= ?
+                        ORDER BY occurred_ts DESC, id DESC
+                        LIMIT 1
+                        """,
+                        (miner_key, anchor_ts, start_ts),
+                    ).fetchone()
+                    if start_row is not None:
+                        start_ts = float(start_row["occurred_ts"])
+                    end_row = connection.execute(
+                        """
+                        SELECT occurred_ts FROM operational_events
+                        WHERE miner_key = ?
+                          AND event_type = 'state_transition'
+                          AND new_state = 'OK'
+                          AND occurred_ts >= ?
+                          AND occurred_ts <= ?
+                        ORDER BY occurred_ts ASC, id ASC
+                        LIMIT 1
+                        """,
+                        (miner_key, anchor_ts, anchor_ts + safe_window),
+                    ).fetchone()
+                    if end_row is not None:
+                        end_ts = float(end_row["occurred_ts"])
+                rows = connection.execute(
+                    """
+                    SELECT * FROM operational_events
+                    WHERE occurred_ts >= ? AND occurred_ts <= ?
+                      AND (
+                        event_type IN ('state_transition', 'restart_detected')
+                        OR event_type LIKE '%_reboot_%'
+                        OR event_type LIKE '%_restart_%'
+                      )
+                    ORDER BY occurred_ts ASC, id ASC
+                    LIMIT ?
+                    """,
+                    (start_ts, end_ts, safe_limit),
+                ).fetchall()
+            self._last_error = None
+            return [dict(row) for row in rows]
+        except (TypeError, ValueError, sqlite3.Error) as exc:
+            self._report_error("list_episode_events", exc)
+            return []
+
     def record_firmware_event(
         self,
         *,
@@ -969,12 +1045,16 @@ def render_event_list(events: list[Dict[str, Any]]) -> str:
     for event in events:
         occurred = datetime.fromtimestamp(float(event["occurred_ts"])).strftime("%d/%m %H:%M")
         miner_name = str(event.get("miner_name") or "sistema")
-        lines.append(f"#{event['id']} {occurred} {miner_name} {_event_label(event)}")
-    lines.extend(["", "Detalle: /event <id>"])
+        lines.append(f"/e{event['id']} {occurred} {miner_name} {_event_label(event)}")
+    lines.extend(["", "Manual: /event <id>"])
     return "\n".join(lines)
 
 
-def render_event_detail(event: Optional[Dict[str, Any]]) -> str:
+def render_event_detail(
+    event: Optional[Dict[str, Any]],
+    *,
+    related_events: Optional[list[Dict[str, Any]]] = None,
+) -> str:
     if not event:
         return "Evento no encontrado."
     occurred = datetime.fromtimestamp(float(event["occurred_ts"])).strftime("%d/%m/%Y %H:%M:%S")
@@ -1008,6 +1088,21 @@ def render_event_detail(event: Optional[Dict[str, Any]]) -> str:
     if summary:
         lines.append(f"Resumen: {summary}")
     lines.append(f"Fecha: {occurred}")
+    if related_events:
+        lines.extend(["", "EPISODIO RELACIONADO"])
+        for related in related_events:
+            related_time = datetime.fromtimestamp(
+                float(related["occurred_ts"])
+            ).strftime("%H:%M:%S")
+            related_miner = str(related.get("miner_name") or "sistema")
+            related_line = (
+                f"- {related_time} {related_miner} {_event_label(related)}"
+            )
+            previous_elapsed = related.get("previous_elapsed")
+            current_elapsed = related.get("current_elapsed")
+            if previous_elapsed is not None and current_elapsed is not None:
+                related_line += f" | uptime {previous_elapsed}s -> {current_elapsed}s"
+            lines.append(related_line)
     return "\n".join(lines)
 
 

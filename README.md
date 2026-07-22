@@ -43,8 +43,8 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 | `notify_initial_non_ok` | Si `notify_startup=false`, puede notificar el estado inicial no OK. |
 | `state_change_coalesce_seconds` | Espera breve para agrupar cambios relacionados antes de enviarlos. |
 | `notify_persistent_outage` | Repite alertas acotadas mientras un minero siga LOW/OFFLINE/HASHBOARD. |
-| `persistent_outage_initial_seconds` | Demora hasta el primer recordatorio persistente (900s). |
-| `persistent_outage_repeat_seconds` | Intervalo entre recordatorios posteriores (1800s). |
+| `persistent_outage_schedule_seconds` | Edades del episodio para recordatorios: 5, 10, 15, 30, 60 y 120 minutos. |
+| `persistent_outage_repeat_seconds` | Intervalo horario despues de completar el escalamiento. |
 | `hashcore` | Configuracion del Hashcore Toolkit CLI (reboot/restart). |
 | `diagnosis_stale_seconds` | Antiguedad maxima de una muestra para `/diagnose`. |
 | `diagnosis_firmware_window_hours` | Ventana de evidencia Vnish considerada reciente por `/diagnose`. |
@@ -56,7 +56,7 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Obtener `chat_id` con `@userinfobot` o via `https://api.telegram.org/bot<TOKEN>/getUpdates`.
 - Comandos disponibles:
   - `/help`, `/status`, `/info [all|miner]`, `/selftest`.
-  - `/events [miner]`, `/event <id>`, `/why [miner]` (historial local).
+  - `/events [miner]`, `/event <id>`, `/e<ID>`, `/why [miner]` (historial local).
   - `/health [all|miner]` (baseline estable por minero).
   - `/quality [all|miner]` (shares, errores y estado de cadenas por intervalo).
   - `/firmware [all|miner]` (evidencia Vnish normalizada almacenada localmente).
@@ -75,13 +75,15 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Si el script reinicia, el pending se pierde: hay que reemitir `reboot 23`.
 
 **Notificaciones**
-- Se envia Telegram ante eventos relevantes. Los cambios cercanos se agrupan durante 30 segundos por defecto, incluso si caen en ticks consecutivos.
+- Se envia Telegram ante eventos relevantes. Los cambios cercanos de uno o varios mineros se agrupan durante una ventana maxima de 30 segundos por defecto.
 - Estado OK: hashrate >= threshold.
 - Estado LOW: hashrate < threshold por N lecturas.
 - Estado OFFLINE: sin respuesta del API 4028 por N lecturas.
-- Estado HASHBOARD: boards activos < `expected_boards` (segun `stats`).
-- Un estado LOW/OFFLINE/HASHBOARD que persiste genera un recordatorio a los 15 minutos y luego cada 30 minutos hasta volver a OK; los mineros vencidos en el mismo tick salen en un unico mensaje.
-- Durante recuperacion posterior a un reboot, el resumen de recuperacion existente tiene prioridad y evita cascadas OFFLINE -> LOW -> OK.
+- Estado interno HASHBOARD: faltan placas activas segun `stats`; Telegram lo muestra como `PLACAS x/y`.
+- LOW/OFFLINE/PLACAS abre un episodio. Si persiste, recuerda a los 5, 10, 15, 30, 60 y 120 minutos, y luego cada hora; vencimientos cercanos se agrupan.
+- La recuperacion cierra el episodio con una secuencia breve, por ejemplo `OK -> LOW -> OK` u `OK -> REINICIO -> LOW -> OK`, en vez de mensajes por cada paso.
+- `/status` usa la senal actual: nunca combina hashrate positivo con `[OFFLINE]`; durante la histeresis sana muestra `[RECUPERANDO]`.
+- Los avisos y `/status` exponen `/e<ID>` cuando hay detalle disponible. El detalle se reconstruye desde SQLite e incluye eventos relacionados de la flota en una ventana acotada.
 - Al iniciar, si `notify_startup=true`, se envia un STARTUP con snapshot completo (hashrate y etiquetas).
 - El monitor evita instancias duplicadas usando un mutex de sistema (Win32).
 - El estado se persiste en `app/state.json` para continuidad (streaks, estado y cooldowns).

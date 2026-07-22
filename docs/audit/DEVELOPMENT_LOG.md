@@ -5,6 +5,29 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-07-21] - Spec 020: Irregular Miner Episodes
+
+* **Objetivo**: Evitar fallas olvidadas y cascadas de mensajes, mostrar una historia breve desde OK hasta la recuperacion y eliminar contradicciones como un hashrate positivo etiquetado OFFLINE, sin modificar acciones automaticas.
+* **Resultado**:
+  - LOW, OFFLINE, perdida de placas y reinicios se consolidan en episodios acotados; mineros cercanos comparten una ventana de agrupacion maxima de 30 segundos.
+  - Una falla persistente recuerda a los 5, 10, 15, 30, 60 y 120 minutos y luego cada hora, siempre agrupando vencimientos cercanos.
+  - La recuperacion informa secuencias breves como `OK -> LOW -> OK` u `OK -> REINICIO -> PLACAS 0/3 -> LOW -> OK`; `HASHBOARD` queda como constante interna y Telegram explica placas activas.
+  - `/status` usa evidencia actual y muestra `RECUPERANDO` durante histeresis, nunca hashrate positivo con `OFFLINE`.
+  - `/e<ID>` abre el mismo detalle read-only que `/event <id>` y agrega una timeline cronologica acotada desde SQLite con eventos relacionados de la flota.
+* **Validaciones ejecutadas**:
+  - Desarrollo test-first; 51/51 pruebas dirigidas y suite completa 117/117 PASS.
+  - `py_compile`, JSON, `git diff --check`, AST sin simbolos duplicados y Speckit QA 16/16: PASS.
+  - Bloque de auto-reboot comparado contra HEAD: byte-identico; QA bloqueo Hashcore antes del subprocess.
+* **Estado**:
+  - Implementacion y documentacion validadas; rollout productivo registrado en `specs/020-episode-alerts/evidence.md`.
+* **Archivos principales**:
+  - `app/alert_episodes.py`
+  - `app/miner_monitor.py`
+  - `app/event_store.py`
+  - `app/config.example.json`
+  - `tests/test_alert_episodes.py`
+  - `specs/020-episode-alerts/*`
+
 ## [2026-07-21] - Spec 019: Persistent Outage Alerts
 
 * **Objetivo**: Evitar que un minero confirmado OFFLINE/LOW/HASHBOARD quede olvidado despues de la primera alerta, agrupar transiciones cercanas y eliminar definitivamente las ventanas de consola del collector y Hashcore.

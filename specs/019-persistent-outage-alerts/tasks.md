@@ -25,9 +25,9 @@
 - [x] T012 Run targeted tests, full suite, `py_compile`, JSON parsing, PowerShell parsing, diff checks, and Speckit QA.
 - [x] T013 Validate QA forced-state grouping/reminders without real Hashcore actions.
 - [x] T014 Reinstall and run the scheduled collector task; record executable, result, and no-popup evidence.
-- [ ] T015 Restart `MinerAlerts` once with elevation and verify startup/mutex/production logs and active process creation time.
+- [x] T015 Restart `MinerAlerts` once with elevation and verify startup/mutex/production logs and active process creation time.
 - [x] T016 Update `evidence.md`, `docs/speckit/ROADMAP.md`, and newest-first `docs/audit/DEVELOPMENT_LOG.md`.
-- [ ] T017 Commit, push, and record any UAC-dependent blocker without claiming unverified activation.
+- [x] T017 Commit, push, and record the verified production activation.
 
 ## Definition Of Done
 
@@ -35,4 +35,4 @@
 - [x] Related transitions are grouped without delaying state persistence or action gates.
 - [x] Existing restart recovery remains authoritative.
 - [x] Scheduled collection and subprocess actions cannot create foreground console windows.
-- [ ] All validation and runtime evidence is recorded.
+- [x] All validation and runtime evidence is recorded.

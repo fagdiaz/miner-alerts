@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-21
 
-**Status**: Implemented; service activation pending
+**Status**: Complete; production activation verified
 
 **Input**: Add persistent reminders when a miner remains OFFLINE, LOW, or HASHBOARD; briefly coalesce state changes across the fleet; avoid recovery-message cascades; and eliminate visible PowerShell windows without changing state or reboot policy.
 

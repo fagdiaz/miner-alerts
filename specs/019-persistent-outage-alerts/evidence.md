@@ -37,7 +37,19 @@
   and zero failures.
 - Next scheduled run was `2026-07-21 21:10:10`.
 
-## Pending Final Gate
+## Production Activation
 
-- Commit/integration, controlled `MinerAlerts` service restart, and post-restart
-  startup evidence remain pending.
+- Feature commit `b587715` was fast-forwarded to `main` and pushed to
+  `origin/main`; the working tree was clean before runtime activation.
+- `MinerAlerts` was restarted manually with elevation at `2026-07-21 22:20:05`.
+- The service returned `RUNNING` under NSSM PID `17788`; the new monitor process
+  logged PID `20312`, acquired `Global\MinerAlertsMonitor_fagdiaz`, and loaded
+  `F:\02-ASIC - mineros\miner-alerts\app\config.json`.
+- Startup evidence confirms `qa_mode=false source=config`,
+  `qa_allow_real_actions=false`, startup guard `600` seconds, SQLite schema `5`,
+  and normal monitor-loop startup.
+- The first three post-restart polling cycles completed. Miner 25 remained
+  unreachable as expected from the pre-existing outage; no Hashcore action was
+  emitted after restart.
+- `err.log` contains historical tracebacks and deprecation warnings only; no new
+  runtime exception was observed after activation.

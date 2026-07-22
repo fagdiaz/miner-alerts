@@ -18,7 +18,9 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Suite completa 113/113, `py_compile`, JSON, parseo PowerShell, `git diff --check`, AST, Speckit QA y bloqueo Hashcore en QA: PASS.
   - Tarea real reinstalada: ejecutable `pythonw.exe`, 30 minutos, `Ready`, `LastTaskResult=0`, collector 16/16 streams y cero fallas.
 * **Estado**:
-  - Implementacion y collector validados; activacion del monitor pendiente del reinicio controlado del servicio.
+  - Implementacion integrada y publicada en `main` mediante `b587715`.
+  - Servicio reiniciado a las 22:20:05: proceso nuevo, mutex adquirido, `qa_mode=false`, startup guard de 600 segundos y schema SQLite 5.
+  - Primeros ciclos productivos completados sin excepciones nuevas ni acciones Hashcore posteriores al arranque.
 * **Archivos principales**:
   - `app/miner_monitor.py`
   - `app/config.example.json`

@@ -31,7 +31,7 @@ safety gates are not compressed to recover an estimate.
 | --- | --- | --- | --- |
 | Spec 020 closeout | 2026-08-13 to 2026-08-14 | 2026-08-15 to 2026-08-17 | Elevated restart, new PID, read-only smoke, controlled episode proof and no open P0/P1. |
 | Spec 030 messaging quality | Closed 2026-08-13 | Runtime activation and repository push passed 2026-08-13 (`2afd65e`) | New PID/mutex/startup guard plus `/help`, detail, `/status` and `/events` smoke. |
-| Spec 021 liveness | Implemented 2026-08-13; activation pending | Activation through 2026-08-14; D+1/D+3 through 2026-08-17 | Kill/hang/stale-worker tests, SCM recovery, mutex/startup guard, D+1/D+3. |
+| Spec 021 liveness | Implemented and activated 2026-08-13 | SCM recovery proof plus D+1/D+3 through 2026-08-17 | Kill/hang/stale-worker tests, SCM recovery, mutex/startup guard, D+1/D+3. |
 | Spec 022 acquisition | 2026-08-28 to 2026-09-06 | 2026-09-07 to 2026-09-10 | Shadow comparison, bounded requests/latency, unchanged state/action/offset, D+1/D+3. |
 | Spec 023 evidence fusion | 2026-09-11 to 2026-09-20 | 2026-09-21 to 2026-09-24 | Known-incident replay, no unsupported confirmed cause, bounded query and D+1/D+3. |
 | Spec 024 electrical discovery | 2026-09-25 to 2026-10-02 | 2026-10-03 to 2026-10-05 | Supported adapter with 72-hour shadow proof, or explicit blocked hardware decision. |

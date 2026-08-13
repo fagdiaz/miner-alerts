@@ -5,7 +5,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-13] - Spec 021: Monitor Liveness Watchdog (Activation Pending)
+## [2026-08-13] - Spec 021: Monitor Liveness Watchdog (Observation Pending)
 
 * **Objetivo**: Detectar de forma independiente si el servicio existe pero el
   monitor, sus ticks o sus workers dejaron de progresar, sin crear una segunda
@@ -18,13 +18,17 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     recuperar.
   - La tarea Windows usa `pythonw.exe`, no se solapa y soporta una lease de
     mantenimiento con expiracion automatica.
-  - El instalador puede exportar el baseline y configurar recuperacion SCM;
-    esa activacion elevada sigue pendiente de aprobacion explicita.
+  - La tarea SYSTEM oculta quedo activa, el baseline SCM fue exportado y la
+    recuperacion se configuro con demoras 60s/60s/300s.
+  - El proceso nuevo publico heartbeat desde el primer tick; tres evaluaciones
+    programadas fueron sanas y una prueba Telegram independiente llego al chat.
 * **Validaciones ejecutadas**:
   - Contratos liveness 19/19, regresion reboot/Telegram 26/26 y suite completa
     148/148 PASS.
   - `py_compile`, parser PowerShell, `git diff --check` y escenarios sinteticos
     kill/hang/stale-worker sin autoridad Hashcore: PASS.
+  - Activacion: PID/mutex/guard/config/heartbeat/tarea/SCM y `/status` productivo
+    PASS; firing destructivo SCM y D+1/D+3 quedan abiertos.
 * **Archivos principales**:
   - `app/liveness.py`
   - `app/miner_monitor.py`

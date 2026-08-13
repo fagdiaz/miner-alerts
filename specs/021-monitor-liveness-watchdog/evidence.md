@@ -1,6 +1,6 @@
 # Evidence: Monitor Liveness Watchdog
 
-**Status**: Implementation validated; elevated activation and observation pending
+**Status**: Activated; destructive SCM recovery proof and D+1/D+3 observation pending
 
 ## Planning Baseline
 
@@ -36,12 +36,35 @@
 
 ## Runtime Rollout
 
-- A bounded 15-minute maintenance lease was created for the controlled rollout.
+- A bounded 15-minute maintenance lease was created before the controlled
+  rollout and explicitly cleared after healthy scheduled assessments.
 - A direct non-elevated `Restart-Service` attempt was denied by Windows and did
-  not change the running service or PID. The later combined task/SCM/restart
-  request was rejected pending explicit approval of its persistent SYSTEM and
-  SCM blast radius; no workaround was attempted.
-- Do not mark this spec complete from checked tasks or compilation alone.
+  not change the running service or PID. After explicit approval of the SYSTEM
+  task, SCM policy and production restart blast radius, one elevated activation
+  completed at `2026-08-13T15:37:07-03:00`.
+- `MinerAlertsWatchdog` was installed under `\MinerAlerts\` as a hidden
+  `pythonw.exe` SYSTEM task with `IgnoreNew`; its first forced execution ended
+  `Ready` with result `0`.
+- Pre-change SCM settings were exported locally to ignored artifact
+  `service-recovery-before-20260813-153652.txt`. The active policy has reset
+  period 86400 seconds and restart delays 60s, 60s and 300s.
+- The service wrapper changed to PID `28376`; one monitor child PID `31820`
+  acquired the existing global mutex and logged the 600-second startup guard,
+  `qa_mode=false`, `qa_allow_real_actions=false`, config hash `14955dc1` and
+  EventStore schema 5.
+- Heartbeat schema 1 appeared on the first completed tick. A later sample had
+  tick sequence 5, tick age 18s, poller age 19s, sender age 21s, queue depth 0
+  and collector age 1667s.
+- Scheduled watchdog assessments at 15:37:03, 15:37:52 and 15:38:52 were
+  healthy with no reason codes and no incident. The last assessment occurred
+  after maintenance was cleared.
+- A one-shot independent Telegram delivery returned success and was observed as
+  `PRUEBA WATCHDOG`; it explicitly stated that no miner action was executed.
+- `/status` through the restarted monitor returned all four miners healthy at
+  98.25, 101.02, 99.62 and 100.47 TH/s.
+- The post-start log contained no auto-reboot, Hashcore call, traceback or error.
+- The destructive failure-action firing test and D+1/D+3 observations remain
+  open; do not mark this spec complete from activation alone.
 
 ## Implementation And Deterministic Validation - 2026-08-13
 

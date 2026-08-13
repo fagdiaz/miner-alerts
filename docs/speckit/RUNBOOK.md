@@ -7,9 +7,8 @@ belongs in `ROADMAP.md`; estimated implementation and bug-fix windows belong in
 `DELIVERY_PLAN.md`.
 
 Current release gate as of 2026-08-13: Spec 030 commit `2afd65e` is deployed and
-its Telegram smoke passed. Spec 021 liveness is implemented and statically
-validated; its elevated Scheduled Task/SCM activation and D+1/D+3 observation
-remain open.
+its Telegram smoke passed. Spec 021 liveness is implemented and activated; its
+destructive SCM recovery proof and D+1/D+3 observation remain open.
 
 ## Baseline Checks
 

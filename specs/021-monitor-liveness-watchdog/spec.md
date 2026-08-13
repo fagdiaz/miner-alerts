@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-13
 
-**Status**: Implemented / Activation Pending
+**Status**: Activated / Observation Pending
 
 **Input**: Detect a dead or stalled monitor independently, distinguish service, process, tick and worker freshness, and recover safely without creating a second monitor or miner-action authority.
 

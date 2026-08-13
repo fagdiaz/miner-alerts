@@ -1,6 +1,6 @@
 # Quickstart: Monitor Liveness Watchdog
 
-**Status**: Implemented; elevated activation and D+1/D+3 observation pending.
+**Status**: Activated; destructive SCM recovery proof and D+1/D+3 observation pending.
 
 ## Preconditions
 

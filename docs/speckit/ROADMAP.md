@@ -25,8 +25,8 @@ interfaces or integrations.
   fleet, Vnish transition, cooldown, window and QA safety.
 - Spec 020 is committed/pushed and runtime-closed as `e502ab9`. Spec 030
   messaging quality is committed/pushed as `2afd65e` and active in production.
-  Spec 021 liveness is implemented locally and awaits the elevated activation
-  plus observation gate.
+  Spec 021 liveness is activated; destructive SCM recovery proof plus D+1/D+3
+  observation remain its release gate.
 
 ## Architecture Direction
 
@@ -55,7 +55,7 @@ interfaces or integrations.
 | --- | --- | --- | --- | --- | --- |
 | Gate | Spec 020 episode-alerts closeout | COMPLETE | P0 | HIGH | Closed 2026-08-13 |
 | Hotfix | Spec 030 Telegram messaging quality | COMPLETE | P0 | MEDIUM | Closed 2026-08-13 |
-| 1 | Spec 021 monitor-liveness-watchdog | IMPLEMENTED / ACTIVATION PENDING | P0 | HIGH | Started 2026-08-13 |
+| 1 | Spec 021 monitor-liveness-watchdog | ACTIVATED / OBSERVATION PENDING | P0 | HIGH | 2026-08-13 to 2026-08-17 |
 | 2 | Spec 022 adaptive-acquisition | PLANNED | P1 | HIGH | 2026-08-28 to 2026-09-10 |
 | 3 | Spec 023 incident-evidence-fusion | PLANNED | P1 | MEDIUM | 2026-09-11 to 2026-09-24 |
 | 4 | Spec 024 electrical-source-discovery | PLANNED / CONDITIONAL | P1 | MEDIUM | 2026-09-25 to 2026-10-05 |
@@ -106,19 +106,20 @@ this work.
 
 **Invariant**: no state, polling, threshold, cooldown or Hashcore decision change.
 
-### R1 - Monitor Liveness And Recovery (`IMPLEMENTED / ACTIVATION PENDING`, P0)
+### R1 - Monitor Liveness And Recovery (`ACTIVATED / OBSERVATION PENDING`, P0)
 
 **Spec**: `specs/021-monitor-liveness-watchdog`
 
-Its implementation and deterministic no-action validation are complete. The
-elevated Windows activation and D+1/D+3 observation remain open.
+Its implementation, deterministic no-action validation and elevated Windows
+activation are complete. Destructive recovery proof and D+1/D+3 remain open.
 
 - [x] Atomic versioned heartbeat after completed fleet ticks.
 - [x] Independent service/process/tick/Telegram-worker/collector assessment.
 - [x] Hidden Windows watchdog definition with bounded notification dedupe.
-- [ ] Install the hidden task and configure SCM recovery with rollback export.
+- [x] Install the hidden task and configure SCM recovery with rollback export.
 - [x] Deterministic kill, hang and stale-worker classification with no action authority.
-- [ ] Prove the activated PID, mutex, startup guard and D+1/D+3 behavior.
+- [x] Prove the activated PID, mutex, startup guard and fresh scheduled heartbeat.
+- [ ] Prove SCM recovery firing and D+1/D+3 behavior.
 
 **Invariant**: no second monitor and no miner/Hashcore access from the watchdog.
 

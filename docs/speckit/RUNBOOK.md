@@ -8,7 +8,7 @@ belongs in `ROADMAP.md`; estimated implementation and bug-fix windows belong in
 
 Current release gate as of 2026-08-13: Spec 030 commit `2afd65e` is deployed and
 its Telegram smoke passed. Spec 021 liveness is implemented and activated; its
-destructive SCM recovery proof and D+1/D+3 observation remain open.
+controlled SCM recovery proof passed and D+1/D+3 observation remains open.
 
 ## Baseline Checks
 
@@ -128,6 +128,11 @@ Start-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsWatchdog"
 Get-ScheduledTaskInfo -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsWatchdog"
 sc.exe qfailure MinerAlerts
 ```
+
+The controlled 2026-08-13 proof terminated the service process tree once. SCM
+restarted it after the configured 60-second delay with one new wrapper and one
+new monitor PID; the mutex, 600-second startup guard and first-tick heartbeat
+were observed, with no miner or Hashcore action.
 
 After the service heartbeat is fresh, clear maintenance explicitly or let the
 lease expire:

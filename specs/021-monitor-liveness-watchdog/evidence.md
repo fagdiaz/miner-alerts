@@ -1,6 +1,6 @@
 # Evidence: Monitor Liveness Watchdog
 
-**Status**: Activated; destructive SCM recovery proof and D+1/D+3 observation pending
+**Status**: Activated; SCM recovery proof passed; D+1/D+3 observation pending
 
 ## Planning Baseline
 
@@ -63,15 +63,46 @@
 - `/status` through the restarted monitor returned all four miners healthy at
   98.25, 101.02, 99.62 and 100.47 TH/s.
 - The post-start log contained no auto-reboot, Hashcore call, traceback or error.
-- The destructive failure-action firing test and D+1/D+3 observations remain
-  open; do not mark this spec complete from activation alone.
+- D+1/D+3 observations remain open; do not mark this spec complete from
+  activation and recovery proof alone.
 - A destructive recovery attempt was prepared under a 20-minute maintenance
   lease. Direct `taskkill /T /F` of wrapper PID `28376` was denied by Windows
   for all LocalSystem processes, and the elevated launcher did not complete the
   UAC boundary. No process was terminated: wrapper PID `28376`, monitor PID
   `31820` and heartbeat sequence continued unchanged. The lease was explicitly
-  cleared; scheduled assessments remained healthy. This is recorded as a host
-  elevation blocker, not as SCM recovery proof.
+  cleared; scheduled assessments remained healthy. This initial attempt is
+  retained as evidence that non-elevated process control could not cross the
+  LocalSystem boundary; it was superseded by the controlled proof below.
+
+## Controlled SCM Recovery Proof - 2026-08-13
+
+- A bounded maintenance lease was active before one elevated, tree-scoped
+  termination of service wrapper PID `28376` and monitor PID `31820` at
+  `2026-08-13T17:22:14-03:00`. No miner or Hashcore action was requested.
+- SCM reported `STOPPED` during the configured first 60-second delay, then
+  `START_PENDING` at `17:23:14` and `RUNNING` at `17:23:19` with new wrapper
+  PID `35836`.
+- The replacement monitor PID `35788` published heartbeat schema 1, tick 1 at
+  `17:23:22`. Startup logs proved the same global mutex, config hash `14955dc1`,
+  `qa_mode=false`, `qa_allow_real_actions=false`, startup guard 600 seconds and
+  EventStore schema 5.
+- During the outage the watchdog classified
+  `service_stopped,process_missing` and suppressed notification under the
+  maintenance lease. After recovery it returned to healthy with no incident or
+  action. Maintenance was then cleared explicitly; the next scheduled
+  assessment remained healthy and unsuppressed.
+- `sc.exe qfailure MinerAlerts` still reported reset 86400 seconds and restart
+  delays 60s, 60s and 300s. The ignored pre-change rollback export remains
+  available locally.
+- A post-recovery heartbeat sample reported monitor PID `35788`, tick sequence
+  5, tick age 15s, poller age 16s, sender age 18s and queue depth 0. The service
+  log contained no auto-reboot, Hashcore invocation, traceback or runtime error
+  in the recovery window.
+- Telegram emitted one fresh `STARTUP` message with all four miners healthy;
+  a subsequent `/status` response reported all four between 97.60 and
+  101.33 TH/s.
+- Recovery proof result: `PASS`. The only remaining release gate is the
+  time-bound D+1/D+3 observation.
 
 ## Implementation And Deterministic Validation - 2026-08-13
 

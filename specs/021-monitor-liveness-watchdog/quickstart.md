@@ -1,6 +1,6 @@
 # Quickstart: Monitor Liveness Watchdog
 
-**Status**: Activated; destructive SCM recovery proof and D+1/D+3 observation pending.
+**Status**: Activated; SCM recovery proof passed; D+1/D+3 observation pending.
 
 ## Preconditions
 
@@ -20,7 +20,8 @@
 
 1. Run fresh, missing, malformed and stale heartbeat scenarios.
 2. In QA, stop and hang the monitor separately and verify classification.
-3. Verify SCM starts one replacement PID with mutex and startup guard.
+3. Verify SCM starts one replacement PID with mutex and startup guard. This
+   proof passed on 2026-08-13 with the configured 60-second first restart delay.
 4. Observe D+1 and D+3 for false stale alerts, duplicates or Hashcore actions.
 
 ## Evidence To Capture

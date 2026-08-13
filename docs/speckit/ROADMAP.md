@@ -25,8 +25,8 @@ interfaces or integrations.
   fleet, Vnish transition, cooldown, window and QA safety.
 - Spec 020 is committed/pushed and runtime-closed as `e502ab9`. Spec 030
   messaging quality is committed/pushed as `2afd65e` and active in production.
-  Spec 021 liveness is activated; destructive SCM recovery proof plus D+1/D+3
-  observation remain its release gate.
+  Spec 021 liveness is activated and its SCM recovery proof passed; D+1/D+3
+  observation remains its release gate.
 
 ## Architecture Direction
 
@@ -110,8 +110,8 @@ this work.
 
 **Spec**: `specs/021-monitor-liveness-watchdog`
 
-Its implementation, deterministic no-action validation and elevated Windows
-activation are complete. Destructive recovery proof and D+1/D+3 remain open.
+Its implementation, deterministic no-action validation, elevated Windows
+activation and controlled SCM recovery proof are complete. D+1/D+3 remain open.
 
 - [x] Atomic versioned heartbeat after completed fleet ticks.
 - [x] Independent service/process/tick/Telegram-worker/collector assessment.
@@ -119,7 +119,8 @@ activation are complete. Destructive recovery proof and D+1/D+3 remain open.
 - [x] Install the hidden task and configure SCM recovery with rollback export.
 - [x] Deterministic kill, hang and stale-worker classification with no action authority.
 - [x] Prove the activated PID, mutex, startup guard and fresh scheduled heartbeat.
-- [ ] Prove SCM recovery firing and D+1/D+3 behavior.
+- [x] Prove SCM recovery firing with a new PID, mutex, startup guard and heartbeat.
+- [ ] Complete D+1/D+3 observation.
 
 **Invariant**: no second monitor and no miner/Hashcore access from the watchdog.
 

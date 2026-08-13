@@ -22,13 +22,17 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     recuperacion se configuro con demoras 60s/60s/300s.
   - El proceso nuevo publico heartbeat desde el primer tick; tres evaluaciones
     programadas fueron sanas y una prueba Telegram independiente llego al chat.
+  - Una finalizacion controlada del arbol de servicio probo la recuperacion SCM:
+    tras la primera demora de 60s aparecieron wrapper PID `35836` y monitor PID
+    `35788`, con mutex unico, guard de 600s y heartbeat fresco.
 * **Validaciones ejecutadas**:
   - Contratos liveness 19/19, regresion reboot/Telegram 26/26 y suite completa
     148/148 PASS.
   - `py_compile`, parser PowerShell, `git diff --check` y escenarios sinteticos
     kill/hang/stale-worker sin autoridad Hashcore: PASS.
-  - Activacion: PID/mutex/guard/config/heartbeat/tarea/SCM y `/status` productivo
-    PASS; firing destructivo SCM y D+1/D+3 quedan abiertos.
+  - Activacion y recovery: PID/mutex/guard/config/heartbeat/tarea/SCM,
+    finalizacion controlada, reinicio automatico y `/status` productivo PASS;
+    no hubo accion Hashcore. Solo D+1/D+3 quedan abiertos.
 * **Archivos principales**:
   - `app/liveness.py`
   - `app/miner_monitor.py`

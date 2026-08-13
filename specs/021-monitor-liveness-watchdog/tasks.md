@@ -21,7 +21,7 @@
 
 - [x] T008 [US1] Implement tools/monitor_watchdog.py without action imports.
 - [x] T009 [US2] Implement tools/install_watchdog_task.ps1 with pythonw.exe and non-overlap.
-- [ ] T010 [US2] Configure and test SCM recovery with rollback export.
+- [x] T010 [US2] Configure and test SCM recovery with rollback export.
 ## Phase 4: Validation And Rollout
 
 - [x] T011 Run targeted/full tests, compile, PowerShell parse, config parse and invariant scan.

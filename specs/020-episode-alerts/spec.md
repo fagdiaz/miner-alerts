@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-21
 
-**Status**: In Progress
+**Status**: Complete
 
 **Input**: Convert LOW, OFFLINE, board-loss and restart transitions into concise, persistent and queryable miner episodes without hiding failures or changing reboot policy.
 

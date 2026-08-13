@@ -1,5 +1,17 @@
 # Miner Alerts Validation Runbook
 
+## Planning Boundary
+
+This runbook documents implemented behavior and executable checks. Planned work
+belongs in `ROADMAP.md`; estimated implementation and bug-fix windows belong in
+`DELIVERY_PLAN.md`.
+
+Current release gate as of 2026-08-13: Spec 020 commit `e502ab9` plus the
+Telegram-token log redaction patch are deployed and local read-only runtime
+smoke passed. Final closure is blocked on rotating the bot token exposed by
+historical transport-error logs and running the three authorized-chat read-only
+commands recorded in its evidence.
+
 ## Baseline Checks
 
 ```powershell
@@ -69,6 +81,31 @@ Restart command depends on how the service was installed. Use the actual Windows
 service name or scheduled-task name from the host. Do not run a second manual
 monitor while the service instance is active.
 
+For the current NSSM service, run from an elevated PowerShell:
+
+```powershell
+Restart-Service -Name MinerAlerts -Force
+Get-Service -Name MinerAlerts
+```
+
+A `Running` status alone is insufficient: verify a new startup block in the
+service log, including PID, config path, mutex acquisition, `qa_mode`, startup
+guard and event-store health.
+
+### Telegram Token In Logs
+
+Current source redacts the bot token from Telegram response and exception logs.
+If an older `getUpdates` error contains a URL shaped like
+`api.telegram.org/bot...`, treat that token as exposed locally:
+
+1. Revoke/regenerate it with BotFather.
+2. Update only `telegram.bot_token` in ignored local `app/config.json`.
+3. Restart `MinerAlerts` once from elevated PowerShell.
+4. Verify the new startup block and Telegram command delivery.
+
+Do not commit, paste or attach the affected log. Preserve or remove it according
+to the local incident-retention decision only after token rotation.
+
 ## Telegram QA Trace
 
 Use only when validating Telegram command changes:
@@ -91,6 +128,24 @@ TG ENQUEUE_FAIL
 TG FALLBACK_SEND
 TG DROP chat_mismatch
 ```
+
+### Delivery Contract
+
+- Cada payload de texto queda limitado a 3900 caracteres. Una respuesta mas
+  larga se envia como `Parte N/M`, preservando orden y contenido.
+- Las respuestas a comandos usan `is_command=true`: no entran en dedupe ni
+  coalescing de notificaciones.
+- Con cola llena, un comando usa un envio directo acotado, sin retries, y deja
+  `TG QUEUE_BYPASS` seguido de `TG FALLBACK_SEND ok|err|exc`.
+- Una notificacion informativa rechazada por presion deja `TG QUEUE_DROP` con
+  clase, tipo y motivo, sin copiar el payload al log.
+- `TG ENQUEUE_FAIL`, `TG FALLBACK_SEND`, `TG SEND_ERR` y
+  `TG DROP chat_mismatch` son evidencia de produccion y no dependen de los
+  flags de debug.
+
+Comandos oficiales para acciones confirmadas: `/rb<ID>`, `/reboot_no_ok` y
+`/c<code>`. `/help <comando>` muestra la ficha del registro central sin ejecutar
+la accion.
 
 ## Telegram Alert Policy
 

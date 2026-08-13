@@ -55,5 +55,73 @@
 
 ## Runtime Rollout
 
-- Pending commit, push, controlled `MinerAlerts` restart, startup log inspection,
-  and read-only Telegram smoke.
+- Commit `e502ab9` was fast-forwarded and pushed to `origin/main` on 2026-07-21.
+- A later startup block proves the committed implementation was activated on
+  2026-08-06 at 14:01:55: process PID 7892 acquired the global mutex, loaded the
+  repository `app/miner_monitor.py`, read the expected absolute config path,
+  selected `qa_mode=false source=config`, enabled the 600-second startup guard,
+  and opened EventStore schema 5.
+- The working source blobs for `app/miner_monitor.py`, `app/alert_episodes.py`
+  and `app/event_store.py` match the three blobs in commit `e502ab9` exactly.
+- No Hashcore action or automatic reboot occurred in the first 12 minutes after
+  that startup. Subsequent persisted history through 2026-08-13 demonstrates
+  live state/restart recording and recovery sequences under the deployed code.
+- Read-only API 4028 smoke on 2026-08-13 returned all four configured miners,
+  each responding with three active boards and finite above-threshold hashrate.
+- Local rendering from those current samples produced four healthy status lines
+  and no positive-hashrate plus OFFLINE contradiction. Read-only SQLite smoke
+  reported schema 5, rendered `/e531` through `/e524`, and reconstructed a
+  bounded related timeline for event 531.
+- Telegram Bot API `getMe` and `getWebhookInfo` returned HTTP 200/`ok=true`;
+  webhook was unset and pending update count was zero, consistent with polling.
+
+## Security Containment Discovered During Closeout
+
+- Historical `getUpdates` transport exceptions embedded the Telegram request
+  URL and therefore copied the bot token into the ignored local stdout log.
+  The real token was not found in any tracked file.
+- Added `_redact_telegram_token` at every Telegram response/exception logging
+  boundary plus a regression test. Targeted closeout is now 52 tests PASS; full
+  regression is 118 tests PASS; compilation, example JSON, duplicate-symbol
+  scan and `git diff --check` pass.
+- The first direct restart attempt on 2026-08-13 was rejected by the Windows
+  service ACL before stop; `MinerAlerts` remained `Running` and no second
+  monitor was started. A subsequent explicit UAC-approved NSSM restart completed
+  successfully at 13:17:17.
+- The new monitor process PID 27860 acquired the mutex exactly once, loaded the
+  patched source, selected `qa_mode=false source=config`, enabled the 600-second
+  startup guard and opened EventStore schema 5. NSSM service PID changed from
+  5004 to 16008 and remained `Running`.
+- No Hashcore or auto-reboot action was observed after the restart during the
+  inspected startup-guard window. The 1,752 log bytes written after activation
+  contain zero occurrences of the configured token.
+- Outbound Telegram validation delivered one read-only smoke instruction with
+  HTTP 200/`ok=true`. The polling update ID did not advance during the following
+  75 seconds because the requested commands were not yet sent from the
+  authorized user account.
+
+## Final Production Closure - 2026-08-13
+
+- The authorized Telegram account executed `/status`, `/events` and `/e531`
+  against the running service. `/status` returned four finite healthy rates,
+  `/events` returned the eight newest persisted events with click-safe `/e<ID>`
+  links, and `/e531` returned the complete bounded `OK -> OFFLINE -> REINICIO ->
+  LOW/HASHBOARD -> OK` related timeline.
+- BotFather revoked the credential previously exposed only in the ignored local
+  log and issued a replacement. Only local ignored `app/config.json` was updated;
+  the replacement token passed Bot API `getMe` before service activation. No
+  credential value was added to tracked files or documentation.
+- NSSM restarted `MinerAlerts` once after rotation: service PID changed from
+  16008 to 36380 and child PID 28448 acquired the global mutex exactly once at
+  14:18:19. The process loaded config SHA prefix `14955dc1`, selected
+  `qa_mode=false source=config`, retained `qa_allow_real_actions=false`, and
+  enabled the 600-second startup guard.
+- The first 1,752 bytes after final activation contained zero configured-token
+  occurrences, no traceback, no getUpdates exception and no Hashcore or
+  auto-reboot action. A new `/status` sent after rotation was consumed and
+  answered with four healthy miners, proving inbound polling and outbound
+  delivery with the replacement credential.
+- Final regression on the activated source: 118 tests PASS, Python compilation
+  PASS, `git diff --check` PASS. The earlier D+7 deployed observation and the
+  final controlled restart show no open P0/P1 regression attributable to Spec
+  020. T020 and the production gate are closed.

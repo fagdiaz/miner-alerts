@@ -497,7 +497,7 @@ def render_episode_notification_batch(
         lines = ["FALLA PERSISTENTE", ""]
         for episode in batch.persistent:
             lines.extend(_episode_lines(episode, now_ts=now_ts))
-        lines.extend(["", "Proximo aviso segun escalamiento mientras persista."])
+        lines.extend(["", "Próximo aviso según escalamiento mientras persista."])
         sections.append("\n".join(lines))
     if batch.recovered:
         lines = ["MINEROS RECUPERADOS", ""]

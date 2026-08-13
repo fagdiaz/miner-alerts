@@ -2,6 +2,14 @@
 
 Monitor de mineros ASIC (API 4028) con alertas por Telegram, cambios de estado agrupados, deteccion de reboots y hashboards caidos. Pensado para correr en Windows con PowerShell y evitar spam.
 
+**Documentacion del proyecto**
+- Programa completo de Specs 021-029: `docs/speckit/SPEC_PROGRAM.md`.
+- Prioridades y features: `docs/speckit/ROADMAP.md`.
+- Calendario de implementacion, observacion y fixes: `docs/speckit/DELIVERY_PLAN.md`.
+- Decisiones tecnologicas: `docs/speckit/TECHNOLOGY_STRATEGY.md`.
+- Operacion y validacion: `docs/speckit/RUNBOOK.md`.
+- Historial de specs completadas: `docs/audit/DEVELOPMENT_LOG.md`.
+
 **Requisitos**
 - Windows + PowerShell
 - Python 3.9+
@@ -65,8 +73,15 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
   - `/reboot_no_ok` -> preview bulk; `/c<code>` confirma de forma click-safe.
   - `/restart <miner>` -> pide confirmacion.
   - `/confirm reboot <miner> <code>` y `/confirm restart <miner> <code>`.
+- `/help <comando>` muestra uso, ejemplos, atajos oficiales y precauciones desde
+  el mismo registro que usa el indice.
 - Respuesta inmediata via long polling, sin afectar el loop de mineros.
   - Si Telegram esta lento, la respuesta puede tardar: el monitor no se cuelga porque usa cola de envio.
+  - Las respuestas mayores a 3900 caracteres se dividen en partes numeradas y
+    ordenadas antes de enviarse.
+  - Las respuestas a comandos no usan dedupe/coalescing. Si la cola esta llena,
+    realizan un envio directo acotado; un descarte no-comando siempre deja
+    `TG QUEUE_DROP` en el log.
 
 **Confirm code (operativo)**
 - Comando: `reboot 23`.

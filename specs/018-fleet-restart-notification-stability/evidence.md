@@ -40,7 +40,7 @@
 - Latest persisted samples before service rollout showed all four miners `OK`
   at 94.80-99.48 TH/s.
 
-## Pending Final Gate
+## Final Gate Closure
 
 - Feature commits `7d246fa` and `105abcd` were pushed on the feature branch,
   fast-forwarded into `main`, and published to `origin/main`.
@@ -48,5 +48,8 @@
   stop occurred. The elevated UAC attempt was explicitly cancelled by Windows.
 - `MinerAlerts` remains `Running`/`Automatic` on the prior process tree created
   at `2026-07-20 23:51:06`; no partial stop or duplicate monitor was created.
-- Activation of the new notification behavior and post-restart startup evidence
-  remain blocked only on one approved elevated restart of `MinerAlerts`.
+- The later Spec 019 rollout restarted `MinerAlerts` at `2026-07-21 22:20:05`
+  from the integrated `main` tree, verified a new process, mutex, production
+  config, startup guard and schema v5. This closes the activation gate for the
+  historical Spec 018 implementation; Spec 020 subsequently supersedes its
+  fixed 180/600-second delivery strategy with bounded episode coordination.

@@ -58,7 +58,7 @@
 - [x] T017 Run targeted tests, full suite, `py_compile`, JSON parsing, duplicate-symbol scan, `git diff --check`, and Speckit QA; record exact results in `specs/020-episode-alerts/evidence.md`.
 - [x] T018 Execute controlled QA episode sequences with `qa_allow_real_actions=false` and prove no Hashcore subprocess/action-policy regression in `specs/020-episode-alerts/evidence.md`.
 - [x] T019 Update `README.md`, `docs/speckit/RUNBOOK.md`, `docs/speckit/ROADMAP.md`, and newest-first `docs/audit/DEVELOPMENT_LOG.md` with the verified contract.
-- [ ] T020 Commit, push, restart `MinerAlerts`, verify runtime logs/read-only commands, and close `spec.md`, `tasks.md`, and `evidence.md` only with observed evidence.
+- [x] T020 Commit, push, restart `MinerAlerts`, verify runtime logs/read-only commands, and close `spec.md`, `tasks.md`, and `evidence.md` only with observed evidence.
 
 ## Dependencies And Execution Order
 
@@ -70,10 +70,10 @@
 
 ## Definition Of Done
 
-- [ ] Every active episode follows the requested reminder cadence and stops on confirmed OK.
-- [ ] Episode histories are bounded, grouped and persisted facts remain queryable.
-- [ ] Restart evidence is visible after the short grouping window, not three minutes.
-- [ ] `/status` cannot show a positive rate as OFFLINE.
-- [ ] State machine, persistence and all reboot/Hashcore policies are unchanged and regression-tested.
-- [ ] Real config/state files and secrets are absent from the diff.
-- [ ] Runtime activation and exact validation evidence are recorded.
+- [x] Every active episode follows the requested reminder cadence and stops on confirmed OK.
+- [x] Episode histories are bounded, grouped and persisted facts remain queryable.
+- [x] Restart evidence is visible after the short grouping window, not three minutes.
+- [x] `/status` cannot show a positive rate as OFFLINE.
+- [x] State machine, persistence and all reboot/Hashcore policies are unchanged and regression-tested.
+- [x] Real config/state files and secrets are absent from the diff.
+- [x] Runtime activation and exact validation evidence are recorded.

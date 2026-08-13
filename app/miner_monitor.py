@@ -42,6 +42,7 @@ try:
     from .stability_profile import analyze_stability, render_stability_assessment
     from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
     from .vnish_logs import render_firmware_events
+    from .telegram_messages import classify_delivery, split_telegram_message
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -64,6 +65,7 @@ except ImportError:
     from stability_profile import analyze_stability, render_stability_assessment
     from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
     from vnish_logs import render_firmware_events
+    from telegram_messages import classify_delivery, split_telegram_message
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -150,6 +152,17 @@ def _trunc(text: Optional[str], limit: int) -> str:
     if len(raw) <= limit:
         return raw
     return raw[:limit] + "..."
+
+
+def _redact_telegram_token(value: object, bot_token: Optional[str]) -> str:
+    text = str(value)
+    if bot_token:
+        text = text.replace(bot_token, "<redacted>")
+    return re.sub(
+        r"(https://api\.telegram\.org/bot)[^/\s?'\"]+",
+        r"\1<redacted>",
+        text,
+    )
 
 
 def _entities_summary(entities: list) -> str:
@@ -288,6 +301,7 @@ _COMMANDS = [
         "notes": ["Es de solo lectura."],
         "danger_level": "safe",
         "aliases": [],
+        "official_aliases": ["/e<ID>"],
     },
     {
         "name": "why",
@@ -364,14 +378,28 @@ _COMMANDS = [
     {
         "name": "reboot",
         "summary": "Solicita reboot manual (con confirmacion).",
-        "usage": "/reboot <miner>",
+        "usage": "/reboot  |  /reboot <miner>",
         "detail": [
             "Detalle: genera un codigo y pide confirmacion.",
         ],
-        "examples": ["/reboot 23", "/confirm reboot 23 123456"],
-        "notes": [],
+        "examples": ["/rb23", "/reboot 23"],
+        "notes": ["Siempre requiere confirmacion antes de ejecutar."],
         "danger_level": "danger",
         "aliases": [],
+        "official_aliases": ["/rb<ID>"],
+    },
+    {
+        "name": "reboot_no_ok",
+        "summary": "Prepara un reboot agrupado de mineros NO-OK.",
+        "usage": "/reboot_no_ok",
+        "detail": [
+            "Detalle: crea un preview acotado y un codigo; no ejecuta sin confirmacion.",
+        ],
+        "examples": ["/reboot_no_ok"],
+        "notes": ["Confirmar con el atajo /c<code> recibido en el preview."],
+        "danger_level": "danger",
+        "aliases": [],
+        "official_aliases": [],
     },
     {
         "name": "restart",
@@ -384,6 +412,7 @@ _COMMANDS = [
         "notes": [],
         "danger_level": "danger",
         "aliases": [],
+        "official_aliases": [],
     },
     {
         "name": "confirm",
@@ -393,22 +422,18 @@ _COMMANDS = [
             "Detalle: ejecuta la accion pendiente con codigo.",
         ],
         "examples": ["/confirm reboot 23 123456"],
-        "notes": [],
+        "notes": ["El atajo /c<code> confirma un preview de /reboot_no_ok."],
         "danger_level": "danger",
         "aliases": [],
+        "official_aliases": ["/c<code>"],
     },
 ]
 
 
 def render_help_index() -> str:
-    lines = [
-        "Miner Alerts  Comandos disponibles",
-        "",
-        "🔧 Comandos operativos",
-        "",
-    ]
+    lines = ["MINER ALERTS - AYUDA", "", "MONITOREO"]
     by_name = {str(cmd.get("name", "")).lower(): cmd for cmd in _COMMANDS}
-    ordered_operativos = [
+    read_only = [
         "status",
         "info",
         "events",
@@ -418,56 +443,47 @@ def render_help_index() -> str:
         "quality",
         "diagnose",
         "firmware",
-        "reboot",
-        "restart",
-        "confirm",
         "selftest",
     ]
-    for name in ordered_operativos:
+    actions = ["reboot", "reboot_no_ok", "restart", "confirm"]
+    index_usage = {
+        "info": "/info [id|all]",
+        "events": "/events [miner]",
+        "event": "/event <id>",
+        "why": "/why [miner]",
+        "health": "/health [miner|all]",
+        "quality": "/quality [miner|all]",
+        "diagnose": "/diagnose [miner|all]",
+        "firmware": "/firmware [miner|all]",
+        "reboot": "/reboot",
+        "restart": "/restart <id>",
+        "confirm": "/confirm ...",
+    }
+
+    for name in read_only:
+        cmd = by_name.get(name)
+        if cmd:
+            usage = index_usage.get(name, f"/{cmd['name']}")
+            lines.append(f"{usage} - {cmd['summary']}")
+
+    lines.extend(["", "ACCIONES - REQUIEREN CONFIRMACION"])
+    for name in actions:
         cmd = by_name.get(name)
         if not cmd:
             continue
-        prefix = ""
-        if cmd.get("danger_level") == "danger":
-            prefix = "⛔ "
-        elif cmd.get("danger_level") == "warning":
-            prefix = "⚠️ "
-        if name == "info":
-            lines.append(f"{prefix}/info <id|all>  Información de mineros")
-        elif name == "events":
-            lines.append(f"{prefix}/events [miner]  Historial reciente")
-        elif name == "event":
-            lines.append(f"{prefix}/event <id>  Detalle de un incidente")
-        elif name == "why":
-            lines.append(f"{prefix}/why [miner]  Explica la ultima decision de auto-reboot")
-        elif name == "health":
-            lines.append(f"{prefix}/health [miner|all]  Diagnostico contra baseline estable")
-        elif name == "quality":
-            lines.append(f"{prefix}/quality [miner|all]  Calidad de shares y cadenas")
-        elif name == "diagnose":
-            lines.append(f"{prefix}/diagnose [miner|all]  Diagnostico operativo correlacionado")
-        elif name == "firmware":
-            lines.append(f"{prefix}/firmware [miner|all]  Eventos normalizados de Vnish")
-        elif name == "confirm":
-            lines.append(f"{prefix}/confirm <...>  Confirma acción pendiente")
-        elif name == "reboot":
-            lines.append(f"{prefix}/reboot <id>  Reinicia un minero")
-        elif name == "restart":
-            lines.append(f"{prefix}/restart <id>  Reinicia el servicio del minero")
-        else:
-            lines.append(f"{prefix}/{cmd['name']}  {cmd['summary']}")
+        usage = index_usage.get(name, str(cmd.get("usage", f"/{name}")))
+        lines.append(f"{usage} - {cmd['summary']}")
+        for alias in cmd.get("official_aliases", []):
+            lines.append(f"  Atajo: {alias}")
+
     lines.extend(
         [
             "",
-            "Sistema",
-            "",
+            "SISTEMA",
+            "/help - Muestra este indice",
+            "/info <comando> - Explica uso, ejemplos y precauciones",
         ]
     )
-    if "help" in by_name:
-        lines.append("/help  Muestra este índice")
-    lines.append("/info <comando>  Detalle de un comando")
-    lines.append("")
-    lines.append("Usá: /info <comando> para ver cómo funciona uno en detalle.")
     return "\n".join(lines)
 
 
@@ -475,26 +491,37 @@ def render_help_detail(cmd_name: str) -> str:
     needle = (cmd_name or "").strip().lstrip("/").lower()
     for cmd in _COMMANDS:
         name = str(cmd.get("name", "")).lower()
-        aliases = [a.lower() for a in cmd.get("aliases", [])]
-        if needle == name or needle in aliases:
-            lines = [f"/{cmd['name']}", ""]
-            lines.append("Descripción:")
-            lines.append(cmd["summary"])
-            lines.append("")
-            lines.append("Uso:")
-            lines.append(cmd["usage"])
-            examples = cmd.get("examples", [])
-            if examples:
-                lines.append("")
-                lines.append("Ejemplo:")
-                lines.append(examples[0])
-            danger = cmd.get("danger_level", "safe")
-            if danger != "safe":
-                lines.append("")
-                lines.append("Precaución:")
-                lines.append("TTL 60s; si el script reinicia, el pending se pierde.")
-            return "\n".join(lines)
-    return f"Comando desconocido: {cmd_name}\nUsá /help para ver la lista."
+        aliases = [str(alias).lower() for alias in cmd.get("aliases", [])]
+        if needle != name and needle not in aliases:
+            continue
+        lines = [f"/{cmd['name']}", "", "Descripcion:", str(cmd["summary"])]
+        details = [
+            str(item).removeprefix("Detalle:").strip()
+            for item in cmd.get("detail", [])
+            if str(item).strip()
+        ]
+        if details:
+            lines.extend(["", "Que hace:", *details[:3]])
+        lines.extend(["", "Uso:", str(cmd["usage"])])
+        examples = cmd.get("examples", [])
+        if examples:
+            lines.extend(["", "Ejemplos:", *examples[:3]])
+        official_aliases = cmd.get("official_aliases", [])
+        if official_aliases:
+            lines.extend(["", "Atajos oficiales:", *official_aliases])
+        notes = cmd.get("notes", [])
+        if notes:
+            lines.extend(["", "Notas:", *notes[:3]])
+        if cmd.get("danger_level", "safe") != "safe":
+            lines.extend(
+                [
+                    "",
+                    "Precaucion:",
+                    "La confirmacion expira en 60s y se pierde si reinicia el servicio.",
+                ]
+            )
+        return "\n".join(lines)
+    return f"Comando desconocido: {cmd_name}\nUsa /help para ver la lista."
 
 
 def _normalize_cmd_token(cmd_token: str) -> str:
@@ -931,89 +958,139 @@ def send_telegram(
     dbg_update_id: Optional[int] = None,
     dbg_cmd: Optional[str] = None,
 ) -> None:
+    if not msg_type:
+        msg_type = "ERROR"
+    parts = split_telegram_message(message)
+    delivery_class = classify_delivery(msg_type, is_command=is_command)
     if _TELEGRAM_QUEUE is None:
         log(
             f"TG ENQUEUE_FAIL queue=None cmd={dbg_cmd or ''} update_id={dbg_update_id} "
             f"is_command={is_command} msg_type={msg_type}"
         )
         if is_command:
-            tg_send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            if not tg_send_url.startswith("https://api.telegram.org/bot"):
-                log("[ERROR] URL Telegram invalida (sendMessage).")
-                return
-            payload = {
-                "chat_id": chat_id,
-                "text": message,
-                "disable_web_page_preview": True,
-            }
-            session = _HTTP_SESSION or requests.Session()
-            t0 = time.perf_counter()
-            try:
-                resp = session.post(tg_send_url, json=payload, timeout=(1.5, 4.0))
-                ms = int((time.perf_counter() - t0) * 1000)
-                if resp.status_code == 200:
-                    log(
-                        f"TG FALLBACK_SEND ok http=200 ms_send={ms} cmd={dbg_cmd or ''} "
-                        f"update_id={dbg_update_id}"
-                    )
-                else:
-                    body = (resp.text or "")[:200].replace("\n", "\\n")
-                    log(
-                        f"TG FALLBACK_SEND err http={resp.status_code} ms_send={ms} "
-                        f"cmd={dbg_cmd or ''} update_id={dbg_update_id} body=\"{body}\""
-                    )
-            except Exception as exc:
-                ms = int((time.perf_counter() - t0) * 1000)
-                log(
-                    f"TG FALLBACK_SEND exc ms_send={ms} cmd={dbg_cmd or ''} "
-                    f"update_id={dbg_update_id} err={type(exc).__name__}:{exc}"
-                )
+            _send_telegram_direct(
+                bot_token,
+                chat_id,
+                parts,
+                dbg_update_id=dbg_update_id,
+                dbg_cmd=dbg_cmd,
+            )
         return
-    if not msg_type:
-        msg_type = "ERROR"
+    direct_send = False
     with _TELEGRAM_QUEUE_LOCK:
         now_ts = time.time()
-        _LAST_ENQUEUED[msg_type] = now_ts
         if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
             log(
                 f"TGQ update_id={dbg_update_id} cmd={dbg_cmd or ''} qsize_before={_TELEGRAM_QUEUE.qsize()} "
-                f"type={msg_type} text_len={len(message or '')}"
+                f"type={msg_type} text_len={len(message or '')} parts={len(parts)}"
             )
-        if _TELEGRAM_QUEUE.full():
-            try:
-                _TELEGRAM_QUEUE.get_nowait()
-                log("[WARN] Cola Telegram llena, descartando mensaje mas viejo.")
-            except Exception:
-                pass
-        try:
-            _TELEGRAM_QUEUE.put(
-                (
-                    now_ts,
-                    chat_id,
-                    message,
-                    msg_type,
-                    reason,
-                    qa_update_id,
-                    qa_cmd,
-                    perf_ctx,
-                    is_command,
-                    dbg_update_id,
-                    dbg_cmd,
+        maxsize = _TELEGRAM_QUEUE.maxsize
+        capacity_needed = len(parts)
+        has_capacity = maxsize <= 0 or (_TELEGRAM_QUEUE.qsize() + capacity_needed) <= maxsize
+        if not has_capacity and is_command:
+            direct_send = True
+            log(
+                f"TG QUEUE_BYPASS class=command reason=full type={msg_type} "
+                f"update_id={dbg_update_id} parts={len(parts)}"
+            )
+        elif not has_capacity:
+            log(
+                f"TG QUEUE_DROP class={delivery_class} reason=full type={msg_type} "
+                f"update_id={dbg_update_id} parts={len(parts)}"
+            )
+            return
+
+        if direct_send:
+            pass
+        else:
+            _LAST_ENQUEUED[msg_type] = now_ts
+            batch_id = f"{time.time_ns()}-{threading.get_ident()}"
+            for part_index, part in enumerate(parts, start=1):
+                _TELEGRAM_QUEUE.put_nowait(
+                    (
+                        now_ts,
+                        chat_id,
+                        part,
+                        msg_type,
+                        reason,
+                        qa_update_id,
+                        qa_cmd,
+                        perf_ctx,
+                        is_command,
+                        dbg_update_id,
+                        dbg_cmd,
+                        batch_id,
+                        part_index,
+                        len(parts),
+                    )
                 )
-            )
             if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
                 log(
                     f"TGQ update_id={dbg_update_id} cmd={dbg_cmd or ''} "
                     f"ENQUEUED qsize_after={_TELEGRAM_QUEUE.qsize()} "
-                    f"type={msg_type}"
+                    f"type={msg_type} parts={len(parts)}"
                 )
-        except Exception as exc:
-            if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
-                log(f"TGQ update_id={dbg_update_id} ENQUEUE_EXC err={type(exc).__name__}:{exc}")
         _LAST_SENT_META["type"] = msg_type
         _LAST_SENT_META["ts"] = now_str()
         if _QA_MODE:
             log_pid(f"[QA] enqueue type={msg_type} reason={reason} qsize={_TELEGRAM_QUEUE.qsize()}")
+    if direct_send:
+        _send_telegram_direct(
+            bot_token,
+            chat_id,
+            parts,
+            dbg_update_id=dbg_update_id,
+            dbg_cmd=dbg_cmd,
+        )
+
+
+def _send_telegram_direct(
+    bot_token: str,
+    chat_id: str,
+    parts: list[str],
+    *,
+    dbg_update_id: Optional[int],
+    dbg_cmd: Optional[str],
+) -> bool:
+    tg_send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    if not tg_send_url.startswith("https://api.telegram.org/bot"):
+        log("[ERROR] URL Telegram invalida (sendMessage).")
+        return False
+    session = _HTTP_SESSION or requests.Session()
+    for part_index, part in enumerate(parts, start=1):
+        payload = {
+            "chat_id": chat_id,
+            "text": part,
+            "disable_web_page_preview": True,
+        }
+        t0 = time.perf_counter()
+        try:
+            resp = session.post(tg_send_url, json=payload, timeout=(1.5, 4.0))
+            ms = int((time.perf_counter() - t0) * 1000)
+            if resp.status_code == 200:
+                log(
+                    f"TG FALLBACK_SEND ok http=200 ms_send={ms} cmd={dbg_cmd or ''} "
+                    f"update_id={dbg_update_id} part={part_index}/{len(parts)}"
+                )
+                continue
+            body = _redact_telegram_token(
+                resp.text or "", bot_token
+            )[:200].replace("\n", "\\n")
+            log(
+                f"TG FALLBACK_SEND err http={resp.status_code} ms_send={ms} "
+                f"cmd={dbg_cmd or ''} update_id={dbg_update_id} "
+                f"part={part_index}/{len(parts)} body=\"{body}\""
+            )
+            return False
+        except Exception as exc:
+            ms = int((time.perf_counter() - t0) * 1000)
+            log(
+                f"TG FALLBACK_SEND exc ms_send={ms} cmd={dbg_cmd or ''} "
+                f"update_id={dbg_update_id} part={part_index}/{len(parts)} "
+                f"err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}"
+            )
+            return False
+    return True
 
 
 def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> None:
@@ -1027,7 +1104,11 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
         return
     last_hb = 0.0
     while True:
+        is_command = False
+        dbg_update_id = None
+        dbg_cmd = None
         try:
+            item = q.get()
             (
                 enqueue_ts,
                 chat_id,
@@ -1040,14 +1121,17 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
                 is_command,
                 dbg_update_id,
                 dbg_cmd,
-            ) = q.get()
+                batch_id,
+                part_index,
+                part_count,
+            ) = item
             if DBG_TELEGRAM and (time.time() - last_hb) >= 30:
                 log(f"SENDER_HB alive=1 qsize={q.qsize()}")
                 last_hb = time.time()
             with _TELEGRAM_QUEUE_LOCK:
                 last_ts = _LAST_ENQUEUED.get(msg_type, 0.0)
             window = _COALESCE_WINDOWS.get(msg_type)
-            if not is_command and window and enqueue_ts < last_ts and (last_ts - enqueue_ts) <= window:
+            if part_count == 1 and not is_command and window and enqueue_ts < last_ts and (last_ts - enqueue_ts) <= window:
                 if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
                     log(
                         f"SEND_SKIP update_id={dbg_update_id} reason=coalesce type={msg_type} "
@@ -1057,13 +1141,13 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
             msg_hash = hashlib.sha256(message.encode("utf-8", errors="ignore")).hexdigest()
             last_hash = _LAST_SENT_HASH.get(msg_type)
             last_sent = _LAST_SENT_TS.get(msg_type, 0.0)
-            if not is_command and msg_type == "STATE_CHANGE" and last_hash == msg_hash:
+            if part_count == 1 and not is_command and msg_type == "STATE_CHANGE" and last_hash == msg_hash:
                 if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
                     log(
                         f"SEND_SKIP update_id={dbg_update_id} reason=dedupe type={msg_type} hash={msg_hash[:8]}"
                     )
                 continue
-            if not is_command and last_hash == msg_hash and (time.time() - last_sent) < 60:
+            if part_count == 1 and not is_command and last_hash == msg_hash and (time.time() - last_sent) < 60:
                 if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
                     log(
                         f"SEND_SKIP update_id={dbg_update_id} reason=dedupe type={msg_type} hash={msg_hash[:8]} "
@@ -1102,12 +1186,16 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
                     if ms_send > 2000:
                         log(f"SAFETY slow_send cmd={perf_ctx.get('cmd','')} ms_send={ms_send}")
                     if resp.status_code != 200:
-                        body = (resp.text or "")[:200].replace("\n", " ")
+                        body = _redact_telegram_token(
+                            resp.text or "", bot_token
+                        )[:200].replace("\n", " ")
                         log(f"ERROR telegram_send status={resp.status_code} body=\"{body}\"")
                     if perf_id is not None:
                         _PERF_LOGGED[perf_id] = True
             if resp.status_code != 200:
-                body = (resp.text or "")[:200].replace("\n", " ")
+                body = _redact_telegram_token(
+                    resp.text or "", bot_token
+                )[:200].replace("\n", " ")
                 log(
                     f"TG SEND_ERR http={resp.status_code} cmd={dbg_cmd or ''} "
                     f"update_id={dbg_update_id} body=\"{body}\""
@@ -1118,16 +1206,27 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
                     f"http={resp.status_code} ms={int(duration*1000)} type={msg_type}"
                 )
                 if resp.status_code != 200:
-                    body = (resp.text or "")[:200].replace("\n", " ")
+                    body = _redact_telegram_token(
+                        resp.text or "", bot_token
+                    )[:200].replace("\n", " ")
                     log(f"SEND_ERR update_id={dbg_update_id} cmd={dbg_cmd or ''} http={resp.status_code} body=\"{body}\"")
             if resp.status_code >= 400:
-                log(f"[WARN] Telegram retorno {resp.status_code}: {resp.text}")
+                log(
+                    f"[WARN] Telegram retorno {resp.status_code}: "
+                    f"{_redact_telegram_token(resp.text, bot_token)}"
+                )
             _LAST_SENT_HASH[msg_type] = msg_hash
             _LAST_SENT_TS[msg_type] = time.time()
         except Exception as exc:
             if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
-                log(f"SEND_EXC update_id={dbg_update_id} err={type(exc).__name__}:{exc}")
-            log(f"[WARN] No se pudo enviar mensaje a Telegram ({exc})")
+                log(
+                    f"SEND_EXC update_id={dbg_update_id} err={type(exc).__name__}:"
+                    f"{_redact_telegram_token(exc, bot_token)}"
+                )
+            log(
+                "[WARN] No se pudo enviar mensaje a Telegram "
+                f"({_redact_telegram_token(exc, bot_token)})"
+            )
             time.sleep(2)
 
 
@@ -1814,7 +1913,7 @@ def telegram_polling_worker(
             last_ref_before = last_update_id_ref["value"]
             resp = requests.get(tg_updates_url, params=params, timeout=timeout_used)
             if resp.status_code >= 400:
-                body = (resp.text or "")[:300]
+                body = _redact_telegram_token(resp.text or "", bot_token)[:300]
                 log_pid(
                     f"[WARN] getUpdates HTTP {resp.status_code} body='{body}' timeout={timeout_used}s backoff={backoff}s"
                 )
@@ -1830,7 +1929,9 @@ def telegram_polling_worker(
                 data = resp.json()
             except Exception:
                 if DBG_TELEGRAM:
-                    body = (resp.text or "")[:200].replace("\n", " ")
+                    body = _redact_telegram_token(
+                        resp.text or "", bot_token
+                    )[:200].replace("\n", " ")
                     log(
                         f"POLL_ERR http={resp.status_code} ms={int((time.monotonic() - t0)*1000)} "
                         f"body=\"{body}\""
@@ -2515,7 +2616,7 @@ def telegram_polling_worker(
                 elif cmd_name == "help":
                     handled = True
                     cmd_start = time.monotonic()
-                    msg = render_help_index()
+                    msg = render_help_detail(args[0]) if args else render_help_index()
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
@@ -3032,7 +3133,7 @@ def telegram_polling_worker(
                         send_telegram(
                             bot_token,
                             str(msg_chat_id),
-                            "Uso: /confirm <accion> <codigo>\nEj: /confirm reboot-no-ok 123456",
+                            "Uso: /confirm <accion> <codigo>\nEj: /confirm reboot_no_ok 123456",
                             "HELP",
                             "cmd_confirm",
                             is_command=True,
@@ -3267,7 +3368,9 @@ def telegram_polling_worker(
                     log(f"POLL_EMPTY offset={offset} last_ref={last_ref_before}")
         except Exception as exc:
             log_pid(
-                f"[WARN] getUpdates exception type={type(exc).__name__} msg='{exc}' timeout={timeout_used}s backoff={backoff}s"
+                f"[WARN] getUpdates exception type={type(exc).__name__} "
+                f"msg='{_redact_telegram_token(exc, bot_token)}' "
+                f"timeout={timeout_used}s backoff={backoff}s"
             )
             time.sleep(backoff)
             backoff = min(backoff * 2, 5.0)
@@ -4032,7 +4135,8 @@ def main() -> None:
                                     bot_token,
                                     str(chat_id),
                                     f"AUTO-REBOOT{qa_suffix}: {name_display} LOW por {window_label} "
-                                    f"({format_rate(rate_ths)} < {threshold_ths:.2f} TH/s) -> reboot enviado",
+                                    f"({format_rate(rate_ths)} < {threshold_ths:.2f} TH/s) -> reboot enviado\n"
+                                    "Diagnostico: /why",
                                     "REBOOT",
                                     "auto_reboot",
                                 )
@@ -4046,7 +4150,7 @@ def main() -> None:
                                         send_telegram(
                                             bot_token,
                                             str(chat_id),
-                                            f"AUTO-REBOOT FAILED: {name_display}. {msg}",
+                                            f"AUTO-REBOOT FAILED: {name_display}. {msg}\nDiagnostico: /why",
                                             "ERROR",
                                             "auto_reboot_failed",
                                         )
@@ -4054,7 +4158,7 @@ def main() -> None:
                                     send_telegram(
                                         bot_token,
                                         str(chat_id),
-                                        f"AUTO-REBOOT FAILED: {name_display}. {msg}",
+                                        f"AUTO-REBOOT FAILED: {name_display}. {msg}\nDiagnostico: /why",
                                         "ERROR",
                                         "auto_reboot_failed",
                                     )

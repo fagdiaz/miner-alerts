@@ -5,6 +5,48 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-08-13] - Spec 030: Telegram Messaging Quality (Complete / Uncommitted)
+
+* **Objetivo**: Hacer mas legibles y confiables las respuestas y alertas del bot sin modificar estados, polling ni decisiones de reboot.
+* **Resultado**:
+  - Los textos largos se normalizan y dividen en partes ordenadas de hasta 3900 caracteres.
+  - Los comandos no entran en dedupe/coalescing y, con cola llena, usan un envio directo acotado sin expulsar la respuesta ya pendiente.
+  - La cola registra bypass, descarte y error sin copiar payloads; las notificaciones mantienen su politica previa.
+  - `/help` y `/help <comando>` salen del registro central y muestran `/rb<ID>`, `/reboot_no_ok` y `/c<code>` como atajos oficiales.
+  - Los resultados de auto-reboot enlazan `/why` como diagnostico read-only; no cambio ninguna condicion de accion.
+* **Validaciones ejecutadas**:
+  - Suite completa 129/129, `py_compile`, JSON, AST, secretos, ignores, `git diff --check` y Speckit QA: PASS.
+  - Smoke directo del renderer `/help`: HTTP 200 y mensaje completo observado en el chat autorizado, sin iniciar otra instancia del monitor.
+  - Activacion productiva: NSSM y monitor cambiaron de PID; mutex unico, `qa_mode=false`, startup guard 600s y EventStore schema 5 verificados.
+  - `/help`, `/help reboot_no_ok`, `/status` y `/events` respondieron desde el proceso nuevo; tres comandos consecutivos llegaron sin perdida.
+  - Commit/push quedan pendientes porque no fueron solicitados en esta iteracion.
+* **Archivos principales**:
+  - `app/telegram_messages.py`
+  - `app/miner_monitor.py`
+  - `app/alert_episodes.py`
+  - `tests/test_telegram_messaging.py`
+  - `specs/030-telegram-messaging-quality/*`
+
+## [2026-08-13] - Spec 020: Production Closeout And Telegram Credential Containment
+
+* **Objetivo**: Cerrar con evidencia real la activacion de episodios, eliminar la exposicion del token en excepciones locales y validar el bot completo sin modificar politicas de accion.
+* **Resultado**:
+  - `/status`, `/events` y `/e531` fueron ejecutados desde la cuenta autorizada y respondieron mediante el servicio productivo con estado actual, historial y timeline relacionada.
+  - El token historicamente presente solo en `logs/out.log` fue revocado; el reemplazo se guardo unicamente en `app/config.json` local y fue validado antes del reinicio.
+  - `MinerAlerts` reinicio una vez mediante NSSM, adquirio un unico mutex, cargo `qa_mode=false`, activo el guard de 600 segundos y respondio `/status` con el token nuevo.
+  - Los nuevos limites de log redactan tokens en transporte, respuestas y excepciones; los bytes posteriores al rollout contienen cero ocurrencias del token configurado.
+* **Validaciones ejecutadas**:
+  - Suite completa 118/118, `py_compile` y `git diff --check`: PASS.
+  - Bot API `getMe`, polling entrante, delivery saliente, SQLite `/events` y detalle `/e531`: PASS.
+  - Sin traceback, Hashcore ni auto-reboot en la ventana inspeccionada del startup guard.
+* **Estado**: Spec 020 y T020 completos; Spec 021 queda habilitada para implementacion.
+* **Archivos principales**:
+  - `app/miner_monitor.py`
+  - `tests/test_notification_stability.py`
+  - `specs/020-episode-alerts/evidence.md`
+  - `docs/speckit/RUNBOOK.md`
+  - `docs/speckit/ROADMAP.md`
+
 ## [2026-07-21] - Spec 020: Irregular Miner Episodes
 
 * **Objetivo**: Evitar fallas olvidadas y cascadas de mensajes, mostrar una historia breve desde OK hasta la recuperacion y eliminar contradicciones como un hashrate positivo etiquetado OFFLINE, sin modificar acciones automaticas.
@@ -19,7 +61,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - `py_compile`, JSON, `git diff --check`, AST sin simbolos duplicados y Speckit QA 16/16: PASS.
   - Bloque de auto-reboot comparado contra HEAD: byte-identico; QA bloqueo Hashcore antes del subprocess.
 * **Estado**:
-  - Implementacion y documentacion validadas; rollout productivo registrado en `specs/020-episode-alerts/evidence.md`.
+  - Commit `e502ab9` integrado y publicado en `main`; reinicio elevado del servicio y smoke runtime todavia pendientes y registrados en `specs/020-episode-alerts/evidence.md`.
 * **Archivos principales**:
   - `app/alert_episodes.py`
   - `app/miner_monitor.py`
@@ -67,7 +109,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Suite completa 104/104, `py_compile`, JSON, parseo PowerShell, `git diff --check`, simbolos duplicados y Speckit QA 11/11: PASS.
 * **Estado**:
   - Implementacion integrada y publicada en `main`; tarea Vnish activa con ventana oculta y 30 minutos.
-  - Reinicio del servicio pendiente: Windows rechazo el control directo y el intento UAC fue cancelado sin detener la instancia actual.
+  - Activacion cerrada por el rollout verificado de Spec 019 a las 22:20:05; Spec 020 reemplaza luego la estrategia temporal fija por episodios acotados.
 * **Archivos principales**:
   - `app/miner_monitor.py`
   - `app/config.example.json`

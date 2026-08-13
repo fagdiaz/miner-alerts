@@ -1,105 +1,251 @@
 # Miner Alerts Speckit Roadmap
 
+**Last reviewed**: 2026-08-13
+**Specification program**: `docs/speckit/SPEC_PROGRAM.md`
+**Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
+
 ## Operating Goal
 
-Miner Alerts should become an operations layer for S19j Pro miners, not only a
-Telegram alert script. The priority is to reduce false alerts, prevent unnecessary
-reboots, expose useful diagnostics, and keep dangerous actions controlled.
+Miner Alerts is the operations and diagnosis layer for S19j Pro miners. Work is
+ordered to detect real failures, avoid unsafe or unnecessary actions, preserve
+trustworthy evidence, recover the monitor itself, and only then add optional
+interfaces or integrations.
 
-## P0 - Production Safety And No Unnecessary Reboots
+## Current Baseline
 
-- [x] Persist and classify uptime-reset incidents as expected-manual, expected-auto, or unexpected without changing action policy.
-- [x] Send evidence-rich restart alerts without false cause certainty; coalesce fleet restarts and suppress only transient Telegram recovery noise.
-- [x] Audit false alert scenarios: transient LOW, recovery hysteresis, stale snapshot, offline/no-data.
-- [ ] Audit auto-reboot gates: startup guard, sustained LOW, cooldown, reboot window, QA block.
-- [x] Require a current finite below-threshold signal before auto-reboot evaluation; invalid and recovered samples now break the sustained LOW timer.
-- [x] Align production Vnish hashboard detection with real `STATS[1].chain_acn1..N` payloads and the read-only diagnostics parser.
-- [x] Block automatic reboot on current high-temperature evidence or fresh shared fleet degradation without adding miner IO.
-- [ ] Verify `state.json` cannot trigger immediate auto-reboot after restart.
-- [x] Split "bad signal" from "actionable reboot candidate": LOW alone no longer implies reboot.
-- [x] Add an audit table for every reboot decision with signal, duration, board/Vnish evidence, cooldown, window, QA and startup-guard context.
-- [ ] Keep Telegram dangerous actions behind confirmation.
-- [ ] Define "do not reboot" reasons: stale data, no hash but offline, autotune active, firmware restart in progress, high temp protection, pool outage, power anomaly suspected.
+- Windows service with one mutex-protected monitor/action authority.
+- API 4028 authoritative polling, normally every 30 seconds.
+- Telegram Bot API long polling as the remote command/control interface.
+- Bounded read-only Vnish WebSocket log collection as complementary firmware
+  evidence, never the sole health or action source.
+- SQLite schema v5 for telemetry, operational events, reboot decisions,
+  firmware evidence and collector health.
+- Read-only static operations dashboard and incident reports.
+- Auto-reboot gates for finite/current signal, sustained LOW, startup, thermal,
+  fleet, Vnish transition, cooldown, window and QA safety.
+- Spec 020 is committed/pushed and runtime-closed as `e502ab9`. Spec 030
+  messaging quality is validated and active in production but remains
+  uncommitted; it is the current repository release gate.
 
-## P1 - Miner Diagnostics And Sweet Spot Discovery
+## Architecture Direction
 
-- [x] Add a read-only diagnostics collector for API 4028 commands: `summary`, `stats`, `pools`, `version`.
-- [x] Add a diagnostics matrix for each miner: hashrate, elapsed, active boards, temps, pool status, firmware hint, candidate telemetry fields.
-- [x] Normalize observed Vnish fields from all `STATS` entries: chain voltage/consumption/frequency/HW errors, temperatures and fan indicators.
-- [x] Add an initial sweet-spot baseline analyzer from diagnostics snapshots: TH/s band, board count, max temp, chain voltage, consumption, frequency and HW errors.
-- [ ] Define production sweet-spot profiles from multiple snapshots per miner: stable TH/s range, temperature band, board count, error rate, reboot history, restart history.
-- [x] Add a robust read-only per-miner baseline (median/MAD) with learning, stable, watch, and critical diagnosis from persisted healthy samples.
-- [x] Persist and classify interval accepted/rejected/stale shares, HW-error growth, chain faults, and firmware transitions from existing Vnish telemetry.
-- [ ] Track "soft symptoms" before reboot: repeated LOW with recovery, board missing, pool reconnects, high reject/stale shares, temperature throttling, watchdog restarts.
-- [ ] Decide whether a restart is safer than reboot when firmware/miner service is alive but hash is degraded.
+1. API 4028 polling remains authoritative because the deployed endpoint is
+   request/response and has no proven health push contract.
+2. Vnish WebSockets remain bounded and read-only for asynchronous firmware
+   evidence.
+3. An independent watchdog supervises process, tick and worker progress; a
+   protocol change cannot replace monitor liveness supervision.
+4. Acquisition may use bounded concurrency, but only one 30-second
+   authoritative envelope per miner may update state/action semantics.
+5. Prometheus/Grafana are the preferred optional observability stack. They read
+   sanitized snapshots and cannot trigger actions.
+6. Docker is limited to auxiliary observability. The monitor and Hashcore remain
+   Windows-native.
+7. Electrical protocol selection follows real hardware discovery. No AC voltage
+   is inferred from hashboard telemetry.
+8. FastAPI is conditional after static HTML and Grafana are measured. Web
+   actions and remote exposure are excluded.
+9. OpenTelemetry, broker-only MQTT and continuous Vnish workers remain deferred
+   until concrete prerequisites exist.
 
-## P2 - Hashcore Toolkit Integration
+## Delivery Queue
 
-- [ ] Inventory available Hashcore Toolkit CLI commands locally with `version`, `help`, and discovery commands.
-- [ ] Document which commands are safe read-only and which are action commands.
-- [ ] Keep current action scope limited to `reboot` and `restart` until command behavior is proven.
-- [ ] Evaluate useful read-only integrations: discovery, status, firmware info, batch inventory, profile/config export if supported by local toolkit.
-- [ ] Add a Hashcore capability map: command, arguments, risk, timeout, expected output, parsing strategy, validation evidence.
-- [ ] Add dry-run or QA-only wrappers for new Hashcore features before enabling production use.
+| Order | Work package | Status | Priority | Risk | Target |
+| --- | --- | --- | --- | --- | --- |
+| Gate | Spec 020 episode-alerts closeout | COMPLETE | P0 | HIGH | Closed 2026-08-13 |
+| Hotfix | Spec 030 Telegram messaging quality | COMPLETE / UNCOMMITTED | P0 | MEDIUM | Closed 2026-08-13 |
+| 1 | Spec 021 monitor-liveness-watchdog | READY | P0 | HIGH | 2026-08-18 to 2026-08-27 |
+| 2 | Spec 022 adaptive-acquisition | PLANNED | P1 | HIGH | 2026-08-28 to 2026-09-10 |
+| 3 | Spec 023 incident-evidence-fusion | PLANNED | P1 | MEDIUM | 2026-09-11 to 2026-09-24 |
+| 4 | Spec 024 electrical-source-discovery | PLANNED / CONDITIONAL | P1 | MEDIUM | 2026-09-25 to 2026-10-05 |
+| 5 | Spec 025 prometheus-metrics | PLANNED | P1 | MEDIUM | 2026-10-06 to 2026-10-19 |
+| 6 | Spec 026 hashcore-capability-inventory | PLANNED | P2 | MEDIUM | 2026-10-20 to 2026-10-29 |
+| 7 | Spec 028 backup-retention-restore | PLANNED | P1 | HIGH | 2026-10-30 to 2026-11-12 |
+| 8 | Spec 027 operator-interface-decision | PLANNED / CONDITIONAL | P2 | MEDIUM | 2026-11-13 to 2026-11-26 |
+| 9 | Spec 029 v2-release-stabilization | PLANNED | P0 | HIGH | 2026-11-27 to 2026-12-20 |
 
-## P3 - Vnish Firmware Logs And Miner-Side Evidence
+Dates include implementation plus the separate review/fix gate detailed in
+`DELIVERY_PLAN.md`. Runtime evidence can move dates but cannot compress gates.
 
-- [x] Identify how Vnish exposes logs on the deployed firmware: confirmed read-only WebSockets at `/api/v1/logs-ws/{status|miner|autotune|system}`.
-- [x] Build a log taxonomy: autotune, voltage/frequency changes, chain restarts, miner process restarts, fan/temp protections, pool reconnects, watchdog actions.
-- [x] Create a bounded parser and schema-v4 store for normalized events without full raw logs.
-- [x] Correlate Vnish events with Miner Alerts state changes and Telegram alerts through bounded SQLite-only `/diagnose` evidence.
-- [x] Detect "Vnish working normally" vs "miner actually needs intervention" with advisory OK/WATCH/CRITICAL diagnosis that never authorizes actions.
-- [x] Avoid reboot during current Vnish chain autotune/profile transitions and require a fresh sustained LOW interval after they end.
+## Work Packages
 
-## P4 - Power And Electrical Observability
+### R0 - Close Spec 020 Production Activation (`COMPLETE`, P0)
 
-- [ ] Determine whether S19j Pro/Vnish exposes PSU input voltage, PSU output voltage, current, or power draw through API/logs.
-- [ ] If miner firmware does not expose AC input voltage, document the limitation and use external PDU/UPS/smart meter integration as the source.
-- [x] Confirm current API 4028 voltage fields are chain-side only and keep AC-input diagnosis outside miner telemetry.
-- [ ] Track symptoms that suggest power instability: simultaneous miner drops, board resets, PSU warnings, fan spikes, hashboard disappear/reappear events.
-- [ ] Decide data source for electrical telemetry: firmware stats, PDU API, UPS API, smart plug, or manual CSV import.
-- [ ] Add power anomaly as a separate diagnosis; do not auto-reboot based only on suspected voltage fluctuation.
+**Spec**: `specs/020-episode-alerts`
+**Target**: 2026-08-13 to 2026-08-17
 
-## P5 - Telegram Reliability And UX
+- [x] Implement grouped episodes and escalating reminders.
+- [x] Eliminate positive-hashrate plus OFFLINE status contradictions.
+- [x] Add persisted click-safe episode detail.
+- [x] Commit and push `e502ab9`.
+- [x] Prove the deployed `e502ab9` PID/code/config and startup-guard evidence
+  from the 2026-08-06 service activation.
+- [x] Smoke current API 4028/status rendering and persisted event detail locally.
+- [x] Activate Telegram token-log redaction through an elevated NSSM restart;
+  verify the new startup block and zero new token occurrences.
+- [x] Rotate the token previously present in the old ignored local log and
+  restart once with the new local credential.
+- [x] Smoke `/status`, `/events` and `/e<ID>` from the authorized Telegram chat.
+- [x] Re-prove startup persisted LOW cannot cause immediate auto-reboot.
+- [x] Complete the observation gate with no open P0/P1 regression.
 
-- [x] Keep empty QA polling batches free of command-local references and exception backoff.
-- [x] Add read-only `/events`, `/events <miner>`, and `/event <id>` incident-history commands.
-- [ ] Validate click-safe commands: `/rb<ID>`, `/reboot_no_ok`, `/c<code>`.
-- [ ] Ensure all command replies use command delivery semantics and avoid dedupe/coalesce loss.
-- [ ] Keep no-silence behavior for invalid confirms and expired pending actions.
-- [ ] Document debug flags and expected log traces.
-- [x] Disable noisy degraded hourly status by default and keep Telegram notifications event-driven.
-- [x] Add clearer event context to `STATE_CHANGE` Telegram messages.
-- [x] Coalesce restart incidents across a bounded fleet window and emit one post-recovery summary without changing persisted transitions.
-- [x] Coalesce confirmed state transitions across adjacent ticks with a bounded delay while state persistence remains immediate.
-- [x] Send grouped bounded reminders while confirmed LOW, OFFLINE, or HASHBOARD outages remain active.
-- [x] Consolidate irregular states and restart evidence into bounded OK-to-OK episodes with 5/10/15/30/60/120-minute escalation.
-- [x] Render `/status` from current signal evidence and expose click-safe `/e<ID>` episode detail without live miner IO.
-- [x] Add read-only `/why [miner]` explanations for QA, startup guard, cooldown, not sustained, window, invalid signal and action outcomes.
-- [x] Add read-only `/health [all|miner]` diagnosis against each miner's learned stable baseline without live miner IO.
-- [x] Add read-only `/quality [all|miner]` interval diagnosis for shares, HW errors, chain faults, and firmware transitions.
+**Exit**: Spec 020 T020 and evidence close. No duplicate Spec 021 is created for
+this work.
 
-## P6 - Optional Local Interface
+### R0.5 - Telegram Messaging Quality (`COMPLETE / UNCOMMITTED`, P0)
 
-- [ ] Keep Telegram as the primary remote-control surface for now.
-- [x] Evaluate and implement a local read-only static dashboard after the diagnostics collector produced stable evidence.
-- [x] Generate a self-contained HTML fleet view with current cards, trends, incidents, and reboot-decision history from SQLite.
-- [x] Reuse the Stability Advisor in dashboard cards so Telegram and local HTML share the same diagnosis.
-- [x] Reuse Mining Quality assessments in dashboard cards with interval deltas and bounded reasons.
-- [ ] Dashboard MVP: miner cards, current state, last event, last reboot, blocked_by reasons, Vnish event timeline, Hashcore capability status.
-- [ ] Do not expose reboot/restart from a web UI until auth, local-only binding, audit logs, and confirmation are designed.
-- [ ] Prefer a local Windows dashboard or static HTML report before a full web app.
+**Spec**: `specs/030-telegram-messaging-quality`
 
-## P7 - Observability And Release Hygiene
+- [x] Bounded UTF-8-safe splitting below the Telegram text ceiling.
+- [x] Command-aware queue admission with bounded direct fallback under pressure.
+- [x] Explicit queue drop/bypass outcomes without logging message payloads.
+- [x] Central help aligned with `/rb<ID>`, `/reboot_no_ok` and `/c<code>`.
+- [x] Preserve episode cadence, notification dedupe and all action-policy gates.
+- [x] Complete one elevated NSSM restart and read-only Telegram smoke.
 
-- [x] Add a bounded SQLite operational history for telemetry, state transitions, restart incidents, and action outcomes.
-- [x] Add schema-v2 normalized Vnish telemetry, reboot-decision history, retention, and a read-only incident report.
-- [x] Add additive schema-v3 mining-quality counters and chain-health evidence without raw firmware payloads.
-- [x] Add additive schema-v4 idempotent Vnish firmware events with bounded read-only collector and views.
-- [x] Add additive schema-v5 source-time provenance, collector-run health and a non-overlapping Windows scheduled collector.
-- [ ] Standardize logs for blocked actions and delivery failures.
-- [ ] Maintain production defaults in `app/config.example.json`.
-- [ ] Keep release checklist current for Windows PowerShell.
-- [ ] Record validation evidence per spec.
-- [ ] Keep raw runtime logs, exported Vnish logs, and electrical telemetry out of git unless anonymized samples are explicitly needed.
-- [x] Run the scheduled Vnish collector and monitor-owned CLI subprocesses without foreground console windows.
+**Invariant**: no state, polling, threshold, cooldown or Hashcore decision change.
+
+### R1 - Monitor Liveness And Recovery (`READY`, P0)
+
+**Spec**: `specs/021-monitor-liveness-watchdog`
+
+Its planning artifacts and prerequisite Spec 020 runtime gate are complete.
+
+- [ ] Atomic versioned heartbeat after completed fleet ticks.
+- [ ] Independent service/process/tick/Telegram-worker/collector assessment.
+- [ ] Hidden Windows watchdog task with bounded notification dedupe.
+- [ ] Explicit SCM failure-recovery configuration and rollback export.
+- [ ] QA kill, hang, stale-worker, mutex and startup-guard proof.
+
+**Invariant**: no second monitor and no miner/Hashcore access from the watchdog.
+
+### R2 - Acquisition Resilience (`PLANNED`, P1)
+
+**Spec**: `specs/022-adaptive-acquisition`
+
+- [ ] One typed authoritative envelope per miner per 30-second epoch.
+- [ ] Bounded concurrent/staggered API 4028 acquisition.
+- [ ] Explicit valid/partial/invalid/timeout/error/late quality.
+- [ ] Optional diagnostic recovery probes that cannot update state or actions.
+- [ ] Baseline/shadow comparison for latency, requests, sample age and alerts.
+
+**Invariant**: thresholds, hysteresis, polling offset and action policy unchanged.
+
+### R3 - Incident Evidence Fusion (`PLANNED`, P1)
+
+**Spec**: `specs/023-incident-evidence-fusion`
+
+- [ ] Normalize persisted episode, Vnish, quality, pool, action and fleet facts.
+- [ ] Build stable per-miner historical baselines from eligible samples.
+- [ ] Separate observed, suspected and confirmed conclusions.
+- [ ] Show supporting, contradicting and missing evidence.
+- [ ] Persist versioned assessments for deterministic replay.
+
+**Invariant**: assessments are advisory and never authorize actions.
+
+### R4 - Electrical Source Discovery (`PLANNED / CONDITIONAL`, P1)
+
+**Spec**: `specs/024-electrical-source-discovery`
+
+- [x] Establish that miner chain voltage is not AC input voltage.
+- [ ] Inventory actual PSU/PDU/UPS/meter model and documented telemetry.
+- [ ] Select at most one read-only SNMPv3, Modbus TCP, vendor HTTPS or
+  real-publisher MQTT adapter after the source gate.
+- [ ] Normalize units, source time, quality and collection health.
+- [ ] Correlate power facts conservatively with incidents.
+
+**Exit**: supported adapter with evidence, or explicit blocked hardware result.
+No protocol writes and no power-driven action.
+
+### R5 - Prometheus Metrics And Grafana (`PLANNED`, P1)
+
+**Spec**: `specs/025-prometheus-metrics`
+
+- [ ] Atomic sanitized metrics snapshot from the native monitor.
+- [ ] Separate `prometheus_client` exporter with bounded cardinality.
+- [ ] Optional pinned Docker Compose Prometheus/Grafana stack.
+- [ ] Local-only fleet, freshness, liveness, episode and delivery dashboards.
+- [ ] Redaction, resource, series-count and outage-isolation proof.
+
+**Invariant**: metrics are not canonical history and never trigger actions.
+
+### R6 - Hashcore Capability Inventory (`PLANNED`, P2)
+
+**Spec**: `specs/026-hashcore-capability-inventory`
+
+- [ ] Fingerprint installed Toolkit version without exposing sensitive paths.
+- [ ] Run only vendor-proven help/version discovery with timeout/no-window.
+- [ ] Classify every operation read-only, mutating or unknown.
+- [ ] Compare read-only capabilities with API 4028/Vnish overlap.
+- [ ] Require a new high-risk spec for every future action.
+
+**Invariant**: production action scope remains existing reboot/restart only.
+
+### R7 - Backup, Retention And Restore (`PLANNED`, P1)
+
+**Spec**: `specs/028-backup-retention-restore`
+
+- [ ] SQLite online backup with atomic promotion and SHA-256 manifest.
+- [ ] Path-guarded 14 daily / 8 weekly / 12 monthly retention.
+- [ ] Hidden non-overlap Scheduled Task and free-space guard.
+- [ ] Restore only to staging with checksum, integrity, schema and row checks.
+- [ ] One production backup plus successful staging restore drill.
+
+**Invariant**: never copy a live `.db` blindly and never overwrite production
+automatically.
+
+### R8 - Operator Interface Decision (`PLANNED / CONDITIONAL`, P2)
+
+**Spec**: `specs/027-operator-interface-decision`
+
+- [ ] Score real workflows across Telegram, static HTML and Grafana.
+- [ ] Close no-build when current interfaces meet P1 targets.
+- [ ] Only if a gap remains, build a loopback FastAPI read-only MVP.
+- [ ] Add HTMX/server rendering only for approved filtering/refresh.
+- [ ] Reject config, miner proxy, reboot, restart and confirm web routes.
+
+**Invariant**: Telegram remains the only remote action surface.
+
+### R9 - V2 Release Stabilization (`PLANNED`, P0)
+
+**Spec**: `specs/029-v2-release-stabilization`
+
+- [ ] Freeze scope and candidate identity.
+- [ ] Run full cross-feature, core-safety, QA and auxiliary-outage regression.
+- [ ] Complete release backup and staging restore.
+- [ ] Controlled service activation and read-only smoke.
+- [ ] 72-hour soak plus final seven-day reliability review.
+- [ ] Three documentation sweeps, secret hygiene and explicit release decision.
+
+**Invariant**: no new feature during stabilization; any P0/P1 blocks release.
+
+## Deferred Technology
+
+- OpenTelemetry until multiple long-lived services, remote backends or tracing
+  requirements justify an OTLP pipeline.
+- MQTT until a selected physical device publishes trustworthy telemetry.
+- Continuous Vnish WebSocket workers until bounded collection demonstrably
+  misses time-critical evidence and reconnection semantics are proven.
+- Remote/public web UI, web actions, React SPA and cloud deployment.
+- Windows monitor containerization while Hashcore and service integration remain
+  host-local.
+
+## Completed Capability Baseline
+
+- [x] Persistent SQLite history and reboot-decision audit.
+- [x] Current finite-signal and persisted-startup safety.
+- [x] Vnish board, temperature, fleet and firmware-transition interlocks.
+- [x] Stability, quality, firmware and read-only diagnosis intelligence.
+- [x] Bounded Vnish log collection with no-window scheduling.
+- [x] Static operations dashboard.
+- [x] Telegram no-silence delivery and click-safe actions.
+- [x] Persistent/episode alerts and truthful current status in committed code.
+
+## Governance
+
+- `.specify/feature.json` stays on Spec 020 until its runtime gate closes.
+- Only one production-affecting spec may roll out at a time.
+- Read-only discovery can overlap only when it does not touch the monitor.
+- P0/P1 incidents interrupt the calendar; displaced dates move.
+- Completion requires evidence, roadmap/calendar/docs synchronization and the
+  post-release review defined for the spec.

@@ -3,9 +3,22 @@ import unittest
 from pathlib import Path
 
 from app.alert_episodes import IrregularEpisodeCoordinator
+from app.miner_monitor import _redact_telegram_token
 
 
 class EpisodeNotificationConfigurationTests(unittest.TestCase):
+    def test_telegram_token_is_redacted_from_exception_urls(self) -> None:
+        token = "123456789:example-secret-token"
+        error = (
+            "HTTPSConnectionPool host failed for "
+            f"https://api.telegram.org/bot{token}/getUpdates?timeout=25"
+        )
+
+        redacted = _redact_telegram_token(error, token)
+
+        self.assertNotIn(token, redacted)
+        self.assertIn("/bot<redacted>/getUpdates", redacted)
+
     def test_production_defaults_are_bounded_and_enabled(self) -> None:
         config = json.loads(
             Path("app/config.example.json").read_text(encoding="utf-8")

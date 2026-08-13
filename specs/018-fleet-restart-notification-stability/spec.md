@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-21
 
-**Status**: Implemented; monitor-service activation pending UAC approval
+**Status**: Complete; activated by the verified Spec 019 service rollout
 
 ## User Scenarios & Testing
 

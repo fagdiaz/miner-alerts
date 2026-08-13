@@ -7,9 +7,11 @@
 2. Read the active feature's `spec.md`, `plan.md`, `tasks.md`, and `evidence.md` when present.
 3. Read `.specify/memory/constitution.md`.
 4. Use `docs/speckit/ROADMAP.md` as the working backlog for quick wins, bug fixes, and audit priorities.
+5. Use `docs/speckit/DELIVERY_PLAN.md` for estimated implementation, observation, and bug-fix windows; runtime evidence may move dates.
+6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/020-episode-alerts/plan.md`
+`specs/030-telegram-messaging-quality/plan.md`
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

@@ -104,6 +104,36 @@
 - Recovery proof result: `PASS`. The only remaining release gate is the
   time-bound D+1/D+3 observation.
 
+## D+0 Post-Recovery Observation - 2026-08-13
+
+- At `19:15-03:00`, almost two hours after recovery, `MinerAlerts` remained
+  `RUNNING` on wrapper PID `35836`; heartbeat schema 1 remained on monitor PID
+  `35788` with tick sequence 225, tick age 2s, poller age 45s, sender age 5s and
+  queue depth 0.
+- The watchdog produced 114 consecutive assessments from `17:23:53` through
+  `19:15:53`, all healthy, unsuppressed, with `reasons=none` and `action=none`.
+  Its persisted incident state was closed with zero notifications.
+- Only one post-recovery mutex acquisition exists in the service log:
+  monitor PID `35788`, global mutex acquired. The launcher PID `26324` and
+  monitor PID `35788` are the expected virtualenv shim/runtime pair, not two
+  monitor authorities.
+- Read-only SQLite inspection since recovery found 92 telemetry samples, zero
+  operational events, zero reboot decisions and four successful collector
+  runs. Latest fleet samples were all `OK` at 95.86-101.05 TH/s; the latest
+  collector run completed 16/16 streams with zero failures.
+- The post-recovery service-log slice contained zero `HASHCORE`,
+  `AUTO-REBOOT`, traceback, Telegram delivery error or application error
+  entries. The historical `err.log` was unchanged after startup and contains
+  no new runtime exception.
+- Full regression remained 148/148 PASS; monitor/liveness/watchdog
+  `py_compile` and `git diff --check` passed.
+- Direct CIM and ScheduledTasks metadata queries from the non-elevated shell
+  remained access denied. This did not affect the observation: `sc queryex`,
+  the minute-cadence watchdog log, heartbeat and prior elevated installation
+  evidence all remained consistent.
+- D+0 result: `PASS`. D+1 and D+3 remain intentionally open until their real
+  observation windows elapse.
+
 ## Implementation And Deterministic Validation - 2026-08-13
 
 - Added versioned, atomically replaced heartbeat state with PID, process start,

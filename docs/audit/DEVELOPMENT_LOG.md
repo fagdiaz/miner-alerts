@@ -33,6 +33,11 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Activacion y recovery: PID/mutex/guard/config/heartbeat/tarea/SCM,
     finalizacion controlada, reinicio automatico y `/status` productivo PASS;
     no hubo accion Hashcore. Solo D+1/D+3 quedan abiertos.
+  - Control D+0 casi dos horas despues: 114 evaluaciones watchdog consecutivas
+    sanas, heartbeat fresco, incidente cerrado, flota completa `OK`, collector
+    16/16 y cero eventos, decisiones de reboot o acciones desde la recuperacion.
+  - Regresion D+0: suite completa 148/148, `py_compile` y `git diff --check`
+    PASS. Los gates temporales D+1/D+3 permanecen abiertos.
 * **Archivos principales**:
   - `app/liveness.py`
   - `app/miner_monitor.py`

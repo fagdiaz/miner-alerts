@@ -6,7 +6,11 @@
 
 ## Summary
 
-Extract a deterministic acquisition scheduler that yields one authoritative envelope per miner per 30-second epoch. A small bounded executor isolates slow endpoints; optional episode diagnostics are typed non-authoritative and barred from state/action mutation.
+Extract a deterministic acquisition scheduler behind a disabled-by-default
+feature flag. It yields one authoritative envelope per miner per nominal
+30-second epoch, skips missed epochs and uses a small bounded executor to
+isolate slow endpoints. Optional episode diagnostics are typed
+non-authoritative and barred from state/action mutation.
 
 ## Technical Context
 
@@ -22,7 +26,9 @@ Extract a deterministic acquisition scheduler that yields one authoritative enve
 
 **Project Type**: Pure acquisition module integrated into the existing monitor loop
 
-**Performance Goals**: Fleet epoch under ten seconds at current scale, bounded workers and no per-miner overlap
+**Performance Goals**: Healthy fleet epoch under ten seconds at current scale,
+five-second endpoint deadline, bounded workers, no per-miner overlap and no
+catch-up burst after scheduler delay
 
 **Constraints**: No real secrets or runtime files in Git; no unproved completion; no action authority outside the existing monitor
 
@@ -79,12 +85,24 @@ See [research.md](research.md). API 4028 has no trusted push contract. Limited c
 - Assign a monotonic epoch ID and deadline.
 - Use two workers by default with a small start stagger.
 - Return timeout/error envelopes instead of dropping miners.
-- Keep authoritative cadence at 30 seconds and diagnostic episode probes at a disabled-by-default 10 seconds.
+- Measure the existing sleep-after-tick cadence before fixing epoch boundaries;
+  do not infer an exact 30-second wall-clock baseline from `poll_seconds`.
+- Schedule at most one current epoch after host resume and never replay missed
+  epochs.
+- Limit authoritative IO to one summary plus one conditional stats request per
+  miner per epoch, without retries. Limit diagnostics to one summary request
+  per eligible miner per interval.
+- Keep authoritative cadence nominally at 30 seconds and diagnostic episode
+  probes at a disabled-by-default 10 seconds.
+- Keep manual Telegram command IO outside the scheduler and preserve its
+  current cooldowns.
 - Measure latency, request volume and stale rates before production enablement.
 
 ## Rollback And Failure Boundary
 
-- A feature flag restores sequential acquisition through the same envelope interface.
+- `adaptive_acquisition_enabled=false` is the default. The flag restores the
+  exact sequential acquisition boundary through the same envelope interface;
+  deterministic parity and a live rollback rehearsal are required.
 - Diagnostic probes default off and can be disabled independently.
 - Errors fail closed and never reuse stale values as current.
 

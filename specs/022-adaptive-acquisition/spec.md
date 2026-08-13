@@ -10,7 +10,8 @@
 
 **Risk Class**: HIGH
 
-**Dependencies**: Spec 021 liveness rollout and D+1 review
+**Dependencies**: Spec 021 liveness D+1 review before implementation and D+3
+closeout before production activation
 
 ## User Scenarios & Testing
 
@@ -64,6 +65,8 @@ Optional 10-second diagnostic probes can show recovery without advancing state o
 - A route failure affects the full fleet.
 - Summary responds but stats is partial.
 - The host resumes after sleep and missed epochs.
+- The sequential fallback is re-enabled after shadow or activation failure.
+- A command-triggered diagnostic request overlaps a scheduled fleet epoch.
 
 ## Requirements
 
@@ -80,6 +83,17 @@ Optional 10-second diagnostic probes can show recovery without advancing state o
 - **FR-009**: Fleet transport failures MUST remain distinguishable from individual failures.
 - **FR-010**: Telegram offset, state thresholds, hysteresis and action gates MUST remain unchanged.
 - **FR-011**: Bounded acquisition health MUST be available for later metrics export.
+- **FR-012**: Adaptive acquisition MUST be disabled by default and the feature
+  flag MUST restore the existing sequential path without changing state,
+  action, Telegram-offset or persistence contracts.
+- **FR-013**: Host sleep or scheduler delay MUST skip expired epochs; missed
+  epochs MUST NOT be replayed as a request burst or synthetic streak evidence.
+- **FR-014**: The authoritative request budget MUST be at most one summary plus
+  one conditional stats request per miner per epoch, with no automatic retry.
+  Optional diagnostics MUST be separately bounded to one summary request per
+  eligible miner per diagnostic interval.
+- **FR-015**: Manual read-only Telegram command IO remains outside the fleet
+  epoch budget and MUST retain its existing cooldown and behavior.
 
 ### Key Entities
 
@@ -97,15 +111,24 @@ Optional 10-second diagnostic probes can show recovery without advancing state o
 - **SC-003**: No diagnostic fixture changes state streaks, low_since_ts or action decisions.
 - **SC-004**: All late, non-finite and partial fixtures are explicitly classified.
 - **SC-005**: Normal request count remains within the documented per-miner budget.
+- **SC-006**: With adaptive acquisition disabled, deterministic replay produces
+  the same ordered authoritative inputs, states and action decisions as the
+  sequential baseline.
+- **SC-007**: Resuming after missed epochs creates one current epoch and zero
+  catch-up requests or synthetic state transitions.
 
 ## Assumptions
 
 - API 4028 remains the authoritative request/response health source.
 - A small bounded executor is sufficient for the current fleet.
 - Diagnostic probes are optional and independently disabled.
+- The current monitor performs summary and conditional stats requests
+  sequentially, then sleeps for `poll_seconds`; it is not a fixed wall-clock
+  scheduler. Baseline timing must be measured before selecting epoch deadlines.
 
 ## Non-Goals
 
 - Changing threshold, hysteresis, LOW duration, cooldown or reboot windows.
 - Replacing Telegram getUpdates polling.
 - Continuous WebSocket health acquisition.
+- Refactoring manual `/info` or `/selftest` request behavior.

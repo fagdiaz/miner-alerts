@@ -128,6 +128,10 @@ activation and controlled SCM recovery proof are complete. D+1/D+3 remain open.
 
 **Spec**: `specs/022-adaptive-acquisition`
 
+**Readiness**: planning hardened 2026-08-13 against the current sequential
+request path. Implementation waits for Spec 021 D+1; production activation
+waits for Spec 021 D+3.
+
 - [ ] One typed authoritative envelope per miner per 30-second epoch.
 - [ ] Bounded concurrent/staggered API 4028 acquisition.
 - [ ] Explicit valid/partial/invalid/timeout/error/late quality.

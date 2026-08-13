@@ -1,11 +1,16 @@
 # Quickstart: Adaptive Acquisition Resilience
 
-**Status**: Planned validation procedure; referenced implementation files do not exist yet.
+**Status**: Planned validation procedure; implementation is blocked until the
+Spec 021 D+1 gate passes and production activation is blocked until its D+3
+gate passes.
 
 ## Preconditions
 
-- Spec 021 has completed its acceptance and observation gates.
+- Spec 021 has passed D+1 before implementation; its D+3 gate must pass before
+  production activation.
 - Spec 020 episode/status behavior is production-verified.
+- Current sequential acquisition metrics have been captured before changing
+  request scheduling.
 
 ## Static And Automated Validation
 
@@ -18,14 +23,29 @@ Get-Content app\config.example.json -Raw | ConvertFrom-Json | Out-Null
 
 ## Controlled Runtime Validation
 
-1. Collect 24 hours of baseline latency, timeout, request and tick metrics.
-2. Replay slow, timeout and late endpoints in QA.
-3. Run production shadow metrics before enabling bounded acquisition.
-4. Observe D+1/D+3 for request volume, age, alert timing and actions.
+1. Capture the sequential baseline: summary/stats request counts, full-tick
+   duration, effective interval and sample age.
+2. Run deterministic QA fixtures for fast, slow, timeout, partial-stats and
+   transport-failure miners.
+3. Verify late results and missed epochs are discarded, including host resume
+   after suspend; no catch-up burst is allowed.
+4. Verify per-miner and fleet request budgets, and prove diagnostic envelopes
+   cannot mutate state or actions.
+5. Run manual `/info` and `/selftest` during acquisition and prove their live IO
+   remains outside authoritative epoch accounting.
+6. Keep `adaptive_acquisition_enabled=false` and compare sequential output,
+   state transitions and action decisions with the pre-change baseline.
+7. Run 24 hours of production shadow metrics before enabling bounded
+   acquisition.
+8. Rehearse rollback to sequential acquisition, then observe activation at
+   D+1/D+3 for request volume, age, alert timing and actions.
 
 ## Evidence To Capture
 
 - Before/after request, latency and tick report.
-- Envelope fixtures for invalid, late and diagnostic handling.
+- Envelope fixtures for partial, invalid, timeout, late, skipped and diagnostic
+  handling.
+- Numeric per-epoch/per-miner request-budget proof.
+- Disabled-path parity and rollback rehearsal.
 - State, action and Telegram-offset invariants.
 - QA and D+1/D+3 runtime logs.

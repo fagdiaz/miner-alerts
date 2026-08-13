@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from tools.observe_liveness import (
     evaluate,
@@ -10,6 +11,31 @@ from tools.observe_liveness import (
 
 
 class LivenessObservationTests(unittest.TestCase):
+    def test_installer_is_hidden_bounded_and_fails_closed(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "tools"
+            / "install_liveness_observation_tasks.ps1"
+        ).read_text(encoding="utf-8-sig")
+        for required in (
+            "pythonw.exe",
+            'UserId "SYSTEM"',
+            "ServiceAccount",
+            "StartWhenAvailable",
+            "MultipleInstances IgnoreNew",
+            "ExecutionTimeLimit",
+            "-ErrorAction Stop",
+        ):
+            self.assertIn(required, script)
+        for forbidden in (
+            "run_hashcore",
+            "Restart-Service",
+            "Stop-Service",
+            "taskkill",
+            "send_telegram",
+        ):
+            self.assertNotIn(forbidden, script)
+
     def test_service_query_accepts_english_and_spanish_labels(self) -> None:
         self.assertEqual((True, 42), parse_service_query("STATE : 4 RUNNING\nPID : 42"))
         self.assertEqual((True, 77), parse_service_query("ESTADO : 4 RUNNING\nPID : 77"))

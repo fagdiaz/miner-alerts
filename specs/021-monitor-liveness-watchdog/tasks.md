@@ -27,7 +27,8 @@
 - [x] T011 Run targeted/full tests, compile, PowerShell parse, config parse and invariant scan.
 - [x] T012 Execute QA kill, hang and stale-worker scenarios and prove no Hashcore calls.
 - [ ] T013 Perform controlled activation and D+1/D+3 observation with the
-  read-only observation gate; D+0 is complete and real D+1/D+3 windows remain.
+  read-only observation gate; D+0 is complete and hidden one-shot captures are
+  scheduled for the real D+1/D+3 windows.
 - [x] T014 Update evidence, roadmap, delivery calendar, runbook and development log.
 
 ## Dependencies And Execution Order

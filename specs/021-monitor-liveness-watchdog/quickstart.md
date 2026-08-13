@@ -34,6 +34,21 @@ belong under ignored `artifacts/`:
 & ".\.venv\Scripts\python.exe" tools\observe_liveness.py --stage d3 --since "2026-08-13T17:23:14-03:00" --output artifacts\spec021-d3-observation.json
 ```
 
+To capture the real windows without an interactive console, install the two
+one-shot SYSTEM tasks from an elevated PowerShell. They use `pythonw.exe`,
+`IgnoreNew`, a five-minute execution limit and `StartWhenAvailable`:
+
+```powershell
+& ".\tools\install_liveness_observation_tasks.ps1" -RecoveryTimestamp "2026-08-13T17:23:14-03:00"
+```
+
+After both reports have been reviewed and Spec 021 is closed, remove only these
+temporary capture tasks:
+
+```powershell
+& ".\tools\install_liveness_observation_tasks.ps1" -Uninstall
+```
+
 ## Evidence To Capture
 
 - Exact tests and compilation.

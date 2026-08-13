@@ -143,6 +143,20 @@ only the explicitly requested ignored report:
 & ".\.venv\Scripts\python.exe" tools\observe_liveness.py --stage d3 --since "<RECOVERY_ISO_TIMESTAMP>" --output artifacts\spec021-d3-observation.json
 ```
 
+Optionally install hidden one-shot captures from an elevated PowerShell. They
+run five minutes after each real boundary and write only ignored reports:
+
+```powershell
+& ".\tools\install_liveness_observation_tasks.ps1" -RecoveryTimestamp "<RECOVERY_ISO_TIMESTAMP>"
+```
+
+After D+3 review, remove those temporary tasks without touching the recurring
+watchdog:
+
+```powershell
+& ".\tools\install_liveness_observation_tasks.ps1" -Uninstall
+```
+
 After the service heartbeat is fresh, clear maintenance explicitly or let the
 lease expire:
 

@@ -145,9 +145,10 @@
   state, telemetry persistence, latest collector result and absence of
   automatic actions. Optional JSON output is written only when requested under
   ignored `artifacts/`.
-- Six deterministic tests cover localized service parsing, observation-window
+- Seven deterministic tests cover localized service parsing, observation-window
   filtering, cadence/statistics, early-window rejection, action detection,
-  clock skew, stale watchdog/persistence and collector failure.
+  clock skew, stale watchdog/persistence, collector failure and hidden task
+  installer safety.
 - Live D+0 execution returned exit code 0. It observed 148 watchdog samples at
   full cadence, zero unhealthy/reason/action assessments, wrapper PID `35836`,
   monitor PID `35788`, fresh workers, 120 telemetry samples, five collector
@@ -155,9 +156,28 @@
 - A deliberate D+1 execution before 24 hours returned exit code 2 with
   `observation_window_incomplete`, proving the calendar gate cannot be closed
   early. No runtime process, service, task, miner or config was changed.
-- Post-tool regression: full suite 154/154, Speckit QA preflight,
+- Post-tool regression: full suite 155/155, Speckit QA preflight,
   `py_compile`, JSON parse, authority/redaction/ignore scans and
   `git diff --check` all passed.
+
+## Automatic D+1/D+3 Capture - 2026-08-13
+
+- Added `tools/install_liveness_observation_tasks.ps1` with dry-run and
+  uninstall modes. It creates only two one-shot, hidden `pythonw.exe` tasks and
+  has no service-control, Telegram, miner API or Hashcore authority.
+- The first non-elevated registration was denied by Windows. The installer was
+  hardened with terminating `-ErrorAction Stop` so a denied registration can no
+  longer print a misleading success plan.
+- One UAC-elevated installation then succeeded. Both tasks run as `SYSTEM` with
+  `ServiceAccount`, `Highest`, `IgnoreNew`, `StartWhenAvailable` and a five-minute
+  execution limit; neither has run early (`0x41303`, not yet run).
+- `MinerAlertsLivenessD1` is `Ready` for 2026-08-14 17:28 ART and writes ignored
+  `artifacts/spec021-d1-observation.json`.
+- `MinerAlertsLivenessD3` is `Ready` for 2026-08-16 17:28 ART and writes ignored
+  `artifacts/spec021-d3-observation.json`.
+- Both start five minutes after the exact 24/72-hour boundaries, use the same
+  recovery timestamp and remain available after missed start time. Installation
+  did not restart or alter `MinerAlerts`, its watchdog or any miner.
 
 ## Implementation And Deterministic Validation - 2026-08-13
 

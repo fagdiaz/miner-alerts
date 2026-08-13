@@ -38,12 +38,22 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     16/16 y cero eventos, decisiones de reboot o acciones desde la recuperacion.
   - Regresion D+0: suite completa 148/148, `py_compile` y `git diff --check`
     PASS. Los gates temporales D+1/D+3 permanecen abiertos.
+  - Se agrego un observador read-only reproducible para D+0/D+1/D+3 que cruza
+    servicio, heartbeat, cadencia watchdog, persistencia SQLite, collector y
+    ausencia de acciones automaticas sin importar autoridad del monitor.
+  - La ejecucion D+0 paso y el intento D+1 anticipado fue rechazado con exit 2;
+    asi el cierre temporal ya no depende de inspeccion manual ni puede marcarse
+    completo antes de las 24/72 horas reales.
+  - Seis contratos del observador y la suite completa 154/154 pasaron junto a
+    Speckit QA, compilacion, redaccion, autoridad e ignores.
 * **Archivos principales**:
   - `app/liveness.py`
   - `app/miner_monitor.py`
   - `tools/monitor_watchdog.py`
   - `tools/install_watchdog_task.ps1`
+  - `tools/observe_liveness.py`
   - `tests/test_monitor_liveness.py`
+  - `tests/test_liveness_observation.py`
   - `specs/021-monitor-liveness-watchdog/*`
 
 ## [2026-08-13] - Spec 030: Telegram Messaging Quality (Complete / Pushed)

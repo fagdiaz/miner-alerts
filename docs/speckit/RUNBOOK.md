@@ -134,6 +134,15 @@ restarted it after the configured 60-second delay with one new wrapper and one
 new monitor PID; the mutex, 600-second startup guard and first-tick heartbeat
 were observed, with no miner or Hashcore action.
 
+Run the read-only observation gate at D+0, D+1 and D+3 using the actual recovery
+timestamp. It exits `2` rather than accepting an early temporal gate and writes
+only the explicitly requested ignored report:
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\observe_liveness.py --stage d1 --since "<RECOVERY_ISO_TIMESTAMP>" --output artifacts\spec021-d1-observation.json
+& ".\.venv\Scripts\python.exe" tools\observe_liveness.py --stage d3 --since "<RECOVERY_ISO_TIMESTAMP>" --output artifacts\spec021-d3-observation.json
+```
+
 After the service heartbeat is fresh, clear maintenance explicitly or let the
 lease expire:
 

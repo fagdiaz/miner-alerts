@@ -63,7 +63,9 @@ app/miner_monitor.py          # heartbeat integration only
 app/liveness.py              # pure heartbeat/assessment
 tools/monitor_watchdog.py    # independent watchdog
 tools/install_watchdog_task.ps1
+tools/observe_liveness.py    # read-only D+0/D+1/D+3 gate
 tests/test_monitor_liveness.py
+tests/test_liveness_observation.py
 tests/test_reboot_safety.py
 app/config.example.json
 ```

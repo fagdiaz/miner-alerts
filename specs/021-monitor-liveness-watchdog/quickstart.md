@@ -24,6 +24,16 @@
    proof passed on 2026-08-13 with the configured 60-second first restart delay.
 4. Observe D+1 and D+3 for false stale alerts, duplicates or Hashcore actions.
 
+Use the read-only gate at the real elapsed windows. Exit code `0` means every
+gate passed; exit code `2` means the window is early or evidence failed. Reports
+belong under ignored `artifacts/`:
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\observe_liveness.py --stage d0 --since "2026-08-13T17:23:14-03:00" --output artifacts\spec021-d0-observation.json
+& ".\.venv\Scripts\python.exe" tools\observe_liveness.py --stage d1 --since "2026-08-13T17:23:14-03:00" --output artifacts\spec021-d1-observation.json
+& ".\.venv\Scripts\python.exe" tools\observe_liveness.py --stage d3 --since "2026-08-13T17:23:14-03:00" --output artifacts\spec021-d3-observation.json
+```
+
 ## Evidence To Capture
 
 - Exact tests and compilation.

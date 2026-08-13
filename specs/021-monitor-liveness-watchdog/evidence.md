@@ -134,6 +134,31 @@
 - D+0 result: `PASS`. D+1 and D+3 remain intentionally open until their real
   observation windows elapse.
 
+## Reproducible Observation Gate - 2026-08-13
+
+- Added `tools/observe_liveness.py`, a standard-library, read-only observer for
+  D+0/D+1/D+3. It reads sanitized heartbeat/watchdog state, `sc queryex`, the
+  watchdog log and SQLite through `mode=ro`; it imports no monitor, miner API or
+  Hashcore authority.
+- The versioned report checks the real elapsed-time gate, current service and
+  worker freshness, watchdog cadence and age distributions, closed incident
+  state, telemetry persistence, latest collector result and absence of
+  automatic actions. Optional JSON output is written only when requested under
+  ignored `artifacts/`.
+- Six deterministic tests cover localized service parsing, observation-window
+  filtering, cadence/statistics, early-window rejection, action detection,
+  clock skew, stale watchdog/persistence and collector failure.
+- Live D+0 execution returned exit code 0. It observed 148 watchdog samples at
+  full cadence, zero unhealthy/reason/action assessments, wrapper PID `35836`,
+  monitor PID `35788`, fresh workers, 120 telemetry samples, five collector
+  runs, no operational/reboot records and a current all-OK fleet.
+- A deliberate D+1 execution before 24 hours returned exit code 2 with
+  `observation_window_incomplete`, proving the calendar gate cannot be closed
+  early. No runtime process, service, task, miner or config was changed.
+- Post-tool regression: full suite 154/154, Speckit QA preflight,
+  `py_compile`, JSON parse, authority/redaction/ignore scans and
+  `git diff --check` all passed.
+
 ## Implementation And Deterministic Validation - 2026-08-13
 
 - Added versioned, atomically replaced heartbeat state with PID, process start,

@@ -44,12 +44,15 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - La ejecucion D+0 paso y el intento D+1 anticipado fue rechazado con exit 2;
     asi el cierre temporal ya no depende de inspeccion manual ni puede marcarse
     completo antes de las 24/72 horas reales.
-  - Siete contratos del observador y la suite completa 155/155 pasaron junto a
+  - Ocho contratos del observador y la suite completa 156/156 pasaron junto a
     Speckit QA, compilacion, redaccion, autoridad e ignores.
   - Dos tareas SYSTEM one-shot quedaron listas con `pythonw.exe` para capturar
     automaticamente D+1 y D+3 cinco minutos despues de sus limites reales. Son
     read-only, no se solapan, arrancan al volver el host y escriben solo reportes
     ignorados; no modificaron el servicio ni los mineros.
+  - Si una captura bajo `pythonw.exe` falla, ahora deja igualmente un envelope
+    JSON sanitizado con razon estable y tipo de excepcion, nunca el mensaje que
+    podria contener datos locales. La ruta forzada de error quedo probada.
 * **Archivos principales**:
   - `app/liveness.py`
   - `app/miner_monitor.py`

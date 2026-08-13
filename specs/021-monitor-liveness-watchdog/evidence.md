@@ -145,10 +145,10 @@
   state, telemetry persistence, latest collector result and absence of
   automatic actions. Optional JSON output is written only when requested under
   ignored `artifacts/`.
-- Seven deterministic tests cover localized service parsing, observation-window
+- Eight deterministic tests cover localized service parsing, observation-window
   filtering, cadence/statistics, early-window rejection, action detection,
   clock skew, stale watchdog/persistence, collector failure and hidden task
-  installer safety.
+  installer/failure-envelope safety.
 - Live D+0 execution returned exit code 0. It observed 148 watchdog samples at
   full cadence, zero unhealthy/reason/action assessments, wrapper PID `35836`,
   monitor PID `35788`, fresh workers, 120 telemetry samples, five collector
@@ -156,7 +156,7 @@
 - A deliberate D+1 execution before 24 hours returned exit code 2 with
   `observation_window_incomplete`, proving the calendar gate cannot be closed
   early. No runtime process, service, task, miner or config was changed.
-- Post-tool regression: full suite 155/155, Speckit QA preflight,
+- Post-tool regression: full suite 156/156, Speckit QA preflight,
   `py_compile`, JSON parse, authority/redaction/ignore scans and
   `git diff --check` all passed.
 
@@ -178,6 +178,10 @@
 - Both start five minutes after the exact 24/72-hour boundaries, use the same
   recovery timestamp and remain available after missed start time. Installation
   did not restart or alter `MinerAlerts`, its watchdog or any miner.
+- The observer now catches unexpected collection failures before `pythonw.exe`
+  exits and writes a sanitized JSON envelope containing `observer_exception`
+  plus only the exception type. A forced missing-config check produced the
+  expected envelope and exit code 2 without persisting the exception message.
 
 ## Implementation And Deterministic Validation - 2026-08-13
 

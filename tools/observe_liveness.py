@@ -370,6 +370,17 @@ def build_report(
     return report
 
 
+def emit_report(report: dict[str, Any], *, output: str | None) -> None:
+    rendered = json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True)
+    if output:
+        output_path = Path(output)
+        if not output_path.is_absolute():
+            output_path = ROOT / output_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(rendered + "\n", encoding="utf-8")
+    print(rendered)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=sorted(STAGE_SECONDS), required=True)
@@ -380,21 +391,26 @@ def main() -> int:
     config_path = Path(args.config)
     if not config_path.is_absolute():
         config_path = ROOT / config_path
-    report = build_report(
-        stage=args.stage,
-        since_ts=parse_timestamp(args.since),
-        now_ts=time.time(),
-        root=ROOT,
-        config_path=config_path,
-    )
-    rendered = json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True)
-    if args.output:
-        output_path = Path(args.output)
-        if not output_path.is_absolute():
-            output_path = ROOT / output_path
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(rendered + "\n", encoding="utf-8")
-    print(rendered)
+    now_ts = time.time()
+    try:
+        report = build_report(
+            stage=args.stage,
+            since_ts=parse_timestamp(args.since),
+            now_ts=now_ts,
+            root=ROOT,
+            config_path=config_path,
+        )
+    except Exception as exc:
+        report = {
+            "schema_version": 1,
+            "generated_ts": now_ts,
+            "stage": args.stage,
+            "observation": {"since": args.since},
+            "passed": False,
+            "failures": ["observer_exception"],
+            "error_type": type(exc).__name__,
+        }
+    emit_report(report, output=args.output)
     return 0 if report["passed"] else 2
 
 

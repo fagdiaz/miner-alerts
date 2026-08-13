@@ -42,6 +42,10 @@ one-shot SYSTEM tasks from an elevated PowerShell. They use `pythonw.exe`,
 & ".\tools\install_liveness_observation_tasks.ps1" -RecoveryTimestamp "2026-08-13T17:23:14-03:00"
 ```
 
+Because `pythonw.exe` has no console, the observer always writes a sanitized
+JSON failure envelope when collection raises. Review `passed`, `failures` and
+`error_type`; exception messages and secrets are never persisted.
+
 After both reports have been reviewed and Spec 021 is closed, remove only these
 temporary capture tasks:
 

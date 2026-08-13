@@ -150,6 +150,10 @@ run five minutes after each real boundary and write only ignored reports:
 & ".\tools\install_liveness_observation_tasks.ps1" -RecoveryTimestamp "<RECOVERY_ISO_TIMESTAMP>"
 ```
 
+Each task writes either the complete report or a sanitized failure envelope.
+For failures, inspect `failures` and `error_type`; no exception message, token,
+host or Telegram payload is persisted.
+
 After D+3 review, remove those temporary tasks without touching the recurring
 watchdog:
 

@@ -1,8 +1,15 @@
+import contextlib
+import io
+import json
+import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tools.observe_liveness import (
     evaluate,
+    main,
     parse_service_query,
     parse_timestamp,
     parse_watchdog_lines,
@@ -11,6 +18,33 @@ from tools.observe_liveness import (
 
 
 class LivenessObservationTests(unittest.TestCase):
+    def test_main_writes_sanitized_failure_envelope_on_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "failure.json"
+            argv = [
+                "observe_liveness.py",
+                "--stage",
+                "d1",
+                "--since",
+                "2026-08-13T17:23:14-03:00",
+                "--output",
+                str(output),
+            ]
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch(
+                    "tools.observe_liveness.build_report",
+                    side_effect=RuntimeError("sensitive runtime detail"),
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(2, main())
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertFalse(report["passed"])
+            self.assertEqual(["observer_exception"], report["failures"])
+            self.assertEqual("RuntimeError", report["error_type"])
+            self.assertNotIn("sensitive runtime detail", output.read_text(encoding="utf-8"))
+
     def test_installer_is_hidden_bounded_and_fails_closed(self) -> None:
         script = (
             Path(__file__).resolve().parents[1]

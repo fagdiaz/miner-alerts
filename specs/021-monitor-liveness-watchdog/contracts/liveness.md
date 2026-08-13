@@ -29,6 +29,9 @@ Define the cross-process heartbeat, watchdog classifications and safe service-re
   persistence, a successful latest collector run and no automatic action since
   the observation start.
 - The report MUST contain no token, configured miner host or Telegram payload.
+- When collection raises unexpectedly and an output path was supplied, the
+  observer MUST still write a sanitized failure envelope with only a stable
+  reason and exception type; exception messages are not persisted.
 
 ## Failure And Safety Contract
 

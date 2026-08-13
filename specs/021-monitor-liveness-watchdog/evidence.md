@@ -65,6 +65,13 @@
 - The post-start log contained no auto-reboot, Hashcore call, traceback or error.
 - The destructive failure-action firing test and D+1/D+3 observations remain
   open; do not mark this spec complete from activation alone.
+- A destructive recovery attempt was prepared under a 20-minute maintenance
+  lease. Direct `taskkill /T /F` of wrapper PID `28376` was denied by Windows
+  for all LocalSystem processes, and the elevated launcher did not complete the
+  UAC boundary. No process was terminated: wrapper PID `28376`, monitor PID
+  `31820` and heartbeat sequence continued unchanged. The lease was explicitly
+  cleared; scheduled assessments remained healthy. This is recorded as a host
+  elevation blocker, not as SCM recovery proof.
 
 ## Implementation And Deterministic Validation - 2026-08-13
 

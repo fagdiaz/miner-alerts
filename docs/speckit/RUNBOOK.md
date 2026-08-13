@@ -6,11 +6,10 @@ This runbook documents implemented behavior and executable checks. Planned work
 belongs in `ROADMAP.md`; estimated implementation and bug-fix windows belong in
 `DELIVERY_PLAN.md`.
 
-Current release gate as of 2026-08-13: Spec 020 commit `e502ab9` plus the
-Telegram-token log redaction patch are deployed and local read-only runtime
-smoke passed. Final closure is blocked on rotating the bot token exposed by
-historical transport-error logs and running the three authorized-chat read-only
-commands recorded in its evidence.
+Current release gate as of 2026-08-13: Spec 030 commit `2afd65e` is deployed and
+its Telegram smoke passed. Spec 021 liveness is implemented and statically
+validated; its elevated Scheduled Task/SCM activation and D+1/D+3 observation
+remain open.
 
 ## Baseline Checks
 
@@ -91,6 +90,59 @@ Get-Service -Name MinerAlerts
 A `Running` status alone is insufficient: verify a new startup block in the
 service log, including PID, config path, mutex acquisition, `qa_mode`, startup
 guard and event-store health.
+
+### Monitor Liveness Watchdog
+
+The watchdog is an independent read-only process. It reads the sanitized
+heartbeat plus Windows service/process state and can notify Telegram, but it
+does not import miner API, state-machine or Hashcore action code.
+
+Validate before activation:
+
+```powershell
+& ".\.venv\Scripts\python.exe" -m unittest tests.test_monitor_liveness tests.test_reboot_safety
+& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py app\liveness.py tools\monitor_watchdog.py
+[void][scriptblock]::Create((Get-Content tools\install_watchdog_task.ps1 -Raw))
+```
+
+Run a read-only assessment without sending or consuming incident state:
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py --config app\config.json --no-notify
+Get-Content logs\watchdog.log -Tail 20
+```
+
+Set a bounded maintenance lease before an intentional service operation:
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py --config app\config.json --maintenance-seconds 900 --maintenance-reason "controlled rollout"
+```
+
+Install the hidden SYSTEM task and explicitly configure SCM recovery from an
+elevated PowerShell. The installer first exports `sc qfailure` under ignored
+`artifacts/`:
+
+```powershell
+& ".\tools\install_watchdog_task.ps1" -ConfigureServiceRecovery
+Restart-Service -Name MinerAlerts -Force
+Start-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsWatchdog"
+Get-ScheduledTaskInfo -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsWatchdog"
+sc.exe qfailure MinerAlerts
+```
+
+After the service heartbeat is fresh, clear maintenance explicitly or let the
+lease expire:
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py --config app\config.json --clear-maintenance
+```
+
+Rollback removes only the independent task; use the captured SCM artifact to
+restore the prior failure-action policy:
+
+```powershell
+Unregister-ScheduledTask -TaskPath "\MinerAlerts\" -TaskName "MinerAlertsWatchdog" -Confirm:$false
+```
 
 ### Telegram Token In Logs
 

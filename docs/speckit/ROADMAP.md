@@ -24,8 +24,9 @@ interfaces or integrations.
 - Auto-reboot gates for finite/current signal, sustained LOW, startup, thermal,
   fleet, Vnish transition, cooldown, window and QA safety.
 - Spec 020 is committed/pushed and runtime-closed as `e502ab9`. Spec 030
-  messaging quality is validated and active in production but remains
-  uncommitted; it is the current repository release gate.
+  messaging quality is committed/pushed as `2afd65e` and active in production.
+  Spec 021 liveness is implemented locally and awaits the elevated activation
+  plus observation gate.
 
 ## Architecture Direction
 
@@ -53,8 +54,8 @@ interfaces or integrations.
 | Order | Work package | Status | Priority | Risk | Target |
 | --- | --- | --- | --- | --- | --- |
 | Gate | Spec 020 episode-alerts closeout | COMPLETE | P0 | HIGH | Closed 2026-08-13 |
-| Hotfix | Spec 030 Telegram messaging quality | COMPLETE / UNCOMMITTED | P0 | MEDIUM | Closed 2026-08-13 |
-| 1 | Spec 021 monitor-liveness-watchdog | READY | P0 | HIGH | 2026-08-18 to 2026-08-27 |
+| Hotfix | Spec 030 Telegram messaging quality | COMPLETE | P0 | MEDIUM | Closed 2026-08-13 |
+| 1 | Spec 021 monitor-liveness-watchdog | IMPLEMENTED / ACTIVATION PENDING | P0 | HIGH | Started 2026-08-13 |
 | 2 | Spec 022 adaptive-acquisition | PLANNED | P1 | HIGH | 2026-08-28 to 2026-09-10 |
 | 3 | Spec 023 incident-evidence-fusion | PLANNED | P1 | MEDIUM | 2026-09-11 to 2026-09-24 |
 | 4 | Spec 024 electrical-source-discovery | PLANNED / CONDITIONAL | P1 | MEDIUM | 2026-09-25 to 2026-10-05 |
@@ -92,7 +93,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 **Exit**: Spec 020 T020 and evidence close. No duplicate Spec 021 is created for
 this work.
 
-### R0.5 - Telegram Messaging Quality (`COMPLETE / UNCOMMITTED`, P0)
+### R0.5 - Telegram Messaging Quality (`COMPLETE`, P0)
 
 **Spec**: `specs/030-telegram-messaging-quality`
 
@@ -105,17 +106,19 @@ this work.
 
 **Invariant**: no state, polling, threshold, cooldown or Hashcore decision change.
 
-### R1 - Monitor Liveness And Recovery (`READY`, P0)
+### R1 - Monitor Liveness And Recovery (`IMPLEMENTED / ACTIVATION PENDING`, P0)
 
 **Spec**: `specs/021-monitor-liveness-watchdog`
 
-Its planning artifacts and prerequisite Spec 020 runtime gate are complete.
+Its implementation and deterministic no-action validation are complete. The
+elevated Windows activation and D+1/D+3 observation remain open.
 
-- [ ] Atomic versioned heartbeat after completed fleet ticks.
-- [ ] Independent service/process/tick/Telegram-worker/collector assessment.
-- [ ] Hidden Windows watchdog task with bounded notification dedupe.
-- [ ] Explicit SCM failure-recovery configuration and rollback export.
-- [ ] QA kill, hang, stale-worker, mutex and startup-guard proof.
+- [x] Atomic versioned heartbeat after completed fleet ticks.
+- [x] Independent service/process/tick/Telegram-worker/collector assessment.
+- [x] Hidden Windows watchdog definition with bounded notification dedupe.
+- [ ] Install the hidden task and configure SCM recovery with rollback export.
+- [x] Deterministic kill, hang and stale-worker classification with no action authority.
+- [ ] Prove the activated PID, mutex, startup guard and D+1/D+3 behavior.
 
 **Invariant**: no second monitor and no miner/Hashcore access from the watchdog.
 

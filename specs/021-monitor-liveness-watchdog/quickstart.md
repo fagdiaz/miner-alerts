@@ -1,6 +1,6 @@
 # Quickstart: Monitor Liveness Watchdog
 
-**Status**: Planned validation procedure; referenced implementation files do not exist yet.
+**Status**: Implemented; elevated activation and D+1/D+3 observation pending.
 
 ## Preconditions
 

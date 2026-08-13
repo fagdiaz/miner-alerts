@@ -11,7 +11,7 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/030-telegram-messaging-quality/plan.md`
+`specs/021-monitor-liveness-watchdog/plan.md`
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

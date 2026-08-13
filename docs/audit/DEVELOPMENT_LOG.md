@@ -5,7 +5,35 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-13] - Spec 030: Telegram Messaging Quality (Complete / Uncommitted)
+## [2026-08-13] - Spec 021: Monitor Liveness Watchdog (Activation Pending)
+
+* **Objetivo**: Detectar de forma independiente si el servicio existe pero el
+  monitor, sus ticks o sus workers dejaron de progresar, sin crear una segunda
+  autoridad de acciones sobre mineros.
+* **Resultado**:
+  - El monitor publica un heartbeat versionado y atomico despues de cada tick
+    completo, con evidencia sanitaria de proceso, workers, cola y collector.
+  - Un watchdog read-only clasifica servicio, proceso, tick, Telegram y
+    collector; deduplica incidentes, reintenta entregas fallidas y cierra al
+    recuperar.
+  - La tarea Windows usa `pythonw.exe`, no se solapa y soporta una lease de
+    mantenimiento con expiracion automatica.
+  - El instalador puede exportar el baseline y configurar recuperacion SCM;
+    esa activacion elevada sigue pendiente de aprobacion explicita.
+* **Validaciones ejecutadas**:
+  - Contratos liveness 19/19, regresion reboot/Telegram 26/26 y suite completa
+    148/148 PASS.
+  - `py_compile`, parser PowerShell, `git diff --check` y escenarios sinteticos
+    kill/hang/stale-worker sin autoridad Hashcore: PASS.
+* **Archivos principales**:
+  - `app/liveness.py`
+  - `app/miner_monitor.py`
+  - `tools/monitor_watchdog.py`
+  - `tools/install_watchdog_task.ps1`
+  - `tests/test_monitor_liveness.py`
+  - `specs/021-monitor-liveness-watchdog/*`
+
+## [2026-08-13] - Spec 030: Telegram Messaging Quality (Complete / Pushed)
 
 * **Objetivo**: Hacer mas legibles y confiables las respuestas y alertas del bot sin modificar estados, polling ni decisiones de reboot.
 * **Resultado**:
@@ -19,7 +47,8 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Smoke directo del renderer `/help`: HTTP 200 y mensaje completo observado en el chat autorizado, sin iniciar otra instancia del monitor.
   - Activacion productiva: NSSM y monitor cambiaron de PID; mutex unico, `qa_mode=false`, startup guard 600s y EventStore schema 5 verificados.
   - `/help`, `/help reboot_no_ok`, `/status` y `/events` respondieron desde el proceso nuevo; tres comandos consecutivos llegaron sin perdida.
-  - Commit/push quedan pendientes porque no fueron solicitados en esta iteracion.
+  - Documentacion `81b3b26` e implementacion/cierre `2afd65e` publicados en
+    `origin/codex/030-telegram-messaging-quality`.
 * **Archivos principales**:
   - `app/telegram_messages.py`
   - `app/miner_monitor.py`

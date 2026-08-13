@@ -80,5 +80,6 @@
   warning. Three back-to-back command replies arrived without loss.
 - No post-start traceback, Telegram delivery error, Hashcore call or immediate
   auto-reboot was present in the inspected startup block.
-- Spec 030 runtime activation is complete. Commit and push remain intentionally
-  unperformed because they were not requested in this iteration.
+- Spec 030 runtime activation is complete. Documentation was committed as
+  `81b3b26`; implementation and closeout were committed as `2afd65e` and pushed
+  to `origin/codex/030-telegram-messaging-quality`.

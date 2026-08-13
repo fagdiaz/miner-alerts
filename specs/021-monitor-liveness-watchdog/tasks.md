@@ -8,26 +8,26 @@
 
 ## Phase 1: Baseline And Red Contracts
 
-- [ ] T001 Record current service, mutex, worker and startup behavior in evidence.md.
-- [ ] T002 [P] Add failing heartbeat atomicity/schema/clock tests in tests/test_monitor_liveness.py.
-- [ ] T003 [P] Add failing watchdog classification/dedupe/maintenance tests.
-- [ ] T004 Capture current SCM failure actions without modifying them.
+- [x] T001 Record current service, mutex, worker and startup behavior in evidence.md.
+- [x] T002 [P] Add failing heartbeat atomicity/schema/clock tests in tests/test_monitor_liveness.py.
+- [x] T003 [P] Add failing watchdog classification/dedupe/maintenance tests.
+- [x] T004 Capture current SCM failure actions without modifying them.
 ## Phase 2: Heartbeat And Assessment
 
-- [ ] T005 [US1] Implement heartbeat and assessment types in app/liveness.py.
-- [ ] T006 [US1] Integrate one best-effort atomic heartbeat in app/miner_monitor.py.
-- [ ] T007 [US3] Add sanitized health rendering and safe config defaults.
+- [x] T005 [US1] Implement heartbeat and assessment types in app/liveness.py.
+- [x] T006 [US1] Integrate one best-effort atomic heartbeat in app/miner_monitor.py.
+- [x] T007 [US3] Add sanitized health rendering and safe config defaults.
 ## Phase 3: Independent Watchdog
 
-- [ ] T008 [US1] Implement tools/monitor_watchdog.py without action imports.
-- [ ] T009 [US2] Implement tools/install_watchdog_task.ps1 with pythonw.exe and non-overlap.
+- [x] T008 [US1] Implement tools/monitor_watchdog.py without action imports.
+- [x] T009 [US2] Implement tools/install_watchdog_task.ps1 with pythonw.exe and non-overlap.
 - [ ] T010 [US2] Configure and test SCM recovery with rollback export.
 ## Phase 4: Validation And Rollout
 
-- [ ] T011 Run targeted/full tests, compile, PowerShell parse, config parse and invariant scan.
-- [ ] T012 Execute QA kill, hang and stale-worker scenarios and prove no Hashcore calls.
+- [x] T011 Run targeted/full tests, compile, PowerShell parse, config parse and invariant scan.
+- [x] T012 Execute QA kill, hang and stale-worker scenarios and prove no Hashcore calls.
 - [ ] T013 Perform controlled activation and D+1/D+3 observation.
-- [ ] T014 Update evidence, roadmap, delivery calendar, runbook and development log.
+- [x] T014 Update evidence, roadmap, delivery calendar, runbook and development log.
 
 ## Dependencies And Execution Order
 

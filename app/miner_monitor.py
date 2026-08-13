@@ -43,6 +43,7 @@ try:
     from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
     from .vnish_logs import render_firmware_events
     from .telegram_messages import classify_delivery, split_telegram_message
+    from .liveness import MonitorHeartbeat, write_heartbeat_atomic
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -66,6 +67,7 @@ except ImportError:
     from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
     from vnish_logs import render_firmware_events
     from telegram_messages import classify_delivery, split_telegram_message
+    from liveness import MonitorHeartbeat, write_heartbeat_atomic
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -92,6 +94,8 @@ _LOGGER: Optional[logging.Logger] = None
 _QA_TX_COUNTS: Dict[int, int] = {}
 _PERF_LOGGED: Dict[int, bool] = {}
 _HTTP_SESSION: Optional[requests.Session] = None
+_TELEGRAM_POLLER_TS: Optional[float] = None
+_TELEGRAM_SENDER_TS: Optional[float] = None
 _NO_WINDOW_CREATION_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DBG_TELEGRAM = os.getenv("DBG_TELEGRAM", "0") == "1"
 DBG_TELEGRAM_COMMANDS_ONLY = os.getenv("DBG_TELEGRAM_COMMANDS_ONLY", "1") == "1"
@@ -1094,7 +1098,7 @@ def _send_telegram_direct(
 
 
 def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> None:
-    global _HTTP_SESSION
+    global _HTTP_SESSION, _TELEGRAM_SENDER_TS
     if _HTTP_SESSION is None:
         _HTTP_SESSION = requests.Session()
     session = _HTTP_SESSION
@@ -1108,7 +1112,12 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
         dbg_update_id = None
         dbg_cmd = None
         try:
-            item = q.get()
+            _TELEGRAM_SENDER_TS = time.time()
+            try:
+                item = q.get(timeout=5.0)
+            except queue.Empty:
+                _TELEGRAM_SENDER_TS = time.time()
+                continue
             (
                 enqueue_ts,
                 chat_id,
@@ -1161,6 +1170,7 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
             }
             start = time.monotonic()
             resp = session.post(tg_send_url, json=payload, timeout=(2.0, 6.0))
+            _TELEGRAM_SENDER_TS = time.time()
             duration = time.monotonic() - start
             if qa_mode:
                 log_pid(
@@ -1218,6 +1228,7 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
             _LAST_SENT_HASH[msg_type] = msg_hash
             _LAST_SENT_TS[msg_type] = time.time()
         except Exception as exc:
+            _TELEGRAM_SENDER_TS = time.time()
             if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
                 log(
                     f"SEND_EXC update_id={dbg_update_id} err={type(exc).__name__}:"
@@ -1888,10 +1899,12 @@ def telegram_polling_worker(
     qa_allow_actions: bool,
     event_store: Optional[EventStore],
 ) -> None:
+    global _TELEGRAM_POLLER_TS
     last_info_ts = 0.0
     last_selftest_ts = 0.0
     backoff = 0.2
     while True:
+        _TELEGRAM_POLLER_TS = time.time()
         offset = None
         with last_update_lock:
             if last_update_id_ref["value"] is not None:
@@ -1912,6 +1925,7 @@ def telegram_polling_worker(
             t0 = time.monotonic()
             last_ref_before = last_update_id_ref["value"]
             resp = requests.get(tg_updates_url, params=params, timeout=timeout_used)
+            _TELEGRAM_POLLER_TS = time.time()
             if resp.status_code >= 400:
                 body = _redact_telegram_token(resp.text or "", bot_token)[:300]
                 log_pid(
@@ -3367,6 +3381,7 @@ def telegram_polling_worker(
                 else:
                     log(f"POLL_EMPTY offset={offset} last_ref={last_ref_before}")
         except Exception as exc:
+            _TELEGRAM_POLLER_TS = time.time()
             log_pid(
                 f"[WARN] getUpdates exception type={type(exc).__name__} "
                 f"msg='{_redact_telegram_token(exc, bot_token)}' "
@@ -3476,6 +3491,15 @@ def main() -> None:
     telemetry_retention_days = max(1, int(config.get("telemetry_retention_days", 90)))
     event_retention_days = max(1, int(config.get("event_retention_days", 365)))
     decision_retention_days = max(1, int(config.get("decision_retention_days", 180)))
+    liveness_cfg = config.get("liveness", {})
+    if not isinstance(liveness_cfg, dict):
+        liveness_cfg = {}
+    heartbeat_enabled = bool(liveness_cfg.get("enabled", True))
+    heartbeat_path = Path(
+        str(liveness_cfg.get("heartbeat_path", "data/monitor_heartbeat.json"))
+    ).expanduser()
+    if not heartbeat_path.is_absolute():
+        heartbeat_path = Path(__file__).resolve().parent.parent / heartbeat_path
     restart_attribution_window_seconds = max(
         60, int(config.get("restart_attribution_window_seconds", 900))
     )
@@ -3641,6 +3665,8 @@ def main() -> None:
         last_retention_ts = process_start_ts
         previous_tick_signals: Dict[str, str] = {}
         previous_tick_signals_ts: Optional[float] = None
+        tick_sequence = 0
+        heartbeat_error_logged = False
         while True:
             tick_start = time.monotonic()
             now_ts = time.time()
@@ -4359,6 +4385,47 @@ def main() -> None:
                 current_last_update_id = last_update_id_ref["value"]
             with state_lock:
                 save_state(state_path, states, current_last_update_id)
+            if heartbeat_enabled:
+                try:
+                    completed_ts = time.time()
+                    collector_age_seconds: Optional[float] = None
+                    if event_store is not None and event_store.available:
+                        collector_run = event_store.latest_collector_run()
+                        if collector_run:
+                            collector_completed_ts = float(
+                                collector_run.get("completed_ts") or 0.0
+                            )
+                            if collector_completed_ts > 0:
+                                collector_age_seconds = max(
+                                    0.0, completed_ts - collector_completed_ts
+                                )
+                    tick_sequence += 1
+                    write_heartbeat_atomic(
+                        heartbeat_path,
+                        MonitorHeartbeat(
+                            pid=os.getpid(),
+                            process_start_ts=process_start_ts,
+                            tick_sequence=tick_sequence,
+                            last_tick_completed_ts=completed_ts,
+                            telegram_poller_ts=_TELEGRAM_POLLER_TS,
+                            telegram_sender_ts=_TELEGRAM_SENDER_TS,
+                            queue_depth=_TELEGRAM_QUEUE.qsize(),
+                            collector_age_seconds=collector_age_seconds,
+                        ),
+                    )
+                    if tick_sequence == 1 or heartbeat_error_logged:
+                        log(
+                            f"[LIVENESS] heartbeat path={heartbeat_path} "
+                            f"schema=1 tick_sequence={tick_sequence}"
+                        )
+                    heartbeat_error_logged = False
+                except Exception as exc:
+                    if not heartbeat_error_logged:
+                        log(
+                            f"[WARN] LIVENESS heartbeat_write_failed "
+                            f"type={type(exc).__name__}"
+                        )
+                    heartbeat_error_logged = True
             first_tick = False
             if qa_mode or qa_verbose:
                 log_pid(f"[TICK] duration={time.monotonic() - tick_start:.3f}s qsize={_TELEGRAM_QUEUE.qsize()}")

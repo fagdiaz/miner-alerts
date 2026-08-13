@@ -1,8 +1,24 @@
 # Miner Alerts Speckit Guide
 
 This folder is the operating manual for structured improvements in Miner Alerts.
-Use it to plan and audit small production-safe changes: quick wins, false alert fixes,
-auto-reboot safety, Telegram bot UX, delivery diagnostics, and release hygiene.
+Use it to plan and audit production-safe changes: false-alert fixes, monitor
+availability, auto-reboot safety, diagnostics, Telegram UX and observability.
+
+## Document Map
+
+- `ROADMAP.md`: prioritized capabilities, dependencies and decision gates.
+- `SPEC_PROGRAM.md`: definitive Spec 021-029 sequence, architecture boundaries,
+  risk classes and shared Definition of Done.
+- `DELIVERY_PLAN.md`: estimated implementation, observation and bug-fix calendar.
+- `TECHNOLOGY_STRATEGY.md`: adoption rules for polling, WebSockets, Docker,
+  Prometheus/Grafana, FastAPI, MQTT and OpenTelemetry.
+- `INTERFACE_STRATEGY.md`: Telegram, static dashboard and conditional local UI.
+- `HASHCORE_TOOLKIT_STRATEGY.md`: current action boundary and inventory plan.
+- `MINER_DIAGNOSTICS.md`: evidence model used before intervention.
+- `RUNBOOK.md`: commands and checks for the system that exists today.
+
+Roadmap documents may describe planned work. The runbook must only describe
+implemented behavior or clearly label a procedure as planned.
 
 ## Workflow
 
@@ -17,11 +33,20 @@ auto-reboot safety, Telegram bot UX, delivery diagnostics, and release hygiene.
 
 The active feature is declared in `.specify/feature.json`.
 
-Current active feature:
+Current active feature and release gate:
 
 ```text
-specs/012-stability-advisor
+specs/020-episode-alerts
 ```
+
+The Spec 020 implementation is committed and pushed as `e502ab9`. Its controlled
+service restart and runtime smoke remain open; do not treat merge state as
+production activation.
+
+Specs 021-029 are complete planning packages but are not active or implemented.
+Historical Specs 001-005 are early foundation artifacts and partly superseded by
+Specs 006-020. Their unchecked tasks are not the delivery queue; `SPEC_PROGRAM.md`
+and `ROADMAP.md` govern new work.
 
 ## Commands And Validation
 
@@ -44,10 +69,12 @@ $env:DBG_TELEGRAM="1"
 $env:DBG_TELEGRAM_COMMANDS_ONLY="1"
 ```
 
-## Technology Decisions
+## Planning And Technology Decisions
 
-Use `docs/speckit/TECHNOLOGY_STRATEGY.md` before adding new frameworks,
-services, databases, dashboards or containers.
+Use `SPEC_PROGRAM.md` for sequence/dependencies, `ROADMAP.md` for priority/status,
+and `DELIVERY_PLAN.md` to reserve
+implementation plus stabilization time. Use `TECHNOLOGY_STRATEGY.md` before
+adding frameworks, services, databases, dashboards, protocols or containers.
 
 ## Safety Rules
 

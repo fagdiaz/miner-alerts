@@ -6,8 +6,15 @@ SYNC IMPACT REPORT
   * AGENTS.md
   * docs/speckit/README.md
   * docs/speckit/ROADMAP.md
+  * docs/speckit/SPEC_PROGRAM.md
+  * docs/speckit/DELIVERY_PLAN.md
   * docs/speckit/RUNBOOK.md
   * specs/001-miner-alerts-quality-hardening/*
+  * specs/021-029/* (planning artifacts only)
+- Amendment 1.1.0: require explicit implementation and stabilization windows
+  without allowing schedule pressure to bypass runtime evidence.
+- Amendment 1.2.0: require one dependency/risk program for future specs and keep
+  planned, blocked, no-build, implemented and runtime-verified states distinct.
 -->
 
 # Miner Alerts Constitution
@@ -40,7 +47,13 @@ The project targets Windows with PowerShell, Python virtualenv, Telegram polling
 
 ## Development Workflow And Quality Gates
 
-- Read `.specify/feature.json`, the active spec directory, this constitution, and `docs/speckit/ROADMAP.md` before implementation.
+- Read `.specify/feature.json`, the active spec directory, this constitution,
+  `docs/speckit/SPEC_PROGRAM.md`, `docs/speckit/ROADMAP.md`, and
+  `docs/speckit/DELIVERY_PLAN.md` before implementation.
+- Future specs MUST preserve their declared dependencies, risk class and action
+  boundary. A planned spec is not active or implemented merely because all of
+  its design artifacts exist.
+- Reserve a post-rollout observation/fix window for every production-affecting spec. Estimated dates MUST move rather than compress safety gates.
 - Do not touch `app/config.json` or `app/state.json` unless the task explicitly requires local runtime alignment.
 - Keep changes minimal and scoped. Prefer documentation, logs, and guardrails over broad rewrites.
 - For monitor code changes, run `& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py`.
@@ -54,4 +67,4 @@ The project targets Windows with PowerShell, Python virtualenv, Telegram polling
 - Amendments MUST update affected docs under `docs/speckit/` and active specs.
 - Reviews MUST verify production safety, config hygiene, Telegram control safety, Windows compatibility, and validation evidence.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-07-11
+**Version**: 1.2.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-08-13

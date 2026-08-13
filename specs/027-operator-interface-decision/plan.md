@@ -1,0 +1,94 @@
+# Implementation Plan: Operator Interface Decision
+
+**Branch**: `027-operator-interface-decision` | **Date**: 2026-08-13 | **Spec**: [spec.md](spec.md)
+
+**Input**: Feature specification from `specs/027-operator-interface-decision/spec.md`
+
+## Summary
+
+Run a documented no-build decision gate first. Only if static HTML plus Grafana fail a P1 workflow, add a native loopback-only FastAPI read-only API and minimal server-rendered/HTMX view over SQLite. No web action path is permitted.
+
+## Technical Context
+
+**Language/Version**: Python 3.14.x and PowerShell 5.1
+
+**Primary Dependencies**: Conditional FastAPI, Uvicorn and Pydantic; HTMX only if the approved workflow needs interaction
+
+**Storage**: Existing SQLite opened with mode=ro; no new canonical store
+
+**Testing**: `unittest`, deterministic fixtures, contract validation, `py_compile`, and controlled runtime evidence
+
+**Target Platform**: Windows 10, Windows service/Scheduled Tasks, local ASIC network
+
+**Project Type**: Decision artifact plus conditional local read-only web service
+
+**Performance Goals**: Bounded common queries under one second and workflow completion under two minutes
+
+**Constraints**: No real secrets or runtime files in Git; no unproved completion; no action authority outside the existing monitor
+
+**Risk Classification**: MEDIUM - a new surface can widen exposure, so the decision gate defaults to no-build and any prototype is loopback read-only
+
+**Scale/Scope**: Current four-miner fleet with bounded behavior for configured growth
+
+## Constitution Check
+
+- **Production Safety First**: PASS by design; loopback-only, read-only SQLite and zero monitor/miner/action imports.
+- **Single Source Of Truth**: PASS; local config/state stay outside Git.
+- **Telegram Operational Controls**: PASS; dangerous command confirmation remains unchanged.
+- **Auto-Reboot Evidence And Gates**: PASS; existing policy remains authoritative and receives regression coverage.
+- **Windows Compatibility**: PASS; validation and rollout are PowerShell/service compatible.
+- **Evidence-Based Completion**: PASS by plan; runtime evidence and observation remain mandatory.
+
+## Project Structure
+
+### Documentation
+
+```text
+specs/027-operator-interface-decision/
+|-- spec.md
+|-- plan.md
+|-- research.md
+|-- data-model.md
+|-- quickstart.md
+|-- contracts/operator-interface.md
+|-- checklists/requirements.md
+|-- tasks.md
+`-- evidence.md
+```
+
+### Planned Source Scope
+
+```text
+docs/speckit/INTERFACE_STRATEGY.md
+diagnostics/interface/workflow-scorecard.md
+# Conditional only after gate:
+app/operator_api.py
+app/operator_views.py
+templates/operator/
+tests/test_operator_api.py
+requirements-interface.txt
+```
+
+**Structure Decision**: The decision artifact is mandatory; source files and dependencies are conditional. A native local service avoids mounting the live SQLite database into containers.
+
+## Phase 0: Research Decisions
+
+See [research.md](research.md). Grafana is purpose-built for trends; the static dashboard and Telegram already cover summary and control. FastAPI offers typed OpenAPI and validation for a narrowly scoped local read API, while React adds no demonstrated value at this scale.
+
+## Phase 1: Design
+
+- Define P1/P2 workflows and measurable targets before any dependency.
+- Choose no-build when existing interfaces pass.
+- If approved, use FastAPI/Pydantic for typed read-only resources and Uvicorn bound to 127.0.0.1.
+- Use server-rendered HTML/HTMX only for filtering and progressive refresh.
+- Enforce bounded queries, redaction and no action imports with tests.
+
+## Rollback And Failure Boundary
+
+- A no-build decision has no runtime change.
+- The conditional service is independent and can be stopped/removed without monitor impact.
+- Database/API errors fail within the interface and never propagate to monitoring.
+
+## Post-Design Constitution Check
+
+PASS. No unresolved constitution violation exists. Completion remains conditional on `tasks.md` evidence and the scheduled observation window.

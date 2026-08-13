@@ -1,5 +1,8 @@
 # Miner Diagnostics Strategy
 
+**Last reviewed**: 2026-08-13
+**Future contracts**: Specs 021-024 in `docs/speckit/SPEC_PROGRAM.md`
+
 ## Objective
 
 Determine why a miner is unhealthy before deciding whether to reboot it. For
@@ -16,6 +19,16 @@ The monitor already reads:
 - `pools`: pool URL and worker/user.
 - `version`: firmware hints, including Vnish/ASIC.to detection.
 - Hashcore Toolkit CLI: currently configured for `reboot` and `restart`.
+
+Acquisition roles are intentionally different:
+
+| Source | Mode | Role | Must not be used as |
+| --- | --- | --- | --- |
+| API 4028 `summary`/`stats` | 30-second polling | Current state, rate, uptime and boards. | Historical cause certainty. |
+| Vnish log WebSockets | Bounded scheduled collection | Firmware transitions and warnings. | Sole proof that a miner is currently healthy. |
+| SQLite | Local persisted queries | Timeline, trends and decisions. | Direct auto-reboot trigger. |
+| Hashcore CLI | On-demand | Confirmed actions and future proven diagnostics. | Background monitoring transport. |
+| PDU/UPS/sensor | Not selected yet | Future AC voltage/current/power evidence. | Inference from hashboard voltage. |
 
 Production board counting recognizes both legacy cgminer fields and Vnish
 `chain_acn1..N`, scanning all `STATS` entries because deployed Vnish payloads
@@ -49,6 +62,9 @@ It writes:
 
 ## Diagnosis Layers
 
+Every layer must carry `observed_ts`, source and freshness. Missing evidence is
+`unknown`, not healthy and not zero.
+
 ### Layer 1 - Signal Quality
 
 Classify the input before acting:
@@ -61,6 +77,10 @@ Classify the input before acting:
 - HASHBOARD issue.
 
 Action policy: invalid or stale signal should not be treated as a reboot candidate.
+
+Planned acquisition work will add separate ages for the last attempt, last
+successful sample and last completed fleet tick. This prevents a live process
+with a stalled polling loop from presenting old data as current.
 
 ### Layer 2 - Miner Health
 
@@ -105,6 +125,22 @@ Possible sources:
 
 Action policy: suspected voltage fluctuation should be logged as diagnosis, not
 used alone as a reboot trigger.
+
+Electrical-source discovery is scheduled before implementation. Prefer a real
+device protocol already supported by the selected PDU/UPS/sensor (SNMP, Modbus
+TCP, vendor HTTP or MQTT); do not select a protocol before selecting the source.
+
+## Episode And Root-Cause Correlation
+
+Spec 020 groups current state transitions into bounded OK-to-OK episodes. The
+next diagnosis layer must enrich those episodes without rewriting their facts:
+
+- `observed`: direct rate, board, uptime, pool, firmware or electrical evidence;
+- `suspected`: time-correlated but not independently confirmed condition;
+- `confirmed`: direct source evidence with compatible timestamps.
+
+Fleet-wide simultaneous symptoms increase diagnostic priority but do not prove
+power failure. A full timeline remains read-only and cannot authorize reboot.
 
 ## Sweet Spot Model
 
@@ -175,3 +211,14 @@ power_context=<available|not_available|suspected_anomaly>
 blocked_by=<reason or none>
 action=<observe|restart|reboot>
 ```
+
+## Delivery Order
+
+1. Monitor heartbeat and stale-data detection.
+2. Measured staggered/adaptive acquisition.
+3. Episode/Vnish/pool/fleet evidence fusion.
+4. Electrical source discovery and optional adapter.
+5. Prometheus/Grafana export after metric semantics stabilize.
+
+Dates and mandatory observation windows are maintained in
+`docs/speckit/DELIVERY_PLAN.md`.

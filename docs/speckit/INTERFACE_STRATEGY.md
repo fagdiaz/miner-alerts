@@ -1,64 +1,69 @@
 # Interface Strategy
 
-## Current Control Surface
+**Last reviewed**: 2026-08-13
+**Decision spec**: `specs/027-operator-interface-decision`
 
-Telegram is the correct primary control surface today because it is already
-integrated, remote-friendly, and supports confirmation flows for dangerous
-actions. It should remain the only write/control interface until a separate UI
-has authentication, local binding, confirmation, and audit logs.
+## Current Interfaces
 
-## Why Consider A Separate Interface
+- **Telegram**: primary remote alerts and the only write/control surface.
+- **Static HTML dashboard**: implemented read-only fleet, incident, quality and
+  decision views generated from SQLite.
+- **CLI reports**: diagnostics, incident and Vnish collection workflows.
 
-Telegram is good for commands and alerts, but weak for analysis:
+Telegram remains appropriate for urgent operational interaction, but it is not
+the ideal surface for trends, fleet comparison or long timelines.
 
-- It is not ideal for comparing miners side by side.
-- It does not show timelines well.
-- It is hard to inspect Vnish logs, repeated LOW events, and blocked reboot reasons.
-- It is hard to visualize "sweet spot" stability over hours or days.
+## Interface Boundaries
 
-## Recommended Path
+| Need | Preferred surface | Reason |
+| --- | --- | --- |
+| Immediate alert and acknowledgement | Telegram | Remote, concise and already operational. |
+| Confirmed reboot/restart | Telegram only | Existing TTL confirmation, QA gates and audit path. |
+| Current fleet overview | Static HTML now; Grafana later | Better side-by-side comparison without action risk. |
+| Time-series trends and freshness | Grafana after Spec 025 | Purpose-built queries and visualization. |
+| Incident evidence | Telegram `/e<ID>` plus dashboard | Fast mobile detail and richer local timeline. |
+| Ad-hoc read-only API | FastAPI only if justified | Typed local API and OpenAPI, but another service to operate. |
 
-### Phase 1 - Read-Only Local Report
+## Planned Decision Path
 
-Generate a local HTML or Markdown report from existing state/logs.
+### Current - Static Read-Only Dashboard
 
-Scope:
+Already implemented. It validates the data contract without a server, auth or
+new action path. Near-term work should improve data freshness and observability,
+not replace this UI.
 
-- Current miner state.
-- Last seen timestamp.
-- Last alert and last state transition.
-- Last manual/auto reboot.
-- Recent blocked_by reasons.
-- Hashcore enabled/status.
+### Spec 025 - Prometheus And Grafana
 
-Risk: low. No auth required if it is a local file and contains no secrets.
+The native monitor writes a sanitized atomic snapshot. A separate exporter,
+Prometheus and Grafana run as optional auxiliary containers with local-only host
+ports. They receive no config secrets, live database mount or action capability.
+This is the preferred next interface investment because it improves trends and
+monitor observability without changing the control plane.
 
-### Phase 2 - Local Read-Only Dashboard
+### Spec 027 - FastAPI Decision Gate
 
-Run a local-only dashboard bound to `127.0.0.1`.
+After operator use of static HTML and Grafana, time a written workflow scorecard.
+If every P1 workflow passes, close Spec 027 as `no-build`. Build a FastAPI MVP
+only for an explicitly failed local read-only workflow.
 
-Scope:
+If built:
 
-- Miner cards.
-- Timeline of alerts, LOW/OK transitions, reboot attempts, Vnish events.
-- Per-miner diagnostics view.
-- Export sanitized evidence for specs.
+- bind only to `127.0.0.1`;
+- read SQLite with `mode=ro` through bounded, paginated queries;
+- expose no tokens, miner credentials or raw firmware logs;
+- keep every endpoint read-only;
+- add HTMX only for a proven interaction need;
+- do not adopt React solely for technology exposure.
 
-Risk: medium. Must avoid exposing secrets, tokens, or action buttons.
+## Controlled Actions UI
 
-### Phase 3 - Controlled Actions UI
-
-Only after Phase 2 is stable.
-
-Requirements:
-
-- Local-only binding or explicit auth.
-- Reboot/restart confirmation with short TTL.
-- Full audit log.
-- Same guardrails as Telegram.
-- No bypass of QA mode or `qa_allow_real_actions`.
+Not planned through the v2 horizon ending 2026-12-20. A future action UI would require authentication,
+authorization, confirmation TTL, audit logs, CSRF protection, local/network
+exposure design and exact parity with Telegram guardrails. Until a separate spec
+proves those controls, no web reboot/restart endpoint is allowed.
 
 ## Decision
 
-Do not build a full web app first. Start with read-only reporting and diagnostics.
-Telegram remains the action interface.
+Keep Telegram as the control plane. Evolve analysis through static HTML and
+Grafana first. Spec 027 may validly close with no code. FastAPI is conditional,
+HTMX is optional for a proven filter/refresh need, and React remains deferred.

@@ -1,5 +1,8 @@
 # Miner Alerts Technology Strategy
 
+**Last reviewed**: 2026-08-13
+**Program**: `docs/speckit/SPEC_PROGRAM.md`
+
 ## Principle
 
 New technology should be added only when it reduces operational risk, improves
@@ -11,11 +14,34 @@ then controlled automation.
 
 - Python: appropriate for ASIC API tooling, Telegram polling, CLI automation and
   fast diagnostics.
+- API 4028: request/response polling every 30 seconds is the current source of
+  truth for availability, hashrate, uptime and boards.
+- Vnish WebSockets: bounded read-only log acquisition in a separate scheduled
+  process; not a replacement for miner health samples.
+- SQLite schema v5: operational history, diagnostics and audit evidence.
 - Windows service/process: appropriate while Hashcore Toolkit CLI is local and
   Windows-based.
 - Docker: appropriate for isolated read-only tools, reports and future local
   dashboards; not yet appropriate for the main monitor while Hashcore CLI and
   Windows service integration remain local.
+
+## Acquisition And Supervision Decision
+
+WebSockets do not remove the need to supervise the monitor and do not provide a
+complete current sample unless the remote firmware publishes every required
+field. The deployed API 4028 endpoint is pull-oriented, so the target design is
+hybrid rather than a protocol rewrite:
+
+- Keep conservative API 4028 polling for current state.
+- Stagger and measure requests before considering adaptive cadence.
+- Use Vnish WebSockets for asynchronous firmware evidence only.
+- Add an independent heartbeat/watchdog so a stalled poll loop is detected by a
+  different process.
+- Mark data stale explicitly; never reuse an old rate as current evidence.
+
+This follows the same operational principle used by Prometheus: pull-based
+collection remains a contemporary monitoring model when freshness and target
+failure are meaningful signals.
 
 ## Recommended Technology Path
 
@@ -25,6 +51,7 @@ Use for:
 
 - Read-only diagnostics collectors.
 - Static report generation.
+- Spec 025's isolated metrics exporter, Prometheus and Grafana stack.
 - Future local dashboards that do not execute reboot/restart actions.
 
 Why it matters:
@@ -53,10 +80,10 @@ Why it matters:
 
 Adoption rule:
 
-- Start read-only.
-- Bind local-only by default.
+- Start only after the Spec 027 workflow scorecard proves a gap.
+- Bind to `127.0.0.1` and open SQLite with `mode=ro`.
 - No reboot/restart endpoints until authentication, audit logs and confirmation
-  are designed.
+  are designed in a separate high-risk spec.
 
 ### SQLite Or DuckDB
 
@@ -73,8 +100,11 @@ Why it matters:
 
 Adoption rule:
 
-- Prefer SQLite if the app needs durable operational state.
-- Prefer DuckDB or plain JSON/Parquet later if analysis becomes heavier.
+- SQLite remains the operational and incident source through v2.
+- Spec 028 uses the SQLite online backup API and staged restores; it never copies
+  a live database blindly.
+- DuckDB/Parquet remain deferred until an analytical workload cannot be served by
+  bounded SQLite queries or Prometheus.
 
 ### Prometheus + Grafana
 
@@ -90,9 +120,43 @@ Why it matters:
 
 Adoption rule:
 
-- Introduce only after metric names and labels are stable.
+- Planned for Spec 025, after liveness and acquisition metrics are stable.
+- The native monitor writes one atomic sanitized snapshot; a separate
+  `prometheus_client` exporter serves it inside the optional Compose network.
+- Prometheus and Grafana use pinned containers; host UI ports bind to localhost.
+- Keep label cardinality bounded and never use event IDs, free text, addresses or
+  secrets as labels.
 - Keep Telegram as the action/control plane.
 - Use Grafana read-only at first.
+
+Prometheus does not replace API 4028 acquisition. A local exporter converts the
+monitor's stable evidence into an HTTP scrape contract.
+
+### MQTT
+
+Potential use:
+
+- Receive electrical measurements from a PDU, UPS, smart meter or edge sensor
+  that already publishes MQTT.
+
+Adoption rule:
+
+- Do not add a broker until a real publisher and operational owner exist.
+- Treat electrical messages as read-only evidence with source timestamps.
+- Never relay existing local SQLite data through MQTT only for novelty.
+
+### OpenTelemetry
+
+Potential use:
+
+- Unify metrics, logs and traces if Miner Alerts becomes several long-lived
+  services with more than one observability backend.
+
+Adoption rule:
+
+- Deferred in the current horizon. The OpenTelemetry Collector adds value when
+  receiving, processing and exporting multiple telemetry pipelines; one Windows
+  monitor plus SQLite does not yet justify that operational layer.
 
 ### WebSocket Client
 
@@ -118,9 +182,15 @@ Adoption rule:
 
 Current use:
 
-- Run the bounded Vnish collector every 30 minutes outside the monitor process in a hidden PowerShell window.
+- Run the bounded Vnish collector every 30 minutes outside the monitor process
+  through `pythonw.exe`, without a foreground PowerShell console.
 - Use native `IgnoreNew` overlap protection and a ten-minute execution limit.
 - Persist collector health in SQLite for `/diagnose` and the local dashboard.
+
+Planned use:
+
+- Run the independent Spec 021 watchdog every minute through `pythonw.exe`.
+- Run the Spec 028 backup CLI non-interactively with overlap and duration limits.
 
 Why it matters:
 
@@ -171,12 +241,16 @@ Adoption rule:
 
 ## Near-Term Recommendation
 
-1. Keep the monitor stable on Windows.
-2. Use Python tools for diagnostics and baseline collection.
-3. Use Docker for reproducible read-only tooling.
-4. Add a static HTML report before any web server.
-5. If a server becomes necessary, choose FastAPI.
-6. If long-term metrics become necessary, evaluate Prometheus/Grafana.
+1. Close Spec 020 runtime activation and observation.
+2. Implement Spec 021 independent liveness before changing acquisition.
+3. Implement Spec 022 bounded authoritative acquisition with typed provenance.
+4. Implement Spec 023 deterministic evidence fusion.
+5. Run Spec 024 discovery before selecting an electrical protocol.
+6. Add Spec 025 Prometheus/Grafana as isolated read-only observability.
+7. Complete Spec 026 Hashcore inventory without expanding actions.
+8. Prove Spec 028 backup and staged restore.
+9. Execute Spec 027's no-build interface gate.
+10. Freeze features and close through Spec 029 stabilization.
 
 ## Current Adoption Result
 
@@ -208,6 +282,11 @@ run the one-shot collector with overlap protection, schema v5 records timestamp
 provenance and collector health, and `/diagnose` correlates the evidence from
 SQLite only. No new service, queue, database server, or action path was added.
 
+Irregular Miner Episodes preserve the same boundary: API 4028 remains the live
+signal, SQLite provides on-demand history, and Telegram receives grouped
+episodes. The next reliability investment is independent monitor supervision,
+not replacing a low-cost four-miner polling loop with permanent sockets.
+
 ## Decision Gate For Any New Technology
 
 Before adding a new dependency or framework, answer:
@@ -219,3 +298,14 @@ Before adding a new dependency or framework, answer:
 - Does it work on Windows?
 - Can it be validated without touching real reboot/restart actions?
 - Is it broadly used in the current market?
+
+## Primary References
+
+- WebSocket protocol: https://www.rfc-editor.org/info/rfc6455/
+- Prometheus pull model: https://prometheus.io/docs/introduction/overview/
+- MQTT 5.0 standard: https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
+- OpenTelemetry Collector architecture: https://opentelemetry.io/docs/collector/architecture/
+- Grafana provisioning: https://grafana.com/docs/grafana/latest/administration/provisioning/
+- FastAPI features: https://fastapi.tiangolo.com/features/
+- SQLite online backup: https://www.sqlite.org/backup.html
+- Windows service failure actions: https://learn.microsoft.com/windows/win32/api/winsvc/ns-winsvc-service_failure_actionsw

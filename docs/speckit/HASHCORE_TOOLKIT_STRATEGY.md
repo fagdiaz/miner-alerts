@@ -1,5 +1,9 @@
 # Hashcore Toolkit Strategy
 
+**Last reviewed**: 2026-08-13
+**Planned inventory window**: 2026-10-20 to 2026-10-29
+**Spec**: `specs/026-hashcore-capability-inventory`
+
 ## Current Integration
 
 The current shared config supports Hashcore Toolkit CLI for:
@@ -12,13 +16,17 @@ The current shared config supports Hashcore Toolkit CLI for:
 These are action-oriented capabilities and must remain gated by QA and manual
 confirmation where applicable.
 
+Hashcore is not a monitoring transport. It must not replace API 4028 polling,
+Vnish evidence or the independent monitor watchdog.
+
 ## Capability Inventory
 
-Before adding new features, inventory the local toolkit installation:
+Before adding new features, inventory the local Toolkit installation through the
+Spec 026 allowlisted tool. Do not copy these conceptual actions into production
+without first proving their installed-version help contract:
 
 ```powershell
-& "C:\\Program Files\\Hashcore\\Toolkit\\toolkit_cli.bat" version
-& "C:\\Program Files\\Hashcore\\Toolkit\\toolkit_cli.bat" help
+& ".\\.venv\\Scripts\\python.exe" tools\\hashcore_inventory.py --config app\\config.json
 ```
 
 For each available command, record:
@@ -30,6 +38,10 @@ For each available command, record:
 - timeout expectation
 - whether it touches a miner
 - QA validation path
+
+The inventory itself is read-only, bounded, no-window and sanitized. Unknown
+commands remain prohibited (classified as mutating for execution policy) until
+vendor documentation and controlled evidence prove otherwise.
 
 ## Recommended Feature Order
 
@@ -43,6 +55,9 @@ Examples:
 - device list
 - firmware/version info
 - profile/config read if supported
+
+Deliverable: a versioned capability matrix with sanitized command samples,
+exit codes, timeouts, side-effect classification and parser feasibility.
 
 ### 2. Safer Diagnostics
 
@@ -71,3 +86,18 @@ Allowed only with confirmation and QA guardrails:
 - Do not parse arbitrary CLI output without samples in evidence.
 - Do not enable new action commands by default.
 - Do not run real actions in QA unless `qa_allow_real_actions` is explicitly enabled.
+- Do not add a background Hashcore poller; use it only for proven diagnostics or
+  explicitly confirmed actions.
+- Do not schedule inventory commands until their cost and output are measured.
+- Do not expand action scope during the Spec 026 inventory window.
+
+## Calendar Gate
+
+Spec 026 starts only after monitor liveness, acquisition resilience, evidence
+fusion, electrical discovery and metrics export have completed their production
+review windows. Any new read-only integration becomes a separate spec; any new
+action requires a separate high-risk spec and controlled production approval.
+
+The current calendar places the inventory after Spec 025 and before Spec 028.
+Its valid completion result may be a fully classified inventory with zero new
+integration candidates.

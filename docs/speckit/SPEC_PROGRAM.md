@@ -2,7 +2,7 @@
 
 **Planning baseline**: 2026-08-13
 **Program horizon**: 2026-08-13 to 2026-12-20
-**Active production gate**: `specs/020-episode-alerts`
+**Active production gate**: `specs/021-monitor-liveness-watchdog` (D+1/D+3 observation)
 **Canonical schedule**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Purpose
@@ -23,15 +23,17 @@ been completed.
 - SQLite schema v5 is the durable incident, sample, firmware and decision store.
 - Telegram is the remote control surface; the static operations dashboard is
   read-only.
-- Spec 020 is implemented and pushed, but its elevated service activation,
-  runtime smoke and observation gate are still open. No later monitor-runtime
-  spec may roll out until that gate is closed.
+- Spec 020 is implemented, activated and runtime-closed. Spec 030 Telegram
+  messaging quality is also implemented, activated and closed. Spec 021 is the
+  current active gate: implementation, activation and controlled SCM recovery
+  proof passed; D+1/D+3 observation remains open. Spec 022 implementation waits
+  for Spec 021 D+1 and its production activation waits for Spec 021 D+3.
 
 ## Decisions Made In This Planning Pass
 
-1. **No Spec 021 is created merely to close Spec 020.** Spec 020 already owns
-   rollout and soak task T020. Duplicating that ownership would make evidence
-   ambiguous.
+1. **Spec 020 closeout remains separate from Spec 021 liveness.** Spec 020 owns
+   episode-alert rollout evidence; Spec 021 independently owns heartbeat,
+   watchdog and SCM recovery evidence.
 2. **API 4028 polling remains authoritative.** The deployed protocol is
    request/response. WebSockets are retained only where Vnish actually publishes
    asynchronous firmware evidence.
@@ -68,8 +70,9 @@ been completed.
 
 | Order | Spec | Priority | Risk | Depends on | Outcome |
 | --- | --- | --- | --- | --- | --- |
-| Gate | 020 Episode Alerts closeout | P0 | HIGH | Current runtime | Activate, smoke-test and soak the already implemented release. |
-| 1 | 021 Monitor Liveness Watchdog | P0 | HIGH | Spec 020 gate | Detect process death, stalled ticks and stale workers independently. |
+| Closed | 020 Episode Alerts closeout | P0 | HIGH | Current runtime | Completed and runtime-closed 2026-08-13. |
+| Closed | 030 Telegram Messaging Quality | P0 | MEDIUM | Spec 020 runtime | Completed, activated and pushed 2026-08-13. |
+| Active | 021 Monitor Liveness Watchdog | P0 | HIGH | Spec 020 complete | Activated and SCM recovery-proven; D+1/D+3 pending. |
 | 2 | 022 Adaptive Acquisition | P1 | HIGH | 021 | Improve freshness and poll evidence without changing action semantics. |
 | 3 | 023 Incident Evidence Fusion | P1 | MEDIUM | 022 | Correlate durable miner, Vnish, quality and fleet evidence conservatively. |
 | 4 | 024 Electrical Source Discovery | P1 | MEDIUM | 023; real hardware | Prove or block a trustworthy AC power telemetry source. |
@@ -83,11 +86,42 @@ The directory numbers preserve the roadmap concepts created before this program.
 Execution order is governed by dependencies and priority, so Spec 028 is
 scheduled before conditional Spec 027.
 
+## Implementation Readiness And Hard Gates
+
+| Package | Planning readiness | May proceed now | Hard block before implementation/activation |
+| --- | --- | --- | --- |
+| 021 Liveness | Implemented and activated | D+1/D+3 read-only observation only | Close requires real scheduled D+1/D+3 evidence |
+| 022 Acquisition | Implementation-ready plan | Red-contract preparation after 021 D+1 | Implementation waits for 021 D+1; activation waits for 021 D+3 |
+| 023 Evidence fusion | Implementation-ready plan | Fixture curation and contract review | Code waits for Spec 022 authority/quality persistence and exit evidence |
+| 024 Electrical | Discovery-ready, conditional | Physical inventory and documented read-only capability discovery | Adapter waits for a real source, authentication and no-write proof |
+| 025 Metrics | Contract-ready | Metric-name/cardinality review | Snapshot implementation waits for 021/022 stable schemas |
+| 026 Hashcore inventory | Safety-plan ready | Vendor documentation review only | Invocation waits for proven help/version allowlist and installed Toolkit identity |
+| 028 Backup/restore | Contract-ready | Destination/path policy review | Implementation waits for stable post-023 schema and approved off-repo destination |
+| 027 Interface | Decision-gate ready | Workflow definitions only | Scorecard waits for 025/028; MVP exists only if no-build fails |
+| 029 Stabilization | Final-gate ready | Regression-matrix maintenance only | Candidate freeze waits for accepted/closed 021-028 outcomes |
+
+Documentation and sanitized fixtures may advance in parallel. Runtime code,
+activation or a new long-lived component cannot bypass the hard blocks above.
+
+## Cross-Spec Risk Register
+
+| Risk | Containment contract | Closing evidence |
+| --- | --- | --- |
+| Adaptive acquisition changes state/action timing | One ordered authoritative envelope per miner/epoch; diagnostic probes have no authority | Sequential parity, bounded request counts, action/offset invariants, D+1/D+3 |
+| Correlation presents an unsupported root cause | Direct-evidence ceilings, visible contradictions/missing sources, timing-only suspected at most | Deterministic replay and confidence-wording audit |
+| Miner board voltage is mistaken for AC input | Spec 024 external-source-only electrical contract | Proven PDU/UPS/meter adapter or explicit blocked outcome |
+| Metrics/exporter becomes a second authority | Atomic sanitized read-only snapshot; no monitor action imports | Outage isolation, redaction/cardinality and dependency audit |
+| Hashcore discovery executes an unknown mutation | Vendor-proven allowlist; unknown classified mutating | Sanitized inventory, timeout/no-window and unchanged action-scope proof |
+| Backup corrupts or overwrites live history | SQLite online backup, atomic promotion, staging-only restore | Concurrent-write integrity, manifest/hash and staging restore drill |
+| Optional UI expands attack/action surface | No-build first; loopback, SQLite read-only and no action/config routes if built | Workflow scorecard, route/import audit and monitor outage isolation |
+| Calendar pressure compresses safety gates | Gates move dates and code changes reset affected observation | Evidence timestamps and explicit approve/block decision |
+
 ## Dependency Graph
 
 ```mermaid
 flowchart TD
-    S020["Spec 020: activate and soak"] --> S021["Spec 021: liveness watchdog"]
+    S020["Spec 020: complete"] --> S021["Spec 021: active observation gate"]
+    S020 --> S030["Spec 030: messaging quality complete"]
     S021 --> S022["Spec 022: adaptive acquisition"]
     S022 --> S023["Spec 023: evidence fusion"]
     S023 --> S024["Spec 024: electrical discovery"]
@@ -210,9 +244,10 @@ The program requires three documentation sweeps.
 
 ### Sweep 1 - Artifact Quality
 
-- Validated 81 artifacts across nine planned specs: 27 user stories, 96
-  functional requirements, 45 measurable success criteria and 129 ordered
-  tasks.
+- The original sweep validated 81 artifacts across nine packages. After Spec
+  021 implementation evidence and Spec 022/023 hardening, the current 021-029
+  baseline contains 86 artifacts, 27 user stories, 104 functional
+  requirements, 49 measurable success criteria and 135 ordered tasks.
 - Confirmed every package has research, data model, contract, quickstart,
   requirements checklist, rollback boundary and initial evidence record.
 - Found and corrected one cross-template omission: risk classification was
@@ -245,8 +280,8 @@ The program requires three documentation sweeps.
 
 ### Open External Gates
 
-- Spec 020 elevated activation and runtime observation remain the immediate
-  blocker.
+- Spec 021 D+1/D+3 observation is the immediate production gate. Spec 022
+  implementation waits for D+1 and activation waits for D+3.
 - Spec 024 requires actual PDU/UPS/meter identity and documented read access.
 - Spec 025 requires Docker availability or an approved native validation path.
 - Spec 026 requires the installed Toolkit and proven safe discovery commands.
@@ -254,9 +289,22 @@ The program requires three documentation sweeps.
 
 ## Program State
 
-- Specs 021-029 are **Planned**, not active and not implemented.
-- `.specify/feature.json` intentionally continues to point to Spec 020 until its
-  runtime gate closes.
+- Spec 021 is **Activated / Observation Pending**. Specs 022-029 are planned;
+  Specs 020 and 030 are complete.
+- `.specify/feature.json` points to Spec 021 until its D+1/D+3 evidence and
+  closeout tasks complete.
 - This multi-spec planning pass does not execute the Speckit Git feature hook:
   creating nine branches would misrepresent planned work as active work and the
   user explicitly excluded Git operations from this task.
+
+## Planning Hardening Record - 2026-08-13
+
+- Corrected the active gate, baseline, inventory and feature-pointer record to
+  reflect completed Specs 020/030 and active Spec 021 observation.
+- Hardened Spec 022 around the exact sequential acquisition seam, stable quality
+  codes, bounded workers/deadlines/leases and disabled-by-default config.
+- Hardened Spec 023 around existing EventStore sources, explicit clock/freshness
+  rules, canonical replay, conservative confidence, bounded queries and shared
+  read-only rendering.
+- No future-spec planning change activated code, changed local runtime config or
+  restarted the production service.

@@ -29,6 +29,27 @@
 - [ ] T013 Enable snapshot and observe D+1/D+3 resource use.
 - [ ] T014 Synchronize evidence, roadmap, calendar, interface/technology docs and development log.
 
+## Requirement Coverage
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T002, T005, T006 |
+| FR-002 | T001, T002, T005, T006, T009 |
+| FR-003 | T001, T003, T011 |
+| FR-004 | T001-T003, T011 |
+| FR-005 | T002, T005, T007, T011 |
+| FR-006 | T003, T007, T011, T012 |
+| FR-007 | T004, T008, T010, T012 |
+| FR-008 | T004, T008, T011 |
+| FR-009 | T004, T009, T012 |
+| FR-010 | T001, T009, T010 |
+| FR-011 | T003, T011, T013 |
+| SC-001 | T001-T003, T011 |
+| SC-002 | T002, T005, T007, T011 |
+| SC-003 | T001, T003, T011, T013 |
+| SC-004 | T004, T007, T012 |
+| SC-005 | T004, T008, T009, T012 |
+
 ## Dependencies And Execution Order
 
 Heartbeat/acquisition schemas block snapshot design. Contract tests precede monitor integration; exporter precedes Compose; production enablement follows redaction, cardinality and outage-isolation proof.

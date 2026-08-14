@@ -32,6 +32,27 @@
 - [ ] T016 Run Git secret/runtime artifact and ignored-file hygiene audit.
 - [ ] T017 Record explicit release approve/block decision and update development log.
 
+## Requirement Coverage
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T001-T004, T012, T017 |
+| FR-002 | T002, T003, T015, T017 |
+| FR-003 | T001, T005 |
+| FR-004 | T003, T006, T010, T011 |
+| FR-005 | T007, T011 |
+| FR-006 | T003, T008, T011 |
+| FR-007 | T009 |
+| FR-008 | T004, T010 |
+| FR-009 | T012-T014, T017 |
+| FR-010 | T015, T016 |
+| FR-011 | T002, T003, T015, T017 |
+| SC-001 | T003, T005-T011 |
+| SC-002 | T012-T014, T017 |
+| SC-003 | T009 |
+| SC-004 | T006-T008, T010, T011, T013 |
+| SC-005 | T015-T017 |
+
 ## Dependencies And Execution Order
 
 All accepted or evidence-closed Specs 021, 022, 023, 024, 025, 026, 027 and 028 precede freeze. Any code fix resets affected checks and observation. Restore precedes production approval; 72-hour and seven-day gates precede release closure.

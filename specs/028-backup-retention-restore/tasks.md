@@ -29,6 +29,27 @@
 - [ ] T013 Observe next scheduled run, disk/free-space and monitor latency.
 - [ ] T014 Synchronize evidence, roadmap, calendar, runbook, strategy docs and development log.
 
+## Requirement Coverage
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T001, T002, T005, T011 |
+| FR-002 | T002, T006, T011, T012 |
+| FR-003 | T002, T005, T011 |
+| FR-004 | T001, T003, T011 |
+| FR-005 | T003, T007, T011 |
+| FR-006 | T003, T007, T009, T011 |
+| FR-007 | T003, T007, T013 |
+| FR-008 | T004, T008, T010, T012 |
+| FR-009 | T004, T008, T012 |
+| FR-010 | T003, T009, T011, T013 |
+| FR-011 | T004, T008, T012 |
+| SC-001 | T002, T005, T011, T012 |
+| SC-002 | T002, T006, T011, T012 |
+| SC-003 | T003, T007, T011 |
+| SC-004 | T004, T008, T012 |
+| SC-005 | T002, T005, T009, T013 |
+
 ## Dependencies And Execution Order
 
 Stable schema and approved destination precede implementation. Backup promotion tests precede retention. A verified backup precedes restore. The staging restore drill is the production closeout gate.

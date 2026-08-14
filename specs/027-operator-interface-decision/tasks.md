@@ -29,6 +29,27 @@
 - [ ] T013 Observe D+1/D+3 if deployed.
 - [ ] T014 Synchronize evidence, roadmap, calendar, interface/technology strategy and development log.
 
+## Requirement Coverage
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T001-T003, T012 |
+| FR-002 | T002-T004 |
+| FR-003 | T005, T008, T010, T011 |
+| FR-004 | T005, T008, T010-T012 |
+| FR-005 | T001, T003, T007, T008 |
+| FR-006 | T006, T008, T011 |
+| FR-007 | T007, T008, T011 |
+| FR-008 | T003, T007, T009 |
+| FR-009 | T005, T010, T011 |
+| FR-010 | T006, T008, T012, T013 |
+| FR-011 | T003, T010, T014 |
+| SC-001 | T001, T002, T012 |
+| SC-002 | T002-T004 |
+| SC-003 | T005, T008, T010-T012 |
+| SC-004 | T001, T007, T009, T012 |
+| SC-005 | T005, T010, T012, T013 |
+
 ## Dependencies And Execution Order
 
 Specs 025 and 028 precede the scorecard. The no-build decision terminates conditional tasks successfully. If approved, red contracts precede source/dependency addition and rollout.

@@ -50,6 +50,9 @@ specs/023-incident-evidence-fusion/
 |-- research.md
 |-- data-model.md
 |-- quickstart.md
+|-- integration-map.md
+|-- contracts/config.md
+|-- contracts/evidence-rules.md
 |-- contracts/incident-assessment.md
 |-- checklists/requirements.md
 |-- tasks.md
@@ -71,21 +74,48 @@ tests/test_event_store.py
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). Existing deterministic analyzers already provide the ingredients. Fusion references persisted facts and exposes contradictions instead of duplicating collection or using an opaque model.
+See [research.md](research.md) and [integration-map.md](integration-map.md).
+Existing deterministic analyzers already provide the ingredients. Fusion
+references persisted facts and exposes contradictions instead of duplicating
+collection or using an opaque model.
 
 ## Phase 1: Design
 
-- Define stable fact/cause codes and a versioned ruleset.
+- Define stable fact/cause codes and a versioned ruleset using
+  [contracts/evidence-rules.md](contracts/evidence-rules.md).
 - Build baselines only from confirmed stable, fresh, finite samples.
 - Use confidence ceilings with confirmed reserved for direct evidence.
-- Persist assessments and fact references for later replay.
+- Persist assessments and source-row references idempotently for later replay.
 - Expose results on demand without adding unsolicited Telegram volume.
+- Validate the disabled-by-default keys and rollback in
+  [contracts/config.md](contracts/config.md).
+
+## Query And Performance Design
+
+- EventStore owns indexed bounded reads; the pure rules module receives rows.
+- The caller captures one explicit `assessment_now_ts` and bounded window.
+- Source rows are normalized and sorted once; no per-row database lookup is
+  allowed.
+- Canonical semantic JSON and an evidence digest exclude generated IDs and wall
+  time.
+- The test gate measures the 24-hour/current-fleet path under two seconds and
+  verifies query count remains bounded as row count grows.
+
+## Interface Compatibility
+
+- `build_miner_diagnosis_text` remains the disabled/unavailable fallback.
+- `/diagnose` authorization, parsing, queue delivery and command reply behavior
+  are unchanged.
+- Telegram and dashboard consume one shared assessment renderer.
+- Fusion never calls the action-policy or Hashcore paths.
 
 ## Rollback And Failure Boundary
 
 - Additive tables are ignored when the feature is disabled.
 - Persistence failure degrades to an unavailable historical assessment without altering monitoring.
 - Removing interface wiring leaves raw events untouched.
+- A query/performance budget failure returns the existing diagnosis fallback,
+  not an unbounded secondary query.
 
 ## Post-Design Constitution Check
 

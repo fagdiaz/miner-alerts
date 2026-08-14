@@ -29,7 +29,7 @@ safety gates are not compressed to recover an estimate.
 
 | Spec / package | Implementation window | Activation and review/fix window | Exit gate |
 | --- | --- | --- | --- |
-| Spec 020 closeout | 2026-08-13 to 2026-08-14 | 2026-08-15 to 2026-08-17 | Elevated restart, new PID, read-only smoke, controlled episode proof and no open P0/P1. |
+| Spec 020 closeout | Closed 2026-08-13 (`e502ab9`) | Runtime activation and observation passed | Elevated restart, new PID, read-only smoke, controlled episode proof and no open P0/P1. |
 | Spec 030 messaging quality | Closed 2026-08-13 | Runtime activation and repository push passed 2026-08-13 (`2afd65e`) | New PID/mutex/startup guard plus `/help`, detail, `/status` and `/events` smoke. |
 | Spec 021 liveness | Implemented, activated and SCM recovery-proven 2026-08-13 | D+1/D+3 through 2026-08-17 | Kill/hang/stale-worker tests, one controlled SCM recovery, new PID/mutex/startup guard/heartbeat and D+1/D+3. |
 | Spec 022 acquisition | 2026-08-28 to 2026-09-06 | 2026-09-07 to 2026-09-10 | Shadow comparison, bounded requests/latency, unchanged state/action/offset, D+1/D+3. |
@@ -45,8 +45,9 @@ safety gates are not compressed to recover an estimate.
 
 | Date | Milestone | Evidence required |
 | --- | --- | --- |
-| 2026-08-17 | Spec 020 release gate closed | Spec 020 T020, runtime logs and observed Telegram behavior. |
-| 2026-08-27 | Monitor self-liveness protected | Watchdog and SCM kill/hang/recovery evidence. |
+| 2026-08-13 | Spec 020 release gate closed | Spec 020 T020, runtime logs and observed Telegram behavior. |
+| 2026-08-14 | Spec 021 D+1 review | Scheduled liveness observation artifact and no open P0/P1. |
+| 2026-08-16 | Spec 021 D+3 decision | Repeated liveness evidence and close/extend decision. |
 | 2026-09-10 | Acquisition contract stable | Authoritative envelope and shadow comparison. |
 | 2026-09-24 | Incident assessment available | Deterministic replay and confidence audit. |
 | 2026-10-05 | Electrical decision made | Supported source or explicit blocked dependency. |

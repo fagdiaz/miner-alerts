@@ -29,6 +29,26 @@
 - [ ] T013 Review clock, units, data gaps and false correlation.
 - [ ] T014 Synchronize evidence, roadmap, calendar, strategies, runbook and development log.
 
+## Requirement Coverage
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T001-T004 |
+| FR-002 | T002, T005, T011, T013 |
+| FR-003 | T003, T004, T012 |
+| FR-004 | T006, T008, T011 |
+| FR-005 | T001, T002, T004 |
+| FR-006 | T005, T008, T009 |
+| FR-007 | T005, T009, T013 |
+| FR-008 | T006, T010, T011 |
+| FR-009 | T002, T003, T011 |
+| FR-010 | T002, T005, T008, T012 |
+| SC-001 | T001-T004, T012 |
+| SC-002 | T002, T005, T011 |
+| SC-003 | T005, T009, T011-T013 |
+| SC-004 | T006, T008, T010, T011 |
+| SC-005 | T005, T009, T012, T013 |
+
 ## Dependencies And Execution Order
 
 Physical discovery is the hard gate. Adapter, dependency and schema tasks do not start if no trustworthy source is proven. Correlation follows valid shadow samples only.

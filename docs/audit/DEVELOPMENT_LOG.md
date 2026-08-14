@@ -5,6 +5,36 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-08-13] - Specs 022-023: Implementation Planning Hardening
+
+* **Objetivo**: Convertir adquisicion adaptativa y fusion de evidencia en planes
+  implementables y conservadores antes de tocar el runtime productivo.
+* **Resultado**:
+  - Spec 022 quedo mapeada al request path secuencial real, con envelopes
+    autoritativos, calidad/razones estables, deadlines, leases, limites de
+    requests y configuracion deshabilitada por defecto.
+  - Spec 023 quedo mapeada a las tablas EventStore y analizadores existentes,
+    con reglas exactas para observed/suspected/confirmed, clocks, freshness,
+    contradicciones y no-causalidad electrica.
+  - Se definieron replay canonico, digest de evidencia, persistencia aditiva e
+    idempotente, queries acotadas y un renderer compartido con fallback al
+    `/diagnose` actual.
+  - El programa, roadmap y calendario ahora reflejan Specs 020/030 completas,
+    Spec 021 activa con D+1/D+3 pendientes y Specs 022-029 planificadas.
+  - Specs 024-029 ahora tienen trazabilidad explicita de cada FR/SC hacia sus
+    tareas, mas una matriz transversal de readiness, bloqueos y riesgos.
+* **Validaciones ejecutadas**:
+  - Cobertura explicita FR/SC/tareas, links relativos, placeholders,
+    consistencia de estados y `git diff --check`.
+  - Este bloque es exclusivamente documental; no cambio codigo, config local,
+    estado, base productiva, servicio ni mineros.
+* **Archivos principales**:
+  - `specs/022-adaptive-acquisition/*`
+  - `specs/023-incident-evidence-fusion/*`
+  - `docs/speckit/SPEC_PROGRAM.md`
+  - `docs/speckit/ROADMAP.md`
+  - `docs/speckit/DELIVERY_PLAN.md`
+
 ## [2026-08-13] - Spec 021: Monitor Liveness Watchdog (Observation Pending)
 
 * **Objetivo**: Detectar de forma independiente si el servicio existe pero el
@@ -60,6 +90,10 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     workers frescos, cola cero y ninguna decision/accion automatica. Las tareas
     D+1/D+3 protegidas y su recibo elevado continuaban presentes; la regresion
     completa quedo en 157/157.
+  - Un nuevo control read-only a las 21:23 fallo correctamente por el ultimo
+    collector `partial` (8/16): 25/26 seguian OFFLINE mientras servicio,
+    watchdog, workers y cola estaban sanos. 23/24 habian reiniciado y recuperado
+    sin ninguna accion automatica. El hallazgo queda abierto para D+1/D+3.
 * **Archivos principales**:
   - `app/liveness.py`
   - `app/miner_monitor.py`

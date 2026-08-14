@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [x] No `[NEEDS CLARIFICATION]` markers remain.
+- [x] No unresolved clarification markers remain.
 - [x] Requirements are testable and unambiguous.
 - [x] Success criteria are measurable.
 - [x] Acceptance scenarios and edge cases are defined.
@@ -25,3 +25,9 @@
 - [x] Negative paths and stale/missing evidence are covered.
 - [x] Validation extends beyond `py_compile`.
 - [x] Runtime rollout and observation evidence are required before completion.
+- [x] Explicit assessment time and canonical replay digest are defined.
+- [x] Stale, partial, late, future-skew and unparsed-clock ceilings are deterministic.
+- [x] Fleet timing cannot confirm electrical causality.
+- [x] Disabled, unavailable and over-budget behavior preserves current diagnosis.
+- [x] Persistence is additive, idempotent and source-referenced.
+- [x] Every functional requirement and success criterion maps to tasks.

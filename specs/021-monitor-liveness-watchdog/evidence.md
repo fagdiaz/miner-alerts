@@ -205,6 +205,24 @@
   PASS. Observer/watchdog/liveness/monitor compilation, PowerShell parsing,
   installer dry-run, JSON parsing, Speckit QA and `git diff --check` pass.
 
+## Pre-D+1 Runtime Finding - 2026-08-13 21:23 ART
+
+- A fresh read-only D+0 observation correctly returned `FAIL` with stable reason
+  `collector_latest_run_failed`; this result is retained rather than being
+  reclassified as a liveness pass.
+- The monitor service and watchdog themselves remained healthy: wrapper PID
+  `35836`, monitor PID `35788`, tick sequence `465`, fresh tick/poller/sender,
+  queue depth zero, 240 watchdog samples, zero unhealthy assessments, zero
+  watchdog actions and zero automatic-action records since activation.
+- Persisted current evidence showed miners 25 and 26 `OFFLINE` across repeated
+  samples from 20:59 through 21:21. The latest Vnish collector therefore
+  completed `partial` at 8/16 streams. Miners 23 and 24 recorded uptime resets
+  at 20:59, recovered through LOW and were back `OK`; all their auto-reboot
+  evaluations were `not_sustained` or `not_low`, with no automatic action.
+- This is a real fleet/collector degradation, not a duplicated monitor or a
+  watchdog failure. D+1/D+3 remain open and must evaluate the actual condition;
+  no code, config, service or miner action was changed by this inspection.
+
 ## Implementation And Deterministic Validation - 2026-08-13
 
 - Added versioned, atomically replaced heartbeat state with PID, process start,

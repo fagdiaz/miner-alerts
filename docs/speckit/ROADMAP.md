@@ -252,7 +252,8 @@ automatically.
 
 ## Governance
 
-- `.specify/feature.json` stays on Spec 020 until its runtime gate closes.
+- `.specify/feature.json` stays on Spec 021 until its D+1/D+3 observation gate
+  closes.
 - Only one production-affecting spec may roll out at a time.
 - Read-only discovery can overlap only when it does not touch the monitor.
 - P0/P1 incidents interrupt the calendar; displaced dates move.

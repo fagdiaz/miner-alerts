@@ -29,6 +29,26 @@
 - [ ] T013 Prove existing action scope and templates unchanged.
 - [ ] T014 Synchronize evidence, roadmap, calendar, Hashcore strategy and development log.
 
+## Requirement Coverage
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T002, T005, T007, T012 |
+| FR-002 | T002, T003, T005, T012 |
+| FR-003 | T003, T006, T007 |
+| FR-004 | T003, T004, T007, T011 |
+| FR-005 | T003, T005, T011, T012 |
+| FR-006 | T008, T009 |
+| FR-007 | T003, T006-T010 |
+| FR-008 | T001, T013 |
+| FR-009 | T006, T009, T010 |
+| FR-010 | T005, T007, T011, T012 |
+| SC-001 | T003, T006, T007, T012 |
+| SC-002 | T002, T003, T006, T012 |
+| SC-003 | T004, T007, T011 |
+| SC-004 | T003, T005, T011, T012 |
+| SC-005 | T008-T010 |
+
 ## Dependencies And Execution Order
 
 Safety baseline and vendor-proven invocation allowlist precede execution. Sanitization precedes committed artifacts. Candidate ranking follows complete classification and cannot expand actions.

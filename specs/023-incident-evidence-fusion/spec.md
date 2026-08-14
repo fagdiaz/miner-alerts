@@ -26,6 +26,7 @@ An incident shows one chronological evidence summary instead of requiring manual
 
 1. **Given** an incident has state, firmware and quality facts, **When** assessment is requested, **Then** one bounded timeline identifies source and time
 2. **Given** sources disagree, **When** assessment is rendered, **Then** the conflict is visible and no cause becomes confirmed
+3. **Given** the same persisted rows, explicit window and ruleset are replayed, **When** assessment runs twice, **Then** semantic output and evidence digest are identical
 
 ---
 
@@ -41,6 +42,7 @@ Every conclusion is labeled observed, suspected or confirmed with support, contr
 
 1. **Given** only temporal proximity exists, **When** a cause is scored, **Then** it is at most suspected
 2. **Given** direct source evidence and matching symptoms exist, **When** a cause is scored, **Then** it may be confirmed under the versioned rule
+3. **Given** a source is stale, partial, late or clock-uncertain, **When** it is evaluated, **Then** it remains visible but cannot promote an ordering-sensitive cause
 
 ---
 
@@ -56,6 +58,7 @@ Simultaneous miner symptoms are grouped without automatically claiming an electr
 
 1. **Given** several miners degrade inside the fleet window, **When** assessment runs, **Then** a fleet-pattern observation appears
 2. **Given** power data is absent, **When** fleet pattern appears, **Then** electrical cause remains unconfirmed
+3. **Given** fusion is disabled or unavailable, **When** diagnosis is requested, **Then** the existing read-only diagnosis remains available without changing actions
 
 ### Edge Cases
 
@@ -64,6 +67,10 @@ Simultaneous miner symptoms are grouped without automatically claiming an electr
 - An incident predates one data table.
 - One fact could match adjacent episodes.
 - Manual and automatic actions occur near one restart.
+- A newer valid fact contradicts an older irregular fact.
+- The collector completes partially or returns no relevant events.
+- A source timestamp is in the future beyond clock-skew tolerance.
+- Assessment persistence fails after a valid read-only result is calculated.
 
 ## Requirements
 
@@ -80,6 +87,10 @@ Simultaneous miner symptoms are grouped without automatically claiming an electr
 - **FR-009**: Persisted assessments MUST preserve ruleset version and source references for replay.
 - **FR-010**: Stale or clock-uncertain evidence MUST lower confidence deterministically.
 - **FR-011**: Telegram and dashboard detail MUST share one assessment renderer.
+- **FR-012**: Assessment rules MUST receive an explicit assessment time, use stable ordering and produce a canonical evidence digest independent of creation time or database-generated IDs.
+- **FR-013**: Fusion MUST be disabled by default and MUST preserve the existing diagnosis path when disabled, unavailable or over budget.
+- **FR-014**: Source reads MUST be indexed, bounded by miner/time/limit and avoid per-row query growth.
+- **FR-015**: Unknown fact or cause codes MUST fail closed and MUST NOT promote confidence.
 
 ### Key Entities
 
@@ -97,12 +108,15 @@ Simultaneous miner symptoms are grouped without automatically claiming an electr
 - **SC-003**: Every conclusion links to persisted facts and exposes contradiction or missing evidence.
 - **SC-004**: Fleet patterns are recognized without changing action decisions.
 - **SC-005**: A 24-hour bounded assessment completes under two seconds at current scale.
+- **SC-006**: Enabling or disabling fusion changes no state transition, persisted streak, reboot decision or Hashcore invocation in deterministic regression tests.
+- **SC-007**: Migration and repeated-save tests preserve old readers and store at most one assessment for the same subject, ruleset and evidence digest.
 
 ## Assumptions
 
 - Existing SQLite data supports initial replay with one additive assessment migration.
 - Current stability, quality, restart and Vnish analyzers are reused.
 - Electrical evidence remains optional until Spec 024 proves a source.
+- Spec 022 persists or exposes authoritative acquisition quality and stable reason codes before Spec 023 implementation begins.
 
 ## Non-Goals
 

@@ -2,9 +2,8 @@
 
 **Captured**: 2026-08-13 22:05-22:12 ART
 
-**Status**: Preliminary pre-D+1 baseline. It does not complete T001 because
-direct per-request/tick-duration percentiles still require approved
-instrumentation after the implementation gate.
+**Status**: T001 complete with static, passive-heartbeat and controlled
+read-only API 4028 evidence.
 
 ## Static Request Boundary
 
@@ -61,14 +60,42 @@ and file-observation jitter are included.
 - Latest Vnish collector run recovered from the earlier partial result to `ok`
   with 16/16 streams.
 
+## Controlled Sequential API 4028 Sample - 2026-08-14
+
+`tools/acquisition_baseline.py` reproduced the current configured-order path in
+a separate process: one five-second `summary`, then one five-second `stats` only
+when the summary responded, with zero retries. It wrote only generic
+`miner-1`...`miner-4` labels to an ignored atomic JSON artifact.
+
+Ten samples against four miners produced:
+
+| Metric | Result |
+| --- | --- |
+| Summary requests | 40/40 successful |
+| Conditional stats requests | 40/40 successful |
+| Automatic retries | 0 |
+| Sequential cycle minimum | 140.734 ms |
+| Sequential cycle P50 | 171.031 ms |
+| Sequential cycle mean | 172.670 ms |
+| Sequential cycle P95 / maximum | 204.077 ms |
+| Effective interval estimate P50 | 30.171 s |
+| Effective interval estimate P95 | 30.204 s |
+
+Across generic miners, summary P50 ranged from 19.878 to 24.909 ms and summary
+P95 from 30.939 to 44.513 ms. Stats P50 ranged from 13.412 to 16.487 ms and
+stats P95 from 31.606 to 43.081 ms.
+
+The first sandboxed invocation was excluded because local-network access was
+denied and all outcomes were typed `error`. The authoritative run was repeated
+with explicit local-network permission and atomically replaced that artifact.
+After capture, the service retained the same PID, fresh tick/workers, queue zero
+and healthy watchdog. No state, action, Telegram or Hashcore path was invoked.
+
 ## Remaining Baseline Evidence
 
-After Spec 021 D+1 passes, T001 still needs controlled instrumentation for:
+Shadow comparison still needs the same metrics from the disabled/integrated
+adaptive path before activation. That belongs to T012, not T001.
 
-- summary and stats latency distributions separately;
-- full tick processing duration excluding the 30-second sleep;
-- per-miner request counts observed rather than statically inferred;
-- timeout/partial behavior under deterministic fixtures.
-
-No source, example config, local config or production runtime was changed to
-obtain this baseline.
+No monitor source, example/local config or production runtime was changed to
+obtain this baseline; only the standalone read-only tool and its tests were
+added.

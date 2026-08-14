@@ -80,12 +80,21 @@
   example/local config, service, scheduled tasks, miner IO and Telegram were
   not modified or restarted. T002-T005 are complete; T001 and T006-T014 remain
   open, with D+1 still blocking monitor wiring and D+3 blocking activation.
-- Speckit QA preflight with builds passed; the full repository suite passed
-  177/177. Python compilation, config/fixture JSON parsing, relative-link and
+- Speckit QA preflight with builds passed; after baseline-tool coverage the full
+  repository suite passed 181/181. Python compilation, config/fixture JSON
+  parsing, relative-link and
   FR/SC/task coverage, `git diff --check`, authority-import scan and exact
   monitor/config unchanged checks passed. The production service remained
   `Running`/`Automatic` with fresh tick/workers, queue zero and a healthy
   watchdog after the isolated implementation.
+- T001 then closed through `tools/acquisition_baseline.py`: a controlled
+  read-only 10-sample run issued 40 successful summaries, 40 conditional stats
+  and zero retries. Sequential cycle latency was 171.031 ms P50 and 204.077 ms
+  P95; the sleep-after-tick effective estimate was 30.171/30.204 s. Output used
+  generic miner labels in ignored `artifacts/` and the service remained healthy.
+- A red regression then exposed that an all-error capture could still print
+  `BASELINE_OK`. The tool now emits `ok`, `partial` or `failed`, returns nonzero
+  for incomplete capture and retains its sanitized artifact for diagnosis.
 
 ## Required Evidence Before Completion
 

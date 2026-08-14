@@ -16,9 +16,17 @@ until Spec 021 D+1 and production activation until D+3.
 
 ```powershell
 & ".\.venv\Scripts\python.exe" -m unittest tests.test_acquisition tests.test_reboot_safety tests.test_telegram_polling_stability
+& ".\.venv\Scripts\python.exe" -m unittest tests.test_acquisition_baseline
 & ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py"
-& ".\.venv\Scripts\python.exe" -m py_compile app\acquisition.py app\miner_monitor.py
+& ".\.venv\Scripts\python.exe" -m py_compile app\acquisition.py app\miner_monitor.py tools\acquisition_baseline.py
 Get-Content app\config.example.json -Raw | ConvertFrom-Json | Out-Null
+```
+
+The controlled baseline command is read-only and writes a sanitized ignored
+artifact:
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\acquisition_baseline.py --samples 10 --pause-seconds 1 --timeout-seconds 5 --output artifacts\spec022-sequential-baseline.json
 ```
 
 Before activation, compare the example values with `contracts/config.md`.

@@ -137,6 +137,7 @@ production activation waits for Spec 021 D+3.
 - [x] Pure typed authoritative/diagnostic envelope and epoch contracts.
 - [x] Bounded executor, lease and peer-isolation contracts without runtime wiring.
 - [x] Explicit valid/partial/invalid/timeout/error/late quality normalization.
+- [x] Sequential request/count/latency baseline with sanitized ignored output.
 - [ ] Optional diagnostic recovery probes that cannot update state or actions.
 - [ ] Baseline/shadow comparison for latency, requests, sample age and alerts.
 

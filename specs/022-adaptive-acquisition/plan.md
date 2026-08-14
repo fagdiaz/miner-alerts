@@ -79,7 +79,9 @@ app/acquisition.py
 app/miner_monitor.py          # consume authoritative envelopes
 app/event_store.py            # quality persistence if required
 app/config.example.json
+tools/acquisition_baseline.py
 tests/test_acquisition.py
+tests/test_acquisition_baseline.py
 tests/test_reboot_safety.py
 tests/test_telegram_polling_stability.py
 ```

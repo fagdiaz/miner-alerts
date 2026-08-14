@@ -8,7 +8,7 @@
 
 ## Phase 1: Baseline And Red Contracts
 
-- [ ] T001 Record sequential summary/stats order, five-second timeouts,
+- [x] T001 Record sequential summary/stats order, five-second timeouts,
   sleep-after-tick cadence, per-miner request counts and tick latency percentiles.
 - [x] T002 [P] Add failing epoch completeness, late-result, missed-epoch and
   host-resume no-burst tests, including proof that authoritative outage checks

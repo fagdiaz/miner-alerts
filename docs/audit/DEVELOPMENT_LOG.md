@@ -20,9 +20,14 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Veinte contratos deterministas prueban orden estable, aislamiento de peers,
     presupuestos numericos, compatibilidad de boards, resultados late y firewall
     de autoridad diagnostica. La suite paso veinte ejecuciones consecutivas.
-  - Speckit QA y la regresion completa 177/177 pasaron; compilacion, JSON,
+  - Speckit QA y la regresion completa final 181/181 pasaron; compilacion, JSON,
     trazabilidad, imports de autoridad y diff confirmaron que monitor/config no
     cambiaron. El servicio continuo sano, sin reinicio y con cola cero.
+  - Un capturador secuencial read-only cerro T001 con 10 muestras: 40 summary y
+    40 stats exitosos, cero retries, ciclo P50 171.031 ms y P95 204.077 ms. El
+    artefacto ignorado usa alias genericos y el servicio conservo PID y salud.
+    Capturas sin exitos ahora retornan estado/exit code fallido en vez de un OK
+    enganoso.
   - `app/miner_monitor.py`, configuracion, servicio, Telegram, mineros y
     Hashcore permanecieron sin cambios.
 * **Archivos principales**:

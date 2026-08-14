@@ -24,6 +24,14 @@
 - Planned tests now cover slow peers, late results, host resume, transport
   failure, partial responses, request budgets, manual-command isolation and
   disabled-path parity.
+- `integration-map.md` records the exact current source seam, stable reason
+  vocabulary, ordered state clock, lease behavior and deterministic contract
+  matrix without changing runtime code.
+- `contracts/config.md` freezes disabled-safe keys, validation ranges, request
+  budgets and the no-environment-override rule before implementation.
+- Cross-artifact review covers 15 functional requirements and seven measurable
+  criteria with 14 dependency-ordered tasks; every requirement has an explicit
+  task mapping, all relative links resolve and no clarification marker remains.
 - No application source, runtime config, state, service or miner was changed by
   this planning hardening.
 

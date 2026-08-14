@@ -55,8 +55,10 @@ specs/022-adaptive-acquisition/
 |-- plan.md
 |-- research.md
 |-- data-model.md
+|-- integration-map.md
 |-- quickstart.md
 |-- contracts/acquisition.md
+|-- contracts/config.md
 |-- checklists/requirements.md
 |-- tasks.md
 `-- evidence.md
@@ -78,7 +80,12 @@ tests/test_telegram_polling_stability.py
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). API 4028 has no trusted push contract. Limited concurrent epochs reduce head-of-line blocking, while typed provenance prevents faster probes from changing count-based safety semantics.
+See [research.md](research.md), [integration-map.md](integration-map.md) and
+[contracts/config.md](contracts/config.md).
+API 4028 has no trusted push contract. Limited concurrent epochs reduce
+head-of-line blocking, while typed provenance prevents faster probes from
+changing count-based safety semantics. The integration map fixes the transport,
+ordering, state-clock and manual-command boundaries against current source.
 
 ## Phase 1: Design
 

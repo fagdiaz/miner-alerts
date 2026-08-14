@@ -21,6 +21,10 @@ gate passes.
 Get-Content app\config.example.json -Raw | ConvertFrom-Json | Out-Null
 ```
 
+Before activation, compare the example values with `contracts/config.md`.
+Absence of the keys and explicit `adaptive_acquisition_enabled=false` must both
+select the sequential path.
+
 ## Controlled Runtime Validation
 
 1. Capture the sequential baseline: summary/stats request counts, full-tick

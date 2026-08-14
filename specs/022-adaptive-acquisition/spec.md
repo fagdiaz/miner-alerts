@@ -78,7 +78,8 @@ Optional 10-second diagnostic probes can show recovery without advancing state o
 - **FR-004**: Every result MUST include source, authority, observation time, latency, validity and reason code.
 - **FR-005**: Only authoritative results MAY update streaks, episodes, sustained-LOW timers or action evaluation.
 - **FR-006**: Diagnostic probes MUST be non-authoritative and MUST NOT mutate action or state counters.
-- **FR-007**: Per-miner in-flight exclusion MUST prevent overlapping requests.
+- **FR-007**: Per-miner in-flight exclusion MUST prevent overlapping
+  scheduler-owned authoritative and diagnostic requests.
 - **FR-008**: Authoritative outage checks MUST NOT back off beyond their epoch.
 - **FR-009**: Fleet transport failures MUST remain distinguishable from individual failures.
 - **FR-010**: Telegram offset, state thresholds, hysteresis and action gates MUST remain unchanged.

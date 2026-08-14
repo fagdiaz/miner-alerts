@@ -22,12 +22,19 @@ Vnish evidence or the independent monitor watchdog.
 ## Capability Inventory
 
 Before adding new features, inventory the local Toolkit installation through the
-Spec 026 allowlisted tool. Do not copy these conceptual actions into production
-without first proving their installed-version help contract:
+Spec 026 metadata-only tool. This default mode does not start the wrapper or
+executable:
 
 ```powershell
-& ".\\.venv\\Scripts\\python.exe" tools\\hashcore_inventory.py --config app\\config.json
+& ".\\.venv\\Scripts\\python.exe" tools\\hashcore_inventory.py --config app\\config.json --metadata-only
 ```
+
+Static inspection on 2026-08-13 established a local Hashcore Toolkit
+`1.6.0+167` installation and a batch wrapper that forwards arbitrary `%*`
+arguments. That proves installation identity, not command safety. The reviewed
+invocation allowlist is currently empty, so process discovery remains blocked.
+Existing production `version`/help probes are baseline behavior and are not
+automatically approved for the inventory tool.
 
 For each available command, record:
 
@@ -39,9 +46,12 @@ For each available command, record:
 - whether it touches a miner
 - QA validation path
 
-The inventory itself is read-only, bounded, no-window and sanitized. Unknown
-commands remain prohibited (classified as mutating for execution policy) until
-vendor documentation and controlled evidence prove otherwise.
+Metadata-only starts zero processes. Any future invocation requires exact
+wrapper/executable fingerprints plus vendor evidence, fixed argv, no miner or
+settings arguments, `shell=False`, no-window, disabled stdin, one attempt, a
+10-second timeout and 64 KiB per-stream bounds. Unknown commands remain
+prohibited (classified as mutating for execution policy) until vendor
+documentation and controlled evidence prove otherwise.
 
 ## Recommended Feature Order
 
@@ -90,6 +100,9 @@ Allowed only with confirmation and QA guardrails:
   explicitly confirmed actions.
 - Do not schedule inventory commands until their cost and output are measured.
 - Do not expand action scope during the Spec 026 inventory window.
+- Do not treat wrapper pass-through, command names or existing monitor probes as
+  proof of read-only behavior.
+- Do not invoke any command while the fingerprint-bound allowlist is empty.
 
 ## Calendar Gate
 

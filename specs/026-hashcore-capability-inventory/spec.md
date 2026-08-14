@@ -6,7 +6,7 @@
 
 **Status**: Planned; not implemented
 
-**Input**: Inventory the installed Hashcore Toolkit version and command surface, classify every capability as read-only, mutating or unknown, and preserve the existing reboot/restart action boundary.
+**Input**: Inventory the installed Hashcore Toolkit version and command surface, classify every capability as read-only, mutating or unknown, and preserve the existing reboot/restart action boundary. Static installation metadata is collected separately from process invocation; the latter remains blocked until an exact vendor-proven allowlist exists.
 
 **Risk Class**: MEDIUM
 
@@ -24,8 +24,9 @@ The operator and developer have a versioned sanitized list of Toolkit commands, 
 
 **Acceptance Scenarios**:
 
-1. **Given** Toolkit is installed, **When** inventory runs, **Then** version, path identity and discovered help are recorded without secrets
+1. **Given** Toolkit is installed, **When** metadata-only inventory runs, **Then** version and sanitized file identity are recorded without executing the wrapper or exposing paths
 2. **Given** Toolkit is missing or help unsupported, **When** inventory runs, **Then** the result is explicit and no command is guessed
+3. **Given** no reviewed invocation allowlist exists, **When** full discovery is requested, **Then** it closes as blocked without starting a process
 
 ---
 
@@ -79,6 +80,12 @@ Potential read-only additions receive a value/risk/overlap assessment before any
 - **FR-008**: Existing production action scope MUST remain reboot and restart only.
 - **FR-009**: Any newly proposed mutating capability MUST require its own future high-risk spec.
 - **FR-010**: Inventory outputs MUST be reproducible and versioned by Toolkit version.
+- **FR-011**: Metadata-only mode MUST be the default and MUST NOT create a process, contact a miner or read settings payloads.
+- **FR-012**: Process discovery MUST require an explicit reviewed allowlist tied to the exact executable fingerprint; filename or apparently safe command names alone are insufficient evidence.
+- **FR-013**: Approved process discovery MUST use fixed argument vectors, `shell=False`, no-window creation, stdin disabled, a timeout of at most 10 seconds per invocation and bounded stdout/stderr capture.
+- **FR-014**: Discovery MUST NOT include a miner host, miner name, settings path, credentials or user-supplied argument fragments.
+- **FR-015**: A changed executable or wrapper fingerprint MUST invalidate the invocation allowlist and return the inventory to metadata-only/blocked status.
+- **FR-016**: The inventory MUST prove that `app/miner_monitor.py`, production reboot/restart templates and action-authority call sites remain unchanged.
 
 ### Key Entities
 
@@ -96,11 +103,14 @@ Potential read-only additions receive a value/risk/overlap assessment before any
 - **SC-003**: Committed inventory artifacts contain no secrets or real addresses.
 - **SC-004**: All approved discovery invocations terminate within their timeout without a visible console.
 - **SC-005**: Any proposed integration identifies a current evidence gap and a separate implementation spec.
+- **SC-006**: Metadata-only mode performs zero subprocess calls and succeeds or reports a stable missing/blocked reason within 5 seconds.
+- **SC-007**: Every invocation sample is tied to one installation fingerprint, captures at most 64 KiB per stream and contains zero local paths, miner addresses or credentials after sanitization.
+- **SC-008**: A fingerprint mismatch, absent allowlist or unrecognized allowlist entry starts zero Toolkit processes.
 
 ## Assumptions
 
 - The locally installed Toolkit is the production-relevant version.
-- Help/version invocation can be validated without touching miners; otherwise inventory is static/documentation-only.
+- Help/version invocation may be validated without touching miners only after vendor evidence and exact fingerprint binding exist; otherwise inventory is metadata-only and explicitly blocked.
 - Current reboot/restart templates remain unchanged.
 
 ## Non-Goals

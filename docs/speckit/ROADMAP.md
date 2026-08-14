@@ -182,8 +182,11 @@ No protocol writes and no power-driven action.
 
 **Spec**: `specs/026-hashcore-capability-inventory`
 
-- [ ] Fingerprint installed Toolkit version without exposing sensitive paths.
-- [ ] Run only vendor-proven help/version discovery with timeout/no-window.
+- [x] Establish static planning baseline: Toolkit `1.6.0+167`, wrapper/executable
+  present and pass-through wrapper shape, without process execution.
+- [ ] Implement metadata-only inventory as the zero-process default.
+- [ ] Run only exact fingerprint-bound vendor-proven help/version discovery with
+  timeout/no-window; current allowlist is empty and invocation is blocked.
 - [ ] Classify every operation read-only, mutating or unknown.
 - [ ] Compare read-only capabilities with API 4028/Vnish overlap.
 - [ ] Require a new high-risk spec for every future action.

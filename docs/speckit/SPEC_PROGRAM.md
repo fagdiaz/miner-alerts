@@ -95,7 +95,7 @@ scheduled before conditional Spec 027.
 | 023 Evidence fusion | Implementation-ready plan | Fixture curation and contract review | Code waits for Spec 022 authority/quality persistence and exit evidence |
 | 024 Electrical | Discovery-ready, conditional | Physical inventory and documented read-only capability discovery | Adapter waits for a real source, authentication and no-write proof |
 | 025 Metrics | Contract-ready | Metric-name/cardinality review | Snapshot implementation waits for 021/022 stable schemas |
-| 026 Hashcore inventory | Safety-plan ready | Vendor documentation review only | Invocation waits for proven help/version allowlist and installed Toolkit identity |
+| 026 Hashcore inventory | Metadata/contract ready | Vendor documentation review and static fingerprint refresh only | Local `1.6.0+167` identity is statically proven; invocation waits for an exact fingerprint-bound help/version allowlist |
 | 028 Backup/restore | Contract-ready | Destination/path policy review | Implementation waits for stable post-023 schema and approved off-repo destination |
 | 027 Interface | Decision-gate ready | Workflow definitions only | Scorecard waits for 025/028; MVP exists only if no-build fails |
 | 029 Stabilization | Final-gate ready | Regression-matrix maintenance only | Candidate freeze waits for accepted/closed 021-028 outcomes |
@@ -111,7 +111,7 @@ activation or a new long-lived component cannot bypass the hard blocks above.
 | Correlation presents an unsupported root cause | Direct-evidence ceilings, visible contradictions/missing sources, timing-only suspected at most | Deterministic replay and confidence-wording audit |
 | Miner board voltage is mistaken for AC input | Spec 024 external-source-only electrical contract | Proven PDU/UPS/meter adapter or explicit blocked outcome |
 | Metrics/exporter becomes a second authority | Atomic sanitized read-only snapshot; no monitor action imports | Outage isolation, redaction/cardinality and dependency audit |
-| Hashcore discovery executes an unknown mutation | Vendor-proven allowlist; unknown classified mutating | Sanitized inventory, timeout/no-window and unchanged action-scope proof |
+| Hashcore discovery executes an unknown mutation | Metadata-only default; exact fingerprint-bound vendor allowlist; unknown classified mutating | Zero-process rejection, sanitized inventory, timeout/no-window and unchanged action-scope proof |
 | Backup corrupts or overwrites live history | SQLite online backup, atomic promotion, staging-only restore | Concurrent-write integrity, manifest/hash and staging restore drill |
 | Optional UI expands attack/action surface | No-build first; loopback, SQLite read-only and no action/config routes if built | Workflow scorecard, route/import audit and monitor outage isolation |
 | Calendar pressure compresses safety gates | Gates move dates and code changes reset affected observation | Evidence timestamps and explicit approve/block decision |
@@ -313,5 +313,8 @@ The program requires three documentation sweeps.
   atomic verification, UTC union retention and staging-only restore proof.
 - Hardened Spec 024 around the proven non-AC meaning of current miner fields,
   explicit blocked discovery, protocol read allowlists and bounded collection.
+- Hardened Spec 026 around a statically proven Toolkit `1.6.0+167` installation,
+  a pass-through wrapper, zero-process metadata-only default, empty reviewed
+  allowlist, exact fingerprint binding and bounded/sanitized invocation rules.
 - No future-spec planning change activated code, changed local runtime config or
   restarted the production service.

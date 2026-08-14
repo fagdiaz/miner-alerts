@@ -5,7 +5,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-13] - Specs 022-025 And 028: Implementation Planning Hardening
+## [2026-08-13] - Specs 022-026 And 028: Implementation Planning Hardening
 
 * **Objetivo**: Convertir adquisicion adaptativa y fusion de evidencia en planes
   implementables y conservadores antes de tocar el runtime productivo.
@@ -32,6 +32,11 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Spec 024 confirma que voltage/power de cadenas y errores PSU son evidencia
     interna, no medicion AC; exige hardware real, allowlist read-only, sin scans
     genericos y un collector acotado antes de correlacion electrica.
+  - Spec 026 separa inventario estatico de invocacion: se probo sin ejecutar
+    procesos una instalacion Toolkit `1.6.0+167` y que su wrapper reenvia `%*`.
+    Metadata-only sera el default; la allowlist queda vacia/bloqueada hasta
+    evidencia vendor, con binding por fingerprints, argv fijo, timeout,
+    no-window, stdin deshabilitado, streams acotados y sanitizacion obligatoria.
 * **Validaciones ejecutadas**:
   - Cobertura explicita FR/SC/tareas, links relativos, placeholders,
     consistencia de estados y `git diff --check`.
@@ -42,10 +47,12 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - `specs/023-incident-evidence-fusion/*`
   - `specs/024-electrical-source-discovery/*`
   - `specs/025-prometheus-metrics/*`
+  - `specs/026-hashcore-capability-inventory/*`
   - `specs/028-backup-retention-restore/*`
   - `docs/speckit/SPEC_PROGRAM.md`
   - `docs/speckit/ROADMAP.md`
   - `docs/speckit/DELIVERY_PLAN.md`
+  - `docs/speckit/HASHCORE_TOOLKIT_STRATEGY.md`
 
 ## [2026-08-13] - Spec 021: Monitor Liveness Watchdog (Observation Pending)
 

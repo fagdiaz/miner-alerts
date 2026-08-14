@@ -6,7 +6,12 @@
 
 ## Summary
 
-Build a sanitized, versioned inventory from the installed Toolkit using only bounded vendor-proven help/version discovery. Classify every operation conservatively and produce integration candidates, without changing current reboot/restart execution.
+Build a sanitized, versioned inventory from the installed Toolkit in two
+strictly separated phases: default metadata-only fingerprinting with zero
+processes, then optional bounded invocation only from an exact
+fingerprint-bound vendor-proven allowlist. Classify every evidenced operation
+conservatively and produce integration candidates without changing current
+reboot/restart execution.
 
 ## Technical Context
 
@@ -22,7 +27,7 @@ Build a sanitized, versioned inventory from the installed Toolkit using only bou
 
 **Project Type**: Offline/read-only inventory CLI and documentation artifacts
 
-**Performance Goals**: Every invocation has a short documented timeout and the full inventory completes under two minutes
+**Performance Goals**: Metadata-only completes within 5 seconds; every approved invocation is capped at 10 seconds and 64 KiB per stream; the full inventory completes under two minutes
 
 **Constraints**: No real secrets or runtime files in Git; no unproved completion; no action authority outside the existing monitor
 
@@ -51,7 +56,9 @@ specs/026-hashcore-capability-inventory/
 |-- data-model.md
 |-- quickstart.md
 |-- contracts/capability-inventory.md
+|-- contracts/discovery-allowlist.md
 |-- checklists/requirements.md
+|-- integration-map.md
 |-- tasks.md
 `-- evidence.md
 ```
@@ -66,16 +73,23 @@ docs/speckit/HASHCORE_TOOLKIT_STRATEGY.md
 app/miner_monitor.py          # invariant inspection only; no planned behavior change
 ```
 
-**Structure Decision**: Keep inventory outside the monitor and commit only sanitized normalized artifacts. Raw local outputs remain ignored.
+**Structure Decision**: Keep inventory outside the monitor and commit only
+sanitized normalized artifacts. Raw local outputs remain ignored. The installed
+wrapper is a pass-through, not a policy boundary, so metadata collection and
+process invocation are separate code paths.
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). The repository currently knows only existing reboot/restart templates. The installed binary is the authoritative capability source, but unknown commands are unsafe; discovery must be evidence-first and no-window.
+See [research.md](research.md) and [integration-map.md](integration-map.md).
+Static inspection proves a local Toolkit `1.6.0+167` installation and a batch
+wrapper that forwards arbitrary arguments. It does not prove any argument safe.
+The invocation allowlist therefore remains empty and process discovery blocked.
 
 ## Phase 1: Design
 
-- Fingerprint installation and version before command discovery.
-- Use a fixed allowlist of vendor-proven help/version invocations.
+- Fingerprint installation and version without process creation before command discovery.
+- Make metadata-only the default and valid blocked outcome.
+- Use a fixed, fingerprint-bound allowlist of vendor-proven help/version invocations only when evidence exists.
 - Normalize output shape while preserving exit code and timeout evidence.
 - Classify unknown as prohibited until vendor evidence proves otherwise.
 - Rank read-only candidates by unique operational value and source overlap.
@@ -83,6 +97,7 @@ See [research.md](research.md). The repository currently knows only existing reb
 ## Rollback And Failure Boundary
 
 - Inventory tooling is standalone and removable without runtime impact.
+- Missing/mismatched allowlist starts zero processes and closes as blocked.
 - Timeout or ambiguous output closes the item as unknown.
 - No monitor code or production templates change in this spec.
 

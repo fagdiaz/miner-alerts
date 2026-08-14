@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [x] No `[NEEDS CLARIFICATION]` markers remain.
+- [x] No unresolved clarification markers remain.
 - [x] Requirements are testable and unambiguous.
 - [x] Success criteria are measurable.
 - [x] Acceptance scenarios and edge cases are defined.
@@ -25,3 +25,8 @@
 - [x] Negative paths and stale/missing evidence are covered.
 - [x] Validation extends beyond `py_compile`.
 - [x] Runtime rollout and observation evidence are required before completion.
+- [x] Current chain/PSU evidence is explicitly distinguished from direct AC measurement.
+- [x] Supported/unsupported/blocked capability report fields are exact.
+- [x] Protocol operation allowlists prohibit generic scans and every write path.
+- [x] Collector cadence, one-in-flight and no-carry-forward behavior are bounded.
+- [x] Missing hardware remains a valid blocked closeout.

@@ -13,6 +13,12 @@
 2. Require direct measurement documentation before naming a metric AC voltage.
 3. Select at most one first adapter based on reliability and access.
 4. Keep all electrical conclusions advisory in this program.
+5. Treat current chain voltage/power and PSU firmware codes as miner-domain
+   observations only, never direct AC measurements.
+6. Prohibit generic network/OID/register discovery; require a documented
+   source-specific read allowlist.
+7. Use one in-flight request, no same-interval retry and no cadence faster than
+   the device update rate or five seconds.
 
 ## Rejected Or Deferred Alternatives
 
@@ -20,6 +26,8 @@
 - Adding an MQTT broker without a publisher.
 - Generic Modbus register scanning because it can be unsafe and ambiguous.
 - PDU outlet control because it is a new dangerous action surface.
+- Treating firmware `psu_error` or `power_voltage_low/high` as measured volts
+  because those are condition reports without calibrated external values.
 
 ## External Validation Sources
 

@@ -50,6 +50,8 @@ specs/024-electrical-source-discovery/
 |-- research.md
 |-- data-model.md
 |-- quickstart.md
+|-- integration-map.md
+|-- contracts/capability-report.md
 |-- contracts/electrical-source.md
 |-- checklists/requirements.md
 |-- tasks.md
@@ -71,21 +73,38 @@ app/config.example.json
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). Protocol choice follows the actual device. SNMPv3 offers authenticated management data, Modbus defines interoperable registers but requires a model map, MQTT is useful only when a device publishes, and miner chain voltage is not AC evidence.
+See [research.md](research.md) and [integration-map.md](integration-map.md).
+Protocol choice follows the actual device. SNMPv3 offers authenticated
+management data, Modbus defines interoperable registers but requires a model
+map, MQTT is useful only when a device publishes, and miner chain voltage is
+not AC evidence.
 
 ## Phase 1: Design
 
 - Produce a capability matrix before selecting a dependency.
+- Require the exact supported/unsupported/blocked report from
+  `contracts/capability-report.md` before adapter work.
 - Prefer authenticated read-only SNMPv3 when available; otherwise use documented read-only Modbus/vendor HTTPS/MQTT.
 - Normalize measurements into SI units and preserve source clock quality.
 - Persist collection health separately from values.
 - Feed power facts into Spec 023 only as observed/advisory evidence.
+- Enforce one in-flight request, source-specific operation allowlists, no generic
+  scanning and no same-interval retries.
+
+## Current Repository Finding
+
+Current Vnish/API 4028 fields are internal chain voltage/power, ASIC frequency,
+temperature and firmware-reported PSU/power conditions. No tracked external
+PDU/UPS/meter source or AC adapter exists. Planning is ready, but adapter work is
+blocked until real hardware identity, documentation and access are supplied.
 
 ## Rollback And Failure Boundary
 
 - If discovery is blocked, no runtime component or schema is added.
 - The collector is independently disabled without affecting miner monitoring.
 - Adapter failure records unavailable evidence and never changes actions.
+- A blocked discovery closes without dependency, table, collector or service
+  installation.
 
 ## Post-Design Constitution Check
 

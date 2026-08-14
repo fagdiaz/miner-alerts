@@ -79,6 +79,8 @@ Incident detail can show nearby power anomalies while keeping cause advisory.
 - **FR-008**: Power evidence MAY enrich incident assessment but MUST NOT authorize restart or reboot.
 - **FR-009**: Credentials MUST stay in local config or OS secret storage and never enter diagnostics or Git.
 - **FR-010**: Collection load and device request limits MUST be bounded and documented.
+- **FR-011**: Discovery and collection MUST enforce a source-specific read-operation allowlist and MUST NOT perform generic network, OID or register scans.
+- **FR-012**: Collector failures MUST be persisted separately from values and MUST NOT carry a previous measurement forward as current.
 
 ### Key Entities
 
@@ -96,6 +98,7 @@ Incident detail can show nearby power anomalies while keeping cause advisory.
 - **SC-003**: All adapter fixtures preserve units, source time and quality.
 - **SC-004**: No electrical path contains a write operation or action authorization.
 - **SC-005**: A power-source outage remains visible and cannot silently reuse stale measurements.
+- **SC-006**: Static/runtime fixtures reject every prohibited protocol operation and prove one in-flight request per source at no faster than documented cadence or five seconds.
 
 ## Assumptions
 

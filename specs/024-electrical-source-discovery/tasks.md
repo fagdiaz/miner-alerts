@@ -8,19 +8,25 @@
 
 ## Phase 1: Discovery Gate
 
-- [ ] T001 Inventory actual PSU, PDU, UPS, meter and breaker capabilities.
-- [ ] T002 Document model, firmware, protocol, units, update rate and authentication.
+- [ ] T001 Inventory actual PSU, PDU, UPS, meter and breaker capabilities; record
+  current miner-domain fields as non-AC evidence.
+- [ ] T002 Produce the sanitized capability report with model, firmware,
+  protocol, exact read allowlist, units, scaling, update rate and authentication.
 - [ ] T003 Capture sanitized read-only evidence or record the missing hardware dependency.
 - [ ] T004 Decide supported, unsupported or blocked before adding a dependency.
 ## Phase 2: Conditional Red Contracts
 
-- [ ] T005 [P] Add sample normalization, units, stale and timeout tests if a source is approved.
-- [ ] T006 [P] Add a static no-write operation contract.
+- [ ] T005 [P] Add normalization, finite/unit/clock/stale/timeout/no-carry-forward
+  tests if a source is approved.
+- [ ] T006 [P] Add static/runtime operation-allowlist, no-scan, no-write,
+  one-in-flight and cadence contract tests.
 - [ ] T007 [P] Add additive EventStore migration tests if persistence is approved.
 ## Phase 3: Conditional Adapter
 
-- [ ] T008 [US2] Implement one source-specific bounded read-only adapter.
-- [ ] T009 [US2] Persist normalized measurements and collection health.
+- [ ] T008 [US2] Implement one source-specific allowlisted adapter with one
+  in-flight request, bounded timeout and no same-interval retry.
+- [ ] T009 [US2] Persist normalized measurements and separate collection health
+  without raw payloads or carry-forward.
 - [ ] T010 [US3] Map measurements to advisory evidence-fusion facts.
 ## Phase 4: Validation And Closeout
 
@@ -43,11 +49,14 @@
 | FR-008 | T006, T010, T011 |
 | FR-009 | T002, T003, T011 |
 | FR-010 | T002, T005, T008, T012 |
+| FR-011 | T002, T004, T006, T008, T011 |
+| FR-012 | T005, T009, T011-T013 |
 | SC-001 | T001-T004, T012 |
 | SC-002 | T002, T005, T011 |
 | SC-003 | T005, T009, T011-T013 |
 | SC-004 | T006, T008, T010, T011 |
 | SC-005 | T005, T009, T012, T013 |
+| SC-006 | T006, T008, T011, T012 |
 
 ## Dependencies And Execution Order
 

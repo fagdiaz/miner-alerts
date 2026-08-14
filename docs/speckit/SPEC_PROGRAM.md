@@ -246,8 +246,8 @@ The program requires three documentation sweeps.
 
 - The original sweep validated 81 artifacts across nine packages. After Spec
   021 implementation evidence and Spec 022/023 hardening, the current 021-029
-  baseline contains 90 artifacts, 27 user stories, 104 functional
-  requirements, 49 measurable success criteria and 135 ordered tasks.
+  baseline contains 92 artifacts, 27 user stories, 106 functional
+  requirements, 50 measurable success criteria and 135 ordered tasks.
 - Confirmed every package has research, data model, contract, quickstart,
   requirements checklist, rollback boundary and initial evidence record.
 - Found and corrected one cross-template omission: risk classification was
@@ -311,5 +311,7 @@ The program requires three documentation sweeps.
   container mounts.
 - Hardened Spec 028 around SQLite API-only backup, marked disjoint roots,
   atomic verification, UTC union retention and staging-only restore proof.
+- Hardened Spec 024 around the proven non-AC meaning of current miner fields,
+  explicit blocked discovery, protocol read allowlists and bounded collection.
 - No future-spec planning change activated code, changed local runtime config or
   restarted the production service.

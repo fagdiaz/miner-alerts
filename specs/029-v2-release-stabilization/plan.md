@@ -6,7 +6,11 @@
 
 ## Summary
 
-Freeze features, build a release matrix from every accepted spec, run clean-environment and cross-feature regressions, execute controlled service activation plus backup restore, complete a 72-hour soak and seven-day review, and reconcile all documentation before release approval.
+Freeze features and a deterministic runtime payload, build stable R001-R025
+evidence from every terminal dependency, run clean-environment and cross-feature
+regressions, execute controlled service activation plus staging restore, complete
+one continuous 168-hour review with a 72-hour checkpoint, and reconcile all
+documentation before binary approve/block.
 
 ## Technical Context
 
@@ -22,7 +26,7 @@ Freeze features, build a release matrix from every accepted spec, run clean-envi
 
 **Project Type**: Release integration, validation, operational rollout and documentation closeout
 
-**Performance Goals**: No regression beyond per-spec budgets; monitor and auxiliary resource baselines remain within approved limits
+**Performance Goals**: No regression beyond per-spec budgets; monitor and auxiliary resource baselines remain within approved limits; seven daily reports cover at least 168 continuous hours
 
 **Constraints**: No real secrets or runtime files in Git; no unproved completion; no action authority outside the existing monitor
 
@@ -52,6 +56,8 @@ specs/029-v2-release-stabilization/
 |-- quickstart.md
 |-- contracts/release-gate.md
 |-- checklists/requirements.md
+|-- integration-map.md
+|-- regression-matrix.md
 |-- tasks.md
 `-- evidence.md
 ```
@@ -68,18 +74,26 @@ AGENTS.md
 # Production code changes only as isolated bug fixes with separate evidence
 ```
 
-**Structure Decision**: Use existing per-spec artifacts as evidence sources. Stabilization owns the integration matrix and documentation baseline, not duplicated feature implementations.
+**Structure Decision**: Use existing per-spec artifacts as evidence sources.
+Stabilization owns the stable matrix, release manifest and documentation
+baseline, not duplicated feature implementations. A small release-audit tool may
+normalize evidence but cannot execute actions or infer missing runtime health.
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). The project constitution already requires runtime evidence beyond compilation. This spec formalizes feature freeze, clean validation, controlled activation, restore proof and an observation period as one release gate.
+See [research.md](research.md), [regression-matrix.md](regression-matrix.md) and
+[integration-map.md](integration-map.md). The gate distinguishes full Git
+identity from the deployed runtime-payload digest, requires terminal dependency
+states and formalizes continuous observation rather than relying on checked
+tasks or suite totals.
 
 ## Phase 1: Design
 
-- Freeze accepted feature scope and record exact candidate identity.
+- Freeze accepted feature scope, terminal dispositions, full candidate identity
+  and deterministic runtime-payload digest.
 - Map every core invariant and operator workflow to a deterministic check.
 - Run static/unit/integration/QA first, then controlled production activation.
-- Use 72-hour active soak followed by final seven-day reliability review.
+- Use one 168-hour active review with daily reports and an hour-72 checkpoint.
 - Perform three final documentation sweeps and block on unresolved contradictions.
 
 ## Rollback And Failure Boundary
@@ -88,6 +102,8 @@ See [research.md](research.md). The project constitution already requires runtim
 - A failed candidate is stopped and prior build/service definition restored without restoring state triggers.
 - Database restoration remains staged/manual and never automatic.
 - Any P0/P1 finding returns ownership to the smallest affected spec or isolated hotfix evidence.
+- Runtime/config/schema/service changes reset affected checks and observation;
+  docs-only changes preserve runtime hours only under the same payload digest.
 
 ## Post-Design Constitution Check
 

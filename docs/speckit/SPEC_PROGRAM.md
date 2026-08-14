@@ -98,7 +98,7 @@ scheduled before conditional Spec 027.
 | 026 Hashcore inventory | Metadata/contract ready | Vendor documentation review and static fingerprint refresh only | Local `1.6.0+167` identity is statically proven; invocation waits for an exact fingerprint-bound help/version allowlist |
 | 028 Backup/restore | Contract-ready | Destination/path policy review | Implementation waits for stable post-023 schema and approved off-repo destination |
 | 027 Interface | Fixed scorecard/conditional contract ready | Existing static generator baseline only | Three-run scorecard waits for 025/028; MVP files/dependencies exist only for exact P1 fields failed by all current owners |
-| 029 Stabilization | Final-gate ready | Regression-matrix maintenance only | Candidate freeze waits for accepted/closed 021-028 outcomes |
+| 029 Stabilization | R001-R025 release contract ready | Matrix/terminal-status maintenance only | Freeze waits for terminal 021-028 outcomes; approval requires one 168-hour payload-stable review with hour-72 checkpoint |
 
 Documentation and sanitized fixtures may advance in parallel. Runtime code,
 activation or a new long-lived component cannot bypass the hard blocks above.
@@ -245,9 +245,9 @@ The program requires three documentation sweeps.
 ### Sweep 1 - Artifact Quality
 
 - The original sweep validated 81 artifacts across nine packages. After Spec
-  021 implementation evidence and Spec 022/023 hardening, the current 021-029
-  baseline contains 92 artifacts, 27 user stories, 106 functional
-  requirements, 50 measurable success criteria and 135 ordered tasks.
+  021 implementation evidence and Specs 022-029 hardening, the current 021-029
+  baseline contains 98 artifacts, 27 user stories, 128 functional
+  requirements, 61 measurable success criteria and 146 ordered tasks.
 - Confirmed every package has research, data model, contract, quickstart,
   requirements checklist, rollback boundary and initial evidence record.
 - Found and corrected one cross-template omission: risk classification was
@@ -319,5 +319,8 @@ The program requires three documentation sweeps.
 - Hardened Spec 027 around fixed P1 workflows and three-run targets, dependency
   blocking, deterministic no-build, exact loopback GET/HEAD/query boundaries and
   explicit absence of conditional runtime files when no-build wins.
+- Hardened Spec 029 around terminal dependency states, deterministic runtime
+  payload identity, stable R001-R025 evidence, exact P0/P1 semantics, safe
+  rollback and one continuous seven-day review with an hour-72 checkpoint.
 - No future-spec planning change activated code, changed local runtime config or
   restarted the production service.

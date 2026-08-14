@@ -35,6 +35,26 @@
 
 Spec 020 T020 blocks all work. Pure model/tests precede monitor integration; watchdog classification precedes installation; production activation follows QA kill/hang proof.
 
+## Requirements Traceability
+
+| Requirement | Tasks |
+| --- | --- |
+| FR-001 | T002, T005, T006, T011 |
+| FR-002 | T002, T005-T007 |
+| FR-003 | T003, T005, T008, T012 |
+| FR-004 | T003, T008, T012 |
+| FR-005 | T003, T005, T008, T012 |
+| FR-006 | T004, T009, T010, T013 |
+| FR-007 | T001, T010, T012, T013 |
+| FR-008 | T003, T005, T008, T012 |
+| FR-009 | T002, T003, T005, T012 |
+| FR-010 | T002, T006, T007, T011 |
+| SC-001 | T003, T008, T012, T013 |
+| SC-002 | T010, T012, T013 |
+| SC-003 | T003, T008, T012 |
+| SC-004 | T003, T007, T008, T012 |
+| SC-005 | T002, T003, T008, T012 |
+
 ## Definition Of Done
 
 - [ ] All T001-T014 tasks are complete with evidence.

@@ -224,11 +224,13 @@ automatically.
 
 **Spec**: `specs/029-v2-release-stabilization`
 
-- [ ] Freeze scope and candidate identity.
+- [x] Define terminal dependency states, runtime-payload identity and stable
+  R001-R025 cross-feature matrix.
+- [ ] Freeze an evidence-eligible candidate after Specs 021-028 reach terminal states.
 - [ ] Run full cross-feature, core-safety, QA and auxiliary-outage regression.
 - [ ] Complete release backup and staging restore.
 - [ ] Controlled service activation and read-only smoke.
-- [ ] 72-hour soak plus final seven-day reliability review.
+- [ ] One continuous 168-hour review with daily reports and an hour-72 checkpoint.
 - [ ] Three documentation sweeps, secret hygiene and explicit release decision.
 
 **Invariant**: no new feature during stabilization; any P0/P1 blocks release.

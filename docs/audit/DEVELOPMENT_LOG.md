@@ -5,7 +5,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-13] - Specs 022-028: Implementation Planning Hardening
+## [2026-08-13] - Specs 022-029: Implementation Planning Hardening
 
 * **Objetivo**: Convertir adquisicion adaptativa y fusion de evidencia en planes
   implementables y conservadores antes de tocar el runtime productivo.
@@ -42,6 +42,10 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     real desde SQLite read-only y paso 5/5 tests, pero la decision sigue
     bloqueada por Specs 025/028. Si hiciera falta MVP, queda limitado a
     loopback, GET/HEAD, queries 50/200 y 30 dias, sin config/acciones/IO miner.
+  - Spec 029 convierte el cierre V2 en un gate determinista: estados terminales
+    por spec, digest separado del runtime, matriz R001-R025, severidades P0/P1,
+    rollback sin tocar SQLite/state y una sola observacion continua de 168 horas
+    con reportes diarios y checkpoint a las 72 horas.
 * **Validaciones ejecutadas**:
   - Cobertura explicita FR/SC/tareas, links relativos, placeholders,
     consistencia de estados y `git diff --check`.
@@ -55,6 +59,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - `specs/026-hashcore-capability-inventory/*`
   - `specs/027-operator-interface-decision/*`
   - `specs/028-backup-retention-restore/*`
+  - `specs/029-v2-release-stabilization/*`
   - `docs/speckit/SPEC_PROGRAM.md`
   - `docs/speckit/ROADMAP.md`
   - `docs/speckit/DELIVERY_PLAN.md`

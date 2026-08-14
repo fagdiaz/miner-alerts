@@ -25,3 +25,14 @@
 - [x] Negative paths and stale/missing evidence are covered.
 - [x] Validation extends beyond `py_compile`.
 - [x] Runtime rollout and observation evidence are required before completion.
+
+## Decision And Conditional Surface
+
+- [x] Dependency-incomplete, no-build and scoped-MVP outcomes are distinct.
+- [x] P1 workflows, required fields, target times and three-run rules are fixed.
+- [x] P2 convenience or technology learning cannot authorize a service.
+- [x] No-build has an explicit conditional-file absence proof.
+- [x] Route methods, loopback bind, proxy/CORS and query bounds are exact.
+- [x] Live WAL SQLite uses `mode=ro` plus `query_only`, not `immutable=1`.
+- [x] Conditional imports/config/network/action paths are explicitly prohibited.
+- [x] Database/schema/stale failure behavior is bounded and sanitized.

@@ -97,7 +97,7 @@ scheduled before conditional Spec 027.
 | 025 Metrics | Contract-ready | Metric-name/cardinality review | Snapshot implementation waits for 021/022 stable schemas |
 | 026 Hashcore inventory | Metadata/contract ready | Vendor documentation review and static fingerprint refresh only | Local `1.6.0+167` identity is statically proven; invocation waits for an exact fingerprint-bound help/version allowlist |
 | 028 Backup/restore | Contract-ready | Destination/path policy review | Implementation waits for stable post-023 schema and approved off-repo destination |
-| 027 Interface | Decision-gate ready | Workflow definitions only | Scorecard waits for 025/028; MVP exists only if no-build fails |
+| 027 Interface | Fixed scorecard/conditional contract ready | Existing static generator baseline only | Three-run scorecard waits for 025/028; MVP files/dependencies exist only for exact P1 fields failed by all current owners |
 | 029 Stabilization | Final-gate ready | Regression-matrix maintenance only | Candidate freeze waits for accepted/closed 021-028 outcomes |
 
 Documentation and sanitized fixtures may advance in parallel. Runtime code,
@@ -316,5 +316,8 @@ The program requires three documentation sweeps.
 - Hardened Spec 026 around a statically proven Toolkit `1.6.0+167` installation,
   a pass-through wrapper, zero-process metadata-only default, empty reviewed
   allowlist, exact fingerprint binding and bounded/sanitized invocation rules.
+- Hardened Spec 027 around fixed P1 workflows and three-run targets, dependency
+  blocking, deterministic no-build, exact loopback GET/HEAD/query boundaries and
+  explicit absence of conditional runtime files when no-build wins.
 - No future-spec planning change activated code, changed local runtime config or
   restarted the production service.

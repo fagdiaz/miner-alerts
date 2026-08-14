@@ -46,14 +46,25 @@ After operator use of static HTML and Grafana, time a written workflow scorecard
 If every P1 workflow passes, close Spec 027 as `no-build`. Build a FastAPI MVP
 only for an explicitly failed local read-only workflow.
 
+The scorecard is fixed in `specs/027-operator-interface-decision/workflow-scorecard.md`:
+three consecutive runs per eligible P1 interface, exact required fields and
+30/60/90/120-second targets. One passing existing owner is sufficient. P2
+convenience or adopting a popular framework is not a build justification. Until
+Spec 025 Grafana and Spec 028 restore evidence pass, the decision is `blocked`.
+
 If built:
 
 - bind only to `127.0.0.1`;
-- read SQLite with `mode=ro` through bounded, paginated queries;
+- disable proxy trust/CORS and allow only exact GET/HEAD routes;
+- read SQLite with `mode=ro` plus `query_only` through default-50/max-200,
+  maximum-30-day queries; do not use `immutable=1` on the live WAL database;
 - expose no tokens, miner credentials or raw firmware logs;
 - keep every endpoint read-only;
 - add HTMX only for a proven interaction need;
 - do not adopt React solely for technology exposure.
+
+If no-build wins, FastAPI/Uvicorn/HTMX dependencies, source, templates and a
+Windows service remain absent. The decision artifact itself closes the spec.
 
 ## Controlled Actions UI
 

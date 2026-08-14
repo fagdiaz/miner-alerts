@@ -38,7 +38,7 @@ safety gates are not compressed to recover an estimate.
 | Spec 025 metrics/Grafana | 2026-10-06 to 2026-10-15 | 2026-10-16 to 2026-10-19 | Redaction/cardinality/resource proof, rebuild from files, outage isolation, D+1/D+3. |
 | Spec 026 Hashcore inventory | 2026-10-20 to 2026-10-26 | 2026-10-27 to 2026-10-29 | Metadata-only/zero-process proof, complete risk matrix for evidenced commands, sanitized artifacts, exact allowlist timeout/no-window proof when available, and unchanged action scope; blocked invocation is valid while the allowlist is empty. |
 | Spec 028 backup/restore | 2026-10-30 to 2026-11-08 | 2026-11-09 to 2026-11-12 | Scheduled verified backup, retention/path proof and successful staging restore. |
-| Spec 027 interface decision | 2026-11-13 to 2026-11-22 | 2026-11-23 to 2026-11-26 | No-build decision, or local read-only MVP workflow/security/outage proof. |
+| Spec 027 interface decision | 2026-11-13 to 2026-11-22 | 2026-11-23 to 2026-11-26 | Three-run fixed P1 scorecard after Specs 025/028; no-build with conditional-file absence, or exact-gap local read-only MVP workflow/security/outage proof. |
 | Spec 029 release stabilization | 2026-11-27 to 2026-12-06 | 2026-12-07 to 2026-12-20 | 72-hour soak, seven-day final review, restore and documentation baseline; no P0/P1. |
 
 ## Milestones

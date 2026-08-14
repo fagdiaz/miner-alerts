@@ -12,6 +12,10 @@
 
 **Dependencies**: Spec 025 Grafana evaluation and Spec 028 backup/restore proof
 
+**Decision Timing**: No-build/MVP scoring is blocked until both dependencies
+have runtime evidence. Planning and current-interface baselining may proceed;
+framework dependencies and source files may not.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Choose the smallest sufficient interface (Priority: P1)
@@ -26,6 +30,7 @@ The operator evaluates common tasks across Telegram, static dashboard and Grafan
 
 1. **Given** all critical workflows meet targets, **When** the decision gate runs, **Then** no new API/UI is built
 2. **Given** a critical read-only workflow remains unmet, **When** the gate runs, **Then** the exact gap and MVP scope are approved
+3. **Given** one dependency is incomplete, **When** the scorecard is requested, **Then** the decision remains blocked rather than scoring an interface that is not available
 
 ---
 
@@ -80,6 +85,27 @@ The web surface exposes no reboot, restart, confirmation, config edit or miner p
 - **FR-009**: No config editor, action endpoint, credential display or remote network exposure is in scope.
 - **FR-010**: Errors and stale data MUST be explicit and MUST NOT affect the monitor.
 - **FR-011**: A future remote or action UI MUST require a separate security/action spec.
+- **FR-012**: The scorecard MUST use the fixed workflows, repetitions, evidence
+  fields and pass rules in `workflow-scorecard.md`; anecdotal preference is not
+  sufficient to approve an MVP.
+- **FR-013**: A no-build decision MUST be selected when every P1 workflow has at
+  least one existing owner interface that passes completeness, accuracy,
+  freshness and target time in three consecutive runs.
+- **FR-014**: An MVP MAY cover only P1 workflow fields that fail across every
+  existing eligible interface; P2 convenience gaps cannot independently justify
+  a new service.
+- **FR-015**: Conditional API routes MUST use an exact GET/HEAD allowlist,
+  reject mutation methods, disable CORS/proxy trust and bind to `127.0.0.1` only.
+- **FR-016**: Conditional SQLite access MUST use URI `mode=ro`,
+  `PRAGMA query_only=ON`, short busy/query bounds and a supported schema gate;
+  it MUST NOT use `immutable=1` against a live WAL database.
+- **FR-017**: Conditional list queries MUST default to 50 rows, cap at 200 rows,
+  cap history at 30 days and use stable timestamp-plus-ID ordering/cursors.
+- **FR-018**: The API process MUST NOT read `app/config.json`, import
+  `app.miner_monitor`, use `requests`/`subprocess`/ASIC sockets or expose raw
+  database errors, paths, hosts, credentials or firmware payloads.
+- **FR-019**: Dependencies, source, service installation and D+1/D+3 observation
+  tasks MUST remain absent when the decision is no-build.
 
 ### Key Entities
 
@@ -98,6 +124,15 @@ The web surface exposes no reboot, restart, confirmation, config edit or miner p
 - **SC-003**: If built, all routes bind to loopback and pass a no-mutation/action-import audit.
 - **SC-004**: Approved workflows complete within two minutes using the MVP.
 - **SC-005**: Stopping the interface leaves monitoring, Telegram and actions unchanged.
+- **SC-006**: The decision artifact contains three timed runs for every eligible
+  interface/P1 workflow pair and zero blank pass/fail fields.
+- **SC-007**: If built, route inspection finds zero POST/PUT/PATCH/DELETE routes,
+  zero action/config imports and zero non-loopback listeners.
+- **SC-008**: If built, every list response contains at most 200 records, every
+  history query is at most 30 days and database-busy/schema/stale fixtures return
+  stable sanitized errors within 2 seconds.
+- **SC-009**: If no-build is selected, Git contains none of the conditional API,
+  view, template, dependency or service files named by the plan.
 
 ## Assumptions
 

@@ -5,7 +5,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-13] - Specs 022-026 And 028: Implementation Planning Hardening
+## [2026-08-13] - Specs 022-028: Implementation Planning Hardening
 
 * **Objetivo**: Convertir adquisicion adaptativa y fusion de evidencia en planes
   implementables y conservadores antes de tocar el runtime productivo.
@@ -37,6 +37,11 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     Metadata-only sera el default; la allowlist queda vacia/bloqueada hasta
     evidencia vendor, con binding por fingerprints, argv fijo, timeout,
     no-window, stdin deshabilitado, streams acotados y sanitizacion obligatoria.
+  - Spec 027 fija workflows P1, campos, tres repeticiones y tiempos para decidir
+    no-build antes de adoptar frameworks. El dashboard estatico genero HTML
+    real desde SQLite read-only y paso 5/5 tests, pero la decision sigue
+    bloqueada por Specs 025/028. Si hiciera falta MVP, queda limitado a
+    loopback, GET/HEAD, queries 50/200 y 30 dias, sin config/acciones/IO miner.
 * **Validaciones ejecutadas**:
   - Cobertura explicita FR/SC/tareas, links relativos, placeholders,
     consistencia de estados y `git diff --check`.
@@ -48,6 +53,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - `specs/024-electrical-source-discovery/*`
   - `specs/025-prometheus-metrics/*`
   - `specs/026-hashcore-capability-inventory/*`
+  - `specs/027-operator-interface-decision/*`
   - `specs/028-backup-retention-restore/*`
   - `docs/speckit/SPEC_PROGRAM.md`
   - `docs/speckit/ROADMAP.md`

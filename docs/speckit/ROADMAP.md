@@ -211,6 +211,8 @@ automatically.
 **Spec**: `specs/027-operator-interface-decision`
 
 - [ ] Score real workflows across Telegram, static HTML and Grafana.
+- [x] Baseline the existing SQLite `mode=ro` static generator and its safety tests.
+- [ ] Require three consecutive fixed P1 workflow runs after Specs 025/028.
 - [ ] Close no-build when current interfaces meet P1 targets.
 - [ ] Only if a gap remains, build a loopback FastAPI read-only MVP.
 - [ ] Add HTMX/server rendering only for approved filtering/refresh.

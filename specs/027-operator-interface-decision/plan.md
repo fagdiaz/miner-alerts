@@ -6,7 +6,11 @@
 
 ## Summary
 
-Run a documented no-build decision gate first. Only if static HTML plus Grafana fail a P1 workflow, add a native loopback-only FastAPI read-only API and minimal server-rendered/HTMX view over SQLite. No web action path is permitted.
+Run the fixed three-run workflow scorecard only after Specs 025/028 pass. Choose
+no-build when each P1 workflow has an existing owner. Only exact required fields
+failed by Telegram, static HTML and Grafana may authorize a native loopback-only
+FastAPI read-only API and minimal server-rendered/HTMX view. No web action path
+is permitted.
 
 ## Technical Context
 
@@ -22,7 +26,7 @@ Run a documented no-build decision gate first. Only if static HTML plus Grafana 
 
 **Project Type**: Decision artifact plus conditional local read-only web service
 
-**Performance Goals**: Bounded common queries under one second and workflow completion under two minutes
+**Performance Goals**: Bounded common queries under one second; database/schema failure under two seconds; workflow completion within fixed 30/60/90/120-second targets
 
 **Constraints**: No real secrets or runtime files in Git; no unproved completion; no action authority outside the existing monitor
 
@@ -52,6 +56,8 @@ specs/027-operator-interface-decision/
 |-- quickstart.md
 |-- contracts/operator-interface.md
 |-- checklists/requirements.md
+|-- integration-map.md
+|-- workflow-scorecard.md
 |-- tasks.md
 `-- evidence.md
 ```
@@ -69,23 +75,32 @@ tests/test_operator_api.py
 requirements-interface.txt
 ```
 
-**Structure Decision**: The decision artifact is mandatory; source files and dependencies are conditional. A native local service avoids mounting the live SQLite database into containers.
+**Structure Decision**: The decision artifact is mandatory; source files and
+dependencies are conditional. A native local service avoids mounting the live
+SQLite database into containers. A no-build result must leave every conditional
+path absent from Git.
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). Grafana is purpose-built for trends; the static dashboard and Telegram already cover summary and control. FastAPI offers typed OpenAPI and validation for a narrowly scoped local read API, while React adds no demonstrated value at this scale.
+See [research.md](research.md), [workflow-scorecard.md](workflow-scorecard.md) and
+[integration-map.md](integration-map.md). Grafana is purpose-built for trends;
+the existing static dashboard already provides bounded SQLite evidence and
+Telegram covers summary/control. FastAPI remains conditional rather than a
+technology goal; React adds no demonstrated value at this scale.
 
 ## Phase 1: Design
 
-- Define P1/P2 workflows and measurable targets before any dependency.
+- Use the fixed P1/P2 workflows, required fields and three-run targets before any dependency.
 - Choose no-build when existing interfaces pass.
 - If approved, use FastAPI/Pydantic for typed read-only resources and Uvicorn bound to 127.0.0.1.
 - Use server-rendered HTML/HTMX only for filtering and progressive refresh.
-- Enforce bounded queries, redaction and no action imports with tests.
+- Enforce exact GET/HEAD routes, 50/200 pagination, 30-day windows, SQLite
+  `mode=ro`/`query_only`, redaction and no action imports with tests.
 
 ## Rollback And Failure Boundary
 
 - A no-build decision has no runtime change.
+- Incomplete dependencies keep the decision blocked and create no runtime files.
 - The conditional service is independent and can be stopped/removed without monitor impact.
 - Database/API errors fail within the interface and never propagate to monitoring.
 

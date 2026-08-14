@@ -223,6 +223,19 @@
   watchdog failure. D+1/D+3 remain open and must evaluate the actual condition;
   no code, config, service or miner action was changed by this inspection.
 
+## Pre-D+1 Recovery Observation - 2026-08-13 22:06 ART
+
+- A new read-only D+0 observation passed after the transient fleet/collector
+  degradation: 283 watchdog samples, cadence coverage 1.0, zero unhealthy
+  samples, zero watchdog actions, fresh tick/poller/sender and queue depth zero.
+- The latest Vnish collector run was `ok` with 16/16 streams and all four miners
+  were `OK` with finite rates between 91.24 and 101.37 TH/s.
+- No automatic-action event or reboot decision occurred during the observed
+  process lifetime. The earlier failed D+0 remains recorded as real historical
+  evidence; this later pass records recovery rather than rewriting that result.
+- D+1/D+3 remain open. No code, config, service, scheduled task or miner action
+  was changed by this observation.
+
 ## Implementation And Deterministic Validation - 2026-08-13
 
 - Added versioned, atomically replaced heartbeat state with PID, process start,

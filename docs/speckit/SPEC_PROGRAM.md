@@ -246,7 +246,7 @@ The program requires three documentation sweeps.
 
 - The original sweep validated 81 artifacts across nine packages. After Spec
   021 implementation evidence and Specs 022-029 hardening, the current 021-029
-  baseline contains 98 artifacts, 27 user stories, 128 functional
+  baseline contains 101 artifacts, 27 user stories, 128 functional
   requirements, 61 measurable success criteria and 146 ordered tasks.
 - Confirmed every package has research, data model, contract, quickstart,
   requirements checklist, rollback boundary and initial evidence record.

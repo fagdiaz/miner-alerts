@@ -56,6 +56,9 @@ specs/022-adaptive-acquisition/
 |-- research.md
 |-- data-model.md
 |-- integration-map.md
+|-- baseline.md
+|-- test-design.md
+|-- fixtures/acquisition-contract.json
 |-- quickstart.md
 |-- contracts/acquisition.md
 |-- contracts/config.md

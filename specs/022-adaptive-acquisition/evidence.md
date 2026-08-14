@@ -35,6 +35,27 @@
 - No application source, runtime config, state, service or miner was changed by
   this planning hardening.
 
+## Pre-D+1 Fixture And Passive Baseline - 2026-08-13
+
+- Added a sanitized nine-scenario contract fixture covering ordered completion,
+  peer isolation on timeout, partial stats, invalid rate, late completion,
+  lease overlap, host resume, diagnostic authority and disabled fallback.
+- Added an executable-test design that fixes configuration, normalization,
+  epoch, concurrency, request-budget, authority-firewall and cross-system
+  assertions without real IO. It explicitly remains design-only before D+1.
+- Passive heartbeat observation captured six consecutive production intervals:
+  minimum 30.191 s, median 30.216 s, mean 30.224 s and maximum 30.275 s.
+  This is completed-tick cadence, not direct request-latency evidence.
+- Static source inspection confirms configured-order sequential summary then
+  conditional stats, 5-second call defaults, 4-8 requests for the current
+  four-miner fleet and sleep only after the completed heartbeat.
+- A new read-only D0 observation at 22:06 ART passed with 283 watchdog samples,
+  zero unhealthy/action samples, fresh workers, queue zero, collector `ok`
+  16/16 and all four miners `OK`. The earlier 25/26 outage/partial collector was
+  therefore transient and recovered; its historical evidence remains intact.
+- D+1 had not elapsed, so no executable test/source/config/wiring was created,
+  no Spec 022 task was marked complete and production activation remains absent.
+
 ## Required Evidence Before Completion
 
 - Before/after request, latency and tick report.

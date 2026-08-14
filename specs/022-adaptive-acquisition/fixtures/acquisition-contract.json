@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "fleet_order": ["miner-a", "miner-b", "miner-c", "miner-d"],
+  "epoch": {
+    "epoch_id": 7,
+    "scheduled_monotonic": 100.0,
+    "deadline_monotonic": 112.0,
+    "timeout_seconds": 5.0,
+    "worker_limit": 2
+  },
+  "scenarios": [
+    {
+      "id": "all_valid_out_of_order",
+      "completion_order": ["miner-b", "miner-a", "miner-d", "miner-c"],
+      "inputs": {
+        "miner-a": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 100.8},
+        "miner-b": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 100.4},
+        "miner-c": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 101.6},
+        "miner-d": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 101.2}
+      },
+      "expected": {
+        "ordered_keys": ["miner-a", "miner-b", "miner-c", "miner-d"],
+        "qualities": ["valid", "valid", "valid", "valid"],
+        "summary_requests": 4,
+        "stats_requests": 4
+      }
+    },
+    {
+      "id": "one_timeout_peers_complete",
+      "inputs": {
+        "miner-a": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 100.8},
+        "miner-b": {"summary": "transport_timeout", "completed_monotonic": 105.0},
+        "miner-c": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 101.7},
+        "miner-d": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 102.4}
+      },
+      "expected": {
+        "reason_by_miner": {"miner-b": "transport_timeout"},
+        "peer_completion_ceiling_seconds": 7.0,
+        "summary_requests": 4,
+        "stats_requests": 3,
+        "retries": 0
+      }
+    },
+    {
+      "id": "summary_valid_stats_missing",
+      "inputs": {
+        "miner-a": {"summary": "valid", "stats": "missing", "completed_monotonic": 101.0}
+      },
+      "expected": {
+        "quality": "partial",
+        "reason_code": "stats_missing",
+        "responded": true,
+        "active_boards": null,
+        "summary_requests": 1,
+        "stats_requests": 1
+      }
+    },
+    {
+      "id": "invalid_rate",
+      "inputs": {
+        "miner-a": {"summary": "non_finite_rate", "completed_monotonic": 100.5}
+      },
+      "expected": {
+        "quality": "invalid",
+        "reason_code": "rate_invalid",
+        "responded": true,
+        "rate_ths": null,
+        "stats_requests": 0,
+        "actionable": false
+      }
+    },
+    {
+      "id": "late_result",
+      "inputs": {
+        "miner-a": {"summary": "valid", "stats": "boards_3", "completed_monotonic": 112.1}
+      },
+      "expected": {
+        "quality": "late",
+        "reason_code": "epoch_deadline_exceeded",
+        "authoritative_application": false,
+        "lease_released_only_after_worker_exit": true
+      }
+    },
+    {
+      "id": "scheduled_overlap",
+      "inputs": {
+        "miner-a": {"lease_owner_epoch": 6, "worker_still_running": true}
+      },
+      "expected": {
+        "quality": "error",
+        "reason_code": "scheduled_overlap",
+        "summary_requests": 0,
+        "stats_requests": 0,
+        "new_worker_started": false
+      }
+    },
+    {
+      "id": "resume_skips_missed_epochs",
+      "inputs": {
+        "last_epoch_id": 7,
+        "last_scheduled_monotonic": 100.0,
+        "resume_monotonic": 250.0,
+        "nominal_period_seconds": 30.0
+      },
+      "expected": {
+        "next_epoch_id": 8,
+        "epochs_dispatched": 1,
+        "catch_up_requests": 0,
+        "skipped_epoch_count_increment": 4
+      }
+    },
+    {
+      "id": "diagnostic_recovery_no_authority",
+      "inputs": {
+        "miner-a": {"authority": "diagnostic", "summary": "valid_healthy_rate"}
+      },
+      "expected": {
+        "authority": "diagnostic",
+        "state_updates": 0,
+        "streak_updates": 0,
+        "low_since_updates": 0,
+        "episode_updates": 0,
+        "action_evaluations": 0
+      }
+    },
+    {
+      "id": "disabled_path",
+      "inputs": {
+        "adaptive_acquisition_enabled": false
+      },
+      "expected": {
+        "executor_created": false,
+        "leases_created": false,
+        "evaluation_order": ["miner-a", "miner-b", "miner-c", "miner-d"],
+        "legacy_path_selected": true
+      }
+    }
+  ]
+}

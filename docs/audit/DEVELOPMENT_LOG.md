@@ -13,6 +13,11 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Spec 022 quedo mapeada al request path secuencial real, con envelopes
     autoritativos, calidad/razones estables, deadlines, leases, limites de
     requests y configuracion deshabilitada por defecto.
+  - Antes de D+1, Spec 022 sumo fixture sanitizado y test design sin codigo
+    ejecutable. Un muestreo pasivo de heartbeat midio seis intervalos entre
+    30.191 y 30.275 segundos; un D0 nuevo paso con watchdog sano, cola cero,
+    collector recuperado 16/16 y los cuatro mineros OK. No se cruzo el gate de
+    implementacion ni se activo adquisicion adaptativa.
   - Spec 023 quedo mapeada a las tablas EventStore y analizadores existentes,
     con reglas exactas para observed/suspected/confirmed, clocks, freshness,
     contradicciones y no-causalidad electrica.

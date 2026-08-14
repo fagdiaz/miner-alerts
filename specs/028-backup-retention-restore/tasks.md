@@ -8,23 +8,31 @@
 
 ## Phase 1: Backup Contract And Red Tests
 
-- [ ] T001 Record source schema/WAL mode, retention need and approved destination constraints.
-- [ ] T002 [P] Add failing concurrent backup, partial-file and checksum tests.
-- [ ] T003 [P] Add failing retention path-guard/non-overlap/free-space tests.
+- [ ] T001 Record source schema/WAL mode, marked-root layout, retention need and
+  approved disjoint destination constraints from `integration-map.md`.
+- [ ] T002 [P] Add failing concurrent backup, partial promotion, manifest,
+  integrity and checksum tests.
+- [ ] T003 [P] Add failing root-marker, reparse/containment, non-overlap, lock,
+  pre/post free-space and deterministic UTC retention tests.
 - [ ] T004 [P] Add failing staged restore, integrity and schema tests.
 ## Phase 2: Backup And Retention
 
-- [ ] T005 [US1] Implement incremental SQLite backup and atomic promotion.
-- [ ] T006 [US1] Implement versioned SHA-256 manifest and run report.
-- [ ] T007 [US2] Implement 14/8/12 verified-generation retention with dry-run.
+- [ ] T005 [US1] Implement 256-page SQLite backup, bounded sleep, full integrity
+  validation and same-root atomic promotion.
+- [ ] T006 [US1] Implement manifest v1, SHA-256 and sanitized run report.
+- [ ] T007 [US2] Implement union-based UTC 14/8/12 verified-generation retention
+  with mandatory containment-validated dry-run.
 ## Phase 3: Restore And Scheduling
 
-- [ ] T008 [US3] Implement staging-only restore validation.
-- [ ] T009 Install a pythonw.exe non-overlap scheduled backup task.
+- [ ] T008 [US3] Implement new-directory staging-only restore with hash,
+  integrity, schema and exact allowlisted count validation.
+- [ ] T009 Install and read back a pythonw.exe SYSTEM/Highest/IgnoreNew/
+  StartWhenAvailable task with five-minute limit and CLI lock.
 - [ ] T010 Document the separate manual disaster-replacement runbook without automating it.
 ## Phase 4: Validation And Rollout
 
-- [ ] T011 Run targeted/full tests, compile, PowerShell parse and path/secret audits.
+- [ ] T011 Run targeted/full tests, compile, PowerShell parse, config, marker,
+  path/reparse, timeout and secret audits.
 - [ ] T012 Execute one production backup and staging restore drill.
 - [ ] T013 Observe next scheduled run, disk/free-space and monitor latency.
 - [ ] T014 Synchronize evidence, roadmap, calendar, runbook, strategy docs and development log.

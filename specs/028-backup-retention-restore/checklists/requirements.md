@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [x] No `[NEEDS CLARIFICATION]` markers remain.
+- [x] No unresolved clarification markers remain.
 - [x] Requirements are testable and unambiguous.
 - [x] Success criteria are measurable.
 - [x] Acceptance scenarios and edge cases are defined.
@@ -25,3 +25,8 @@
 - [x] Negative paths and stale/missing evidence are covered.
 - [x] Validation extends beyond `py_compile`.
 - [x] Runtime rollout and observation evidence are required before completion.
+- [x] Backup promotion and manifest fields are exact and additive.
+- [x] Marked-root, containment, reparse, lock and free-space rules fail closed.
+- [x] UTC 14/8/12 retention protects a union and ignores unknown artifacts.
+- [x] Restore is staging-only with no live replacement command.
+- [x] Scheduled activation follows a successful manual restore drill.

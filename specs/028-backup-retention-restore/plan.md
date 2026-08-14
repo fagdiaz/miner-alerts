@@ -50,6 +50,8 @@ specs/028-backup-retention-restore/
 |-- research.md
 |-- data-model.md
 |-- quickstart.md
+|-- integration-map.md
+|-- contracts/config.md
 |-- contracts/backup-restore.md
 |-- checklists/requirements.md
 |-- tasks.md
@@ -71,21 +73,40 @@ app/config.example.json        # only safe non-secret defaults if needed
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). SQLite documents the backup API and VACUUM INTO as safe live-copy mechanisms. A plain database-file copy can be inconsistent with active journal/WAL state. Integrity checks and staged restore are mandatory evidence.
+See [research.md](research.md) and [integration-map.md](integration-map.md).
+SQLite documents the backup API and VACUUM INTO as safe live-copy mechanisms.
+A plain database-file copy can be inconsistent with active journal/WAL state.
+Integrity checks and staged restore are mandatory evidence.
 
 ## Phase 1: Design
 
 - Use sqlite3.Connection.backup with small page batches and bounded sleep.
 - Write to a temporary destination, validate, fsync/close, hash and atomically promote with manifest.
-- Apply grandfather-father-son retention only to verified owned artifacts.
+- Apply UTC grandfather-father-son retention to the union of newest
+  14-day/8-week/12-month verified owned artifacts.
 - Install a pythonw.exe scheduled task with non-overlap and execution limit.
 - Restore only to an empty staging path and produce a comparison report.
+- Require marked roots, resolved-path containment, pre/post free-space checks
+  and deterministic dry-run before retention deletion.
+- Validate the disabled-by-default local settings in
+  [contracts/config.md](contracts/config.md).
+
+## Performance And Resource Design
+
+- SQLite page batches: 256 pages with 50 ms inter-batch sleep when the source is
+  busy.
+- Overall CLI/task execution limit: five minutes.
+- Pre-run free space: configured floor plus twice the current source size.
+- Post-run free space: configured floor (1 GiB default).
+- Full integrity/schema/count/hash checks precede promotion and restore pass.
 
 ## Rollback And Failure Boundary
 
 - Disable/remove the scheduled task; the monitor and source database are unchanged.
 - Failed or partial outputs remain temporary and are safe to remove manually.
 - No automatic restore path exists, so rollback cannot overwrite production data.
+- Retention aborts without deletion on any marker, path, manifest, hash or lock
+  ambiguity.
 
 ## Post-Design Constitution Check
 

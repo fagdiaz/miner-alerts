@@ -5,7 +5,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-13] - Specs 022, 023 And 025: Implementation Planning Hardening
+## [2026-08-13] - Specs 022, 023, 025 And 028: Implementation Planning Hardening
 
 * **Objetivo**: Convertir adquisicion adaptativa y fusion de evidencia en planes
   implementables y conservadores antes de tocar el runtime productivo.
@@ -26,6 +26,9 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Spec 025 define un snapshot atomico sin secretos, 26 familias metricas,
     formula de cardinalidad, descarte de series stale y aislamiento estricto de
     exporter/Prometheus/Grafana sin montar config, SQLite ni acciones.
+  - Spec 028 define backup SQLite online con promocion atomica, roots marcados y
+    disjuntos, retencion UTC 14/8/12 por union y restore solo a staging con
+    hash/integrity/schema/counts; no existe restore automatico sobre produccion.
 * **Validaciones ejecutadas**:
   - Cobertura explicita FR/SC/tareas, links relativos, placeholders,
     consistencia de estados y `git diff --check`.
@@ -35,6 +38,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - `specs/022-adaptive-acquisition/*`
   - `specs/023-incident-evidence-fusion/*`
   - `specs/025-prometheus-metrics/*`
+  - `specs/028-backup-retention-restore/*`
   - `docs/speckit/SPEC_PROGRAM.md`
   - `docs/speckit/ROADMAP.md`
   - `docs/speckit/DELIVERY_PLAN.md`

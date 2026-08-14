@@ -1,6 +1,6 @@
 # Integration Map: Adaptive Acquisition Resilience
 
-**Status**: Pre-implementation map; no runtime integration exists yet.
+**Status**: Pure acquisition module implemented; no runtime integration exists.
 
 ## Current Authoritative Path
 
@@ -150,8 +150,9 @@ deterministic.
 
 ## Activation And Rollback
 
-1. Before Spec 021 D+1: documentation, source mapping and test design only.
-2. After Spec 021 D+1: red contracts and isolated acquisition implementation.
+1. After 19 h 40 min of healthy Spec 021 observation, owner-authorized red
+   contracts and the isolated acquisition module may proceed.
+2. Before Spec 021 D+1: no monitor wiring or shared runtime-config change.
 3. Before Spec 021 D+3: no production activation.
 4. After D+3: disabled-path parity, QA, 24-hour shadow and rollback rehearsal
    still precede controlled enablement.

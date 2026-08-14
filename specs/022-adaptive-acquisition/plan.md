@@ -4,6 +4,11 @@
 
 **Input**: Feature specification from `specs/022-adaptive-acquisition/spec.md`
 
+**Early implementation authorization**: On 2026-08-14 the owner accepted a
+19 h 40 min healthy observation threshold for isolated tests and the pure
+acquisition module. This does not close Spec 021 D+1/D+3, authorize monitor
+wiring, modify runtime configuration or permit production activation.
+
 ## Summary
 
 Extract a deterministic acquisition scheduler behind a disabled-by-default

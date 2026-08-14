@@ -4,14 +4,15 @@
 
 **Created**: 2026-08-13
 
-**Status**: Planned; not implemented
+**Status**: In progress; isolated module only, no monitor wiring or activation
 
 **Input**: Make API 4028 acquisition fresher and resilient with bounded concurrency, explicit quality and diagnostic recovery probes while preserving authoritative 30-second state and action semantics.
 
 **Risk Class**: HIGH
 
-**Dependencies**: Spec 021 liveness D+1 review before implementation and D+3
-closeout before production activation
+**Dependencies**: Owner-approved 19 h 40 min healthy Spec 021 observation before
+isolated tests/module implementation; real Spec 021 D+1 before monitor wiring
+and D+3 closeout before production activation
 
 ## User Scenarios & Testing
 

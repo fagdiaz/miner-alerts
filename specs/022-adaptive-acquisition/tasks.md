@@ -10,17 +10,17 @@
 
 - [ ] T001 Record sequential summary/stats order, five-second timeouts,
   sleep-after-tick cadence, per-miner request counts and tick latency percentiles.
-- [ ] T002 [P] Add failing epoch completeness, late-result, missed-epoch and
+- [x] T002 [P] Add failing epoch completeness, late-result, missed-epoch and
   host-resume no-burst tests, including proof that authoritative outage checks
   do not back off beyond the current epoch.
-- [ ] T003 [P] Add failing quality/provenance tests, including fleet transport
+- [x] T003 [P] Add failing quality/provenance tests, including fleet transport
   failure versus individual timeout, partial summary/stats responses and the
   stable reason vocabulary in `integration-map.md`.
-- [ ] T004 [P] Prove diagnostic evidence cannot alter state/action counters and
+- [x] T004 [P] Prove diagnostic evidence cannot alter state/action counters and
   both authoritative/diagnostic paths respect their numeric request budgets.
 ## Phase 2: Authoritative Acquisition
 
-- [ ] T005 [US1] Implement typed transport outcomes, epochs, envelopes and the
+- [x] T005 [US1] Implement typed transport outcomes, epochs, envelopes and the
   bounded executor in `app/acquisition.py` while preserving existing read
   wrapper signatures.
 - [ ] T006 [US1] Integrate authoritative envelopes behind
@@ -45,7 +45,9 @@
 
 ## Dependencies And Execution Order
 
-Spec 021 D+1 blocks implementation and D+3 blocks production activation.
+The owner-approved 19 h 40 min healthy observation permits T002-T005 as
+isolated tests/module work. Spec 021 D+1 still blocks T006 monitor wiring and
+D+3 blocks production activation.
 Baseline metrics and provenance tests precede executor integration; the
 disabled sequential fallback precedes any shadow run; diagnostics follow
 authoritative stability; production follows shadow comparison and rollback

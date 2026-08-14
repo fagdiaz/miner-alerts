@@ -1,13 +1,13 @@
 # Quickstart: Adaptive Acquisition Resilience
 
-**Status**: Planned validation procedure; implementation is blocked until the
-Spec 021 D+1 gate passes and production activation is blocked until its D+3
-gate passes.
+**Status**: Isolated module validation is active. Monitor wiring remains blocked
+until Spec 021 D+1 and production activation until D+3.
 
 ## Preconditions
 
-- Spec 021 has passed D+1 before implementation; its D+3 gate must pass before
-  production activation.
+- The owner-approved 19 h 40 min healthy observation permits only isolated
+  tests/module work. Spec 021 D+1 is required before monitor wiring and D+3
+  before production activation.
 - Spec 020 episode/status behavior is production-verified.
 - Current sequential acquisition metrics have been captured before changing
   request scheduling.

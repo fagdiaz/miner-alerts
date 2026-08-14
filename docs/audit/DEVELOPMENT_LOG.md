@@ -5,6 +5,33 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-08-14] - Spec 022: Isolated Adaptive Acquisition Core
+
+* **Objetivo**: Iniciar la adquisicion adaptativa sin conectar ni activar el
+  nuevo scheduler en el monitor productivo.
+* **Resultado**:
+  - Tras 19 h 40 min de observacion saludable autorizada por el propietario, se
+    habilitaron solo contratos y modulo aislado; D+1 sigue bloqueando wiring y
+    D+3 sigue bloqueando activacion.
+  - Se agregaron outcomes API 4028 tipados, envelopes con autoridad/calidad,
+    epochs sin catch-up, leases por minero, executor acotado y PollHealth.
+  - El transporte acepta solo `summary`/`stats`, mantiene timeout acotado, no
+    reintenta y no conserva textos de excepcion o endpoints en diagnosticos.
+  - Veinte contratos deterministas prueban orden estable, aislamiento de peers,
+    presupuestos numericos, compatibilidad de boards, resultados late y firewall
+    de autoridad diagnostica. La suite paso veinte ejecuciones consecutivas.
+  - Speckit QA y la regresion completa 177/177 pasaron; compilacion, JSON,
+    trazabilidad, imports de autoridad y diff confirmaron que monitor/config no
+    cambiaron. El servicio continuo sano, sin reinicio y con cola cero.
+  - `app/miner_monitor.py`, configuracion, servicio, Telegram, mineros y
+    Hashcore permanecieron sin cambios.
+* **Archivos principales**:
+  - `app/acquisition.py`
+  - `tests/test_acquisition.py`
+  - `specs/022-adaptive-acquisition/`
+  - `docs/speckit/ROADMAP.md`
+  - `docs/speckit/DELIVERY_PLAN.md`
+
 ## [2026-08-13] - Specs 022-029: Implementation Planning Hardening
 
 * **Objetivo**: Convertir adquisicion adaptativa y fusion de evidencia en planes

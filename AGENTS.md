@@ -11,7 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/021-monitor-liveness-watchdog/plan.md`
+`specs/022-adaptive-acquisition/plan.md`
+
+Active production observation gate:
+`specs/021-monitor-liveness-watchdog/plan.md` (D+1/D+3 still required)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

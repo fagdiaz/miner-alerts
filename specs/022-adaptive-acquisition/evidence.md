@@ -1,6 +1,6 @@
 # Evidence: Adaptive Acquisition Resilience
 
-**Status**: Planning hardened; implementation blocked by the Spec 021 D+1 gate
+**Status**: Isolated module in progress; monitor wiring blocked by Spec 021 D+1
 
 ## Planning Baseline
 
@@ -55,6 +55,37 @@
   therefore transient and recovered; its historical evidence remains intact.
 - D+1 had not elapsed, so no executable test/source/config/wiring was created,
   no Spec 022 task was marked complete and production activation remains absent.
+
+## Isolated Acquisition Core - 2026-08-14
+
+- The owner approved a 19 h 40 min healthy-observation threshold for isolated
+  tests and module implementation. At authorization check, 19.841 hours had
+  elapsed; this does not close or rename the scheduled Spec 021 D+1/D+3 gates.
+- The first targeted run failed red with `ModuleNotFoundError` because
+  `app/acquisition.py` did not exist. A second transport test failed red because
+  `Api4028Transport` was absent, and a legacy `chain_acn0` compatibility test
+  failed red before board-key normalization was corrected.
+- Added a side-effect-free standard-library acquisition module with typed
+  transport outcomes, sanitized failure reasons, finite-rate validation,
+  authoritative/diagnostic provenance, monotonic epochs, no-catch-up resume,
+  per-miner leases, a maximum-four bounded executor and bounded PollHealth.
+- The API 4028 transport permits only scheduled `summary` and `stats`, uses the
+  supplied bounded timeout, performs no retry and stores no endpoint exception
+  text. Existing monitor wrappers and manual Telegram IO were not changed.
+- Twenty deterministic contracts now prove configured-order output,
+  two-worker isolation, exact one-summary/conditional-stats budgets, no retry,
+  timeout/error/invalid/partial/late/overlap vocabulary, lease retention for a
+  late worker, diagnostic summary-only budgets and authority filtering.
+- The acquisition suite passed 20 consecutive runs. `app/miner_monitor.py`,
+  example/local config, service, scheduled tasks, miner IO and Telegram were
+  not modified or restarted. T002-T005 are complete; T001 and T006-T014 remain
+  open, with D+1 still blocking monitor wiring and D+3 blocking activation.
+- Speckit QA preflight with builds passed; the full repository suite passed
+  177/177. Python compilation, config/fixture JSON parsing, relative-link and
+  FR/SC/task coverage, `git diff --check`, authority-import scan and exact
+  monitor/config unchanged checks passed. The production service remained
+  `Running`/`Automatic` with fresh tick/workers, queue zero and a healthy
+  watchdog after the isolated implementation.
 
 ## Required Evidence Before Completion
 

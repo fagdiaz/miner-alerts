@@ -1,7 +1,7 @@
 # Test Design: Adaptive Acquisition Resilience
 
-**Status**: Pre-D+1 red-contract design only. No test module, acquisition source
-or runtime wiring is created before the Spec 021 D+1 implementation gate.
+**Status**: T002-T005 implemented after the owner-approved 19 h 40 min healthy
+observation. Monitor wiring remains blocked until Spec 021 D+1.
 
 ## Fixture Contract
 
@@ -74,16 +74,16 @@ completion times.
 - importing/testing `app.acquisition` performs no network, subprocess, service,
   file write or Hashcore operation.
 
-## Gate To Executable Tests
+## Executed Gate
 
-After real Spec 021 D+1 passes:
+On 2026-08-14 the following isolated steps were authorized and executed:
 
-1. Add `tests/test_acquisition.py` with the groups above and observe the expected
-   red failures because `app/acquisition.py` does not exist.
-2. Implement only the pure model/config/normalizer needed to turn those tests
-   green.
-3. Add executor/lease tests before executor code.
-4. Keep monitor wiring and defaults unchanged until sequential parity and the
-   Spec 021 D+3 activation gate pass.
+1. `tests/test_acquisition.py` failed red because `app.acquisition` was absent.
+2. Pure model, config, transport, normalizer, scheduler, lease, executor and
+   PollHealth contracts were implemented in `app/acquisition.py`.
+3. Transport and legacy-board compatibility tests were added red before their
+   corresponding implementation changes.
+4. Monitor wiring, shared defaults and production runtime remain unchanged;
+   D+1 still gates wiring and D+3 gates activation.
 
-This file is design evidence, not a checked implementation task.
+The remaining groups are completed only when their corresponding tasks close.

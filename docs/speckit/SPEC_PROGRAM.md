@@ -25,9 +25,11 @@ been completed.
   read-only.
 - Spec 020 is implemented, activated and runtime-closed. Spec 030 Telegram
   messaging quality is also implemented, activated and closed. Spec 021 is the
-  current active gate: implementation, activation and controlled SCM recovery
-  proof passed; D+1/D+3 observation remains open. Spec 022 implementation waits
-  for Spec 021 D+1 and its production activation waits for Spec 021 D+3.
+  current production gate: implementation, activation and controlled SCM
+  recovery proof passed; D+1/D+3 observation remains open. The owner-approved
+  19 h 40 min observation permits only isolated Spec 022 tests and acquisition
+  module implementation. Monitor wiring still waits for Spec 021 D+1 and
+  production activation waits for Spec 021 D+3.
 
 ## Decisions Made In This Planning Pass
 
@@ -73,7 +75,7 @@ been completed.
 | Closed | 020 Episode Alerts closeout | P0 | HIGH | Current runtime | Completed and runtime-closed 2026-08-13. |
 | Closed | 030 Telegram Messaging Quality | P0 | MEDIUM | Spec 020 runtime | Completed, activated and pushed 2026-08-13. |
 | Active | 021 Monitor Liveness Watchdog | P0 | HIGH | Spec 020 complete | Activated and SCM recovery-proven; D+1/D+3 pending. |
-| 2 | 022 Adaptive Acquisition | P1 | HIGH | 021 | Improve freshness and poll evidence without changing action semantics. |
+| Active isolated | 022 Adaptive Acquisition | P1 | HIGH | 021 D+1 for wiring | Pure module/tests started; improve freshness without changing action semantics. |
 | 3 | 023 Incident Evidence Fusion | P1 | MEDIUM | 022 | Correlate durable miner, Vnish, quality and fleet evidence conservatively. |
 | 4 | 024 Electrical Source Discovery | P1 | MEDIUM | 023; real hardware | Prove or block a trustworthy AC power telemetry source. |
 | 5 | 025 Prometheus Metrics | P1 | MEDIUM | 021, 022 | Export bounded local metrics and provision Grafana read-only views. |
@@ -91,7 +93,7 @@ scheduled before conditional Spec 027.
 | Package | Planning readiness | May proceed now | Hard block before implementation/activation |
 | --- | --- | --- | --- |
 | 021 Liveness | Implemented and activated | D+1/D+3 read-only observation only | Close requires real scheduled D+1/D+3 evidence |
-| 022 Acquisition | Implementation-ready plan | Red-contract preparation after 021 D+1 | Implementation waits for 021 D+1; activation waits for 021 D+3 |
+| 022 Acquisition | Isolated implementation authorized after 19 h 40 min | Pure tests/module only | Monitor wiring waits for 021 D+1; activation waits for 021 D+3 |
 | 023 Evidence fusion | Implementation-ready plan | Fixture curation and contract review | Code waits for Spec 022 authority/quality persistence and exit evidence |
 | 024 Electrical | Discovery-ready, conditional | Physical inventory and documented read-only capability discovery | Adapter waits for a real source, authentication and no-write proof |
 | 025 Metrics | Contract-ready | Metric-name/cardinality review | Snapshot implementation waits for 021/022 stable schemas |

@@ -1,6 +1,6 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-08-13
+**Last reviewed**: 2026-08-14
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
@@ -26,7 +26,8 @@ interfaces or integrations.
 - Spec 020 is committed/pushed and runtime-closed as `e502ab9`. Spec 030
   messaging quality is committed/pushed as `2afd65e` and active in production.
   Spec 021 liveness is activated and its SCM recovery proof passed; D+1/D+3
-  observation remains its release gate.
+  observation remains its release gate. Spec 022 has begun isolated module/test
+  implementation without monitor wiring or production activation.
 
 ## Architecture Direction
 
@@ -56,7 +57,7 @@ interfaces or integrations.
 | Gate | Spec 020 episode-alerts closeout | COMPLETE | P0 | HIGH | Closed 2026-08-13 |
 | Hotfix | Spec 030 Telegram messaging quality | COMPLETE | P0 | MEDIUM | Closed 2026-08-13 |
 | 1 | Spec 021 monitor-liveness-watchdog | ACTIVATED / OBSERVATION PENDING | P0 | HIGH | 2026-08-13 to 2026-08-17 |
-| 2 | Spec 022 adaptive-acquisition | PLANNED | P1 | HIGH | 2026-08-28 to 2026-09-10 |
+| 2 | Spec 022 adaptive-acquisition | IN PROGRESS / ISOLATED | P1 | HIGH | Started 2026-08-14; wiring after 021 D+1 |
 | 3 | Spec 023 incident-evidence-fusion | PLANNED | P1 | MEDIUM | 2026-09-11 to 2026-09-24 |
 | 4 | Spec 024 electrical-source-discovery | PLANNED / CONDITIONAL | P1 | MEDIUM | 2026-09-25 to 2026-10-05 |
 | 5 | Spec 025 prometheus-metrics | PLANNED | P1 | MEDIUM | 2026-10-06 to 2026-10-19 |
@@ -124,17 +125,18 @@ activation and controlled SCM recovery proof are complete. D+1/D+3 remain open.
 
 **Invariant**: no second monitor and no miner/Hashcore access from the watchdog.
 
-### R2 - Acquisition Resilience (`PLANNED`, P1)
+### R2 - Acquisition Resilience (`IN PROGRESS / ISOLATED`, P1)
 
 **Spec**: `specs/022-adaptive-acquisition`
 
-**Readiness**: planning hardened 2026-08-13 against the current sequential
-request path. Implementation waits for Spec 021 D+1; production activation
-waits for Spec 021 D+3.
+**Readiness**: planning hardened against the current sequential request path.
+After an owner-approved 19 h 40 min healthy observation, isolated tests and the
+pure module began on 2026-08-14. Monitor wiring waits for Spec 021 D+1 and
+production activation waits for Spec 021 D+3.
 
-- [ ] One typed authoritative envelope per miner per 30-second epoch.
-- [ ] Bounded concurrent/staggered API 4028 acquisition.
-- [ ] Explicit valid/partial/invalid/timeout/error/late quality.
+- [x] Pure typed authoritative/diagnostic envelope and epoch contracts.
+- [x] Bounded executor, lease and peer-isolation contracts without runtime wiring.
+- [x] Explicit valid/partial/invalid/timeout/error/late quality normalization.
 - [ ] Optional diagnostic recovery probes that cannot update state or actions.
 - [ ] Baseline/shadow comparison for latency, requests, sample age and alerts.
 

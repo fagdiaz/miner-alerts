@@ -14,7 +14,7 @@ Have the native monitor write a small atomic sanitized metrics snapshot. A separ
 
 **Primary Dependencies**: prometheus-client in an auxiliary exporter image; pinned Prometheus and Grafana Docker images
 
-**Storage**: Atomic diagnostics/metrics/current.json, Prometheus volume and versioned Grafana provisioning; SQLite remains canonical
+**Storage**: Atomic `diagnostics/metrics/current.json`, Prometheus volume and versioned Grafana provisioning; SQLite remains canonical
 
 **Testing**: `unittest`, deterministic fixtures, contract validation, `py_compile`, and controlled runtime evidence
 
@@ -50,6 +50,8 @@ specs/025-prometheus-metrics/
 |-- research.md
 |-- data-model.md
 |-- quickstart.md
+|-- integration-map.md
+|-- contracts/config.md
 |-- contracts/metrics.md
 |-- checklists/requirements.md
 |-- tasks.md
@@ -75,21 +77,42 @@ tests/test_metrics_exporter.py
 
 ## Phase 0: Research Decisions
 
-See [research.md](research.md). Prometheus text exposition is simple and standard; official guidance requires bounded label cardinality. Grafana file provisioning makes dashboards reproducible. OpenTelemetry is deferred because this topology does not need a multi-signal pipeline.
+See [research.md](research.md) and [integration-map.md](integration-map.md).
+Prometheus text exposition is simple and standard; official guidance requires
+bounded label cardinality. Grafana file provisioning makes dashboards
+reproducible. OpenTelemetry is deferred because this topology does not need a
+multi-signal pipeline.
 
 ## Phase 1: Design
 
 - Define a versioned atomic snapshot contract with no secrets or addresses.
+- Keep v1 at 23 global plus 20 per-miner series, with a 128-series test ceiling
+  for the current four-miner fleet.
 - Use prometheus_client only in the auxiliary exporter image.
 - Bind Grafana and Prometheus host ports to 127.0.0.1 and keep exporter internal to Compose.
 - Use stable miner logical IDs as one bounded label and reason codes from finite enums only.
 - Provision dashboards and data source from repository files.
+- On stale/malformed input, export snapshot health only and never cached miner
+  values.
+- Validate the disabled-by-default settings in
+  [contracts/config.md](contracts/config.md).
+
+## Performance And Resource Design
+
+- Native snapshot construction/write target: under 20 ms after a completed
+  tick, measured without changing tick/action flow.
+- Exporter scrape target: under 250 ms with no SQLite or network dependency.
+- Default staleness: 60 seconds, exposing two missed 30-second snapshots.
+- Current-fleet cardinality: at most 103 series; automated ceiling 128.
+- Dashboard refresh is no faster than the scrape/source cadence.
 
 ## Rollback And Failure Boundary
 
 - Stopping/removing Compose leaves the monitor unchanged.
 - Snapshot write failures log and do not interrupt the fleet tick.
 - Metrics snapshot production is independently disabled with a safe default until rollout.
+- Missing/malformed/stale snapshots remove miner series and expose exporter
+  health only.
 
 ## Post-Design Constitution Check
 

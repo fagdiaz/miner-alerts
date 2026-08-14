@@ -25,3 +25,8 @@
 - [x] Negative paths and stale/missing evidence are covered.
 - [x] Validation extends beyond `py_compile`.
 - [x] Runtime rollout and observation evidence are required before completion.
+- [x] Snapshot schema, metric allowlist and enum labels are exact.
+- [x] Cardinality has a formula and current-fleet automated ceiling.
+- [x] Stale/malformed input removes miner series instead of caching old data.
+- [x] Container mounts, loopback binds and exporter isolation are explicit.
+- [x] Disabled configuration and rollback are deterministic.

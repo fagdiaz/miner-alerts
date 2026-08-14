@@ -13,6 +13,11 @@
 2. Keep the HTTP exporter out of the monitor process.
 3. Containerize only exporter, Prometheus and Grafana.
 4. Defer OTel until multi-service tracing or multiple telemetry backends exist.
+5. Mount only the snapshot directory into the exporter; never mount live SQLite
+   or the repository root.
+6. Use a fixed metric family/label allowlist and one formula-based cardinality
+   budget instead of discovering metrics dynamically from JSON keys.
+7. Drop stale miner series instead of caching the last good payload.
 
 ## Rejected Or Deferred Alternatives
 
@@ -20,6 +25,10 @@
 - Mounting live config or SQLite into containers because it exposes secrets or file-lock complexity.
 - Dynamic event IDs and free text as labels because they are unbounded.
 - React dashboard because Grafana already serves this workflow.
+- Dynamic JSON-to-metric conversion because unknown keys/labels break
+  compatibility and cardinality bounds.
+- Exporting error/reason text as labels because finite logs/SQLite already own
+  diagnostic detail.
 
 ## External Validation Sources
 

@@ -5,7 +5,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-13] - Specs 022-023: Implementation Planning Hardening
+## [2026-08-13] - Specs 022, 023 And 025: Implementation Planning Hardening
 
 * **Objetivo**: Convertir adquisicion adaptativa y fusion de evidencia en planes
   implementables y conservadores antes de tocar el runtime productivo.
@@ -23,6 +23,9 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     Spec 021 activa con D+1/D+3 pendientes y Specs 022-029 planificadas.
   - Specs 024-029 ahora tienen trazabilidad explicita de cada FR/SC hacia sus
     tareas, mas una matriz transversal de readiness, bloqueos y riesgos.
+  - Spec 025 define un snapshot atomico sin secretos, 26 familias metricas,
+    formula de cardinalidad, descarte de series stale y aislamiento estricto de
+    exporter/Prometheus/Grafana sin montar config, SQLite ni acciones.
 * **Validaciones ejecutadas**:
   - Cobertura explicita FR/SC/tareas, links relativos, placeholders,
     consistencia de estados y `git diff --check`.
@@ -31,6 +34,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 * **Archivos principales**:
   - `specs/022-adaptive-acquisition/*`
   - `specs/023-incident-evidence-fusion/*`
+  - `specs/025-prometheus-metrics/*`
   - `docs/speckit/SPEC_PROGRAM.md`
   - `docs/speckit/ROADMAP.md`
   - `docs/speckit/DELIVERY_PLAN.md`

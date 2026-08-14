@@ -32,6 +32,10 @@ Define the cross-process heartbeat, watchdog classifications and safe service-re
 - When collection raises unexpectedly and an output path was supplied, the
   observer MUST still write a sanitized failure envelope with only a stable
   reason and exception type; exception messages are not persisted.
+- Successful and failure reports MUST replace their destination atomically so
+  interruption cannot leave a partial JSON artifact that looks authoritative.
+- The task installer MUST read back principal, executable, arguments and next
+  run time after registration and fail if the installed definition diverges.
 
 ## Failure And Safety Contract
 

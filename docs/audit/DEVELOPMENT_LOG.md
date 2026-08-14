@@ -53,6 +53,13 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Si una captura bajo `pythonw.exe` falla, ahora deja igualmente un envelope
     JSON sanitizado con razon estable y tipo de excepcion, nunca el mensaje que
     podria contener datos locales. La ruta forzada de error quedo probada.
+  - Antes de D+1 se endurecio la evidencia: los reportes pasan por reemplazo
+    atomico y el instalador relee principal, ejecutable, argumentos y fecha de
+    cada tarea antes de declarar exito.
+  - Un control D+0 a las 20:57 paso con 215 evaluaciones sanas, procesos y
+    workers frescos, cola cero y ninguna decision/accion automatica. Las tareas
+    D+1/D+3 protegidas y su recibo elevado continuaban presentes; la regresion
+    completa quedo en 157/157.
 * **Archivos principales**:
   - `app/liveness.py`
   - `app/miner_monitor.py`

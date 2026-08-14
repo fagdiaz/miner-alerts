@@ -140,5 +140,25 @@ foreach ($definition in $definitions) {
         -Description "Read-only Miner Alerts Spec 021 $($definition.Stage.ToUpperInvariant()) observation" `
         -Force `
         -ErrorAction Stop | Out-Null
+    $registered = Get-ScheduledTask `
+        -TaskPath $TaskPath `
+        -TaskName $definition.Name `
+        -ErrorAction Stop
+    $registeredInfo = Get-ScheduledTaskInfo `
+        -TaskPath $TaskPath `
+        -TaskName $definition.Name `
+        -ErrorAction Stop
+    $registeredAction = @($registered.Actions)[0]
+    if (
+        $registered.Principal.UserId -ne "SYSTEM" -or
+        $registeredAction.Execute -ne $pythonw -or
+        $registeredAction.Arguments -ne $arguments -or
+        $registeredInfo.NextRunTime -ne $runAt.LocalDateTime
+    ) {
+        throw "Registered task verification failed: $TaskPath$($definition.Name)"
+    }
+    $plan["verified"] = $true
+    $plan["state"] = [string]$registered.State
+    $plan["next_run_time"] = $registeredInfo.NextRunTime.ToString("o")
     [pscustomobject]$plan | ConvertTo-Json -Compress
 }

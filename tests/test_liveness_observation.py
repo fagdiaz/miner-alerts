@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from tools.observe_liveness import (
+    emit_report,
     evaluate,
     main,
     parse_service_query,
@@ -18,6 +19,18 @@ from tools.observe_liveness import (
 
 
 class LivenessObservationTests(unittest.TestCase):
+    def test_emit_report_replaces_output_atomically(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "observation.json"
+            output.write_text('{"stale": true}\n', encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                emit_report({"passed": True}, output=str(output))
+            self.assertEqual(
+                {"passed": True},
+                json.loads(output.read_text(encoding="utf-8")),
+            )
+            self.assertEqual([], list(output.parent.glob(".*.tmp")))
+
     def test_main_writes_sanitized_failure_envelope_on_exception(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "failure.json"
@@ -59,6 +72,9 @@ class LivenessObservationTests(unittest.TestCase):
             "MultipleInstances IgnoreNew",
             "ExecutionTimeLimit",
             "-ErrorAction Stop",
+            "Get-ScheduledTaskInfo",
+            'registered.Principal.UserId -ne "SYSTEM"',
+            'plan["verified"] = $true',
         ):
             self.assertIn(required, script)
         for forbidden in (

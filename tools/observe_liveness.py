@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import sqlite3
 import statistics
@@ -377,7 +378,14 @@ def emit_report(report: dict[str, Any], *, output: str | None) -> None:
         if not output_path.is_absolute():
             output_path = ROOT / output_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(rendered + "\n", encoding="utf-8")
+        temporary_path = output_path.with_name(
+            f".{output_path.name}.{os.getpid()}.tmp"
+        )
+        try:
+            temporary_path.write_text(rendered + "\n", encoding="utf-8")
+            os.replace(temporary_path, output_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
     print(rendered)
 
 

@@ -183,6 +183,28 @@
   plus only the exception type. A forced missing-config check produced the
   expected envelope and exit code 2 without persisting the exception message.
 
+## Pre-D+1 Gate Durability - 2026-08-13
+
+- Observation output now uses a same-directory temporary file plus atomic
+  replacement for both pass and failure envelopes. A deterministic test proves
+  stale content is replaced and no temporary file remains.
+- The one-shot task installer now reads each task back immediately and verifies
+  SYSTEM principal, `pythonw.exe`, exact arguments and next-run time before it
+  can report success.
+- A continuity audit confirmed both protected task-definition files still
+  exist under the Windows Task Scheduler store. The ignored elevated receipt
+  records both `Ready` as SYSTEM/Highest/ServiceAccount, `pythonw.exe`,
+  `IgnoreNew`, `StartWhenAvailable`, a five-minute limit and starts at
+  2026-08-14/16 17:28 ART. Non-elevated ScheduledTasks enumeration omits these
+  protected definitions and is not treated as evidence that they are absent.
+- A fresh atomic D+0 report at 20:57 ART passed after 12,893 seconds: 215
+  watchdog assessments, zero unhealthy/reason/action samples, wrapper PID
+  `35836`, monitor PID `35788`, fresh workers, queue zero, 172 telemetry rows
+  and zero reboot decisions or automatic actions.
+- Liveness observation/monitor tests are 28/28 PASS; the full suite is 157/157
+  PASS. Observer/watchdog/liveness/monitor compilation, PowerShell parsing,
+  installer dry-run, JSON parsing, Speckit QA and `git diff --check` pass.
+
 ## Implementation And Deterministic Validation - 2026-08-13
 
 - Added versioned, atomically replaced heartbeat state with PID, process start,

@@ -112,6 +112,13 @@ class AcquisitionConfigTests(unittest.TestCase):
         self.assertTrue(all("yes-secret" not in warning for warning in warnings))
         self.assertTrue(all(warning.startswith("invalid_config key=") for warning in warnings))
 
+    def test_disabled_sequential_fallback_wiring_preserves_sequential_path(self) -> None:
+        raw = {"adaptive_acquisition_enabled": False}
+        config, warnings = AcquisitionConfig.from_mapping(raw)
+        self.assertFalse(config.enabled)
+        self.assertFalse(config.diagnostics_enabled)
+        self.assertEqual((), warnings)
+
 
 class Api4028TransportTests(unittest.TestCase):
     class FakeSocket:

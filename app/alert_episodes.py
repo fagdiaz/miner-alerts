@@ -452,34 +452,52 @@ class IrregularEpisodeCoordinator:
         return batch
 
 
-def _episode_lines(episode: IrregularEpisode, *, now_ts: float) -> list[str]:
+def _format_age(seconds: float) -> str:
+    s = max(0, int(seconds))
+    if s < 60:
+        return f"{s}s"
+    m = s // 60
+    return f"{m}m"
+
+
+def _compact_alert_line(episode: IrregularEpisode, *, now_ts: float) -> str:
     end_ts = episode.closed_ts if episode.closed_ts is not None else float(now_ts)
-    age_seconds = max(0.0, end_ts - episode.started_ts)
-    age_minutes = max(1, int(age_seconds / 60))
-    if episode.closed_ts is not None:
-        summary = f"OK | {_format_rate(episode.rate_ths)} | duracion {age_minutes} min"
-    else:
-        evidence = _state_evidence(
-            episode.current_state,
-            responded=episode.responded,
-            rate_ths=episode.rate_ths,
-            threshold_ths=episode.threshold_ths,
-            active_boards=episode.active_boards,
-            expected_boards=episode.expected_boards,
-        )
-        state_label = _state_label(
-            episode.current_state,
-            active_boards=episode.active_boards,
-            expected_boards=episode.expected_boards,
-        )
-        summary = f"{state_label} | {evidence} | {age_minutes} min"
-    lines = [f"- {episode.name_display}: {summary}", f"  Secuencia: {episode.sequence}"]
-    restart_step = episode.restart_step
-    if restart_step is not None and restart_step.evidence:
-        lines.append(f"  Reinicio: {restart_step.evidence}")
+    age = _format_age(end_ts - episode.started_ts)
+    state_label = _state_label(
+        episode.current_state,
+        active_boards=episode.active_boards,
+        expected_boards=episode.expected_boards,
+    )
+    parts = [f"{episode.name_display} {state_label}"]
+    if episode.current_state == STATE_LOW and episode.responded:
+        parts.append(_format_rate(episode.rate_ths))
+    parts.append(age)
     if episode.detail_event_id is not None:
-        lines.append(f"  Detalle: /e{episode.detail_event_id}")
+        parts.append(f"/e{episode.detail_event_id}")
+    return " \u00b7 ".join(parts)
+
+
+def _compact_recovery_lines(episode: IrregularEpisode, *, now_ts: float) -> list[str]:
+    end_ts = episode.closed_ts if episode.closed_ts is not None else float(now_ts)
+    age = _format_age(end_ts - episode.started_ts)
+    lines: list[str] = [f"{episode.name_display} OK \u00b7 {_format_rate(episode.rate_ths)}"]
+    detail_parts = [episode.sequence, age]
+    if episode.detail_event_id is not None:
+        detail_parts.append(f"/e{episode.detail_event_id}")
+    lines.append(" \u00b7 ".join(detail_parts))
     return lines
+
+
+def _compact_persistent_line(episode: IrregularEpisode) -> str:
+    state_label = _state_label(
+        episode.current_state,
+        active_boards=episode.active_boards,
+        expected_boards=episode.expected_boards,
+    )
+    parts = [f"{episode.name_display} {state_label}"]
+    if episode.detail_event_id is not None:
+        parts.append(f"/e{episode.detail_event_id}")
+    return " \u00b7 ".join(parts)
 
 
 def render_episode_notification_batch(
@@ -489,20 +507,22 @@ def render_episode_notification_batch(
 ) -> str:
     sections: list[str] = []
     if batch.opened:
-        lines = ["ALERTA DE MINEROS", ""]
+        lines = ["ALERTA MINEROS", ""]
         for episode in batch.opened:
-            lines.extend(_episode_lines(episode, now_ts=now_ts))
+            lines.append(_compact_alert_line(episode, now_ts=now_ts))
         sections.append("\n".join(lines))
     if batch.persistent:
-        lines = ["FALLA PERSISTENTE", ""]
+        oldest_age = max(
+            now_ts - episode.started_ts for episode in batch.persistent
+        )
+        lines = [f"SIGUE AFECTADO \u00b7 {_format_age(oldest_age)}", ""]
         for episode in batch.persistent:
-            lines.extend(_episode_lines(episode, now_ts=now_ts))
-        lines.extend(["", "Próximo aviso según escalamiento mientras persista."])
+            lines.append(_compact_persistent_line(episode))
         sections.append("\n".join(lines))
     if batch.recovered:
-        lines = ["MINEROS RECUPERADOS", ""]
+        lines = ["RECUPERADOS", ""]
         for episode in batch.recovered:
-            lines.extend(_episode_lines(episode, now_ts=now_ts))
+            lines.extend(_compact_recovery_lines(episode, now_ts=now_ts))
         sections.append("\n".join(lines))
     return "\n\n---\n\n".join(sections)
 

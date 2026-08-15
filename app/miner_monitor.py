@@ -44,6 +44,7 @@ try:
     from .vnish_logs import render_firmware_events
     from .telegram_messages import classify_delivery, split_telegram_message
     from .liveness import MonitorHeartbeat, write_heartbeat_atomic
+    from .acquisition import AcquisitionConfig
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -68,6 +69,7 @@ except ImportError:
     from vnish_logs import render_firmware_events
     from telegram_messages import classify_delivery, split_telegram_message
     from liveness import MonitorHeartbeat, write_heartbeat_atomic
+    from acquisition import AcquisitionConfig
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -3544,6 +3546,15 @@ def main() -> None:
         f"fleet_min_affected={auto_reboot_fleet_guard_min_affected} "
         f"firmware_transition={str(auto_reboot_firmware_transition_guard_enabled).lower()} "
         f"fleet_snapshot_max_age_seconds={auto_reboot_fleet_snapshot_max_age_seconds:.0f}"
+    )
+    acq_config, acq_warnings = AcquisitionConfig.from_mapping(config)
+    for warning in acq_warnings:
+        log(f"[WARN] {warning}")
+    log(
+        f"ADAPTIVE_ACQUISITION enabled={str(acq_config.enabled).lower()} "
+        f"workers={acq_config.workers} timeout={acq_config.timeout_seconds:.1f}s "
+        f"deadline={acq_config.deadline_seconds:.1f}s "
+        f"diagnostics={str(acq_config.diagnostics_enabled).lower()}"
     )
 
     telegram_cfg = config.get("telegram", {})

@@ -88,9 +88,9 @@ class IrregularEpisodeCoordinatorTests(unittest.TestCase):
 
         self.assertEqual(["23", "24"], [item.name_display for item in batch.persistent])
         message = render_episode_notification_batch(batch, now_ts=400.0)
-        self.assertEqual(1, message.count("FALLA PERSISTENTE"))
-        self.assertIn("- 23:", message)
-        self.assertIn("- 24:", message)
+        self.assertIn("SIGUE AFECTADO", message)
+        self.assertIn("23", message)
+        self.assertIn("24", message)
 
     def test_nearby_reminders_and_recoveries_share_the_short_batch(self) -> None:
         coordinator = self.make_coordinator()
@@ -143,9 +143,9 @@ class IrregularEpisodeCoordinatorTests(unittest.TestCase):
         batch = coordinator.pop_due(now_ts=130.0)
         self.assertEqual(1, len(batch.recovered))
         message = render_episode_notification_batch(batch, now_ts=130.0)
-        self.assertIn("MINEROS RECUPERADOS", message)
+        self.assertIn("RECUPERADOS", message)
         self.assertIn("OK -> LOW -> OK", message)
-        self.assertNotIn("FALLA PERSISTENTE", message)
+        self.assertNotIn("SIGUE AFECTADO", message)
 
     def test_restart_episode_tracks_intermediate_states_and_closes(self) -> None:
         coordinator = self.make_coordinator()
@@ -221,9 +221,10 @@ class IrregularEpisodeCoordinatorTests(unittest.TestCase):
             now_ts=130.0,
         )
 
-        self.assertIn("accion manual atribuida", message)
-        self.assertIn("uptime 20000s -> 5s", message)
-        self.assertIn("OK -> REINICIO -> LOW", message)
+        # Compact format moves restart evidence to click-safe /e<ID> detail.
+        # The main message should contain the event reference and the state.
+        self.assertIn("/e30", message)
+        self.assertIn("LOW", message)
 
     def test_history_is_bounded_without_losing_first_state(self) -> None:
         coordinator = self.make_coordinator(max_history_steps=5)

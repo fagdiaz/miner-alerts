@@ -9,11 +9,11 @@ alone is insufficient.
 
 ## Phase 1: Inventory And Red Contracts
 
-- [ ] T001 Map every current EventStore source/query and analyzer to
+- [x] T001 Map every current EventStore source/query and analyzer to
   `integration-map.md`; confirm Spec 022 quality persistence is available.
-- [ ] T002 [P] Add failing configuration/disabled-fallback tests for FR-013 in
+- [x] T002 [P] Add failing configuration/disabled-fallback tests for FR-013 in
   `tests/test_evidence_fusion.py`.
-- [ ] T003 [P] Add failing normalization, freshness, clock-skew, unknown-code,
+- [x] T003 [P] Add failing normalization, freshness, clock-skew, unknown-code,
   canonical ordering and digest tests for FR-001, FR-002, FR-010, FR-012 and
   FR-015.
 - [ ] T004 [P] Add failing confidence-ceiling, timing-only, contradiction,

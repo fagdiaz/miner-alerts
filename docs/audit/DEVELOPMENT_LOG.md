@@ -5,6 +5,22 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-08-15] - Spec 023 Red Contracts y Evaluación Gate D+3 (Análisis de Avance Opus)
+
+* **Objetivo**: Evaluar el gate D+3 de Spec 021, inventariar fuentes del EventStore para fusión de evidencia y crear tests red-contract para la configuración y normalización de Spec 023.
+* **Realizado por Opus**:
+  - **Gate D+3 de Spec 021**: Evaluado a las 19:23 ART — 50.01 h transcurridas de 72.00 h requeridas (~22h restantes). Tarea automática `MinerAlertsLivenessD3` programada para 2026-08-16 17:28 ART. La activación de Spec 022 permanece bloqueada y `adaptive_acquisition_enabled=false` se mantiene como default seguro.
+  - **T001 — Inventario de Fuentes**: Confirmadas 5 tablas del EventStore (schema v5) y 6 analyzers reutilizables en `app/`. Hallazgo clave: la persistencia de calidad de Spec 022 (`authority`, `reason_code`) **no está disponible** (T007 de Spec 022 permanece abierto). Las tareas T008+ de Spec 023 quedan bloqueadas hasta completar T007.
+  - **T002 — Red Contracts de Configuración (FR-013)**: 14 tests en `tests/test_evidence_fusion.py` cubriendo `FusionConfig.from_mapping`, defaults deshabilitados, validación de rangos (`context_hours` 1-168, `fleet_window_seconds` 30-300), rechazo de NaN/Infinity y fallback exacto.
+  - **T003 — Red Contracts de Normalización (FR-001/2/10/12/15)**: 32 tests en `tests/test_evidence_fusion.py` cubriendo `EvidenceFact` inmutabilidad, `classify_freshness`, `map_clock_quality`, `validate_fact_code` fail-closed, `sort_facts_canonical` y `compute_evidence_digest` determinístico SHA-256.
+  - **Validación de Tests**: 46 tests nuevos fallan con `ModuleNotFoundError: No module named 'app.evidence_fusion'` (razón roja correcta). 206 tests existentes pasan sin regresiones (0 fallos, 0 errores). Ningún código de producción fue modificado.
+  - **Spec Kit Tracking**: T001, T002 y T003 marcados como completados en `specs/023-incident-evidence-fusion/tasks.md` y documentados en `evidence.md`.
+* **Pendiente por Agotamiento de Cuota de Opus**:
+  - Empaquetar los tests red contract y cambios de documentación en un commit feature-scoped y realizar `git push`.
+  - Continuar con las tareas T004-T007 (Red contracts de techos de confianza y migración de base de datos de Spec 023).
+
+---
+
 ## [2026-08-15] - Sprint Telegram UX y Estabilización (Análisis de Avance Opus)
 
 * **Objetivo**: Ejecutar el sprint de estabilización y UX Telegram según `prompt.txt` para compactar mensajes, agrupar incidentes, validar gates de Spec 021/022 y preparar el despliegue.

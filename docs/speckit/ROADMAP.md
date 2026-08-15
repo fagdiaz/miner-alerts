@@ -4,20 +4,30 @@
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
-## Executive Summary & Progress
+## Resumen Ejecutivo y Progreso del Programa
 
-- **Overall Progress**: `35%` (4 of 11 specs closed or in active rollout; core stabilization, messaging, liveness D+1 and acquisition T006 complete).
+- **Progreso Global del Roadmap**: `35%` (4 de 11 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del proyecto).
 
-### Milestone Index
+### 🏆 Avances Principales Desde el Inicio
 
-1. **[COMPLETED] Spec 020 — State & Auto-reboot Stabilization**: Stable 5-state machine, interlocks, and zero-spurious auto-reboot (`e502ab9`).
-2. **[COMPLETED] Spec 030 — Telegram Messaging Quality**: Command queue, delivery classification, message splitting, and rate limit safety (`2afd65e`).
-3. **[IN PROGRESS - 85%] Spec 021 — Liveness Watchdog & Service Recovery**: Process supervision, heartbeat, and SCM recovery active; D+1 passed (86.7k/86.4k s), D+3 exit on 2026-08-17.
-4. **[IN PROGRESS - 50%] Spec 022 — Adaptive Acquisition & Compact UX**: Pure acquisition core, T006 sequential fallback wiring, and compact Telegram UX complete; activation pending D+3.
-5. **[PENDING] Spec 023 — Incident Evidence Fusion**: Replay and confidence scoring across SQLite telemetry, reboot decisions, and Vnish logs.
-6. **[PENDING] Spec 024 — Electrical Telemetry Discovery**: Smart PDU / power monitoring adapter discovery or explicit dependency block.
-7. **[PENDING] Spec 025 — Local Observability**: Prometheus metrics exporter and Grafana dashboard for miner fleet health.
-8. **[PENDING] Specs 026-029 — Operations, Backup & Release Closure**: Hashcore inventory, backup/restore, interface decision, and final 168-hour release gate.
+1. **[COMPLETADO] Spec 020 — Estabilización de Estados y Autoreinicio**: Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`), interlocks térmicos/de flota y cero reinicios espurios (`e502ab9`).
+2. **[COMPLETADO] Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
+3. **[EN PROCESO - 85%] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 superado (86.7k/86.4k s), cierre D+3 programado para el 2026-08-17.
+4. **[EN PROCESO - 50%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, integración secuencial T006 deshabilitada por defecto y alertas compactas de 1 línea con detalle `/e<ID>` completadas.
+
+---
+
+### 🎯 Objetivos a Futuro e Hitos Pendientes
+
+1. **Spec 023 — Fusión de Evidencia de Incidentes**: Correlación determinística y puntuación de confianza entre telemetría SQLite, decisiones de reinicio y logs Vnish.
+2. **Spec 024 — Descubrimiento de Telemetría Eléctrica**: Integración de PDU inteligente / monitoreo de energía AC sin inferir tensión desde placas de hash.
+3. **Spec 025 — Observabilidad Local (Prometheus y Grafana)**: Exportador de métricas locales en formato Prometheus y tableros Grafana de solo lectura para la flota.
+4. **Spec 026 — Inventario de Capacidades Hashcore**: Mapa de riesgo y análisis conservador del conjunto de comandos del Toolkit sin ampliar permisos de escritura.
+5. **Spec 028 — Respaldo y Restauración de Base de Datos**: Respaldos SQLite en caliente programados y prueba de restauración en ambiente staging.
+6. **Spec 027 — Evaluación de Interfaz de Operación**: Selección del stack de UI (Grafana / HTML estático o API local mínima FastAPI solo si es necesario).
+7. **Spec 029 — Estabilización Final y Candidato de Release V2**: Pruebas de regresión cruzadas, auditoría de documentación y ciclo de observación de 168 horas sin incidentes P0/P1.
+
+---
 
 ## Operating Goal
 

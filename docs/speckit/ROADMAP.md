@@ -6,26 +6,47 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Global del Roadmap**: `35%` (4 de 11 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del proyecto).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `75%` (22 de 30 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del ciclo de vida del proyecto).
 
-### 🏆 Avances Principales Desde el Inicio
+### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
-1. **[COMPLETADO] Spec 020 — Estabilización de Estados y Autoreinicio**: Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`), interlocks térmicos/de flota y cero reinicios espurios (`e502ab9`).
-2. **[COMPLETADO] Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
-3. **[EN PROCESO - 85%] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 superado (86.7k/86.4k s), cierre D+3 programado para el 2026-08-17.
-4. **[EN PROCESO - 50%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, integración secuencial T006 deshabilitada por defecto y alertas compactas de 1 línea con detalle `/e<ID>` completadas.
+1. **[COMPLETADO] Specs 001 a 019 — Arquitectura Base y Telemetría**: Polling autoritativo API 4028, base SQLite (esquema v1-v5), integración Hashcore Toolkit, captura de logs Vnish, diagnósticos de calidad y perfil de estabilidad.
+2. **[COMPLETADO] Spec 020 — Estabilización de Estados y Autoreinicio**: Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`), interlocks térmicos/de flota y cero reinicios espurios (`e502ab9`).
+3. **[COMPLETADO] Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
+4. **[EN PROCESO - 85%] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 superado (86.7k/86.4k s), cierre D+3 programado para el 2026-08-17.
+5. **[EN PROCESO - 50%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, integración secuencial T006 deshabilitada por defecto y alertas compactas de 1 línea con detalle `/e<ID>` completadas.
 
 ---
 
-### 🎯 Objetivos a Futuro e Hitos Pendientes
+### 🎯 Objetivos a Futuro, Hitos Pendientes y Valor Aportado
 
-1. **Spec 023 — Fusión de Evidencia de Incidentes**: Correlación determinística y puntuación de confianza entre telemetría SQLite, decisiones de reinicio y logs Vnish.
-2. **Spec 024 — Descubrimiento de Telemetría Eléctrica**: Integración de PDU inteligente / monitoreo de energía AC sin inferir tensión desde placas de hash.
-3. **Spec 025 — Observabilidad Local (Prometheus y Grafana)**: Exportador de métricas locales en formato Prometheus y tableros Grafana de solo lectura para la flota.
-4. **Spec 026 — Inventario de Capacidades Hashcore**: Mapa de riesgo y análisis conservador del conjunto de comandos del Toolkit sin ampliar permisos de escritura.
-5. **Spec 028 — Respaldo y Restauración de Base de Datos**: Respaldos SQLite en caliente programados y prueba de restauración en ambiente staging.
-6. **Spec 027 — Evaluación de Interfaz de Operación**: Selección del stack de UI (Grafana / HTML estático o API local mínima FastAPI solo si es necesario).
-7. **Spec 029 — Estabilización Final y Candidato de Release V2**: Pruebas de regresión cruzadas, auditoría de documentación y ciclo de observación de 168 horas sin incidentes P0/P1.
+1. **Spec 023 — Fusión de Evidencia de Incidentes**:
+   - *Objetivo*: Correlacionar datos de telemetría SQLite, decisiones de reinicio y logs Vnish.
+   - *Valor y Beneficio*: Permite identificar la causa raíz exacta de caídas (red, energía o firmware) eliminando falsos diagnósticos y guiando el mantenimiento preventivo de la granja.
+
+2. **Spec 024 — Descubrimiento de Telemetría Eléctrica**:
+   - *Objetivo*: Integrar telemetría de PDUs / UPS inteligentes o monitoreo de energía AC real.
+   - *Valor y Beneficio*: Evita confundir caídas de tensión de placas con cortes de energía del Data Center, protegiendo los equipos ante fluctuaciones eléctricas externas.
+
+3. **Spec 025 — Observabilidad Local (Prometheus y Grafana)**:
+   - *Objetivo*: Exportar métricas locales Prometheus y proveer tableros Grafana de solo lectura.
+   - *Valor y Beneficio*: Otorga visibilidad gráfica en tiempo real del rendimiento de la flota (TH/s totales, temperaturas, rejected shares) sin sobrecargar el monitor.
+
+4. **Spec 026 — Inventario de Capacidades Hashcore**:
+   - *Objetivo*: Mapear de forma conservadora los comandos del Toolkit Hashcore sin ampliar permisos de escritura.
+   - *Valor y Beneficio*: Permite auditar el alcance operativo de acciones sobre los mineros garantizando que no se ejecuten comandos destructivos o no autorizados.
+
+5. **Spec 028 — Respaldo y Restauración de Base de Datos**:
+   - *Objetivo*: Programar respaldos en caliente de SQLite y ensayar la restauración en ambiente staging.
+   - *Valor y Beneficio*: Asegura la continuidad operativa y la preservación del historial de eventos ante fallos de disco o corrupción de base de datos.
+
+6. **Spec 027 — Evaluación de Interfaz de Operación**:
+   - *Objetivo*: Determinar si Grafana/HTML estático bastan o si requiere una API local mínima en FastAPI.
+   - *Valor y Beneficio*: Minimiza el consumo de recursos e hiper-superficie de ataque al evitar construir paneles web complejos si las herramientas estáticas cumplen la operación.
+
+7. **Spec 029 — Estabilización Final y Candidato de Release V2**:
+   - *Objetivo*: Pruebas de regresión cruzadas, auditoría documental y período de observación de 168 horas.
+   - *Valor y Beneficio*: Garantiza la entrega de un producto robusto, libre de deudas técnicas, con documentación 100% verificada y listo para operación autónoma en producción.
 
 ---
 

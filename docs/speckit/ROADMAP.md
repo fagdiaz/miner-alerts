@@ -4,6 +4,21 @@
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
+## Executive Summary & Progress
+
+- **Overall Progress**: `35%` (4 of 11 specs closed or in active rollout; core stabilization, messaging, liveness D+1 and acquisition T006 complete).
+
+### Milestone Index
+
+1. **[COMPLETED] Spec 020 — State & Auto-reboot Stabilization**: Stable 5-state machine, interlocks, and zero-spurious auto-reboot (`e502ab9`).
+2. **[COMPLETED] Spec 030 — Telegram Messaging Quality**: Command queue, delivery classification, message splitting, and rate limit safety (`2afd65e`).
+3. **[IN PROGRESS - 85%] Spec 021 — Liveness Watchdog & Service Recovery**: Process supervision, heartbeat, and SCM recovery active; D+1 passed (86.7k/86.4k s), D+3 exit on 2026-08-17.
+4. **[IN PROGRESS - 50%] Spec 022 — Adaptive Acquisition & Compact UX**: Pure acquisition core, T006 sequential fallback wiring, and compact Telegram UX complete; activation pending D+3.
+5. **[PENDING] Spec 023 — Incident Evidence Fusion**: Replay and confidence scoring across SQLite telemetry, reboot decisions, and Vnish logs.
+6. **[PENDING] Spec 024 — Electrical Telemetry Discovery**: Smart PDU / power monitoring adapter discovery or explicit dependency block.
+7. **[PENDING] Spec 025 — Local Observability**: Prometheus metrics exporter and Grafana dashboard for miner fleet health.
+8. **[PENDING] Specs 026-029 — Operations, Backup & Release Closure**: Hashcore inventory, backup/restore, interface decision, and final 168-hour release gate.
+
 ## Operating Goal
 
 Miner Alerts is the operations and diagnosis layer for S19j Pro miners. Work is

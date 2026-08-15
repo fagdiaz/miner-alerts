@@ -1,6 +1,6 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-08-14
+**Last reviewed**: 2026-08-15
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
@@ -25,9 +25,9 @@ interfaces or integrations.
   fleet, Vnish transition, cooldown, window and QA safety.
 - Spec 020 is committed/pushed and runtime-closed as `e502ab9`. Spec 030
   messaging quality is committed/pushed as `2afd65e` and active in production.
-  Spec 021 liveness is activated and its SCM recovery proof passed; D+1/D+3
-  observation remains its release gate. Spec 022 has begun isolated module/test
-  implementation without monitor wiring or production activation.
+  Spec 021 liveness is activated and its D+1 observation gate passed (86,700s > 86,400s).
+  Spec 022 has completed T006 sequential fallback wiring and compact Telegram UX formatting
+  behind `adaptive_acquisition_enabled=false`, with 206/206 passing tests.
 
 ## Architecture Direction
 

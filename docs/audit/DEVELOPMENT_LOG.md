@@ -5,6 +5,27 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-08-15] - Sprint Telegram UX y Estabilización (Análisis de Avance Opus)
+
+* **Objetivo**: Ejecutar el sprint de estabilización y UX Telegram según `prompt.txt` para compactar mensajes, agrupar incidentes, validar gates de Spec 021/022 y preparar el despliegue.
+* **Realizado por Opus (Fases 1 a 4 + Validación Parcial)**:
+  - **Fase 1 (Relevamiento Determinístico)**: Se inspeccionó el pipeline de alertas (`miner_monitor.py` -> `IrregularEpisodeCoordinator` -> `render_episode_notification_batch` -> `send_telegram` -> `_TELEGRAM_QUEUE` -> `telegram_sender_worker`). Se confirmaron valores en runtime (`coalesce_seconds` = 30.0s, schedule de fallas persistentes = `[300, 600, 900, 1800, 3600, 7200]`, normalización de `/e<ID>` a `/event`). Se verificó que Spec 021 D+1 PASÓ con éxito (`passed: true`, 86700s > 86400s). Se documentó el análisis en `phase1_pipeline_analysis.md`.
+  - **Fase 2 (Contratos UX)**: Se establecieron los contratos para alertas compactas (`ALERTA MINEROS`), recuperaciones completas (`RECUPERADOS`), recordatorios de persistencia (`SIGUE AFECTADO · <duración>`), separación por punto `·`, unidades de edad (`30s`/`5m`), y traslado de IPs/detalles diagnósticos exclusivamente a `/e<ID>`.
+  - **Fase 3 (Pruebas Primero)**: Se crearon las suites de pruebas determinísticas `tests/test_compact_ux.py` (10 tests de contratos de agrupación, orden y no filtrado de IP) y `tests/test_compact_format.py` (9 tests de formato exacto de línea, cabeceras y separadores).
+  - **Fase 4 (Implementación Mínima)**: Se modificó `app/alert_episodes.py` agregando `_format_age()`, `_compact_alert_line()`, `_compact_recovery_lines()`, `_compact_persistent_line()` y actualizando `render_episode_notification_batch()`. Se actualizaron 3 aserciones en `tests/test_alert_episodes.py`. Se confirmó que la lógica del monitor (`app/miner_monitor.py`), state machine, auto-reboot, cooldowns, startup guard, offset y polling permanecieron **sin cambios**.
+  - **Fase 5 (Spec 022 Wiring T006 COMPLETADO)**: Con D+1 APROBADO, se integró `AcquisitionConfig` en `app/miner_monitor.py` y defaults deshabilitados en `app/config.example.json` (`adaptive_acquisition_enabled=false`). Se preservó el path secuencial estricto. Se agregó `test_disabled_sequential_fallback_wiring_preserves_sequential_path` en `tests/test_acquisition.py`.
+  - **Fase 6 (Validación Formal COMPLETADA)**: Compilación `py_compile` limpia, validación JSON de `config.example.json` correcta y 201/201 tests PASADOS sin regresiones.
+* **Pendiente (Fases 7 a 10)**:
+  - **Fase 7 (Prueba Telegram Controlada)**: Prueba en vivo de comandos `/help`, `/status`, `/info`, `/e<ID>` con `DBG_TELEGRAM=1`.
+  - **Fase 8 (Documentación Spec Kit)**: Actualización completa de Spec Kit docs, `ROADMAP.md` y `DELIVERY_PLAN.md`.
+  - **Fase 9 (Deploy Controlado)**: Reinicio controlado del servicio NSSM `MinerAlerts` si corresponde, con validación de PID, mutex y heartbeat.
+  - **Fase 10 (Cierre Git)**: Commits feature-scoped y push a `codex/022-adaptive-acquisition`.
+* **Archivos Modificados por Opus**:
+  - `app/alert_episodes.py` (renderizador compacto)
+  - `tests/test_alert_episodes.py` (actualización de aserciones de formato)
+  - `tests/test_compact_ux.py` (nuevo)
+  - `tests/test_compact_format.py` (nuevo)
+
 ## [2026-08-14] - Spec 022: Isolated Adaptive Acquisition Core
 
 * **Objetivo**: Iniciar la adquisicion adaptativa sin conectar ni activar el

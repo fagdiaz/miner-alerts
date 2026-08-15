@@ -96,6 +96,14 @@
   `BASELINE_OK`. The tool now emits `ok`, `partial` or `failed`, returns nonzero
   for incomplete capture and retains its sanitized artifact for diagnosis.
 
+## Sequential Fallback Wiring (T006) - 2026-08-15
+
+- Verified Spec 021 D+1 observation gate passed (`passed: true`, elapsed 86700s > 86400s).
+- Added `AcquisitionConfig` parsing and sanitized startup logging to `app/miner_monitor.py`.
+- Added disabled-by-default keys to `app/config.example.json` (`adaptive_acquisition_enabled=false`).
+- Added deterministic test `test_disabled_sequential_fallback_wiring_preserves_sequential_path` in `tests/test_acquisition.py`.
+- Full repository test suite passed 201/201 without regressions or unexpected diffs in `miner_monitor.py`.
+
 ## Required Evidence Before Completion
 
 - Before/after request, latency and tick report.

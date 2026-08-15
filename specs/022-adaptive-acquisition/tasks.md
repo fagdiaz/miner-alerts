@@ -23,7 +23,7 @@
 - [x] T005 [US1] Implement typed transport outcomes, epochs, envelopes and the
   bounded executor in `app/acquisition.py` while preserving existing read
   wrapper signatures.
-- [ ] T006 [US1] Integrate authoritative envelopes behind
+- [x] T006 [US1] Integrate authoritative envelopes behind
   `adaptive_acquisition_enabled=false`; preserve and test the sequential fallback.
 - [ ] T007 [US2] Persist and render explicit quality and age, and expose bounded
   PollHealth data for later metrics export.

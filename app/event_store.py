@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 _TELEMETRY_COLUMNS = {
@@ -26,6 +26,9 @@ _TELEMETRY_COLUMNS = {
     "chains_not_mining_count": "INTEGER",
     "chains_transitioning_count": "INTEGER",
     "quality_flags_json": "TEXT NOT NULL DEFAULT '[]'",
+    # Spec 022 acquisition quality provenance (optional, may be NULL for legacy rows)
+    "acquisition_authority": "TEXT",
+    "acquisition_reason_code": "TEXT",
 }
 
 _FIRMWARE_EVENT_COLUMNS = {
@@ -302,6 +305,11 @@ class EventStore:
                 ensure_ascii=True,
                 separators=(",", ":"),
             )
+            # Spec 022 acquisition quality: sanitize to str or None
+            raw_authority = normalized.get("acquisition_authority")
+            acq_authority = str(raw_authority) if raw_authority is not None else None
+            raw_reason = normalized.get("acquisition_reason_code")
+            acq_reason_code = str(raw_reason) if raw_reason is not None else None
             with self._lock, connection:
                 connection.execute(
                     """
@@ -314,8 +322,9 @@ class EventStore:
                         accepted_shares_total, rejected_shares_total,
                         stale_shares_total, chain_fault_count,
                         chains_not_mining_count, chains_transitioning_count,
-                        quality_flags_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        quality_flags_json,
+                        acquisition_authority, acquisition_reason_code
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         float(observed_ts),
@@ -344,6 +353,8 @@ class EventStore:
                         normalized.get("chains_not_mining_count"),
                         normalized.get("chains_transitioning_count"),
                         quality_flags_json,
+                        acq_authority,
+                        acq_reason_code,
                     ),
                 )
             self._last_error = None

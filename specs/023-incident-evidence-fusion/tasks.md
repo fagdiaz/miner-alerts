@@ -16,14 +16,14 @@ alone is insufficient.
 - [x] T003 [P] Add failing normalization, freshness, clock-skew, unknown-code,
   canonical ordering and digest tests for FR-001, FR-002, FR-010, FR-012 and
   FR-015.
-- [ ] T004 [P] Add failing confidence-ceiling, timing-only, contradiction,
+- [x] T004 [P] Add failing confidence-ceiling, timing-only, contradiction,
   collector-partial and electrical-non-causality tests for FR-003-FR-006.
-- [ ] T005 [P] Add isolated, fleet, attributed-action, firmware-direct,
+- [x] T005 [P] Add isolated, fleet, attributed-action, firmware-direct,
   stale-source and clock-uncertain replay fixtures for FR-006 and FR-007.
-- [ ] T006 [P] Add failing additive migration, indexed bounded-query,
+- [x] T006 [P] Add failing additive migration, indexed bounded-query,
   round-trip and idempotent-save tests for FR-009, FR-014 and SC-007 in
   `tests/test_event_store.py`.
-- [ ] T007 [P] Add action-invariant regression tests proving assessments cannot
+- [x] T007 [P] Add action-invariant regression tests proving assessments cannot
   change state, streaks, decisions, notifications or Hashcore calls for FR-008
   and SC-006.
 

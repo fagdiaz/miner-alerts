@@ -104,7 +104,7 @@ class EventStoreTests(unittest.TestCase):
 
         migrated = EventStore(legacy_path)
         try:
-            self.assertEqual(5, migrated.schema_version)
+            self.assertEqual(6, migrated.schema_version)
             self.assertEqual(0, migrated.count_rows("firmware_events"))
         finally:
             migrated.close()
@@ -254,7 +254,7 @@ class EventStoreTests(unittest.TestCase):
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
             self.assertTrue(migrated.available)
-            self.assertEqual(5, migrated.schema_version)
+            self.assertEqual(6, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertIn("chain_voltage_mv_avg", sample)
@@ -306,7 +306,7 @@ class EventStoreTests(unittest.TestCase):
 
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
-            self.assertEqual(5, migrated.schema_version)
+            self.assertEqual(6, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertEqual(22, sample["hw_errors_total"])
@@ -470,7 +470,7 @@ class EventStoreTests(unittest.TestCase):
                 summary="Watchdog reinicio el proceso",
             )
             rows = migrated.list_firmware_events(miner_key="m23")
-            self.assertEqual(5, migrated.schema_version)
+            self.assertEqual(6, migrated.schema_version)
             self.assertEqual(0, duplicate)
             self.assertEqual(1, len(rows))
             self.assertEqual(1_758_000_000.0, rows[0]["source_ts_epoch"])
@@ -626,6 +626,235 @@ class EventStoreTests(unittest.TestCase):
         self.assertIn("INCIDENTE", detail)
         self.assertIn("80000s -> 120s", detail)
         self.assertIn("Clasificacion: inesperado", detail)
+
+
+
+# ---------------------------------------------------------------------------
+# Spec 022 T007 — Acquisition quality persistence tests
+# ---------------------------------------------------------------------------
+
+class AcquisitionQualityPersistenceTests(unittest.TestCase):
+    """Spec 022 T007: verify acquisition_authority and acquisition_reason_code
+    columns are persisted and backward-compatible (schema v6)."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.temp_dir.name) / "miner_alerts.db"
+        self.errors: list[str] = []
+        self.store = EventStore(self.db_path, on_error=self.errors.append)
+
+    def tearDown(self) -> None:
+        self.store.close()
+        self.temp_dir.cleanup()
+
+    def _base_kwargs(self, **overrides) -> dict:
+        base = dict(
+            observed_ts=1_786_700_000.0,
+            miner_key="S19JPRO-23|10.0.0.23:4028",
+            miner_name="23",
+            host="10.0.0.23",
+            state="OK",
+            responded=True,
+            rate_ths=95.5,
+            threshold_ths=85.0,
+            active_boards=3,
+            expected_boards=3,
+            elapsed_seconds=3600,
+        )
+        base.update(overrides)
+        return base
+
+    def test_schema_v6_columns_exist(self):
+        """Schema v6 must create acquisition_authority and acquisition_reason_code."""
+        from app.event_store import SCHEMA_VERSION
+        self.assertEqual(SCHEMA_VERSION, 6)
+        conn = sqlite3.connect(str(self.db_path))
+        cols = {row[1] for row in conn.execute(
+            "PRAGMA table_info(telemetry_samples)"
+        ).fetchall()}
+        conn.close()
+        self.assertIn("acquisition_authority", cols)
+        self.assertIn("acquisition_reason_code", cols)
+
+    def test_record_sample_persists_acquisition_quality(self):
+        """record_sample stores authority and reason_code when provided."""
+        ok = self.store.record_sample(
+            **self._base_kwargs(),
+            telemetry={
+                "acquisition_authority": "authoritative",
+                "acquisition_reason_code": "valid",
+            },
+        )
+        self.assertTrue(ok)
+        conn = sqlite3.connect(str(self.db_path))
+        row = conn.execute(
+            "SELECT acquisition_authority, acquisition_reason_code "
+            "FROM telemetry_samples LIMIT 1"
+        ).fetchone()
+        conn.close()
+        self.assertEqual(row[0], "authoritative")
+        self.assertEqual(row[1], "valid")
+
+    def test_record_sample_without_acquisition_quality_is_null(self):
+        """record_sample without quality columns stores NULL (backward compat)."""
+        ok = self.store.record_sample(**self._base_kwargs())
+        self.assertTrue(ok)
+        conn = sqlite3.connect(str(self.db_path))
+        row = conn.execute(
+            "SELECT acquisition_authority, acquisition_reason_code "
+            "FROM telemetry_samples LIMIT 1"
+        ).fetchone()
+        conn.close()
+        self.assertIsNone(row[0])
+        self.assertIsNone(row[1])
+
+    def test_legacy_v5_db_migrates_additive_quality_columns(self):
+        """A database with schema v5 (no acquisition columns) migrates cleanly."""
+        legacy_path = Path(self.temp_dir.name) / "legacy-v5.db"
+        conn = sqlite3.connect(str(legacy_path))
+        # Minimal v5 schema without acquisition columns
+        conn.execute("""
+            CREATE TABLE telemetry_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                observed_ts REAL NOT NULL,
+                miner_key TEXT NOT NULL,
+                miner_name TEXT NOT NULL,
+                host TEXT NOT NULL,
+                state TEXT NOT NULL,
+                responded INTEGER NOT NULL,
+                rate_ths REAL,
+                threshold_ths REAL NOT NULL,
+                active_boards INTEGER,
+                expected_boards INTEGER NOT NULL,
+                elapsed_seconds INTEGER,
+                quality_flags_json TEXT NOT NULL DEFAULT '[]'
+            )
+        """)
+        conn.execute(
+            "INSERT INTO telemetry_samples "
+            "(observed_ts,miner_key,miner_name,host,state,responded,"
+            "threshold_ths,expected_boards) VALUES (?,?,?,?,?,?,?,?)",
+            (1_786_700_000.0, "k1", "23", "10.0.0.23", "OK", 1, 85.0, 3),
+        )
+        conn.execute("PRAGMA user_version=5")
+        conn.commit()
+        conn.close()
+
+        migrated = EventStore(legacy_path, on_error=self.errors.append)
+        try:
+            self.assertTrue(migrated.available)
+            self.assertEqual(6, migrated.schema_version)
+            self.assertEqual(1, migrated.count_rows("telemetry_samples"))
+            # Old row should read NULL for the new columns
+            conn2 = sqlite3.connect(str(legacy_path))
+            row = conn2.execute(
+                "SELECT acquisition_authority, acquisition_reason_code "
+                "FROM telemetry_samples LIMIT 1"
+            ).fetchone()
+            conn2.close()
+            self.assertIsNone(row[0])
+            self.assertIsNone(row[1])
+        finally:
+            migrated.close()
+        self.assertEqual([], self.errors)
+
+
+# ---------------------------------------------------------------------------
+# Spec 023 T006 — Additive migration red contracts for incident_assessments
+# ---------------------------------------------------------------------------
+
+class Spec023MigrationRedContractTests(unittest.TestCase):
+    """Red contract tests (T006): verify the planned additive schema for
+    incident_assessments and assessment_fact_refs. These tests import
+    save/load methods from app.event_store that do NOT exist yet and
+    must fail with AttributeError until Phase 2 (T012) implements them."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.temp_dir.name) / "miner_alerts.db"
+        self.errors: list[str] = []
+        self.store = EventStore(self.db_path, on_error=self.errors.append)
+
+    def tearDown(self) -> None:
+        self.store.close()
+        self.temp_dir.cleanup()
+
+    def test_save_assessment_method_exists(self):
+        """EventStore must expose save_assessment (T012 target)."""
+        self.assertTrue(
+            hasattr(self.store, "save_assessment"),
+            "EventStore.save_assessment is not yet implemented (expected red)",
+        )
+
+    def test_load_assessment_method_exists(self):
+        """EventStore must expose load_assessment (T012 target)."""
+        self.assertTrue(
+            hasattr(self.store, "load_assessment"),
+            "EventStore.load_assessment is not yet implemented (expected red)",
+        )
+
+    def test_incident_assessments_table_exists_after_migration(self):
+        """incident_assessments table must be created by schema init (T012 target)."""
+        conn = sqlite3.connect(str(self.db_path))
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        conn.close()
+        self.assertIn(
+            "incident_assessments",
+            tables,
+            "incident_assessments table not yet created (expected red until T012)",
+        )
+
+    def test_assessment_fact_refs_table_exists(self):
+        """assessment_fact_refs table must be created by schema init (T012 target)."""
+        conn = sqlite3.connect(str(self.db_path))
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        conn.close()
+        self.assertIn(
+            "assessment_fact_refs",
+            tables,
+            "assessment_fact_refs table not yet created (expected red until T012)",
+        )
+
+    def test_save_load_roundtrip_is_idempotent(self):
+        """Saving the same (subject, ruleset, digest) twice must return same id (SC-007)."""
+        if not hasattr(self.store, "save_assessment"):
+            self.skipTest("save_assessment not yet implemented")
+        payload = {
+            "subject_type": "episode",
+            "subject_ref": "ep:42",
+            "miner_key": "23",
+            "ruleset_version": "1.0.0",
+            "window_start_ts": 1_786_600_000.0,
+            "window_end_ts": 1_786_700_000.0,
+            "assessment_now_ts": 1_786_700_000.0,
+            "status": "complete",
+            "evidence_digest": "a" * 64,
+            "findings_json": "[]",
+            "hypotheses_json": "[]",
+            "contradictions_json": "[]",
+            "missing_evidence_json": "[]",
+        }
+        id1 = self.store.save_assessment(**payload)
+        id2 = self.store.save_assessment(**payload)
+        self.assertEqual(id1, id2, "Repeated save must return same assessment_id")
+
+    def test_unique_index_on_replay_key(self):
+        """ux_assessment_replay unique index must exist on incident_assessments."""
+        conn = sqlite3.connect(str(self.db_path))
+        indexes = {row[1] for row in conn.execute(
+            "SELECT * FROM sqlite_master WHERE type='index' AND "
+            "tbl_name='incident_assessments'"
+        ).fetchall()}
+        conn.close()
+        self.assertIn(
+            "ux_assessment_replay",
+            indexes,
+            "ux_assessment_replay unique index not yet created (expected red until T012)",
+        )
 
 
 if __name__ == "__main__":

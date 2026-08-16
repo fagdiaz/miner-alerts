@@ -1,6 +1,6 @@
 # Evidence: Adaptive Acquisition Resilience
 
-**Status**: Isolated module in progress; monitor wiring blocked by Spec 021 D+1
+**Status**: T001-T007 complete; production activation blocked by Spec 021 D+3 (~22h remaining at 2026-08-16 01:28 ART)
 
 ## Planning Baseline
 
@@ -112,6 +112,24 @@
 - Disabled-path parity and rollback rehearsal.
 - State, action and Telegram-offset invariants.
 - QA and D+1/D+3 runtime logs.
+
+## Acquisition Quality Persistence (T007) - 2026-08-16
+
+- Bumped `SCHEMA_VERSION` from 5 to 6 in `app/event_store.py`.
+- Added `acquisition_authority TEXT` and `acquisition_reason_code TEXT` columns
+  (nullable, NULL for legacy rows) to `_TELEMETRY_COLUMNS` and the
+  `telemetry_samples` `CREATE TABLE` DDL, ensuring additive `ALTER TABLE`
+  migration applies to existing databases automatically.
+- Updated `record_sample` to sanitize and persist both fields from the
+  `telemetry` mapping when present; absent keys store NULL without error.
+- Updated all four schema-migration tests in `tests/test_event_store.py`
+  to expect `schema_version == 6`.
+- Added 4 green tests in `AcquisitionQualityPersistenceTests` covering
+  schema v6 columns, round-trip persistence, NULL for legacy calls and
+  additive migration from a minimal v5 database.
+- Full test suite (excluding red contracts): 216 tests, 5 expected red
+  failures (Spec 023 T006), 1 skip, 0 errors. No production service,
+  config, state, miner or Telegram was changed.
 
 ## Runtime Rollout
 

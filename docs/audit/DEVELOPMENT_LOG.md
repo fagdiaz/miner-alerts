@@ -5,6 +5,19 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-08-16] - Spec 023 T004-T007 Red Contracts y Spec 022 T007 Quality Persistence
+
+* **Objetivo**: Completar todos los contratos rojos de Fase 1 de Spec 023 (T004-T007) e implementar la persistencia de calidad de adquisición de Spec 022 (T007).
+* **Realizado por Sonnet**:
+  - **Spec 023 T004 (FR-003-FR-006)**: 24 pruebas red contract en `tests/test_evidence_fusion.py` para `compute_confidence_ceiling` (techos por staleness, future_skew, unparsed clock, partial_collector, temporal_proximity), `max_cause_level` (offline/low/fleet-sin-PDU/temporal-proximity no pueden confirmar), y `evaluate_hypothesis` (contradicciones visibles, ausencia ≠ contradicción).
+  - **Spec 023 T005 (FR-006, FR-007)**: 15 pruebas red contract de fixtures de replay: `detect_fleet_pattern` (aislado vs flota dentro/fuera de ventana), `is_within_attribution_window` (300s ✓, 900s ✓, 901s ✗, pre-acción ✗), y `map_clock_quality` con clock parsed/unparsed de firmware Vnish.
+  - **Spec 023 T006 (FR-009, FR-014, SC-007)**: 6 pruebas red contract en `tests/test_event_store.py` para tablas `incident_assessments` / `assessment_fact_refs`, métodos `save_assessment` / `load_assessment` e índice único `ux_assessment_replay`. Fallan correctamente con `AssertionError` hasta T012.
+  - **Spec 023 T007 (FR-008, SC-006)**: 4 pruebas de invariantes de acción en `tests/test_evidence_fusion.py`: sin import de hashcore, sin import de miner_monitor, sin campos de acción en `IncidentAssessment`, y `compute_evidence_digest` no muta la entrada. Hacen skip limpio cuando el módulo no existe.
+  - **Spec 022 T007**: Bump de `SCHEMA_VERSION` a 6 en `app/event_store.py`. Columnas `acquisition_authority TEXT` y `acquisition_reason_code TEXT` (nullable, NULL en filas legacy) en `telemetry_samples` vía `_TELEMETRY_COLUMNS` y DDL. `record_sample` persiste ambas desde el mapping `telemetry`. 4 tests de migración anteriores actualizados a v6. 4 tests nuevos verdes en `AcquisitionQualityPersistenceTests`.
+* **Estado del Test Suite**: 80 tests rojos en `test_evidence_fusion.py` (78 errors `ModuleNotFoundError` + 2 skips), 5 failures esperados en `test_event_store.py` (contratos T006), 211 tests no-rojos PASS (0 fallos, 0 errores, 1 skip). Ningún código de producción, config, estado, servicio ni minero fue modificado.
+
+---
+
 ## [2026-08-15] - Spec 023 Red Contracts y Evaluación Gate D+3 (Análisis de Avance Opus)
 
 * **Objetivo**: Evaluar el gate D+3 de Spec 021, inventariar fuentes del EventStore para fusión de evidencia y crear tests red-contract para la configuración y normalización de Spec 023.

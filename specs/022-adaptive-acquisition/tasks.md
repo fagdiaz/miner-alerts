@@ -25,7 +25,7 @@
   wrapper signatures.
 - [x] T006 [US1] Integrate authoritative envelopes behind
   `adaptive_acquisition_enabled=false`; preserve and test the sequential fallback.
-- [ ] T007 [US2] Persist and render explicit quality and age, and expose bounded
+- [x] T007 [US2] Persist and render explicit quality and age, and expose bounded
   PollHealth data for later metrics export.
 ## Phase 3: Diagnostic Probes
 

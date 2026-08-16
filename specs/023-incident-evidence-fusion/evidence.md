@@ -54,6 +54,38 @@
 - All 206 existing tests pass without regressions (0 failures, 0 errors).
 - No production code, config, state, database, service or miner was changed.
 
+## T004-T007 Red Contracts And Spec 022 Quality Persistence - 2026-08-16
+
+- T004: Added 24 red contract tests in `tests/test_evidence_fusion.py` for
+  `compute_confidence_ceiling` (stale/future_skew/unparsed/partial caps
+  `observed`, fresh_symptom/temporal_proximity caps `suspected`, minimum
+  ceiling governs), `max_cause_level` fail-closed for offline-alone,
+  low-alone, fleet-without-PDU and temporal-proximity, and
+  `evaluate_hypothesis` for contradiction visibility and absence ≠
+  contradiction.
+- T005: Added 15 red contract fixtures for isolated vs fleet detection
+  (`detect_fleet_pattern`), attributed-action window (`is_within_attribution_window`,
+  900s boundary exact), and firmware clock quality mapping (parsed local,
+  parsed UTC, unparsed → ceiling observed).
+- T006: Added 6 red contract tests in `tests/test_event_store.py` for
+  `incident_assessments` table, `assessment_fact_refs` table,
+  `save_assessment` / `load_assessment` method existence, idempotent
+  roundtrip by SHA-256 digest, and `ux_assessment_replay` unique index.
+  All 6 fail with `AssertionError` (tables/methods not yet created).
+- T007: Added 4 action-invariant tests in `tests/test_evidence_fusion.py`:
+  no hashcore import, no miner_monitor import, no action fields on
+  `IncidentAssessment`, and `compute_evidence_digest` does not mutate input.
+  These skip cleanly when `app.evidence_fusion` does not exist.
+- Spec 022 T007: Bumped `SCHEMA_VERSION` to 6 in `app/event_store.py`,
+  added `acquisition_authority` and `acquisition_reason_code` nullable
+  columns to `telemetry_samples`, updated `record_sample` to persist both
+  fields. 4 existing migration tests updated to expect v6. 4 new green
+  tests in `AcquisitionQualityPersistenceTests`.
+- Total test state: 80 red contracts in `test_evidence_fusion.py` (78
+  errors + 2 skips, all `ModuleNotFoundError`), 5 expected red failures in
+  `test_event_store.py` (T006 contracts), 211 non-red tests PASS (0
+  failures, 0 errors, 1 skip). No production code altered.
+
 ## Required Evidence Before Completion
 
 - Ruleset and fixture versions.

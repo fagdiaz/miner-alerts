@@ -404,5 +404,348 @@ class TestEvidenceDigest(unittest.TestCase):
         self.assertEqual(len(digest), 64)
 
 
+
+# ---------------------------------------------------------------------------
+# T004 — Confidence ceilings and non-causality (FR-003, FR-004, FR-005, FR-006, FR-010)
+# ---------------------------------------------------------------------------
+
+class TestConfidenceCeilings(unittest.TestCase):
+    """Verify that the confidence-ceiling rules are enforced as specified in
+    ``contracts/evidence-rules.md``."""
+
+    def _ceiling(self, conditions: list[str]) -> str:
+        from app.evidence_fusion import compute_confidence_ceiling
+        return compute_confidence_ceiling(conditions)
+
+    def test_stale_evidence_caps_at_observed(self):
+        """Stale evidence cannot exceed 'observed' regardless of other conditions."""
+        self.assertEqual(self._ceiling(["stale"]), "observed")
+
+    def test_future_skew_caps_at_observed(self):
+        """Future-skewed evidence cannot exceed 'observed'."""
+        self.assertEqual(self._ceiling(["future_skew"]), "observed")
+
+    def test_unparsed_clock_caps_at_observed(self):
+        """Unparsed clock cannot confirm ordering-sensitive causes."""
+        self.assertEqual(self._ceiling(["unparsed_clock"]), "observed")
+
+    def test_partial_collector_caps_at_observed(self):
+        """Partial collector run: firmware evidence stays at observed."""
+        self.assertEqual(self._ceiling(["partial_collector"]), "observed")
+
+    def test_fresh_symptom_caps_at_suspected(self):
+        """Fresh symptom or quality reason: at most suspected."""
+        self.assertEqual(self._ceiling(["fresh_symptom"]), "suspected")
+
+    def test_temporal_proximity_only_caps_at_suspected(self):
+        """Timing proximity alone cannot confirm a cause (FR-004)."""
+        self.assertEqual(self._ceiling(["temporal_proximity_only"]), "suspected")
+
+    def test_direct_causal_fresh_valid_can_be_confirmed(self):
+        """Direct fresh causal evidence with all required conditions may be confirmed."""
+        ceiling = self._ceiling(["direct_cause_fresh_valid"])
+        self.assertIn(ceiling, ("confirmed", "suspected"))  # implementation decides
+
+    def test_minimum_ceiling_governs(self):
+        """When multiple conditions apply, the lowest ceiling wins (FR-010)."""
+        ceiling = self._ceiling(["direct_cause_fresh_valid", "stale"])
+        self.assertEqual(ceiling, "observed")
+
+    def test_more_low_quality_facts_never_promote_confidence(self):
+        """Adding more stale facts cannot increase ceiling above observed."""
+        c1 = self._ceiling(["stale"])
+        c2 = self._ceiling(["stale", "stale", "stale"])
+        self.assertEqual(c1, c2)
+        self.assertEqual(c2, "observed")
+
+
+class TestNonCausality(unittest.TestCase):
+    """FR-004, FR-006: timing-only and fleet patterns cannot confirm causality."""
+
+    def _assess_cause(self, cause_code: str, evidence_conditions: list[str]) -> str:
+        """Returns max achievable level: 'observed', 'suspected', or 'confirmed'."""
+        from app.evidence_fusion import max_cause_level
+        return max_cause_level(cause_code, evidence_conditions)
+
+    def test_offline_alone_cannot_confirm_network_cause(self):
+        """API OFFLINE alone cannot confirm network, power or miner failure."""
+        level = self._assess_cause("network.failure", ["signal.current_offline"])
+        self.assertNotEqual(level, "confirmed")
+
+    def test_low_alone_cannot_confirm_thermal_cause(self):
+        """LOW state alone cannot confirm temperature cause."""
+        level = self._assess_cause("thermal.overheat", ["signal.current_low"])
+        self.assertNotEqual(level, "confirmed")
+
+    def test_fleet_concurrent_degradation_cannot_confirm_electrical(self):
+        """Fleet concurrence cannot confirm electrical cause (FR-006)."""
+        level = self._assess_cause(
+            "power.electrical_fault",
+            ["fleet.concurrent_degradation"],
+        )
+        self.assertNotEqual(level, "confirmed")
+
+    def test_fleet_pattern_without_pdu_stays_suspected_at_most(self):
+        """Without power.* external fact, fleet pattern stays suspected at most."""
+        level = self._assess_cause(
+            "power.electrical_fault",
+            ["fleet.concurrent_degradation", "fresh_symptom"],
+        )
+        self.assertIn(level, ("observed", "suspected"))
+
+    def test_temporal_proximity_alone_is_at_most_suspected(self):
+        """Two events near in time produce at most 'suspected', never 'confirmed'."""
+        level = self._assess_cause(
+            "restart.caused_by_action",
+            ["temporal_proximity_only"],
+        )
+        self.assertNotEqual(level, "confirmed")
+
+
+class TestContradictionsAndMissingEvidence(unittest.TestCase):
+    """FR-005: supporting, contradicting and missing evidence must remain visible."""
+
+    def _eval_hypothesis(self, supporting: list[str], contradicting: list[str],
+                          missing: list[str]) -> dict:
+        from app.evidence_fusion import evaluate_hypothesis
+        return evaluate_hypothesis(supporting, contradicting, missing)
+
+    def test_no_contradiction_produces_no_contradicting_list(self):
+        result = self._eval_hypothesis(
+            supporting=["signal.current_low"],
+            contradicting=[],
+            missing=[],
+        )
+        self.assertEqual(result["contradicting_fact_ids"], [])
+
+    def test_decisive_contradiction_prevents_confirmation(self):
+        result = self._eval_hypothesis(
+            supporting=["direct_cause_fresh_valid"],
+            contradicting=["action.no_successful_action_in_window"],
+            missing=[],
+        )
+        self.assertNotEqual(result["level"], "confirmed")
+
+    def test_missing_evidence_is_visible_not_contradiction(self):
+        result = self._eval_hypothesis(
+            supporting=[],
+            contradicting=[],
+            missing=["reboot_decision.missing"],
+        )
+        self.assertIn("reboot_decision.missing", result["missing_requirement_codes"])
+        self.assertEqual(result["contradicting_fact_ids"], [])
+
+    def test_absence_is_not_automatically_a_contradiction(self):
+        """An absent source is missing evidence, not a decisive contradiction."""
+        result = self._eval_hypothesis(
+            supporting=["signal.current_low"],
+            contradicting=[],
+            missing=["firmware.chain_break"],
+        )
+        # Should not be 'confirmed' (missing req), but also not treat absence as proof
+        self.assertNotEqual(result["level"], "confirmed")
+        self.assertEqual(result["contradicting_fact_ids"], [])
+
+
+# ---------------------------------------------------------------------------
+# T005 — Replay fixtures (FR-006, FR-007)
+# ---------------------------------------------------------------------------
+
+class TestIsolatedVsFleetFixtures(unittest.TestCase):
+    """Verify that isolated and fleet scenario fixtures produce different
+    fleet-pattern observations without altering cause conclusions."""
+
+    def _build_fact(self, miner_key: str, effective_ts: float, code: str,
+                     freshness: str = "fresh") -> object:
+        from app.evidence_fusion import EvidenceFact
+        return EvidenceFact(
+            fact_id=f"telemetry_samples:1:{code}",
+            subject_type="miner",
+            subject_key=miner_key,
+            source="telemetry_samples",
+            source_row_id=1,
+            code=code,
+            effective_ts=effective_ts,
+            ingested_ts=None,
+            freshness=freshness,
+            clock_quality="system",
+            authority=None,
+            quality=None,
+            reason_code=None,
+            value=None,
+            units=None,
+            confidence_ceiling="observed",
+        )
+
+    def _detect_fleet_pattern(self, facts: list, fleet_window_seconds: float = 60.0):
+        from app.evidence_fusion import detect_fleet_pattern
+        return detect_fleet_pattern(facts, fleet_window_seconds)
+
+    def test_single_miner_offline_is_isolated(self):
+        """One miner going OFFLINE at T=100 → isolated, no fleet pattern."""
+        facts = [self._build_fact("23", 100.0, "signal.current_offline")]
+        pattern = self._detect_fleet_pattern(facts)
+        self.assertIsNone(pattern)
+
+    def test_two_miners_within_window_is_fleet(self):
+        """Two miners degrade within 60s → fleet.concurrent_degradation."""
+        facts = [
+            self._build_fact("23", 100.0, "signal.current_offline"),
+            self._build_fact("24", 120.0, "signal.current_offline"),
+        ]
+        pattern = self._detect_fleet_pattern(facts)
+        self.assertIsNotNone(pattern)
+        self.assertEqual(pattern["code"], "fleet.concurrent_degradation")
+
+    def test_two_miners_outside_window_is_not_fleet(self):
+        """Two miners degrade >60s apart → no fleet pattern."""
+        facts = [
+            self._build_fact("23", 100.0, "signal.current_offline"),
+            self._build_fact("24", 200.0, "signal.current_offline"),
+        ]
+        pattern = self._detect_fleet_pattern(facts, fleet_window_seconds=60.0)
+        self.assertIsNone(pattern)
+
+    def test_fleet_pattern_does_not_produce_confirmed_electrical_cause(self):
+        """Fleet pattern alone cannot produce a confirmed electrical cause."""
+        from app.evidence_fusion import max_cause_level
+        level = max_cause_level(
+            "power.electrical_fault",
+            ["fleet.concurrent_degradation"],
+        )
+        self.assertNotEqual(level, "confirmed")
+
+
+class TestAttributedActionFixture(unittest.TestCase):
+    """FR-007: action attribution uses the existing 900-second window."""
+
+    def _check_attribution(self, action_ts: float, restart_ts: float,
+                             window_seconds: float = 900.0) -> bool:
+        from app.evidence_fusion import is_within_attribution_window
+        return is_within_attribution_window(action_ts, restart_ts, window_seconds)
+
+    def test_restart_within_window_is_attributed(self):
+        """Restart 300s after action → attributed."""
+        self.assertTrue(self._check_attribution(1000.0, 1300.0, 900.0))
+
+    def test_restart_exactly_at_boundary(self):
+        """Restart exactly at 900s → still within window."""
+        self.assertTrue(self._check_attribution(1000.0, 1900.0, 900.0))
+
+    def test_restart_beyond_window_is_not_attributed(self):
+        """Restart 1000s after action → not attributed."""
+        self.assertFalse(self._check_attribution(1000.0, 2001.0, 900.0))
+
+    def test_restart_before_action_is_not_attributed(self):
+        """Restart before action → not attributed."""
+        self.assertFalse(self._check_attribution(1000.0, 500.0, 900.0))
+
+
+class TestFirmwareClockFixtures(unittest.TestCase):
+    """FR-002, FR-010: firmware events with parsed vs unparsed clocks."""
+
+    def _map(self, source_table: str, source_clock: str | None = None) -> str:
+        from app.evidence_fusion import map_clock_quality
+        return map_clock_quality(source_table, source_clock)
+
+    def test_firmware_parsed_local_clock(self):
+        self.assertEqual(
+            self._map("firmware_events", "system_local"), "system_local"
+        )
+
+    def test_firmware_parsed_utc_clock(self):
+        self.assertEqual(
+            self._map("firmware_events", "fixed_utc_offset"), "fixed_utc_offset"
+        )
+
+    def test_firmware_unparsed_cannot_prove_ordering(self):
+        """Unparsed firmware clock → cannot confirm ordering-sensitive causes."""
+        quality = self._map("firmware_events", "unparsed")
+        self.assertEqual(quality, "unparsed")
+
+    def test_firmware_unparsed_ceiling_is_observed(self):
+        from app.evidence_fusion import compute_confidence_ceiling
+        ceiling = compute_confidence_ceiling(["unparsed_clock"])
+        self.assertEqual(ceiling, "observed")
+
+
+# ---------------------------------------------------------------------------
+# T007 — Action invariants: fusion must not alter state or call Hashcore
+# ---------------------------------------------------------------------------
+
+class TestActionInvariants(unittest.TestCase):
+    """FR-008, SC-006: evidence fusion is read-only and cannot alter monitor state."""
+
+    def test_evidence_fusion_module_has_no_hashcore_import(self):
+        """app.evidence_fusion must not import any Hashcore module."""
+        import importlib
+        import importlib.util
+        import sys
+        # If the module doesn't exist yet, the test is vacuously green
+        # (the import guard handles it gracefully)
+        spec = importlib.util.find_spec("app.evidence_fusion")
+        if spec is None:
+            self.skipTest("app.evidence_fusion not yet implemented")
+        mod = importlib.import_module("app.evidence_fusion")
+        # Check module source does not import reboot_safety or hashcore
+        import inspect
+        source = inspect.getsource(mod)
+        self.assertNotIn("hashcore", source.lower(),
+                         "evidence_fusion must not import hashcore")
+        self.assertNotIn("reboot_safety", source,
+                         "evidence_fusion must not import reboot_safety")
+
+    def test_evidence_fusion_module_has_no_miner_monitor_import(self):
+        """app.evidence_fusion must not import miner_monitor (action authority)."""
+        import importlib.util
+        spec = importlib.util.find_spec("app.evidence_fusion")
+        if spec is None:
+            self.skipTest("app.evidence_fusion not yet implemented")
+        import importlib, inspect
+        mod = importlib.import_module("app.evidence_fusion")
+        source = inspect.getsource(mod)
+        self.assertNotIn("miner_monitor", source,
+                         "evidence_fusion must not import miner_monitor")
+
+    def test_assessment_output_has_no_action_fields(self):
+        """IncidentAssessment must not expose fields that could be action inputs."""
+        from app.evidence_fusion import IncidentAssessment  # noqa: F811
+        import dataclasses
+        field_names = {f.name for f in dataclasses.fields(IncidentAssessment)}
+        forbidden = {"allow_reboot", "trigger_reboot", "hashcore_command",
+                     "auto_action", "reboot_eligible"}
+        self.assertFalse(
+            field_names & forbidden,
+            f"IncidentAssessment contains forbidden action fields: "
+            f"{field_names & forbidden}",
+        )
+
+    def test_compute_evidence_digest_does_not_mutate_input(self):
+        """compute_evidence_digest must not mutate the passed fact list."""
+        from app.evidence_fusion import EvidenceFact, compute_evidence_digest
+        fact = EvidenceFact(
+            fact_id="telemetry_samples:1:signal.current_low",
+            subject_type="miner",
+            subject_key="23",
+            source="telemetry_samples",
+            source_row_id=1,
+            code="signal.current_low",
+            effective_ts=1786700000.0,
+            ingested_ts=None,
+            freshness="fresh",
+            clock_quality="system",
+            authority=None,
+            quality=None,
+            reason_code=None,
+            value=42.5,
+            units="TH/s",
+            confidence_ceiling="observed",
+        )
+        original = [fact]
+        compute_evidence_digest(list(original), "1.0.0")
+        self.assertEqual(len(original), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
+

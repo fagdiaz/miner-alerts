@@ -29,9 +29,9 @@
   PollHealth data for later metrics export.
 ## Phase 3: Diagnostic Probes
 
-- [ ] T008 [US3] Add disabled-by-default bounded episode diagnostics.
+- [x] T008 [US3] Add disabled-by-default bounded episode diagnostics.
 - [ ] T009 [US3] Expose diagnostic data only to read-only context.
-- [ ] T010 Add safe disabled defaults, two-worker cap, numeric request budgets,
+- [x] T010 Add safe disabled defaults, two-worker cap, numeric request budgets,
   deadlines, no-retry policy and per-miner overlap guards exactly as defined in
   `contracts/config.md`.
 ## Phase 4: Validation And Rollout

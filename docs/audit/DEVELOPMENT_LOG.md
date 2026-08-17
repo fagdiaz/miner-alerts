@@ -25,7 +25,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 - [x] **CHK-GEM-03 — Spec 022 T008 (Estructuras de Sondas Episódicas)**
   - Dataclasses puras `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope` en `app/acquisition.py`.
 
-- [ ] **CHK-GEM-04 — Documentación (Trazabilidad)**
+- [x] **CHK-GEM-04 — Documentación (Trazabilidad)**
   - Actualizar tablas de trazabilidad en `specs/023-incident-evidence-fusion/tasks.md` y `specs/022-adaptive-acquisition/tasks.md`.
 
 ### Tareas Excluidas de Gemini (Requieren Claude Sonnet/Opus)

@@ -746,6 +746,97 @@ class TestActionInvariants(unittest.TestCase):
         self.assertEqual(len(original), 1)
 
 
+
+# ---------------------------------------------------------------------------
+# T013 — Shared semantic renderer tests (FR-011)
+# ---------------------------------------------------------------------------
+
+class TestSharedSemanticRenderer(unittest.TestCase):
+    """Verify render_assessment_text and render_assessment_telegram."""
+
+    def _build_sample_assessment(self):
+        from app.evidence_fusion import (
+            CauseHypothesis,
+            EvidenceFact,
+            IncidentAssessment,
+        )
+        fact1 = EvidenceFact(
+            fact_id="telemetry_samples:1:signal.current_low",
+            subject_type="miner",
+            subject_key="23",
+            source="telemetry_samples",
+            source_row_id=1,
+            code="signal.current_low",
+            effective_ts=1786700000.0,
+            ingested_ts=None,
+            freshness="fresh",
+            clock_quality="system",
+            authority="authoritative",
+            quality=None,
+            reason_code=None,
+            value=42.5,
+            units="TH/s",
+            confidence_ceiling="observed",
+        )
+        hypo1 = CauseHypothesis(
+            cause_code="restart.caused_by_action",
+            level="suspected",
+            supporting_fact_ids=("telemetry_samples:1:signal.current_low",),
+            contradicting_fact_ids=(),
+            missing_requirement_codes=(),
+            confidence_ceiling="suspected",
+            description="Reinicio sospechado por accion manual previa",
+        )
+        return IncidentAssessment(
+            subject_type="episode",
+            subject_ref="ep:42",
+            miner_key="23",
+            ruleset_version="1.0.0",
+            window_start_ts=1786696400.0,
+            window_end_ts=1786700000.0,
+            assessment_now_ts=1786700000.0,
+            status="complete",
+            evidence_digest="a" * 64,
+            hypotheses=(hypo1,),
+            observed_facts=(fact1,),
+            contradictions=("action.no_successful_action_in_window",),
+            missing_evidence=("reboot_decision.missing",),
+        )
+
+    def test_render_assessment_text_sections_and_footer(self):
+        from app.evidence_fusion import render_assessment_text
+        assessment = self._build_sample_assessment()
+        rendered = render_assessment_text(assessment)
+
+        # Check section headers and ordering
+        self.assertIn("EVALUACION DE INCIDENTE · episode:ep:42", rendered)
+        self.assertIn("[HECHOS OBSERVADOS]", rendered)
+        self.assertIn("signal.current_low", rendered)
+        self.assertIn("[CAUSAS E HIPOTESIS]", rendered)
+        self.assertIn("SOSPECHADA · restart.caused_by_action", rendered)
+        self.assertIn("[CONTRADICCIONES]", rendered)
+        self.assertIn("action.no_successful_action_in_window", rendered)
+        self.assertIn("[EVIDENCIA FALTANTE O DESACTUALIZADA]", rendered)
+        self.assertIn("reboot_decision.missing", rendered)
+        self.assertIn("[LECTURA / SIN ACCION AUTOMATICA]", rendered)
+
+    def test_render_assessment_telegram_splitting(self):
+        from app.evidence_fusion import render_assessment_telegram
+        assessment = self._build_sample_assessment()
+
+        # Unsplit when max_chars is large
+        parts = render_assessment_telegram(assessment, max_chars=4000)
+        self.assertEqual(len(parts), 1)
+        self.assertIn("[LECTURA / SIN ACCION AUTOMATICA]", parts[0])
+
+        # Splits into multiple parts when max_chars is small
+        small_parts = render_assessment_telegram(assessment, max_chars=120)
+        self.assertGreater(len(small_parts), 1)
+        for p in small_parts:
+            self.assertLessEqual(len(p), 120)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

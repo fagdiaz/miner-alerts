@@ -5,6 +5,21 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
+## [2026-08-17] - Spec 023 T013 Renderizador Semantico y T016 Config Defaults
+
+* **Objetivo**: Implementar el renderizador semantico compartido de evaluaciones y las claves por defecto de configuracion (Parte 1 de `prompt.txt`).
+* **Realizado por Gemini 3.6 Flash High**:
+  - **Spec 023 T013 (`app/evidence_fusion.py`)**: Implementadas las funciones puras `render_assessment_text` y `render_assessment_telegram` siguiendo el contrato estricto de `contracts/incident-assessment.md` en 6 secciones ordenadas: (1) Encabezado sujeto/ventana/ruleset v1.0.0, (2) Hechos observados cronologicos con fuente y frescura, (3) Hipotesis sospechadas y confirmadas en orden canonico, (4) Contradicciones, (5) Evidencia faltante o desactualizada, (6) Pie de pagina de solo lectura `[LECTURA / SIN ACCION AUTOMATICA]`. Agregadas pruebas unitarias en `TestSharedSemanticRenderer` de `tests/test_evidence_fusion.py`.
+  - **Spec 023 T016 (`app/config.example.json`)**: Agregadas las claves deshabilitadas por defecto `incident_fusion_enabled: false`, `incident_fusion_context_hours: 24`, `incident_fusion_fleet_window_seconds: 60`.
+  - **Test Suite**: **298/298 PASS** (0 fallos, 0 errores, 0 skips).
+* **Pendiente para la Parte 2 (Sonnet 4.6 / Opus 4.6)**:
+  - **T014**: Adaptador `/diagnose` tras feature flag `incident_fusion_enabled` con fallback seguro a `build_miner_diagnosis_text`.
+  - **T015**: Integracion del renderizador en `tools/operations_dashboard.py`.
+  - **T017**: Pruebas de autorizacion y casos limite.
+  - **Gate D+3 Spec 021**: Cierre final y activacion en produccion de Spec 022 (`adaptive_acquisition_enabled=true`).
+
+---
+
 ## [2026-08-17] - Sintesis de Avance Sonnet: Spec 022/023 y Evaluacion de prompt.txt
 
 * **Objetivo**: Evaluar la ejecucion realizada con Sonnet 4.6 Thinking respecto a `prompt.txt`, registrar specs completadas, tareas de dominio/persistencia y pendientes.

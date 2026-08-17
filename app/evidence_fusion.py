@@ -22,6 +22,8 @@ Public surface (all exported symbols pass the T002-T007 red contracts):
     evaluate_hypothesis       — FR-005: supporting/contradicting/missing
     detect_fleet_pattern      — FR-006: >= 2 distinct miners in window
     is_within_attribution_window — FR-007: action attribution
+    render_assessment_text    — FR-011: shared read-only text renderer
+    render_assessment_telegram— FR-011: bounded Telegram projection
 
 Safety boundary: this module cannot call external CLIs, alter miner state,
 modify action policies, or interact with the scheduling subsystem.
@@ -30,6 +32,7 @@ modify action policies, or interact with the scheduling subsystem.
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime, timezone
 import hashlib
 import json
 import math
@@ -581,3 +584,141 @@ def is_within_attribution_window(
     (action_ts + window_seconds) is within range.
     """
     return 0.0 <= (restart_ts - action_ts) <= window_seconds
+
+
+# ---------------------------------------------------------------------------
+# FR-011: Shared Semantic Renderers (contracts/incident-assessment.md)
+# ---------------------------------------------------------------------------
+
+
+def _format_ts_utc(ts: float) -> str:
+    """Format epoch timestamp to UTC YYYY-MM-DD HH:MM:SS."""
+    try:
+        if math.isfinite(ts):
+            return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
+    except (ValueError, OSError, OverflowError):
+        pass
+    return f"{ts:.0f}s"
+
+
+def render_assessment_text(assessment: IncidentAssessment) -> str:
+    """Render an IncidentAssessment into standard human-readable text (FR-011).
+
+    Order of sections (contracts/incident-assessment.md):
+    1. Header: subject, window, status, ruleset
+    2. Chronological observed facts with source/freshness
+    3. Hypotheses: suspected first, then confirmed (sorted by cause_code)
+    4. Contradictions (if any)
+    5. Missing / stale evidence (if any)
+    6. Read-only footer: [LECTURA / SIN ACCION AUTOMATICA]
+    """
+    lines: list[str] = []
+
+    # 1. Header
+    subj_label = (
+        f"EVALUACION DE INCIDENTE · {assessment.subject_type}:{assessment.subject_ref}"
+    )
+    lines.append(subj_label)
+    w_start = _format_ts_utc(assessment.window_start_ts)
+    w_end = _format_ts_utc(assessment.window_end_ts)
+    lines.append(
+        f"Ventana: {w_start} -> {w_end} "
+        f"(ruleset v{assessment.ruleset_version} · status={assessment.status})"
+    )
+
+    # 2. Chronological observed facts
+    lines.append("")
+    lines.append("[HECHOS OBSERVADOS]")
+    if not assessment.observed_facts:
+        lines.append("  (sin hechos registrados)")
+    else:
+        sorted_facts = sort_facts_canonical(list(assessment.observed_facts))
+        for f in sorted_facts:
+            ts_str = _format_ts_utc(f.effective_ts)
+            val_str = (
+                f" = {f.value} {f.units or ''}".strip()
+                if f.value is not None
+                else ""
+            )
+            lines.append(
+                f"  - [{f.freshness}|{f.source}] {ts_str} · {f.code}{val_str}"
+            )
+
+    # 3. Hypotheses (suspected first, then confirmed)
+    lines.append("")
+    lines.append("[CAUSAS E HIPOTESIS]")
+    if not assessment.hypotheses:
+        lines.append("  (sin hipótesis evaluadas)")
+    else:
+        sorted_hypo = sorted(
+            assessment.hypotheses,
+            key=lambda h: (_LEVEL_RANK.get(h.level, 0), h.cause_code),
+        )
+        for h in sorted_hypo:
+            tag = (
+                "CONFIRMADA"
+                if h.level == "confirmed"
+                else "SOSPECHADA"
+                if h.level == "suspected"
+                else "OBSERVADA"
+            )
+            lines.append(f"  - {tag} · {h.cause_code}")
+            if h.description:
+                lines.append(f"    Detalle: {h.description}")
+            if h.supporting_fact_ids:
+                lines.append(f"    Soporte: {', '.join(h.supporting_fact_ids)}")
+
+    # 4. Contradictions
+    if assessment.contradictions:
+        lines.append("")
+        lines.append("[CONTRADICCIONES]")
+        for c in assessment.contradictions:
+            lines.append(f"  - {c}")
+
+    # 5. Missing / stale evidence
+    if assessment.missing_evidence:
+        lines.append("")
+        lines.append("[EVIDENCIA FALTANTE O DESACTUALIZADA]")
+        for m in assessment.missing_evidence:
+            lines.append(f"  - {m}")
+
+    # 6. Read-only footer
+    lines.append("")
+    lines.append("[LECTURA / SIN ACCION AUTOMATICA]")
+
+    return "\n".join(lines)
+
+
+def render_assessment_telegram(
+    assessment: IncidentAssessment,
+    max_chars: int = 4000,
+) -> list[str]:
+    """Render an IncidentAssessment for Telegram, split into bounded parts if needed.
+
+    Guarantees no individual message part exceeds ``max_chars``.
+    """
+    full_text = render_assessment_text(assessment)
+    if len(full_text) <= max_chars:
+        return [full_text]
+
+    lines = full_text.split("\n")
+    parts: list[str] = []
+    current_lines: list[str] = []
+    current_len = 0
+
+    for line in lines:
+        line_len = len(line) + 1
+        if current_len + line_len > max_chars and current_lines:
+            parts.append("\n".join(current_lines))
+            current_lines = []
+            current_len = 0
+        current_lines.append(line)
+        current_len += line_len
+
+    if current_lines:
+        parts.append("\n".join(current_lines))
+
+    return parts
+

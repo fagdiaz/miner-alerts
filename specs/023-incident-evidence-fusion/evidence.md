@@ -105,6 +105,20 @@
   T006 red contract failures are now green. 80 `test_evidence_fusion.py` tests
   pass. No production config, state, miner or service was changed.
 
+## Renderer And Config Defaults (T013, T016) — 2026-08-17
+
+- T013: Implemented `render_assessment_text` and `render_assessment_telegram`
+  in `app/evidence_fusion.py` enforcing the 6-section order defined in
+  `contracts/incident-assessment.md` (header, observed facts, hypotheses,
+  contradictions, missing evidence, read-only footer `[LECTURA / SIN ACCION AUTOMATICA]`).
+  Added 2 unit tests in `TestSharedSemanticRenderer` verifying section order,
+  formatting, and character-bounded splitting for Telegram messages.
+- T016: Added disabled-by-default keys (`incident_fusion_enabled: false`,
+  `incident_fusion_context_hours: 24`, `incident_fusion_fleet_window_seconds: 60`)
+  to `app/config.example.json`.
+- All 298 tests pass: 0 failures, 0 errors, 0 skips.
+
+
 
 
 - Ruleset and fixture versions.

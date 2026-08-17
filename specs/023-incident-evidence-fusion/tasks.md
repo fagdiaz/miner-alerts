@@ -45,14 +45,14 @@ alone is insufficient.
 - [x] T012 Add EventStore schema migration, source queries, assessment
   save/load and fact references with required indexes and idempotency for
   FR-009 and FR-014.
-- [ ] T013 Implement one semantic renderer and bounded Telegram/dashboard
+- [x] T013 Implement one semantic renderer and bounded Telegram/dashboard
   projections for FR-005 and FR-011.
 - [ ] T014 Integrate the feature-flagged assessment adapter behind `/diagnose`,
   preserving `build_miner_diagnosis_text` as disabled/unavailable/over-budget
   fallback for FR-008, FR-011 and FR-013.
 - [ ] T015 Integrate the same persisted/shared renderer into
   `tools/operations_dashboard.py` without a second scoring path for FR-011.
-- [ ] T016 Add and validate the exact disabled-by-default keys from
+- [x] T016 Add and validate the exact disabled-by-default keys from
   `contracts/config.md` in `app/config.example.json` and runtime parsing for
   FR-013.
 

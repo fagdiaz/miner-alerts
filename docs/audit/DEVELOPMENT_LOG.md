@@ -5,13 +5,29 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-17] - Spec 023 Phase 2/3: evidence_fusion.py y T012 EventStore Persistence
+## [2026-08-17] - Sintesis de Avance Sonnet: Spec 022/023 y Evaluacion de prompt.txt
 
-* **Objetivo**: Implementar el módulo de dominio puro `app/evidence_fusion.py` (T008-T011) y la capa de persistencia de evaluaciones en EventStore (T012) para llevar todos los contratos rojos a verde.
-* **Realizado por Sonnet**:
-  - **T008-T011 — `app/evidence_fusion.py`**: Módulo puro sin IO, sin wall-clock, sin mutaciones de estado. Implementa: `FusionConfig.from_mapping` (retorna tupla `(config, warnings)`), `EvidenceFact` (dataclass frozen), `CauseHypothesis`, `IncidentAssessment` (sin campos de acción), `classify_freshness` (fresh/stale/future_skew/unknown), `map_clock_quality` (system/system_local/fixed_utc_offset/unparsed/unknown), `validate_fact_code` (fail-closed), `sort_facts_canonical`, `compute_evidence_digest` (SHA-256 determinístico), `compute_confidence_ceiling` (ceiling mínimo governa), `max_cause_level` (power requires Spec 024, non-causal set capped), `evaluate_hypothesis`, `detect_fleet_pattern` (≥2 mineros en ventana), `is_within_attribution_window` (900s boundary).
-  - **T012 — EventStore persistence**: Tablas aditivas `incident_assessments` e `assessment_fact_refs` con `CREATE TABLE IF NOT EXISTS`. Índice único `ux_assessment_replay (subject_ref, ruleset_version, evidence_digest)`. Métodos `save_assessment` (idempotente por replay key) y `load_assessment`.
-  - **Test suite**: 296/296 tests PASS. 0 fallos, 0 errores, 0 skips. Los 5 contratos rojos de T006 pasaron a verde. Los 80 tests de `test_evidence_fusion.py` pasan. Ningún código de producción, config, estado, servicio ni minero fue modificado.
+* **Objetivo**: Evaluar la ejecucion realizada con Sonnet 4.6 Thinking respecto a `prompt.txt`, registrar specs completadas, tareas de dominio/persistencia y pendientes.
+* **Estado de `prompt.txt`**: **100% COMPLETADO Y SUPERADO**.
+  - **Objetivo 1 (T004 Red Contracts)**: COMPLETADO — 24 tests de techos de confianza y no causalidad.
+  - **Objetivo 2 (T005 Replay Fixtures)**: COMPLETADO — 15 tests de patrones de flota, atribucion 900s y relojes de firmware.
+  - **Objetivo 3 (T006 Migration Contracts)**: COMPLETADO — 6 tests red contracts para tablas aditivas e indice `ux_assessment_replay`.
+  - **Objetivo 4 (T007 Action Invariants)**: COMPLETADO — 4 tests que confirman cero imports de Hashcore/miner_monitor y cero campos de accion.
+  - **Objetivo 5 (Spec 022 T007 Quality Persistence)**: COMPLETADO — Schema v6 en `app/event_store.py`, columnas `acquisition_authority` y `acquisition_reason_code` en `telemetry_samples` y `record_sample`.
+* **Avance Adicional de Sonnet (Fase 2/3 de Spec 023)**:
+  - **T008-T011 (`app/evidence_fusion.py`)**: Implementado modulo de dominio puro (sin IO, sin wall-clock, sin mutacion) con `FusionConfig`, `EvidenceFact`, `CauseHypothesis`, `IncidentAssessment`, `classify_freshness`, `map_clock_quality`, `validate_fact_code`, `sort_facts_canonical`, `compute_evidence_digest`, `compute_confidence_ceiling`, `max_cause_level`, `evaluate_hypothesis`, `detect_fleet_pattern`, `is_within_attribution_window`.
+  - **T012 (`app/event_store.py`)**: Implementadas tablas `incident_assessments` y `assessment_fact_refs`, indice unico `ux_assessment_replay`, y metodos idempotentes `save_assessment` y `load_assessment`.
+* **Estado Global de Specs**:
+  - **Spec 021 (Liveness Watchdog)**: D+1 PASADO. D+3 en ventana de observacion (~22h restantes). Cierre final y activacion en produccion bloqueados hasta cumplimiento.
+  - **Spec 022 (Adaptive Acquisition)**: T001 a T007 COMPLETADOS (modulo puro, acoplamiento secuencial seguro y persistencia de calidad v6). Activacion en produccion (`adaptive_acquisition_enabled=true`) bloqueada hasta D+3.
+  - **Spec 023 (Incident Evidence Fusion)**: T001 a T012 COMPLETADOS (Fase 1 Red Contracts, Fase 2 Pure Domain y T012 Database Persistence).
+* **Pendiente**:
+  - **Spec 023 T013**: Renderizador semantico compartido y proyecciones acotadas para Telegram y Dashboard (`contracts/incident-assessment.md`).
+  - **Spec 023 T014**: Adaptador con feature-flag `incident_fusion_enabled` integrado en `/diagnose` manteniendo fallback a `build_miner_diagnosis_text`.
+  - **Spec 023 T015**: Integracion del renderizador en `tools/operations_dashboard.py` sin duplicar logica de scoring.
+  - **Spec 023 T016**: Declaracion de llaves por defecto en `app/config.example.json`.
+  - **Spec 023 T017**: Pruebas de autorizacion y casos limite.
+* **Resultado Test Suite**: 296/296 PASS (0 fallos, 0 errores, 0 skips). Commits `6178db8` y `65bd575` subidos a `origin/codex/022-adaptive-acquisition`.
 
 ---
 

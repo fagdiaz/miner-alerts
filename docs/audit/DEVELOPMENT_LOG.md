@@ -5,18 +5,34 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ---
 
-## [2026-08-17] - Análisis de tareas dentro del alcance de Gemini 3.6 High sin sobrecargar al modelo y que no dependan del trabajo de los modelos de mayor razonamiento de Claude
+## [2026-08-17] - Análisis de Tareas Independientes para Gemini 3.6 Flash High
 
-* **Objetivo**: Identificar y clasificar de forma independiente las tareas puras, acotadas y sin efectos colaterales que Gemini 3.6 Flash High puede realizar de forma autónoma sin sobrecargar su contexto ni requerir intervención previa o acoplada de Claude (Sonnet/Opus).
-* **Checklist de Tareas Independientes para Gemini 3.6 Flash High**:
-  - [ ] **CHK-GEM-01 (Spec 023 — Fixtures unitarios y determinismo avanzado)**: Crear `tests/test_evidence_fusion_fixtures.py` con pruebas puras de invariante de igualdad determinística de digest SHA-256 (`compute_evidence_digest`), idempotencia de ordenamiento (`sort_facts_canonical`) y serialización sin campos mutables utilizando combinaciones sintéticas extremas de hechos (sin IO ni BD).
-  - [ ] **CHK-GEM-02 (Spec 022 T010 — Validación de configuración de adquisición adaptativa)**: Implementar funciones puras de parseo/validación de configuración en `app/acquisition.py` para `adaptive_acquisition_workers` (tope 2), `adaptive_acquisition_timeout_seconds` (máximo 5s) y `adaptive_acquisition_deadline_seconds` (máximo 12s) con sus pruebas unitarias en `tests/test_acquisition.py`.
-  - [ ] **CHK-GEM-03 (Spec 022 T008 — Estructuras puras para sondas episódicas)**: Agregar dataclasses puras e inmutables `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope` en `app/acquisition.py` (sin conexión a socket ni red).
-  - [ ] **CHK-GEM-04 (Documentación — Sincronización de trazabilidad)**: Actualizar los cuadros de trazabilidad de requerimientos en `specs/023-incident-evidence-fusion/tasks.md` y `specs/022-adaptive-acquisition/tasks.md` registrando la finalización de T001-T013 y T016 sin alterar contratos ni código de producción.
-* **Tareas Excluidas de Gemini (Requieren Claude Sonnet 4.6 u Opus 4.6 en Parte 2)**:
-  - T014: Acoplamiento del adaptador de diagnóstico en `app/miner_monitor.py` / Telegram.
-  - T015: Integración del renderizador en `tools/operations_dashboard.py`.
-  - T017-T019: Evaluación operativa, presupuestos de latencia en vivo y decisión del gate D+3 de Spec 021.
+* **Objetivo**: Identificar tareas acotadas y puras que Gemini 3.6 Flash High puede realizar de forma independiente sin requerir modelos Claude.
+
+### Checklist de Tareas para Gemini 3.6 Flash High
+
+- [ ] **CHK-GEM-01 — Spec 023 (Fixtures & Determinismo)**
+  - Crear `tests/test_evidence_fusion_fixtures.py`.
+  - Pruebas puras de digest SHA-256 (`compute_evidence_digest`).
+  - Pruebas de ordenamiento canónico (`sort_facts_canonical`).
+
+- [ ] **CHK-GEM-02 — Spec 022 T010 (Validación de Configuración)**
+  - Funciones puras de validación en `app/acquisition.py`.
+  - Validar `adaptive_acquisition_workers` (máximo 2).
+  - Validar timeouts (máximo 5s) y deadlines (máximo 12s).
+  - Pruebas unitarias en `tests/test_acquisition.py`.
+
+- [ ] **CHK-GEM-03 — Spec 022 T008 (Estructuras de Sondas Episódicas)**
+  - Dataclasses puras `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope` en `app/acquisition.py`.
+
+- [ ] **CHK-GEM-04 — Documentación (Trazabilidad)**
+  - Actualizar tablas de trazabilidad en `specs/023-incident-evidence-fusion/tasks.md` y `specs/022-adaptive-acquisition/tasks.md`.
+
+### Tareas Excluidas de Gemini (Requieren Claude Sonnet/Opus)
+
+- **T014**: Adaptador `/diagnose` en `app/miner_monitor.py` / Telegram.
+- **T015**: Integración en `tools/operations_dashboard.py`.
+- **T017-T019**: Evaluación operativa y decisión del gate D+3 de Spec 021.
 
 ---
 

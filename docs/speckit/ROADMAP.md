@@ -1,6 +1,6 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-08-15
+**Last reviewed**: 2026-08-17
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
@@ -10,11 +10,12 @@
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
-1. **[COMPLETADO] Specs 001 a 019 — Arquitectura Base y Telemetría**: Polling autoritativo API 4028, base SQLite (esquema v1-v5), integración Hashcore Toolkit, captura de logs Vnish, diagnósticos de calidad y perfil de estabilidad.
+1. **[COMPLETADO] Specs 001 a 019 — Arquitectura Base y Telemetría**: Polling autoritativo API 4028, base SQLite (esquema v1-v6), integración Hashcore Toolkit, captura de logs Vnish, diagnósticos de calidad y perfil de estabilidad.
 2. **[COMPLETADO] Spec 020 — Estabilización de Estados y Autoreinicio**: Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`), interlocks térmicos/de flota y cero reinicios espurios (`e502ab9`).
 3. **[COMPLETADO] Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
-4. **[EN PROCESO - 85%] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 superado (86.7k/86.4k s), cierre D+3 programado para el 2026-08-17.
-5. **[EN PROCESO - 50%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, integración secuencial T006 deshabilitada por defecto y alertas compactas de 1 línea con detalle `/e<ID>` completadas.
+4. **[EN PROCESO - 90%] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 superado (86.7k/86.4k s), cierre D+3 en curso (~22h restantes).
+5. **[EN PROCESO - 80%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, persistencia de calidad en esquema v6, validaciones de configuración, dataclasses de sondas episódicas y wiring secuencial T006 deshabilitado por defecto.
+6. **[EN PROCESO - 65%] Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T008-T011), tablas aditivas `incident_assessments` e `assessment_fact_refs` (T012), renderizador semántico `render_assessment_text`/`render_assessment_telegram` (T013) y config defaults (T016) completados con 305 tests PASS.
 
 ---
 
@@ -64,16 +65,18 @@ interfaces or integrations.
 - Telegram Bot API long polling as the remote command/control interface.
 - Bounded read-only Vnish WebSocket log collection as complementary firmware
   evidence, never the sole health or action source.
-- SQLite schema v5 for telemetry, operational events, reboot decisions,
-  firmware evidence and collector health.
+- SQLite schema v6 for telemetry, operational events, reboot decisions,
+  firmware evidence, collector health, incident assessments and assessment fact refs.
 - Read-only static operations dashboard and incident reports.
 - Auto-reboot gates for finite/current signal, sustained LOW, startup, thermal,
   fleet, Vnish transition, cooldown, window and QA safety.
 - Spec 020 is committed/pushed and runtime-closed as `e502ab9`. Spec 030
   messaging quality is committed/pushed as `2afd65e` and active in production.
   Spec 021 liveness is activated and its D+1 observation gate passed (86,700s > 86,400s).
-  Spec 022 has completed T006 sequential fallback wiring and compact Telegram UX formatting
-  behind `adaptive_acquisition_enabled=false`, with 206/206 passing tests.
+  Spec 022 has completed T001-T010 (pure acquisition executor, schema v6 quality persistence,
+  config bounds validation and episode probe dataclasses).
+  Spec 023 has completed T001-T013 and T016 (pure evidence_fusion module, schema v6 assessment persistence,
+  shared semantic renderers and config defaults) with 305/305 passing tests.
 
 ## Architecture Direction
 
@@ -103,8 +106,8 @@ interfaces or integrations.
 | Gate | Spec 020 episode-alerts closeout | COMPLETE | P0 | HIGH | Closed 2026-08-13 |
 | Hotfix | Spec 030 Telegram messaging quality | COMPLETE | P0 | MEDIUM | Closed 2026-08-13 |
 | 1 | Spec 021 monitor-liveness-watchdog | ACTIVATED / OBSERVATION PENDING | P0 | HIGH | 2026-08-13 to 2026-08-17 |
-| 2 | Spec 022 adaptive-acquisition | IN PROGRESS / ISOLATED | P1 | HIGH | Started 2026-08-14; wiring after 021 D+1 |
-| 3 | Spec 023 incident-evidence-fusion | PLANNED | P1 | MEDIUM | 2026-09-11 to 2026-09-24 |
+| 2 | Spec 022 adaptive-acquisition | IN PROGRESS (T001-T010 COMPLETE) | P1 | HIGH | Started 2026-08-14; activation blocked by 021 D+3 |
+| 3 | Spec 023 incident-evidence-fusion | IN PROGRESS (T001-T013, T016 COMPLETE) | P1 | MEDIUM | Pure domain & DB persistence ready |
 | 4 | Spec 024 electrical-source-discovery | PLANNED / CONDITIONAL | P1 | MEDIUM | 2026-09-25 to 2026-10-05 |
 | 5 | Spec 025 prometheus-metrics | PLANNED | P1 | MEDIUM | 2026-10-06 to 2026-10-19 |
 | 6 | Spec 026 hashcore-capability-inventory | PLANNED | P2 | MEDIUM | 2026-10-20 to 2026-10-29 |
@@ -189,15 +192,17 @@ production activation waits for Spec 021 D+3.
 
 **Invariant**: thresholds, hysteresis, polling offset and action policy unchanged.
 
-### R3 - Incident Evidence Fusion (`PLANNED`, P1)
+### R3 - Incident Evidence Fusion (`IN PROGRESS / DOMAIN & DB PERSISTENCE READY`, P1)
 
 **Spec**: `specs/023-incident-evidence-fusion`
 
-- [ ] Normalize persisted episode, Vnish, quality, pool, action and fleet facts.
-- [ ] Build stable per-miner historical baselines from eligible samples.
-- [ ] Separate observed, suspected and confirmed conclusions.
-- [ ] Show supporting, contradicting and missing evidence.
-- [ ] Persist versioned assessments for deterministic replay.
+- [x] Normalize persisted episode, Vnish, quality, pool, action and fleet facts.
+- [x] Build stable per-miner historical baselines from eligible samples.
+- [x] Separate observed, suspected and confirmed conclusions.
+- [x] Show supporting, contradicting and missing evidence.
+- [x] Persist versioned assessments for deterministic replay.
+- [ ] Integrate Telegram `/diagnose` adapter behind feature flag `incident_fusion_enabled` (T014).
+- [ ] Integrate shared renderer in operations dashboard (T015).
 
 **Invariant**: assessments are advisory and never authorize actions.
 

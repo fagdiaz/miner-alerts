@@ -16,7 +16,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Pruebas puras de digest SHA-256 (`compute_evidence_digest`).
   - Pruebas de ordenamiento canónico (`sort_facts_canonical`).
 
-- [ ] **CHK-GEM-02 — Spec 022 T010 (Validación de Configuración)**
+- [x] **CHK-GEM-02 — Spec 022 T010 (Validación de Configuración)**
   - Funciones puras de validación en `app/acquisition.py`.
   - Validar `adaptive_acquisition_workers` (máximo 2).
   - Validar timeouts (máximo 5s) y deadlines (máximo 12s).

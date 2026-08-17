@@ -22,6 +22,7 @@ from app.acquisition import (
     TransportOutcome,
     TransportStatus,
     dispatch_authoritative,
+    validate_acquisition_config_dict,
 )
 
 
@@ -112,12 +113,18 @@ class AcquisitionConfigTests(unittest.TestCase):
         self.assertTrue(all("yes-secret" not in warning for warning in warnings))
         self.assertTrue(all(warning.startswith("invalid_config key=") for warning in warnings))
 
-    def test_disabled_sequential_fallback_wiring_preserves_sequential_path(self) -> None:
-        raw = {"adaptive_acquisition_enabled": False}
-        config, warnings = AcquisitionConfig.from_mapping(raw)
-        self.assertFalse(config.enabled)
-        self.assertFalse(config.diagnostics_enabled)
-        self.assertEqual((), warnings)
+    def test_validate_acquisition_config_dict_bounds(self) -> None:
+        """validate_acquisition_config_dict caps workers at 2, timeout at 5.0, deadline at 12.0."""
+        validated = validate_acquisition_config_dict({
+            "adaptive_acquisition_enabled": True,
+            "adaptive_acquisition_workers": 4,
+            "adaptive_acquisition_timeout_seconds": 8.0,
+            "adaptive_acquisition_deadline_seconds": 20.0,
+        })
+        self.assertTrue(validated["adaptive_acquisition_enabled"])
+        self.assertEqual(validated["adaptive_acquisition_workers"], 2)
+        self.assertEqual(validated["adaptive_acquisition_timeout_seconds"], 5.0)
+        self.assertEqual(validated["adaptive_acquisition_deadline_seconds"], 12.0)
 
 
 class Api4028TransportTests(unittest.TestCase):

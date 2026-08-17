@@ -107,6 +107,34 @@ class AcquisitionConfig:
         )
 
 
+def validate_acquisition_config_dict(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate adaptive acquisition configuration mapping (CHK-GEM-02).
+
+    Returns a clean dictionary containing validated, safe bounds:
+      - adaptive_acquisition_enabled: bool (default False)
+      - adaptive_acquisition_workers: int in [1, 2] (default 2, worker cap 2)
+      - adaptive_acquisition_timeout_seconds: float in [1.0, 5.0] (default 5.0)
+      - adaptive_acquisition_deadline_seconds: float in [timeout, 12.0] (default 12.0)
+      - adaptive_diagnostics_enabled: bool (default False)
+      - adaptive_diagnostic_interval_seconds: float in [5.0, 60.0] (default 10.0)
+    """
+    config, _ = AcquisitionConfig.from_mapping(raw)
+    workers = min(config.workers, 2)
+    timeout_seconds = min(config.timeout_seconds, 5.0)
+    deadline_seconds = min(config.deadline_seconds, 12.0)
+    if deadline_seconds < timeout_seconds:
+        deadline_seconds = timeout_seconds
+
+    return {
+        "adaptive_acquisition_enabled": config.enabled,
+        "adaptive_acquisition_workers": workers,
+        "adaptive_acquisition_timeout_seconds": timeout_seconds,
+        "adaptive_acquisition_deadline_seconds": deadline_seconds,
+        "adaptive_diagnostics_enabled": config.diagnostics_enabled,
+        "adaptive_diagnostic_interval_seconds": config.diagnostic_interval_seconds,
+    }
+
+
 def _invalid_config(key: str, warnings: list[str]) -> None:
     warnings.append(f"invalid_config key={key} default_applied=true")
 

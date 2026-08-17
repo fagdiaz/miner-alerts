@@ -11,7 +11,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ### Checklist de Tareas para Gemini 3.6 Flash High
 
-- [ ] **CHK-GEM-01 — Spec 023 (Fixtures & Determinismo)**
+- [x] **CHK-GEM-01 — Spec 023 (Fixtures & Determinismo)**
   - Crear `tests/test_evidence_fusion_fixtures.py`.
   - Pruebas puras de digest SHA-256 (`compute_evidence_digest`).
   - Pruebas de ordenamiento canónico (`sort_facts_canonical`).

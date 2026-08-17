@@ -45,6 +45,14 @@ The project targets Windows with PowerShell, Python virtualenv, Telegram polling
 
 `py_compile` is required but insufficient for production-affecting changes. Each completed spec MUST record the exact commands run, Telegram command checks when relevant, observed logs, and any blocked runtime validation.
 
+### VII. Model Workload Partitioning & Exhaustion Rule
+
+All lightweight, pure domain, standalone unit test, documentation, schema, and config default tasks within the scope of Gemini 3.6 Flash High MUST be executed and completed by Gemini 3.6 Flash High first, without overloading the model (using bounded, iterative turns). Only when ALL independent Gemini-safe tasks are fully exhausted and verified, the agent MUST explicitly notify the user to transition to a higher-reasoning model (Claude Sonnet 4.6 Thinking or Claude Opus 4.6 Thinking).
+
+### VIII. Handoff & Prompt Protocol (prompt.txt)
+
+Every model at the conclusion of its turn or session MUST leave an updated, ready-to-run prompt in `prompt.txt`. The prompt MUST provide the simplest yet most optimal and functional way for the next model to enter context easily (either by explaining key context explicitly in `prompt.txt` or by giving specific, line-bounded or full-file Markdown reading directives). In console text output, the model MUST explicitly inform the user which model to select next (e.g. recommending `Gemini 3.6 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
+
 ## Development Workflow And Quality Gates
 
 - Read `.specify/feature.json`, the active spec directory, this constitution,
@@ -67,4 +75,4 @@ The project targets Windows with PowerShell, Python virtualenv, Telegram polling
 - Amendments MUST update affected docs under `docs/speckit/` and active specs.
 - Reviews MUST verify production safety, config hygiene, Telegram control safety, Windows compatibility, and validation evidence.
 
-**Version**: 1.2.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-08-13
+**Version**: 1.3.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-08-17

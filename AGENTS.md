@@ -46,6 +46,13 @@ Avoid unrelated feature expansion while safety and observability issues are open
 - Auto-reboot changes: validate QA mode first; real actions require explicit approval and controlled production conditions.
 - Config changes: update `app/config.example.json` and docs only, unless local `app/config.json` alignment is explicitly requested.
 
+## Model Workload & Handoff Protocol
+
+1. **Gemini 3.6 Flash High Exhaustion**: All lightweight, pure domain, standalone unit test, documentation, schema, and config default tasks MUST be executed by Gemini 3.6 Flash High first (in bounded, iterative turns).
+2. **Transition Trigger**: Only when ALL independent Gemini-safe tasks are fully exhausted and verified, the agent MUST explicitly instruct the user to switch to a higher-reasoning model (Claude Sonnet 4.6 Thinking or Claude Opus 4.6 Thinking).
+3. **Handoff Prompt Protocol (`prompt.txt`)**: Every model at the end of its session MUST leave an updated, ready-to-run prompt in `prompt.txt` providing the simplest and most optimal context (either via explicit explanation or exact file/line reading directives).
+4. **Console Model Notification**: In console/chat output, the agent MUST explicitly inform the user which model to select next (recommending `Gemini 3.6 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
+
 ## Spec Definition Of Done
 
 Every implemented spec must:

@@ -1,0 +1,48 @@
+CODEX — Miner Alerts | Especificación Exclusiva para Agentes Claude (Sonnet 4.6 / Opus 4.6)
+
+=============================================================================
+DIRECTIVA DE MODELO Y MODELO OBLIGATORIO
+=============================================================================
+ESTE PROMPT ES EXCLUSIVO PARA MODELOS DE ALTO RAZONAMIENTO CLAUDE:
+- RECOMENDADO: Claude Sonnet 4.6 (Thinking) por su equilibrio óptimo entre razonamiento profundo y consumo eficiente de tokens.
+- ALTERNATIVA: Claude Opus 4.6 (Thinking) si se agota la cuota de Sonnet o para auditorías complejas de causa raíz.
+- DIRECTIVA DE SEGURIDAD: NO EJECUTAR ESTE PROMPT CON GEMINI 3.6 FLASH HIGH.
+
+=============================================================================
+ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
+=============================================================================
+- Spec 021 D+1: PASADO. Gate D+3: EN CURSO (~22h restantes).
+- Spec 022 T001-T010: COMPLETADOS. Módulo puro + wiring secuencial + persistencia calidad v6 + validación de config + dataclasses de sondas. Activación en producción (`adaptive_acquisition_enabled=true`) BLOQUEADA hasta cumplir D+3.
+- Spec 023 T001-T013 y T016: COMPLETADOS. 305/305 tests PASS (0 fallos, 0 errores, 0 skips). `app/evidence_fusion.py` (módulo puro + renderizador semántico `render_assessment_text` / `render_assessment_telegram`), tablas `incident_assessments` y `assessment_fact_refs` creadas en `EventStore` con índice único `ux_assessment_replay` e idempotencia.
+- Repositorio Git: Rama `codex/022-adaptive-acquisition`. Último commit `0bd08a0` (pushed).
+
+COMANDO DE VERIFICACIÓN DE PRUEBAS:
+.\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
+
+DIRECTIVAS DE LECTURA DE CONTEXTO RÁPIDO:
+- Leer las primeras 30 líneas de `docs/audit/DEVELOPMENT_LOG.md` para el resumen más reciente del sistema.
+- Leer `specs/023-incident-evidence-fusion/contracts/incident-assessment.md` para el contrato estricto de renderizado.
+- Leer `specs/023-incident-evidence-fusion/tasks.md` para el seguimiento de tareas T014-T020.
+
+=============================================================================
+TAREAS DE INTEGRACIÓN Y VALIDACIÓN (CLAUDE SONNET 4.6 / OPUS 4.6)
+=============================================================================
+
+1. SPEC 023 — T014 (Integración del Adaptador detrás de /diagnose):
+   - Conectar la generación de evaluaciones tras la bandera `incident_fusion_enabled` en el comando Telegram `/diagnose` dentro de `app/miner_monitor.py`.
+   - Mantener el renderizador legacy `build_miner_diagnosis_text` como fallback estricto si la flag está deshabilitada (`false`), si falla la base de datos o si se excede el presupuesto de latencia (2 segundos).
+   - Demostrar formalmente que NO se altera la máquina de estados, la elegibilidad de reinicios, los cooldowns ni los timers de monitoreo.
+
+2. SPEC 023 — T015 (Integración en Tablero de Operaciones):
+   - Conectar el renderizador en `tools/operations_dashboard.py` utilizando la función compartida `render_assessment_text` de `app/evidence_fusion.py` sin duplicar lógica de puntuación.
+
+3. SPEC 023 — T017 & T018 (Pruebas de Integración y Rendimiento):
+   - Crear pruebas de integración para verificar la determinística de digests, tiempo de respuesta menor a 2 segundos en ventanas de 24 horas, visibilidad de contradicciones y no causalidad eléctrica de patrones de flota sin fuentes PDU/UPS externas (gate Spec 024).
+
+4. GATE D+3 SPEC 021 Y ACTIVACIÓN DE SPEC 022:
+   - Una vez transcurridas las ~22h del gate D+3 de Spec 021, verificar los logs de uptime del servicio Windows `MinerAlerts` y autorizar la activación en producción de Spec 022 (`adaptive_acquisition_enabled=true`).
+
+5. DOCUMENTACIÓN Y REGISTRO FINAL:
+   - Actualizar `specs/023-incident-evidence-fusion/tasks.md` y `evidence.md`.
+   - Actualizar `docs/speckit/ROADMAP.md` y agregar entrada fechada al inicio de `docs/audit/DEVELOPMENT_LOG.md`.
+   - Ejecutar la suite de pruebas completa y realizar commit feature-scoped con `git push origin codex/022-adaptive-acquisition`.

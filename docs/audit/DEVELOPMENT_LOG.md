@@ -22,7 +22,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Validar timeouts (máximo 5s) y deadlines (máximo 12s).
   - Pruebas unitarias en `tests/test_acquisition.py`.
 
-- [ ] **CHK-GEM-03 — Spec 022 T008 (Estructuras de Sondas Episódicas)**
+- [x] **CHK-GEM-03 — Spec 022 T008 (Estructuras de Sondas Episódicas)**
   - Dataclasses puras `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope` en `app/acquisition.py`.
 
 - [ ] **CHK-GEM-04 — Documentación (Trazabilidad)**

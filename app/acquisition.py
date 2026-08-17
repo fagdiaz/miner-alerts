@@ -35,6 +35,29 @@ class TransportStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class DiagnosticProbeResult:
+    """Pure dataclass representing a single diagnostic probe outcome (CHK-GEM-03)."""
+
+    miner_key: str
+    command: str
+    status: TransportStatus
+    payload: Optional[Mapping[str, Any]] = None
+    latency_ms: float = 0.0
+    timestamp_epoch: float = 0.0
+
+
+@dataclass(frozen=True)
+class EpisodeDiagnosticEnvelope:
+    """Pure dataclass grouping diagnostic probe results for an episode (CHK-GEM-03)."""
+
+    episode_id: str
+    miner_key: str
+    probe_results: tuple[DiagnosticProbeResult, ...] = ()
+    captured_ts: float = 0.0
+    reason: str = "episode_triggered"
+
+
+@dataclass(frozen=True)
 class AcquisitionConfig:
     enabled: bool = False
     workers: int = 2

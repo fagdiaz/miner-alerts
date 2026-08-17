@@ -13,6 +13,8 @@ from app.acquisition import (
     Api4028Transport,
     Authority,
     BoundedAcquirer,
+    DiagnosticProbeResult,
+    EpisodeDiagnosticEnvelope,
     EpochScheduler,
     InFlightRegistry,
     MinerEndpoint,
@@ -606,5 +608,44 @@ class AuthorityFirewallTests(unittest.TestCase):
         self.assertEqual(["miner-a"], applied)
 
 
+
+class TestDiagnosticProbeStructures(unittest.TestCase):
+    """Verify DiagnosticProbeResult and EpisodeDiagnosticEnvelope immutability and defaults (CHK-GEM-03)."""
+
+    def test_diagnostic_probe_result_immutability(self) -> None:
+        probe = DiagnosticProbeResult(
+            miner_key="23",
+            command="summary",
+            status=TransportStatus.SUCCESS,
+            payload={"SUMMARY": []},
+            latency_ms=12.5,
+            timestamp_epoch=1786700000.0,
+        )
+        self.assertEqual("23", probe.miner_key)
+        self.assertEqual("summary", probe.command)
+        self.assertEqual(TransportStatus.SUCCESS, probe.status)
+        self.assertEqual(12.5, probe.latency_ms)
+
+        with self.assertRaises(AttributeError):
+            probe.miner_key = "24"  # type: ignore[misc]
+
+    def test_episode_diagnostic_envelope_structure(self) -> None:
+        probe1 = DiagnosticProbeResult(
+            miner_key="23",
+            command="summary",
+            status=TransportStatus.SUCCESS,
+        )
+        envelope = EpisodeDiagnosticEnvelope(
+            episode_id="ep:42",
+            miner_key="23",
+            probe_results=(probe1,),
+            captured_ts=1786700000.0,
+        )
+        self.assertEqual("ep:42", envelope.episode_id)
+        self.assertEqual(1, len(envelope.probe_results))
+        self.assertEqual("episode_triggered", envelope.reason)
+
+
 if __name__ == "__main__":
     unittest.main()
+

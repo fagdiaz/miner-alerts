@@ -273,6 +273,46 @@ class EventStore:
                 "ON firmware_events(source_ts_epoch DESC)"
             )
             connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+            # Spec 023 T012: additive assessment tables (created on all schema versions)
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS incident_assessments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_ts REAL NOT NULL,
+                    subject_type TEXT NOT NULL,
+                    subject_ref TEXT NOT NULL,
+                    miner_key TEXT,
+                    ruleset_version TEXT NOT NULL,
+                    window_start_ts REAL NOT NULL,
+                    window_end_ts REAL NOT NULL,
+                    assessment_now_ts REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    evidence_digest TEXT NOT NULL,
+                    findings_json TEXT NOT NULL DEFAULT '[]',
+                    hypotheses_json TEXT NOT NULL DEFAULT '[]',
+                    contradictions_json TEXT NOT NULL DEFAULT '[]',
+                    missing_evidence_json TEXT NOT NULL DEFAULT '[]'
+                );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_assessment_replay
+                    ON incident_assessments(subject_ref, ruleset_version, evidence_digest);
+
+                CREATE INDEX IF NOT EXISTS ix_assessment_subject_time
+                    ON incident_assessments(subject_type, subject_ref, assessment_now_ts DESC);
+
+                CREATE TABLE IF NOT EXISTS assessment_fact_refs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    assessment_id INTEGER NOT NULL
+                        REFERENCES incident_assessments(id) ON DELETE CASCADE,
+                    source_table TEXT NOT NULL,
+                    source_row_id INTEGER NOT NULL,
+                    fact_code TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_fact_refs_assessment
+                    ON assessment_fact_refs(assessment_id);
+                """
+            )
 
     def record_sample(
         self,
@@ -1025,6 +1065,106 @@ class EventStore:
         if connection is not None:
             with self._lock:
                 connection.close()
+
+    # ------------------------------------------------------------------
+    # Spec 023 T012 — Assessment persistence (idempotent by replay key)
+    # ------------------------------------------------------------------
+
+    def save_assessment(
+        self,
+        *,
+        subject_type: str,
+        subject_ref: str,
+        miner_key: Optional[str] = None,
+        ruleset_version: str,
+        window_start_ts: float,
+        window_end_ts: float,
+        assessment_now_ts: float,
+        status: str,
+        evidence_digest: str,
+        findings_json: str = "[]",
+        hypotheses_json: str = "[]",
+        contradictions_json: str = "[]",
+        missing_evidence_json: str = "[]",
+    ) -> int:
+        """Persist an assessment, idempotent by (subject_ref, ruleset_version, digest).
+
+        Returns the ``id`` of the existing or newly created row.
+        Raises ``RuntimeError`` if the store is unavailable.
+        """
+        connection = self._connection
+        if connection is None:
+            raise RuntimeError("EventStore unavailable")
+        try:
+            with self._lock, connection:
+                existing = connection.execute(
+                    "SELECT id FROM incident_assessments "
+                    "WHERE subject_ref = ? AND ruleset_version = ? "
+                    "  AND evidence_digest = ?",
+                    (subject_ref, ruleset_version, evidence_digest),
+                ).fetchone()
+                if existing is not None:
+                    return int(existing[0])
+                cur = connection.execute(
+                    """
+                    INSERT INTO incident_assessments (
+                        created_ts, subject_type, subject_ref, miner_key,
+                        ruleset_version, window_start_ts, window_end_ts,
+                        assessment_now_ts, status, evidence_digest,
+                        findings_json, hypotheses_json, contradictions_json,
+                        missing_evidence_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        float(assessment_now_ts),
+                        subject_type,
+                        subject_ref,
+                        miner_key,
+                        ruleset_version,
+                        float(window_start_ts),
+                        float(window_end_ts),
+                        float(assessment_now_ts),
+                        status,
+                        evidence_digest,
+                        findings_json,
+                        hypotheses_json,
+                        contradictions_json,
+                        missing_evidence_json,
+                    ),
+                )
+                return int(cur.lastrowid)  # type: ignore[arg-type]
+        except (TypeError, ValueError, sqlite3.Error) as exc:
+            self._report_error("save_assessment", exc)
+            raise RuntimeError(f"save_assessment failed: {exc}") from exc
+
+    def load_assessment(
+        self,
+        *,
+        subject_ref: str,
+        ruleset_version: str,
+        evidence_digest: str,
+    ) -> Optional[dict]:
+        """Load an assessment by its replay key.
+
+        Returns a dict of all columns or ``None`` if not found.
+        """
+        connection = self._connection
+        if connection is None:
+            return None
+        try:
+            with self._lock:
+                row = connection.execute(
+                    "SELECT * FROM incident_assessments "
+                    "WHERE subject_ref = ? AND ruleset_version = ? "
+                    "  AND evidence_digest = ?",
+                    (subject_ref, ruleset_version, evidence_digest),
+                ).fetchone()
+            if row is None:
+                return None
+            return dict(row)
+        except sqlite3.Error as exc:
+            self._report_error("load_assessment", exc)
+            return None
 
 
 def _event_label(event: Dict[str, Any]) -> str:

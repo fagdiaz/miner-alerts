@@ -86,7 +86,26 @@
   `test_event_store.py` (T006 contracts), 211 non-red tests PASS (0
   failures, 0 errors, 1 skip). No production code altered.
 
-## Required Evidence Before Completion
+## Phase 2/3 Implementation (T008-T012) — 2026-08-17
+
+- T008/T009/T010/T011: Created `app/evidence_fusion.py` (pure domain module,
+  no IO, no wall-clock, no state mutation). Exports: `FusionConfig` (with
+  `from_mapping` returning `(config, warnings)` tuple), `EvidenceFact`,
+  `CauseHypothesis`, `IncidentAssessment`, `classify_freshness`,
+  `map_clock_quality`, `validate_fact_code`, `sort_facts_canonical`,
+  `compute_evidence_digest`, `compute_confidence_ceiling`, `max_cause_level`,
+  `evaluate_hypothesis`, `detect_fleet_pattern`, `is_within_attribution_window`.
+- T012: Added `incident_assessments` and `assessment_fact_refs` tables to
+  `EventStore._create_schema` (additive, `CREATE TABLE IF NOT EXISTS`). Unique
+  index `ux_assessment_replay` on `(subject_ref, ruleset_version, evidence_digest)`
+  enforces idempotent replay. Added `save_assessment` and `load_assessment`
+  methods. `save_assessment` is idempotent: repeated calls with the same replay
+  key return the same row id without duplicate rows.
+- All 296 tests pass: 0 failures, 0 errors, 0 skips. All previously expected
+  T006 red contract failures are now green. 80 `test_evidence_fusion.py` tests
+  pass. No production config, state, miner or service was changed.
+
+
 
 - Ruleset and fixture versions.
 - Targeted/full tests and migration results.

@@ -29,20 +29,20 @@ alone is insufficient.
 
 ## Phase 2: Pure Fusion Domain
 
-- [ ] T008 [US1] Implement immutable fact, hypothesis and assessment values in
+- [x] T008 [US1] Implement immutable fact, hypothesis and assessment values in
   `app/evidence_fusion.py` without IO or implicit wall-clock access.
-- [ ] T009 [US1] Implement recognized-source normalization, freshness,
+- [x] T009 [US1] Implement recognized-source normalization, freshness,
   canonical serialization and `evidence_digest` for FR-001, FR-002, FR-010,
   FR-012 and FR-015.
-- [ ] T010 [US2] Implement stable ordered hypothesis rules, ceilings,
+- [x] T010 [US2] Implement stable ordered hypothesis rules, ceilings,
   contradictions and missing evidence from `contracts/evidence-rules.md` for
   FR-003-FR-005.
-- [ ] T011 [US3] Reuse existing baseline/quality/restart analyzers and implement
+- [x] T011 [US3] Reuse existing baseline/quality/restart analyzers and implement
   bounded fleet correlation without electrical causality for FR-006-FR-008.
 
 ## Phase 3: Persistence And Shared Interfaces
 
-- [ ] T012 Add EventStore schema migration, source queries, assessment
+- [x] T012 Add EventStore schema migration, source queries, assessment
   save/load and fact references with required indexes and idempotency for
   FR-009 and FR-014.
 - [ ] T013 Implement one semantic renderer and bounded Telegram/dashboard

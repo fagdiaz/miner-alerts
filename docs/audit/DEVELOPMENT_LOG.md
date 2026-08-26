@@ -3,6 +3,21 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-26] - Spec 023 Fases 3 y 4 (Adaptador /diagnose, Dashboard, Validación Determinista y Rendimiento T014-T018)
+
+* **Objetivo**: Integrar el adaptador defensivo en `/diagnose`, proyectar evaluaciones en el dashboard de operaciones sin duplicar scoring, formalizar la validación determinista SC-001 a SC-004 y probar latencia/consultas acotadas SC-005 a SC-007.
+* **Trabajo Realizado por Sonnet 4.6 (Thinking)**:
+  - **Spec 023 T014 (Adaptador Telegram `/diagnose`)**: Integrado bloque defensivo en `app/miner_monitor.py:2182-2360` tras `incident_fusion_enabled`. Mide latencia con `time.monotonic()`; ante $\ge 2.0$s o excepción de BD, aplica fallback incondicional a `build_miner_diagnosis_text`. Invariantes de acción preservados (0 mutaciones de estado/cooldowns). 8 nuevos tests en `tests/test_t014_diagnose_adapter.py`.
+  - **Spec 023 T015 (Dashboard de Operaciones)**: Integrado `incident_assessments` en `tools/operations_dashboard.py` con consulta acotada `_latest_assessments` y renderizado puro `_render_assessment_rows` (fecha, sujeto, estado, ruleset, digest). Invariante FR-011 verificado: cero llamadas a funciones de inferencia o scoring en el dashboard. 10 nuevos tests en `tests/test_operations_dashboard.py`.
+* **Trabajo Realizado por Gemini 3.7 Flash High**:
+  - **Spec 023 T017 (Validación Determinista SC-001 a SC-004)**: Creado `tests/test_t017_deterministic_validation.py` con 17 pruebas formales. Demostrado determinismo del digest SHA-256 ante 25 permutaciones de entrada; no-confirmación por timing/proximidad temporal (techo `suspected`); visibilidad explícita de contradicciones y missing evidence con pie de seguridad; no-causalidad eléctrica en patrones de flota sin PDU externa e invariante de 0 campos de acción en `IncidentAssessment`.
+  - **Spec 023 T018 (Rendimiento, Latencia < 2s y Crecimiento de BD)**: Creado `tests/test_t018_performance_and_growth.py` con 4 pruebas de estrés y límites. Poblada base de 24h (2.880 muestras de telemetría para 4 mineros + eventos + decisiones + firmware); comprobada latencia de evaluación de 0.08s (muy por debajo de los 2.0s de presupuesto, SC-005); número de queries estrictamente acotado a 6 ($O(1)$, no $O(N)$, FR-014); guardado repetido 50 veces verificado idempotente (1 sola fila persistida, sin crecimiento de tamaño de BD, SC-007); invariante de 0 mutaciones ni dependencias de acción (SC-006).
+  - **Auditoría y Mantenimiento de Entorno**: Resolución de conflicto de hook de telemetría, actualización de `specs/023-incident-evidence-fusion/tasks.md` y `evidence.md`, sincronización de `docs/speckit/ROADMAP.md` y preparación de `prompt.txt`.
+* **Estado Final de Pruebas**: **344/344 PASS** (0 fallos, 0 errores, 0 skips).
+* **Pendiente**:
+  - **T019**: Ventana de activación controlada en producción y observación D+0/D+1/D+3 tras salida de Spec 022.
+  - **Gate D+3 Spec 021**: Cierre final de soak y autorización para activación de Spec 022.
+
 ---
 
 ## [2026-08-17] - Spec 023 Fases 1-3 (evidence_fusion.py, Renderer, DB Persistence) y Trabajo Independiente Gemini 3.6

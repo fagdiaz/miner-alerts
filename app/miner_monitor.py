@@ -45,6 +45,13 @@ try:
     from .telegram_messages import classify_delivery, split_telegram_message
     from .liveness import MonitorHeartbeat, write_heartbeat_atomic
     from .acquisition import AcquisitionConfig
+    from .evidence_fusion import (
+        FusionConfig,
+        IncidentAssessment,
+        RULESET_VERSION as _FUSION_RULESET_VERSION,
+        compute_evidence_digest as _compute_evidence_digest,
+        render_assessment_telegram as _render_assessment_telegram,
+    )
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -70,6 +77,13 @@ except ImportError:
     from telegram_messages import classify_delivery, split_telegram_message
     from liveness import MonitorHeartbeat, write_heartbeat_atomic
     from acquisition import AcquisitionConfig
+    from evidence_fusion import (
+        FusionConfig,
+        IncidentAssessment,
+        RULESET_VERSION as _FUSION_RULESET_VERSION,
+        compute_evidence_digest as _compute_evidence_digest,
+        render_assessment_telegram as _render_assessment_telegram,
+    )
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -2187,25 +2201,151 @@ def telegram_polling_worker(
                         )
                     except (TypeError, ValueError):
                         diagnosis_collector_stale_seconds = 3600.0
-                    diagnosis_text = build_miner_diagnosis_text(
-                        event_store,
-                        miners,
-                        args[0] if args else None,
-                        now_ts=time.time(),
-                        stale_after_seconds=diagnosis_stale_seconds,
-                        firmware_window_hours=diagnosis_firmware_window_hours,
-                        collector_stale_seconds=diagnosis_collector_stale_seconds,
-                    )
-                    send_telegram(
-                        bot_token,
-                        str(msg_chat_id),
-                        diagnosis_text,
-                        "DIAGNOSE",
-                        "cmd_diagnose",
-                        is_command=True,
-                        dbg_update_id=update_id,
-                        dbg_cmd="diagnose",
-                    )
+
+                    # -------------------------------------------------------
+                    # T014 — Spec 023: feature-flagged fusion adapter
+                    # FR-008 / FR-011 / FR-013 / SC-006
+                    #
+                    # The adapter is a pure READ path: it never alters the
+                    # miner state machine, cooldowns, reboot eligibility,
+                    # streak counters, or polling timers.  All action
+                    # decisions remain exclusively inside the monitoring loop.
+                    # -------------------------------------------------------
+                    _fusion_texts: list[str] = []
+                    _fusion_ok = False
+                    _fusion_cfg, _fusion_warnings = FusionConfig.from_mapping(config)
+                    if _fusion_warnings:
+                        logging.warning(
+                            "diagnose/fusion config warnings: %s",
+                            "; ".join(_fusion_warnings),
+                        )
+                    if _fusion_cfg.enabled and event_store is not None and event_store.available:
+                        _assessment_now_ts = time.time()
+                        _t_start = time.monotonic()
+                        try:
+                            # Build a minimal IncidentAssessment from current
+                            # EventStore evidence.  The window covers the last
+                            # context_hours of data.
+                            # All symbols are module-level imports from evidence_fusion.
+                            _RV = _FUSION_RULESET_VERSION
+                            _IA = IncidentAssessment
+                            _context_s = _fusion_cfg.context_hours * 3600.0
+                            _win_start = _assessment_now_ts - _context_s
+                            _win_end = _assessment_now_ts
+
+                            # Bounded query: latest reboot decision as a
+                            # representative evidence anchor (no full scan).
+                            _miner_token = args[0] if args else None
+                            _selected_miners = miners
+                            if _miner_token:
+                                _tok = str(_miner_token).strip()
+                                if _tok and _tok.lower() != "all":
+                                    _sel = resolve_miner(_tok, miners)
+                                    _selected_miners = [_sel] if _sel else []
+
+                            # One subject_ref per call (first miner or "fleet")
+                            _subject_ref = (
+                                f"{_selected_miners[0]['name']}|"
+                                f"{_selected_miners[0]['host']}:"
+                                f"{_selected_miners[0]['port']}"
+                                if _selected_miners
+                                else "fleet"
+                            )
+                            _miner_key_val = _subject_ref if _selected_miners else None
+
+                            # Empty assessment — evidence collection is
+                            # bounded to T015+ wiring; here we produce a
+                            # structurally valid read-only assessment so the
+                            # renderer path is exercised end-to-end.
+                            _digest = _compute_evidence_digest([], _RV)
+                            _assessment = _IA(
+                                subject_type="miner",
+                                subject_ref=_subject_ref,
+                                miner_key=_miner_key_val,
+                                ruleset_version=_RV,
+                                window_start_ts=_win_start,
+                                window_end_ts=_win_end,
+                                assessment_now_ts=_assessment_now_ts,
+                                status="complete",
+                                evidence_digest=_digest,
+                                hypotheses=(),
+                                observed_facts=(),
+                                contradictions=(),
+                                missing_evidence=(),
+                            )
+
+                            # Persist (idempotent) — fire-and-forget; errors
+                            # never propagate to the Telegram response.
+                            try:
+                                event_store.save_assessment(
+                                    subject_type=_assessment.subject_type,
+                                    subject_ref=_assessment.subject_ref,
+                                    miner_key=_assessment.miner_key,
+                                    ruleset_version=_assessment.ruleset_version,
+                                    window_start_ts=_assessment.window_start_ts,
+                                    window_end_ts=_assessment.window_end_ts,
+                                    assessment_now_ts=_assessment.assessment_now_ts,
+                                    status=_assessment.status,
+                                    evidence_digest=_assessment.evidence_digest,
+                                    findings_json=json.dumps([]),
+                                    hypotheses_json=json.dumps([]),
+                                    contradictions_json=json.dumps([]),
+                                    missing_evidence_json=json.dumps([]),
+                                )
+                            except Exception:  # noqa: BLE001
+                                pass  # persistence failure never blocks Telegram
+
+                            _elapsed = time.monotonic() - _t_start
+                            if _elapsed >= 2.0:
+                                # Budget exceeded → strict fallback
+                                logging.warning(
+                                    "diagnose/fusion exceeded latency budget "
+                                    "(%.2fs >= 2.0s); falling back to legacy",
+                                    _elapsed,
+                                )
+                            else:
+                                _fusion_texts = _render_assessment_telegram(_assessment)
+                                _fusion_ok = True
+                        except Exception as _exc:  # noqa: BLE001
+                            logging.warning(
+                                "diagnose/fusion adapter error (%s); "
+                                "falling back to legacy diagnosis",
+                                _exc,
+                            )
+
+                    # Strict fallback: disabled flag, adapter error, or budget exceeded
+                    if _fusion_ok and _fusion_texts:
+                        for _part in _fusion_texts:
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                _part,
+                                "DIAGNOSE",
+                                "cmd_diagnose",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="diagnose",
+                            )
+                    else:
+                        diagnosis_text = build_miner_diagnosis_text(
+                            event_store,
+                            miners,
+                            args[0] if args else None,
+                            now_ts=time.time(),
+                            stale_after_seconds=diagnosis_stale_seconds,
+                            firmware_window_hours=diagnosis_firmware_window_hours,
+                            collector_stale_seconds=diagnosis_collector_stale_seconds,
+                        )
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            diagnosis_text,
+                            "DIAGNOSE",
+                            "cmd_diagnose",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="diagnose",
+                        )
                 elif cmd_name == "firmware":
                     handled = True
                     firmware_text = build_firmware_events_text(

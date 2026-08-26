@@ -1,12 +1,12 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-08-17
+**Last reviewed**: 2026-08-26
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `75%` (22 de 30 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del ciclo de vida del proyecto).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `78%` (23 de 30 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del ciclo de vida del proyecto).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -15,7 +15,7 @@
 3. **[COMPLETADO] Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
 4. **[EN PROCESO - 90%] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 superado (86.7k/86.4k s), cierre D+3 en curso (~22h restantes).
 5. **[EN PROCESO - 80%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, persistencia de calidad en esquema v6, validaciones de configuración, dataclasses de sondas episódicas y wiring secuencial T006 deshabilitado por defecto.
-6. **[EN PROCESO - 65%] Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T008-T011), tablas aditivas `incident_assessments` e `assessment_fact_refs` (T012), renderizador semántico `render_assessment_text`/`render_assessment_telegram` (T013) y config defaults (T016) completados con 305 tests PASS.
+6. **[EN PROCESO - 95%] Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T008-T011), tablas aditivas `incident_assessments` e `assessment_fact_refs` (T012), renderizador semántico (T013), adaptador `/diagnose` (T014), integración dashboard (T015), config defaults (T016), validación determinista SC-001 a SC-004 (T017) y pruebas de rendimiento/latencia SC-005 a SC-007 (T018) completados con 344 tests PASS.
 
 ---
 
@@ -201,8 +201,10 @@ production activation waits for Spec 021 D+3.
 - [x] Separate observed, suspected and confirmed conclusions.
 - [x] Show supporting, contradicting and missing evidence.
 - [x] Persist versioned assessments for deterministic replay.
-- [ ] Integrate Telegram `/diagnose` adapter behind feature flag `incident_fusion_enabled` (T014).
-- [ ] Integrate shared renderer in operations dashboard (T015).
+- [x] Integrate Telegram `/diagnose` adapter behind feature flag `incident_fusion_enabled` (T014).
+- [x] Integrate shared renderer in operations dashboard (T015).
+- [x] Deterministic validation SC-001 through SC-004 (T017).
+- [x] Measure bounded query count, 24-hour latency under 2s and DB growth (T018).
 
 **Invariant**: assessments are advisory and never authorize actions.
 

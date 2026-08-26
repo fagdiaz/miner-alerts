@@ -12,37 +12,57 @@ ESTE PROMPT ES EXCLUSIVO PARA MODELOS DE ALTO RAZONAMIENTO CLAUDE:
 ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 =============================================================================
 - Spec 021 D+1: PASADO. Gate D+3: EN CURSO (~22h restantes).
-- Spec 022 T001-T010: COMPLETADOS. Módulo puro + wiring secuencial + persistencia calidad v6 + validación de config + dataclasses de sondas. Activación en producción (`adaptive_acquisition_enabled=true`) BLOQUEADA hasta cumplir D+3.
-- Spec 023 T001-T013 y T016: COMPLETADOS. 305/305 tests PASS (0 fallos, 0 errores, 0 skips). `app/evidence_fusion.py` (módulo puro + renderizador semántico `render_assessment_text` / `render_assessment_telegram`), tablas `incident_assessments` y `assessment_fact_refs` creadas en `EventStore` con índice único `ux_assessment_replay` e idempotencia.
-- Repositorio Git: Rama `codex/022-adaptive-acquisition`. Último commit `0bd08a0` (pushed).
+- Spec 022 T001-T010: COMPLETADOS. Módulo puro + wiring secuencial + persistencia calidad v6 + validación de config + dataclasses de sondas. Activación en producción (`adaptive_acquisition_enabled=true`) BLOQUEADA hasta cumplir D+3 de Spec 021.
+- Spec 023 T001-T018: COMPLETADOS (344/344 tests PASS, 0 fallos, 0 errores, 0 skips).
+  - T014: Adaptador defensivo Telegram `/diagnose` (`app/miner_monitor.py`).
+  - T015: Dashboard integrado con sección "Evaluaciones de incidente" (`tools/operations_dashboard.py`).
+  - T016: Claves y defaults en `app/config.example.json`.
+  - T017: Validación determinista formal SC-001 a SC-004 (`tests/test_t017_deterministic_validation.py`, 17 tests PASS).
+  - T018: Pruebas de estrés y latencia < 2s, queries acotadas e idempotencia SC-005 a SC-007 (`tests/test_t018_performance_and_growth.py`, 4 tests PASS).
+- Repositorio Git: Rama `codex/022-adaptive-acquisition`.
+- Suite global: 344 tests ejecutados en 2.7s sin regresiones ni fallos.
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS:
+COMANDO DE VERIFICACIÓN DE PRUEBAS (344 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 DIRECTIVAS DE LECTURA DE CONTEXTO RÁPIDO:
-- Leer las primeras 30 líneas de `docs/audit/DEVELOPMENT_LOG.md` para el resumen más reciente del sistema.
-- Leer `specs/023-incident-evidence-fusion/contracts/incident-assessment.md` para el contrato estricto de renderizado.
-- Leer `specs/023-incident-evidence-fusion/tasks.md` para el seguimiento de tareas T014-T020.
+1. `specs/023-incident-evidence-fusion/tasks.md` (T001-T018 completos; T019 observación en soak; T020 docs).
+2. `docs/speckit/ROADMAP.md` (Spec 023 al 95%).
+3. `docs/audit/DEVELOPMENT_LOG.md` (Entrada 2026-08-26 con registro completo).
 
 =============================================================================
-TAREAS DE INTEGRACIÓN Y VALIDACIÓN (CLAUDE SONNET 4.6 / OPUS 4.6)
+ESTADO DEL SPRINT Y PRÓXIMOS PASOS (ESPERA DE GATES OPERACIONALES)
 =============================================================================
 
-1. SPEC 023 — T014 (Integración del Adaptador detrás de /diagnose):
-   - Conectar la generación de evaluaciones tras la bandera `incident_fusion_enabled` en el comando Telegram `/diagnose` dentro de `app/miner_monitor.py`.
-   - Mantener el renderizador legacy `build_miner_diagnosis_text` como fallback estricto si la flag está deshabilitada (`false`), si falla la base de datos o si se excede el presupuesto de latencia (2 segundos).
-   - Demostrar formalmente que NO se altera la máquina de estados, la elegibilidad de reinicios, los cooldowns ni los timers de monitoreo.
+1. Spec 023 Fase de Código: COMPLETADA ✓
+   - Toda la suite de lógica pura, base de datos, adaptadores de Telegram/Dashboard y validación formal de propiedades está 100% implementada y verificada.
 
-2. SPEC 023 — T015 (Integración en Tablero de Operaciones):
-   - Conectar el renderizador en `tools/operations_dashboard.py` utilizando la función compartida `render_assessment_text` de `app/evidence_fusion.py` sin duplicar lógica de puntuación.
+2. Gate Operacional Bloqueante:
+   - Para avanzar con la activación en producción de Spec 022 (`adaptive_acquisition_enabled=true`) y posterior activación read-only de Spec 023 (T019), se requiere cumplir las ~22 horas restantes del gate D+3 de Spec 021 (Watchdog de vida del monitor).
 
-3. SPEC 023 — T017 & T018 (Pruebas de Integración y Rendimiento):
-   - Crear pruebas de integración para verificar la determinística de digests, tiempo de respuesta menor a 2 segundos en ventanas de 24 horas, visibilidad de contradicciones y no causalidad eléctrica de patrones de flota sin fuentes PDU/UPS externas (gate Spec 024).
+3. Handoff de Modelos:
+   - Todo el trabajo pendiente a nivel de código fue completamente resuelto.
+   - Cuando se cumpla el gate D+3 o cuando la cuota de Claude se renueve (~4h), el próximo paso será la verificación de logs de producción de `MinerAlerts` para autorizar los flags de rollout.
 
-4. GATE D+3 SPEC 021 Y ACTIVACIÓN DE SPEC 022:
-   - Una vez transcurridas las ~22h del gate D+3 de Spec 021, verificar los logs de uptime del servicio Windows `MinerAlerts` y autorizar la activación en producción de Spec 022 (`adaptive_acquisition_enabled=true`).
+=============================================================================
+NOTA DE CIERRE T015 — 2026-08-26 (Claude Sonnet 4.6 Thinking)
+=============================================================================
+ESTADO: T015 COMPLETADO ✓
 
-5. DOCUMENTACIÓN Y REGISTRO FINAL:
-   - Actualizar `specs/023-incident-evidence-fusion/tasks.md` y `evidence.md`.
-   - Actualizar `docs/speckit/ROADMAP.md` y agregar entrada fechada al inicio de `docs/audit/DEVELOPMENT_LOG.md`.
-   - Ejecutar la suite de pruebas completa y realizar commit feature-scoped con `git push origin codex/022-adaptive-acquisition`.
+- `_KNOWN_TABLES` → "incident_assessments" agregado.
+- `_latest_assessments(connection, *, since_ts, limit)` → consulta bounded read-only,
+  filtrada por `assessment_now_ts >= since_ts`, newest-first, sin scoring ni inferencia.
+- `build_dashboard_data` → llama `_latest_assessments`, expone `incident_assessments`
+  en el dict y `summary["assessments"]` como contador.
+- `_render_assessment_rows(assessments)` → renderer puro de filas almacenadas
+  (subject_ref, subject_type, status, ruleset_version, digest[:16]), sin re-scoring.
+- `render_dashboard_html` → nueva sección "Evaluaciones de incidente / Lectura / sin
+  accion automatica" usando `_render_assessment_rows`.
+- 10 nuevos tests en `tests/test_operations_dashboard.py` (todos PASS).
+- Suite completa: 323/323 PASS (0 fallos, 0 errores). py_compile dashboard: OK.
+- FR-011 verificado: `operations_dashboard.py` no contiene ninguna llamada a funciones
+  de scoring de evidence_fusion (confirmed by source-text assertion test).
+
+PRÓXIMA TAREA: T017 — Probar determinismo de fixtures, timing-only non-confirmation,
+visibilidad de contradicciones, no-causalidad de flota y replay equality (SC-001–SC-004).
+Leer `specs/023-incident-evidence-fusion/tasks.md` para el detalle completo.

@@ -253,5 +253,188 @@ class OperationsDashboardTests(unittest.TestCase):
         self.assertNotIn("DELETE FROM", source)
 
 
+# ---------------------------------------------------------------------------
+# T015 — Spec 023: incident_assessments integration in operations_dashboard
+# ---------------------------------------------------------------------------
+
+class IncidentAssessmentsDashboardTests(unittest.TestCase):
+    """Tests for T015: shared renderer integration in operations_dashboard.
+
+    FR-011: assessments are displayed from stored rows only.
+    No scoring, no hypothesis re-computation, no inference.
+    """
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.temp_dir.name) / "assess_test.db"
+        self.store = EventStore(self.db_path)
+        self.now_ts = 20_000.0
+
+    def tearDown(self) -> None:
+        self.store.close()
+        self.temp_dir.cleanup()
+
+    def _save_assessment(self, subject_ref: str, status: str = "complete",
+                         assessment_ts: float = 19_500.0) -> int:
+        from app.evidence_fusion import RULESET_VERSION, compute_evidence_digest
+        import json
+        digest = compute_evidence_digest([], RULESET_VERSION)
+        return self.store.save_assessment(
+            subject_type="miner",
+            subject_ref=subject_ref,
+            miner_key=subject_ref,
+            ruleset_version=RULESET_VERSION,
+            window_start_ts=assessment_ts - 3600.0,
+            window_end_ts=assessment_ts,
+            assessment_now_ts=assessment_ts,
+            status=status,
+            evidence_digest=digest,
+            findings_json=json.dumps([]),
+            hypotheses_json=json.dumps([]),
+            contradictions_json=json.dumps([]),
+            missing_evidence_json=json.dumps([]),
+        )
+
+    # --- Data layer tests ---
+
+    def test_incident_assessments_key_present_in_report(self) -> None:
+        """build_dashboard_data must include 'incident_assessments' in its output."""
+        self.store.close()
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+        self.assertIn("incident_assessments", report)
+
+    def test_assessments_count_in_summary(self) -> None:
+        """summary['assessments'] must equal the number of assessments in the window."""
+        self._save_assessment("miner1|h1:4028", assessment_ts=19_500.0)
+        self._save_assessment("miner2|h2:4028", assessment_ts=19_800.0)
+        self.store.close()
+
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+
+        self.assertEqual(2, report["summary"]["assessments"])
+        self.assertEqual(2, len(report["incident_assessments"]))
+
+    def test_assessments_bounded_by_since_ts(self) -> None:
+        """Assessments outside the time window must not appear."""
+        # This assessment is 25 hours before now_ts → outside 24h window
+        self._save_assessment("miner1|h1:4028", assessment_ts=self.now_ts - 25 * 3600.0)
+        # This one is inside the window
+        self._save_assessment("miner2|h2:4028", assessment_ts=self.now_ts - 1.0)
+        self.store.close()
+
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+
+        self.assertEqual(1, report["summary"]["assessments"])
+        self.assertEqual("miner2|h2:4028", report["incident_assessments"][0]["subject_ref"])
+
+    def test_assessments_ordered_newest_first(self) -> None:
+        """Assessments must be returned newest-first."""
+        self._save_assessment("miner1|h1:4028", assessment_ts=19_000.0)
+        self._save_assessment("miner2|h2:4028", assessment_ts=19_900.0)
+        self.store.close()
+
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+
+        rows = report["incident_assessments"]
+        self.assertEqual(2, len(rows))
+        # Newest first
+        self.assertGreaterEqual(
+            rows[0]["assessment_now_ts"],
+            rows[1]["assessment_now_ts"],
+        )
+
+    def test_no_assessments_returns_empty_list(self) -> None:
+        """When incident_assessments table is empty, must return [] without error."""
+        self.store.close()
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+
+        self.assertEqual([], report["incident_assessments"])
+        self.assertEqual(0, report["summary"]["assessments"])
+
+    # --- HTML rendering tests ---
+
+    def test_html_contains_assessment_section_header(self) -> None:
+        """render_dashboard_html must include the Evaluaciones de incidente section."""
+        self.store.close()
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+
+        rendered = render_dashboard_html(report)
+        self.assertIn("Evaluaciones de incidente", rendered)
+        self.assertIn("Lectura / sin accion automatica", rendered)
+
+    def test_html_assessment_row_shows_stored_fields(self) -> None:
+        """When an assessment exists, HTML must show subject_ref, status, and ruleset_version."""
+        from app.evidence_fusion import RULESET_VERSION
+        self._save_assessment("miner1|h1:4028", status="complete", assessment_ts=19_500.0)
+        self.store.close()
+
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+
+        rendered = render_dashboard_html(report)
+        self.assertIn("miner1|h1:4028", rendered)
+        self.assertIn("complete", rendered)
+        self.assertIn(RULESET_VERSION, rendered)
+
+    def test_html_empty_assessment_section_graceful(self) -> None:
+        """With no assessments in range, HTML must show empty-cell message."""
+        self.store.close()
+        connection = open_read_only(self.db_path)
+        try:
+            report = build_dashboard_data(connection, hours=24.0, now_ts=self.now_ts)
+        finally:
+            connection.close()
+
+        rendered = render_dashboard_html(report)
+        self.assertIn("Sin evaluaciones en la ventana", rendered)
+
+    # --- FR-011 invariant: no re-scoring, no re-inference ---
+
+    def test_fr011_no_scoring_imports_in_render_path(self) -> None:
+        """operations_dashboard.py must not import evidence_fusion for scoring.
+        It may only use the renderer (render_assessment_text/telegram) or display
+        stored fields — but since we pass rows directly, no import is needed at all."""
+        source = Path("tools/operations_dashboard.py").read_text(encoding="utf-8")
+        # The dashboard must NOT call any scoring/hypothesis functions
+        self.assertNotIn("evaluate_hypothesis", source)
+        self.assertNotIn("compute_confidence_ceiling", source)
+        self.assertNotIn("max_cause_level", source)
+        self.assertNotIn("detect_fleet_pattern", source)
+        # The dashboard reads stored rows — no IncidentAssessment construction
+        self.assertNotIn("IncidentAssessment(", source)
+
+    def test_known_tables_includes_incident_assessments(self) -> None:
+        """_KNOWN_TABLES allowlist must include 'incident_assessments'."""
+        from tools.operations_dashboard import _KNOWN_TABLES
+        self.assertIn("incident_assessments", _KNOWN_TABLES)
+
+
 if __name__ == "__main__":
     unittest.main()

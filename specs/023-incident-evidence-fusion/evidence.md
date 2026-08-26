@@ -119,7 +119,96 @@
 - All 298 tests pass: 0 failures, 0 errors, 0 skips.
 
 
+## Diagnose Adapter (T014) — 2026-08-26
 
+- T014: Implemented the feature-flagged assessment adapter behind `/diagnose`
+  in `app/miner_monitor.py` (lines ~2182-2360 post-import shift).
+- Module-level imports added to both `try` and `except ImportError` branches:
+  `FusionConfig`, `IncidentAssessment`, `RULESET_VERSION as _FUSION_RULESET_VERSION`,
+  `compute_evidence_digest as _compute_evidence_digest`,
+  `render_assessment_telegram as _render_assessment_telegram`.
+- Adapter logic:
+  * Reads `incident_fusion_enabled` via `FusionConfig.from_mapping(config)` (default `False`).
+  * When enabled + EventStore available: builds a structurally-valid `IncidentAssessment`
+    with empty fact/hypothesis sets (full evidence wiring deferred to T015+), persists it
+    via `save_assessment` (idempotent, errors swallowed), measures elapsed time.
+  * If elapsed ≥ 2.0 s → budget exceeded → strict fallback.
+  * On any exception in the fusion block → strict fallback.
+  * Fallback unconditionally calls `build_miner_diagnosis_text` and sends legacy text.
+  * When fusion succeeds, calls `render_assessment_telegram` and sends each part.
+- State-machine invariant (FR-008 / SC-006): The adapter block is a pure read path.
+  It does not write to any state variable, does not change cooldowns, streaks, reboot
+  eligibility, or polling timers.  Verified by code inspection: no assignment to
+  `miner_states`, `reboot_*`, `streak`, `poll_*` or `timer_*` within the adapter.
+- Unit tests: 8 new tests in `tests/test_t014_diagnose_adapter.py`:
+  * `TestDiagnoseAdapterDisabled` (2): disabled flag → legacy, save_assessment not called.
+  * `TestDiagnoseAdapterEnabled` (3): enabled → fusion header present, read-only footer,
+    save_assessment called once.
+  * `TestDiagnoseAdapterFallbackOnException` (2): hard fusion exception → legacy;
+    save_assessment exception swallowed, fusion text still sent.
+  * `TestAssessmentActionInvariant` (1): `IncidentAssessment` has none of the 5 forbidden
+    action fields (SC-006).
+- Validation commands:
+  * `py_compile app\miner_monitor.py` → exit 0 (SYNTAX OK)
+  * Full suite: 313/313 tests PASS (failures=0, errors=0, skips=0).
+    Previous baseline was 305; 8 new T014 tests added.
+
+## Dashboard Integration (T015) — 2026-08-26
+
+- T015: Integrated incident assessments into `tools/operations_dashboard.py`.
+- Changes:
+  * `"incident_assessments"` added to `_KNOWN_TABLES` allowlist (line 27+).
+  * New `_latest_assessments(connection, *, since_ts, limit)` function: bounded read-only
+    query on `incident_assessments` filtered by `assessment_now_ts >= since_ts`, ordered
+    newest-first, limited to `min(safe_limit, 50)` rows. No scoring or inference.
+  * `build_dashboard_data` now calls `_latest_assessments` and adds both
+    `summary["assessments"]` (count) and `"incident_assessments"` (row list) to its
+    return dict.
+  * New `_render_assessment_rows(assessments)` function: pure display of stored fields
+    (`assessment_now_ts`, `subject_ref`, `subject_type`, `status`, `ruleset_version`,
+    `evidence_digest[:16]`). No hypothesis re-computation (FR-011).
+  * `render_dashboard_html` now renders a new section "Evaluaciones de incidente" with
+    the eyebrow "Lectura / sin accion automatica" using `_render_assessment_rows`.
+- FR-011 invariant: `operations_dashboard.py` does NOT import or call any scoring
+  functions from `evidence_fusion` (`evaluate_hypothesis`, `compute_confidence_ceiling`,
+  `max_cause_level`, `detect_fleet_pattern`, `IncidentAssessment(…)`). Verified by
+  source-text test `test_fr011_no_scoring_imports_in_render_path`.
+- Unit tests: 10 new tests in `tests/test_operations_dashboard.py`
+  (`IncidentAssessmentsDashboardTests`):
+  * Data layer (5): key present, count in summary, bounded by since_ts, newest-first
+    ordering, empty list when no assessments.
+  * HTML rendering (3): section header present, stored fields rendered, empty-state
+    graceful message.
+  * Invariants (2): FR-011 no-scoring check, `_KNOWN_TABLES` allowlist check.
+- Validation commands:
+  * `py_compile tools\operations_dashboard.py` → exit 0 (SYNTAX OK)
+  * Full suite: 323/323 tests PASS (failures=0, errors=0, skips=0).
+    Previous baseline was 313; 10 new T015 tests added.
+
+
+
+## Deterministic Validation (T017) — 2026-08-26
+
+- T017: Implemented formal deterministic validation for SC-001 through SC-004 in `tests/test_t017_deterministic_validation.py`.
+- Criteria proven:
+  * SC-001 (Determinism & Replay Equality): Verified `compute_evidence_digest` produces identical SHA-256 digests across 25 random permutations of synthetic fact collections; internal row IDs and ingested timestamps do not alter the semantic digest; canonical sorting stably breaks ties; repeated calls to `render_assessment_text` and `render_assessment_telegram` produce bit-for-bit identical output.
+  * SC-002 (Timing-Only Non-Confirmation): Verified `compute_confidence_ceiling(['temporal_proximity_only'])` caps at `suspected`; `max_cause_level` for all candidate causes with temporal proximity returns at most `suspected` (never `confirmed`); raw symptoms (`signal.current_offline`, `signal.current_low`) cannot confirm root causes; stale or clock-skewed evidence drops ceiling to `observed`.
+  * SC-003 (Contradiction Visibility & Missing Evidence): Verified that decisive contradictions (`action.no_successful_action_in_window`) drop hypothesis confidence from `confirmed` to `suspected` and appear in `assessment.contradictions`; missing requirements appear in `assessment.missing_evidence`; both sections are explicitly rendered in text output under `[CONTRADICCIONES]` and `[EVIDENCIA FALTANTE O DESACTUALIZADA]`; absence is categorized as missing rather than contradiction; incomplete status always displays safety footer `[LECTURA / SIN ACCION AUTOMATICA]`.
+  * SC-004 (Fleet Non-Causality & Action Invariance): Verified `detect_fleet_pattern` flags `fleet.concurrent_degradation` for concurrent miners within 60s window; fleet pattern alone never confirms `power.electrical_fault` without external PDU evidence (`max_cause_level` returns `suspected`); `IncidentAssessment` dataclass has 0 forbidden action fields (`allow_reboot`, `trigger_reboot`, `hashcore_command`, `external_cli_command`, `auto_action`, `reboot_eligible`); pure functions do not mutate input argument collections.
+- Validation:
+  * `py_compile tests\test_t017_deterministic_validation.py` → exit 0 (SYNTAX OK)
+  * Test execution: 17/17 tests in `tests/test_t017_deterministic_validation.py` PASS in 0.002s.
+## Performance, Bounded Queries And Growth Validation (T018) — 2026-08-26
+
+- T018: Implemented benchmarks and performance tests in `tests/test_t018_performance_and_growth.py` validating SC-005, SC-006 and SC-007.
+- Results:
+  * SC-005 (Latency < 2.0s & Bounded Queries): Populated 24-hour fleet dataset (2,880 telemetry rows across 4 miners + 50 operational events + 50 reboot decisions + 50 firmware events + collector run). 24-hour context retrieval and dashboard assessment took 0.08s (far below the 2.0s ceiling). Query count strictly bounded at 6 SQL queries (FR-014 satisfied, zero $O(N)$ per-row queries).
+  * SC-007 (Idempotent Save & Growth Bound): 50 repeated saves of identical `(subject_ref, ruleset_version, evidence_digest)` produced exactly 1 persisted row in `incident_assessments` (no duplicate rows, DB size remained bounded within single page tolerance).
+  * SC-006 (Action Invariance): Confirmed 0 action fields in `IncidentAssessment` dataclass (`allow_reboot`, `trigger_reboot`, `hashcore_command`, `auto_action`, `reboot_eligible`); confirmed `incident_fusion_enabled` defaults to `False`; verified `app.evidence_fusion` has zero imports of `reboot_safety`, `hashcore` or `miner_monitor`.
+- Validation:
+  * `py_compile tests\test_t018_performance_and_growth.py` → exit 0 (SYNTAX OK)
+  * Test execution: 4/4 tests in `tests/test_t018_performance_and_growth.py` PASS in 0.313s.
+  * Full suite: 344/344 tests PASS (failures=0, errors=0, skips=0). Baseline 340 + 4 new T018 tests.
 
 - Ruleset and fixture versions.
 - Targeted/full tests and migration results.

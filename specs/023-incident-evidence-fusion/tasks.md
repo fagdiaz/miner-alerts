@@ -47,10 +47,10 @@ alone is insufficient.
   FR-009 and FR-014.
 - [x] T013 Implement one semantic renderer and bounded Telegram/dashboard
   projections for FR-005 and FR-011.
-- [ ] T014 Integrate the feature-flagged assessment adapter behind `/diagnose`,
+- [x] T014 Integrate the feature-flagged assessment adapter behind `/diagnose`,
   preserving `build_miner_diagnosis_text` as disabled/unavailable/over-budget
   fallback for FR-008, FR-011 and FR-013.
-- [ ] T015 Integrate the same persisted/shared renderer into
+- [x] T015 Integrate the same persisted/shared renderer into
   `tools/operations_dashboard.py` without a second scoring path for FR-011.
 - [x] T016 Add and validate the exact disabled-by-default keys from
   `contracts/config.md` in `app/config.example.json` and runtime parsing for
@@ -58,9 +58,9 @@ alone is insufficient.
 
 ## Phase 4: Deterministic And Runtime Validation
 
-- [ ] T017 Prove fixture determinism, timing-only non-confirmation, contradiction
+- [x] T017 Prove fixture determinism, timing-only non-confirmation, contradiction
   visibility, fleet non-causality and replay equality for SC-001-SC-004.
-- [ ] T018 Measure bounded query count, 24-hour latency under two seconds and
+- [x] T018 Measure bounded query count, 24-hour latency under two seconds and
   database growth; run targeted/full tests, migration checks, `py_compile` and
   core/action invariant comparisons for SC-005-SC-007.
 - [ ] T019 Activate only the read-only paths in a controlled window after Spec

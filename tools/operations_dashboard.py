@@ -30,6 +30,7 @@ _KNOWN_TABLES = frozenset(
         "reboot_decisions",
         "firmware_events",
         "collector_runs",
+        "incident_assessments",
     )
 )
 
@@ -122,6 +123,35 @@ def _latest_collector_run(connection: sqlite3.Connection) -> Optional[dict[str, 
     return dict(row) if row else None
 
 
+def _latest_assessments(
+    connection: sqlite3.Connection,
+    *,
+    since_ts: float,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Return recent incident assessments bounded by since_ts and limit.
+
+    Read-only: no scoring, no hypothesis inference, no re-computation.
+    Rows are returned newest-first (assessment_now_ts DESC).
+    """
+    if not _table_exists(connection, "incident_assessments"):
+        return []
+    rows = connection.execute(
+        """
+        SELECT id, created_ts, subject_type, subject_ref, miner_key,
+               ruleset_version, window_start_ts, window_end_ts,
+               assessment_now_ts, status, evidence_digest,
+               hypotheses_json, contradictions_json, missing_evidence_json
+        FROM incident_assessments
+        WHERE assessment_now_ts >= ?
+        ORDER BY assessment_now_ts DESC, id DESC
+        LIMIT ?
+        """,
+        (float(since_ts), int(limit)),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def build_dashboard_data(
     connection: sqlite3.Connection,
     *,
@@ -167,6 +197,11 @@ def build_dashboard_data(
         "collected_ts",
         since_ts=since_ts,
         limit=min(safe_limit, 500),
+    )
+    assessments = _latest_assessments(
+        connection,
+        since_ts=since_ts,
+        limit=min(safe_limit, 50),
     )
     collector_run = _latest_collector_run(connection)
     if collector_run:
@@ -273,6 +308,7 @@ def build_dashboard_data(
             "events": len(events),
             "decisions": len(decisions),
             "firmware_events": len(firmware_events),
+            "assessments": len(assessments),
         },
         "state_counts": dict(sorted(state_counts.items())),
         "event_counts": dict(sorted(event_counts.items())),
@@ -283,8 +319,10 @@ def build_dashboard_data(
         "events": events[:50],
         "decisions": decisions[:50],
         "firmware_events": firmware_events[:50],
+        "incident_assessments": assessments,
         "collector_run": collector_run,
     }
+
 
 
 def _esc(value: Any) -> str:
@@ -520,6 +558,31 @@ def _render_collector_health(run: Optional[dict[str, Any]]) -> str:
     )
 
 
+def _render_assessment_rows(assessments: list[dict[str, Any]]) -> str:
+    """Render stored incident assessments as read-only HTML table rows.
+
+    Displays only fields already persisted in incident_assessments.
+    No scoring, no hypothesis re-computation, no inference (FR-011).
+    """
+    if not assessments:
+        return '<tr><td colspan="6" class="empty-cell">Sin evaluaciones en la ventana</td></tr>'
+    rows = []
+    for assessment in assessments:
+        status = str(assessment.get("status") or "unknown")
+        rows.append(
+            "<tr>"
+            f"<td>{_esc(_timestamp(assessment.get('assessment_now_ts')))}</td>"
+            f"<td>{_esc(assessment.get('subject_ref') or assessment.get('miner_key') or 'N/A')}</td>"
+            f"<td>{_esc(assessment.get('subject_type') or 'N/A')}</td>"
+            f"<td><span class=\"severity severity-{_state_class(status)}\">{_esc(status)}</span></td>"
+            f"<td>{_esc(assessment.get('ruleset_version') or 'N/A')}</td>"
+            f"<td><code style=\"font-size:.65rem;word-break:break-all\">"
+            f"{_esc((assessment.get('evidence_digest') or '')[:16])}…</code></td>"
+            "</tr>"
+        )
+    return "".join(rows)
+
+
 def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts Operations") -> str:
     generated = _timestamp(report.get("generated_ts"))
     summary = report["summary"]
@@ -590,6 +653,7 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
   <section><div class="section-head"><h2>Collector Vnish</h2></div>{_render_collector_health(report.get('collector_run'))}</section>
   <section><div class="section-head"><h2>Vnish Firmware Timeline</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha origen</th><th>Miner</th><th>Severidad</th><th>Categoria</th><th>Codigo</th><th>Resumen</th></tr></thead><tbody>{_render_firmware_rows(report['firmware_events'])}</tbody></table></div></section>
   <section><div class="section-head"><h2>Decisiones de auto-reboot</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Resultado</th><th>Hashrate</th><th>Temp</th></tr></thead><tbody>{_render_decision_rows(report['decisions'])}</tbody></table></div></section>
+  <section><div class="section-head"><h2>Evaluaciones de incidente</h2><p class="eyebrow">Lectura / sin accion automatica</p></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Sujeto</th><th>Tipo</th><th>Estado</th><th>Ruleset</th><th>Digest</th></tr></thead><tbody>{_render_assessment_rows(report.get('incident_assessments') or [])}</tbody></table></div></section>
   <footer>Reporte read-only. `chain_voltage` representa evidencia de hashboard, no voltaje AC de entrada. Telegram permanece como superficie de control.</footer>
 </main>
 </body>

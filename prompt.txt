@@ -1,32 +1,47 @@
-CODEX — Miner Alerts | Especificación Exclusiva para Agentes Claude (Sonnet 4.6 / Opus 4.6)
+CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.4.0)
 
 =============================================================================
-DIRECTIVA DE MODELO Y MODELO OBLIGATORIO
+POLÍTICA DE MODELOS Y DELEGACIÓN ESCALADA (CONSTITUCIÓN v1.4.0)
 =============================================================================
-ESTE PROMPT ES EXCLUSIVO PARA MODELOS DE ALTO RAZONAMIENTO CLAUDE:
-- RECOMENDADO: Claude Sonnet 4.6 (Thinking) por su equilibrio óptimo entre razonamiento profundo y consumo eficiente de tokens.
-- ALTERNATIVA: Claude Opus 4.6 (Thinking) si se agota la cuota de Sonnet o para auditorías complejas de causa raíz.
-- DIRECTIVA DE SEGURIDAD: NO EJECUTAR ESTE PROMPT CON GEMINI 3.6 FLASH HIGH.
+- MOTOR PRINCIPAL: Gemini 3.7 Flash High para lectura, análisis, lógica pura, schemas, suites completas de tests (unitarios, deterministas, integración, benchmarks) y trazabilidad.
+- ESCALAMIENTO ON-DEMAND: Claude Sonnet 4.6 (Thinking) reservado para concurrencia viva multi-hilo en producción (`miner_monitor.py`), sockets API 4028 y refactor de máquina de estados/reboot.
+- ESCALAMIENTO EXTREMO: Claude Opus 4.6 (Thinking) strictly para deadlocks cíclicos o rediseños mayores de arquitectura.
 
 =============================================================================
 ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 =============================================================================
-- Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO al 100%. Gate D+3 superado formalmente con 77h 20m de soak ininterrumpido (278.4k s > 259.2k s), PID 8520 estable, 9.193 ticks y 0 incidentes. T013 cerrado con evidencia en `specs/021-monitor-liveness-watchdog/evidence.md`.
-- Spec 022 (Adaptive Acquisition): DESBLOQUEADA para activación y rollout. Módulo puro `app/acquisition.py`, esquema SQLite v6 y wiring secuencial T006 listos. Tareas abiertas: T009 (exponer datos diagnósticos a solo lectura) y Fase 4 (T011 validación de invariantes de acción/offset y T012 shadow comparison).
-- Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018, 344 tests PASS). Queda solo su observación runtime (T019) posterior al exit de Spec 022.
+- Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO al 100% tras 77.3h de soak continuo sin fallos.
+- Spec 022 (Adaptive Acquisition): DESBLOQUEADA. T001-T011 COMPLETADOS (incluyendo T009 y T011 formalizados con 24 nuevos tests). Tareas abiertas: T012 (shadow comparison & rollback rehearsal), T013 (activación controlada), T014 (sync docs).
+- Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018, 344 tests PASS).
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
-- Suite global: 344 tests ejecutados en 2.7s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Suite global: 368 tests ejecutados en 2.7s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS (344 tests actuales):
+COMANDO DE VERIFICACIÓN DE PRUEBAS (368 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 DIRECTIVAS DE LECTURA DE CONTEXTO RÁPIDO:
-1. `specs/022-adaptive-acquisition/tasks.md` (Tareas abiertas T009 y T011-T014).
-2. `specs/022-adaptive-acquisition/plan.md` y `specs/022-adaptive-acquisition/contracts/config.md`.
-3. `AGENTS.md` (Reglas de validación en Windows y preservación de invariantes de reboot).
+1. `specs/022-adaptive-acquisition/tasks.md` (Estado T012-T014).
+2. `specs/022-adaptive-acquisition/baseline.md` (Línea base secuencial previa: P50=171ms, P95=204ms).
+3. `contracts/config.md` y `spec.md` (Criterios SC-005, SC-006).
 
 =============================================================================
-OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T009 & T011 (Diagnósticos Read-Only e Invariantes)
+OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T012 (Comparación Shadow y Rollback Parity)
+=============================================================================
+
+1. Comparación de Métricas Shadow y Línea Base (SC-005 / FR-010 / FR-014):
+   - Comparar métricas de ciclo, requests por epoch (1 summary + stats condicional) y latencia respecto a `baseline.md`.
+   - Demostrar que los presupuestos numéricos se cumplen de forma idéntica o superior sin generar ráfagas.
+
+2. Ensayo de Rollback Determinista con Paridad (SC-006 / FR-012):
+   - Crear pruebas formales de paridad (`tests/test_t012_shadow_and_rollback.py`):
+     * Con `adaptive_acquisition_enabled=false`, la ejecución produce exactamente la misma secuencia de entradas, estados y decisiones que el baseline secuencial previo.
+     * Alternar el flag dinámicamente (`true` -> `false` -> `true`) no corrompe ningún estado, lease, streak o contador.
+
+3. Actualización de Trazabilidad:
+   - Marcar `[x] T012` en `specs/022-adaptive-acquisition/tasks.md` y registrar evidencia en `evidence.md`.
+
+=============================================================================
+MODELO RECOMENDADO: Gemini 3.7 Flash High (o Claude Sonnet 4.6 Thinking si se prefiere)
 =============================================================================
 
 1. Spec 022 T009 (Exponer datos diagnósticos solo a contexto de lectura):
@@ -65,6 +80,27 @@ ESTADO: T015 COMPLETADO ✓
 - FR-011 verificado: `operations_dashboard.py` no contiene ninguna llamada a funciones
   de scoring de evidence_fusion (confirmed by source-text assertion test).
 
-PRÓXIMA TAREA: T017 — Probar determinismo de fixtures, timing-only non-confirmation,
-visibilidad de contradicciones, no-causalidad de flota y replay equality (SC-001–SC-004).
-Leer `specs/023-incident-evidence-fusion/tasks.md` para el detalle completo.
+=============================================================================
+NOTA DE CIERRE T009+T011 — 2026-08-27 (Claude Sonnet 4.6 Thinking)
+=============================================================================
+ESTADO: T009 COMPLETADO ✓ | T011 COMPLETADO ✓
+
+T009 — Diagnostic Read-Only Isolation:
+- `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope`: frozen dataclasses verificados.
+- `collect_diagnostic` → siempre Authority.DIAGNOSTIC, filtrado por dispatch_authoritative.
+- Sin poll_health.record_epoch, sin stats, sin campos de acción.
+- diagnostics_enabled=False cuando adaptive_acquisition_enabled=False (doble-flag guard).
+
+T011 — Invariantes pre-rollout:
+- py_compile app/miner_monitor.py + app/acquisition.py → SYNTAX OK.
+- Estado: dispatch_authoritative filtra DIAGNOSTIC y LATE determinísticamente.
+- Acción: acquisition.py sin hashcore, subprocess, miner_states, streak, send_telegram.
+- Telegram: acquisition.py sin bot_token, chat_id, getUpdates, update_id.
+- Startup guard: AcquisitionConfig sin campos startup_guard/grace_period.
+- Presupuesto: workers [1-4], diagnostic = 1 summary + 0 stats.
+
+24 nuevos tests en `tests/test_t009_t011_invariants.py`, todos PASS.
+Suite completa: 368/368 PASS (0 fallos, 0 errores).
+
+PRÓXIMA TAREA: Spec 022 T012 — Shadow comparison (24h de métricas, parity check,
+rehearsal de rollback). Leer `specs/022-adaptive-acquisition/tasks.md`.

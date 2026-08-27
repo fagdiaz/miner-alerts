@@ -48,10 +48,12 @@ Avoid unrelated feature expansion while safety and observability issues are open
 
 ## Model Workload & Handoff Protocol
 
-1. **Gemini 3.6 Flash High Exhaustion**: All lightweight, pure domain, standalone unit test, documentation, schema, and config default tasks MUST be executed by Gemini 3.6 Flash High first (in bounded, iterative turns).
-2. **Transition Trigger**: Only when ALL independent Gemini-safe tasks are fully exhausted and verified, the agent MUST explicitly instruct the user to switch to a higher-reasoning model (Claude Sonnet 4.6 Thinking or Claude Opus 4.6 Thinking).
+1. **Gemini 3.7 Flash High Maximization (Primary Engine)**: Prioritize Gemini 3.7 Flash High for all tasks within its reasoning scope: code reading, architecture analysis, pure domain logic, data models, schemas, comprehensive test suites (unit, integration, deterministic proofs, performance/stress benchmarks), documentation, SpecKit tracking, and bounded implementations with established contracts. Execute in iterative, bounded turns to prevent overload.
+2. **On-Demand Scaled Delegation to Claude**: Escalate to higher-reasoning models ONLY when the task demands it:
+   - **Claude Sonnet 4.6 (Thinking)**: Escalate ONLY for live production multi-threading (`miner_monitor.py` concurrency, socket timeouts, Windows mutexes, queue worker coordination) or core finite state machines (`miner_states`, streak calculations, auto-reboot policies) where race conditions risk production outages.
+   - **Claude Opus 4.6 (Thinking)**: Escalate STRICTLY as the terminal escalation option for persistent circular test failures, race conditions surviving Sonnet, or major cross-subsystem architectural redesigns.
 3. **Handoff Prompt Protocol (`prompt.txt`)**: Every model at the end of its session MUST leave an updated, ready-to-run prompt in `prompt.txt` providing the simplest and most optimal context (either via explicit explanation or exact file/line reading directives).
-4. **Console Model Notification**: In console/chat output, the agent MUST explicitly inform the user which model to select next (recommending `Gemini 3.6 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
+4. **Console Model Notification**: In console/chat output, the agent MUST explicitly inform the user which model to select next (recommending `Gemini 3.7 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
 
 ## Spec Definition Of Done
 

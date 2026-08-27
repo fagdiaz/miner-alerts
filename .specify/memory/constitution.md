@@ -15,6 +15,12 @@ SYNC IMPACT REPORT
   without allowing schedule pressure to bypass runtime evidence.
 - Amendment 1.2.0: require one dependency/risk program for future specs and keep
   planned, blocked, no-build, implemented and runtime-verified states distinct.
+- Amendment 1.4.0: formalize Gemini 3.7 Flash High Maximization & Scaled Delegation Rule:
+  prioritize Gemini 3.7 Flash High as the primary engine for all tasks within its reasoning scope
+  (analysis, pure domain, schemas, comprehensive test suites, benchmarks, regressions, docs,
+  and bounded implementations) in iterative turns without overloading; reserve Claude Sonnet 4.6
+  Thinking strictly for live concurrency, production threading, and delicate state machine refactors;
+  reserve Claude Opus 4.6 Thinking for persistent architectural deadlocks.
 -->
 
 # Miner Alerts Constitution
@@ -45,13 +51,17 @@ The project targets Windows with PowerShell, Python virtualenv, Telegram polling
 
 `py_compile` is required but insufficient for production-affecting changes. Each completed spec MUST record the exact commands run, Telegram command checks when relevant, observed logs, and any blocked runtime validation.
 
-### VII. Model Workload Partitioning & Exhaustion Rule
+### VII. Gemini 3.7 Flash High Maximization & Scaled Delegation Rule
 
-All lightweight, pure domain, standalone unit test, documentation, schema, and config default tasks within the scope of Gemini 3.6 Flash High MUST be executed and completed by Gemini 3.6 Flash High first, without overloading the model (using bounded, iterative turns). Only when ALL independent Gemini-safe tasks are fully exhausted and verified, the agent MUST explicitly notify the user to transition to a higher-reasoning model (Claude Sonnet 4.6 Thinking or Claude Opus 4.6 Thinking).
+Gemini 3.7 Flash High MUST be prioritized as the primary engine for all tasks within its reasoning and context capacity: code reading, architecture analysis, pure domain logic, data contracts, schemas, comprehensive test suites (unit, integration, deterministic proofs, performance/stress benchmarks), documentation, SpecKit tracking, and bounded feature implementations with established contracts. To maintain quality without overloading, Gemini tasks MUST be executed in iterative, bounded turns without asking for unbounded multi-file refactors in a single turn.
+
+Higher-reasoning models MUST be invoked on-demand only when the specific task requires it:
+1. **Claude Sonnet 4.6 (Thinking)**: Escalate ONLY when implementing or modifying live multi-threaded production loops (`miner_monitor.py` concurrency, socket timeouts, Windows mutexes, threading queues) or core finite state machines (`miner_states`, streak calculations, auto-reboot policies) where subtle timing or race conditions pose production risk.
+2. **Claude Opus 4.6 (Thinking)**: Escalate STRICTLY as the terminal escalation option for persistent circular test failures, race conditions surviving Sonnet, or major cross-subsystem architectural redesigns.
 
 ### VIII. Handoff & Prompt Protocol (prompt.txt)
 
-Every model at the conclusion of its turn or session MUST leave an updated, ready-to-run prompt in `prompt.txt`. The prompt MUST provide the simplest yet most optimal and functional way for the next model to enter context easily (either by explaining key context explicitly in `prompt.txt` or by giving specific, line-bounded or full-file Markdown reading directives). In console text output, the model MUST explicitly inform the user which model to select next (e.g. recommending `Gemini 3.6 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
+Every model at the conclusion of its turn or session MUST leave an updated, ready-to-run prompt in `prompt.txt`. The prompt MUST provide the simplest yet most optimal and functional way for the next model to enter context easily (either by explaining key context explicitly in `prompt.txt` or by giving specific, line-bounded or full-file Markdown reading directives). In console text output, the model MUST explicitly inform the user which model to select next (recommending `Gemini 3.7 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
 
 ## Development Workflow And Quality Gates
 
@@ -75,4 +85,4 @@ Every model at the conclusion of its turn or session MUST leave an updated, read
 - Amendments MUST update affected docs under `docs/speckit/` and active specs.
 - Reviews MUST verify production safety, config hygiene, Telegram control safety, Windows compatibility, and validation evidence.
 
-**Version**: 1.3.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-08-17
+**Version**: 1.4.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-08-27

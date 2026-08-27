@@ -44,7 +44,14 @@ try:
     from .vnish_logs import render_firmware_events
     from .telegram_messages import classify_delivery, split_telegram_message
     from .liveness import MonitorHeartbeat, write_heartbeat_atomic
-    from .acquisition import AcquisitionConfig
+    from .acquisition import (
+        AcquisitionConfig,
+        Api4028Transport,
+        AcquisitionEpoch,
+        BoundedAcquirer,
+        MinerEndpoint,
+        dispatch_authoritative,
+    )
     from .evidence_fusion import (
         FusionConfig,
         IncidentAssessment,
@@ -76,7 +83,14 @@ except ImportError:
     from vnish_logs import render_firmware_events
     from telegram_messages import classify_delivery, split_telegram_message
     from liveness import MonitorHeartbeat, write_heartbeat_atomic
-    from acquisition import AcquisitionConfig
+    from acquisition import (
+        AcquisitionConfig,
+        Api4028Transport,
+        AcquisitionEpoch,
+        BoundedAcquirer,
+        MinerEndpoint,
+        dispatch_authoritative,
+    )
     from evidence_fusion import (
         FusionConfig,
         IncidentAssessment,
@@ -3805,6 +3819,7 @@ def main() -> None:
 
     log("Inicio de monitoreo.")
 
+    acquirer: Optional[BoundedAcquirer] = None
     try:
         first_tick = True
         episode_notifications = IrregularEpisodeCoordinator(
@@ -3818,6 +3833,27 @@ def main() -> None:
         previous_tick_signals_ts: Optional[float] = None
         tick_sequence = 0
         heartbeat_error_logged = False
+        acquirer: Optional[BoundedAcquirer] = None
+        acq_endpoints: tuple = ()
+        if acq_config.enabled:
+            acq_endpoints = tuple(
+                MinerEndpoint(
+                    key=f"{m['name']}|{m['host']}:{m['port']}",
+                    host=m["host"],
+                    port=m["port"],
+                )
+                for m in valid_miners
+            )
+            acquirer = BoundedAcquirer(
+                Api4028Transport(),
+                workers=acq_config.workers,
+                timeout_seconds=acq_config.timeout_seconds,
+            )
+            log(
+                f"ADAPTIVE_ACQUISITION acquirer_ready=true "
+                f"endpoints={len(acq_endpoints)} "
+                f"workers={acq_config.workers}"
+            )
         while True:
             tick_start = time.monotonic()
             now_ts = time.time()
@@ -3826,6 +3862,22 @@ def main() -> None:
             startup_lines = [] if first_tick else None
             degraded_candidates = []
             current_tick_signals: Dict[str, str] = {}
+
+            # --- Adaptive epoch collection (disabled-safe, exception-safe) ---
+            tick_envelopes: Optional[Dict[str, Any]] = None
+            if acq_config.enabled and acquirer is not None:
+                try:
+                    _epoch = AcquisitionEpoch(
+                        epoch_id=tick_sequence,
+                        scheduled_monotonic=tick_start,
+                        deadline_monotonic=tick_start + acq_config.deadline_seconds,
+                        observed_ts=now_ts,
+                    )
+                    tick_envelopes = acquirer.collect_authoritative(acq_endpoints, _epoch)
+                except Exception as _acq_exc:
+                    log(f"[WARN] Adaptive acquisition epoch failed: {_acq_exc}. Using sequential fallback.")
+                    tick_envelopes = None
+
             for miner in valid_miners:
                 name = miner["name"]
                 name_display = display_name(name)
@@ -3836,11 +3888,21 @@ def main() -> None:
                 restart_observation: Optional[dict[str, Any]] = None
                 transition_event_id: Optional[int] = None
 
-                rate_ths, elapsed, responded, summary_entry = read_summary(host, port)
-                active_boards = None
-                stats_response = None
-                if responded:
-                    active_boards, _, stats_response = read_stats_snapshot(host, port)
+                # Envelope-based acquisition (adaptive) or sequential fallback
+                if tick_envelopes is not None and state_key in tick_envelopes:
+                    _env = tick_envelopes[state_key]
+                    rate_ths = _env.rate_ths
+                    elapsed = _env.elapsed_seconds
+                    responded = _env.responded
+                    summary_entry = _env.summary_entry
+                    active_boards = _env.active_boards
+                    stats_response = _env.stats_response
+                else:
+                    rate_ths, elapsed, responded, summary_entry = read_summary(host, port)
+                    active_boards = None
+                    stats_response = None
+                    if responded:
+                        active_boards, _, stats_response = read_stats_snapshot(host, port)
                 vnish_telemetry = normalize_vnish_stats(
                     stats_response,
                     expected_boards=expected_boards,
@@ -4584,6 +4646,8 @@ def main() -> None:
     except KeyboardInterrupt:
         log("Detenido por usuario")
     finally:
+        if acquirer is not None:
+            acquirer.close()
         if event_store is not None:
             event_store.close()
         release_mutex()

@@ -131,6 +131,47 @@
   failures (Spec 023 T006), 1 skip, 0 errors. No production service,
   config, state, miner or Telegram was changed.
 
+
+## Diagnostic Read-Only Isolation and Pre-Rollout Invariants (T009, T011) — 2026-08-27
+
+### T009 — Diagnostic Data Read-Only Context
+
+- Verified formally that `DiagnosticProbeResult` and `EpisodeDiagnosticEnvelope` are
+  frozen dataclasses: attribute mutation raises `AttributeError` at runtime.
+- Verified `collect_diagnostic` (in `BoundedAcquirer`) always tags envelopes as
+  `Authority.DIAGNOSTIC` — these are mechanically blocked by `dispatch_authoritative`
+  which filters `authority != AUTHORITATIVE` before any consumer callback.
+- Verified `collect_diagnostic` does NOT call `poll_health.record_epoch` — it is a
+  pure read-only path with no health recording side effect.
+- Verified diagnostic budget is always `summary_requests=1, stats_requests=0` — no
+  stats collection on the diagnostic path.
+- Verified `AcquisitionConfig.diagnostics_enabled` is only `True` when BOTH
+  `adaptive_acquisition_enabled=True` AND `adaptive_diagnostics_enabled=True` — the
+  `from_mapping` classmethod enforces this: `diagnostics_enabled = enabled and requested`.
+- No forbidden action fields (`allow_reboot`, `trigger_reboot`, etc.) appear on
+  `DiagnosticProbeResult` or `EpisodeDiagnosticEnvelope`.
+
+### T011 — Pre-Rollout Invariant Validation
+
+- **py_compile** (both modules): `py_compile app\miner_monitor.py app\acquisition.py`
+  → exit 0. SYNTAX OK.
+- **State invariant** (SC-001/SC-002): `dispatch_authoritative` only applies
+  `AUTHORITATIVE + non-LATE` envelopes to the consumer; DIAGNOSTIC and LATE envelopes
+  are filtered deterministically regardless of payload.
+- **Action invariant** (SC-006): Source inspection of `app/acquisition.py` confirmed:
+  no hashcore references, no subprocess, no os.system, no miner_states mutations,
+  no streak/reboot_count/low_start_ts assignments, no send_telegram calls.
+- **Telegram-offset invariant** (SC-007): `acquisition.py` contains no Telegram
+  symbols (bot_token, chat_id, getUpdates, sendMessage, update_id).
+- **Startup-guard invariant** (SC-002): `AcquisitionConfig` dataclass has no
+  startup_guard or grace_period fields — startup guard timing is entirely owned by
+  `miner_monitor.py` and cannot be overridden by acquisition config.
+- **Request-budget invariant** (FR-014/SC-005): BoundedAcquirer enforces workers ∈
+  [1,4]; `collect_diagnostic` produces summary_requests=1, stats_requests=0.
+- **New tests**: 24 tests in `tests/test_t009_t011_invariants.py`, all PASS.
+- **Full suite**: 368/368 tests PASS (failures=0, errors=0, skips=0).
+  Previous baseline was 344; 24 new T009/T011 tests added.
+
 ## Runtime Rollout
 
 - Not started.

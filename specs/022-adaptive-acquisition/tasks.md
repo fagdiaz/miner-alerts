@@ -30,13 +30,13 @@
 ## Phase 3: Diagnostic Probes
 
 - [x] T008 [US3] Add disabled-by-default bounded episode diagnostics.
-- [ ] T009 [US3] Expose diagnostic data only to read-only context.
+- [x] T009 [US3] Expose diagnostic data only to read-only context.
 - [x] T010 Add safe disabled defaults, two-worker cap, numeric request budgets,
   deadlines, no-retry policy and per-miner overlap guards exactly as defined in
   `contracts/config.md`.
 ## Phase 4: Validation And Rollout
 
-- [ ] T011 Run targeted/full tests, compile, JSON and exact state/action,
+- [x] T011 Run targeted/full tests, compile, JSON and exact state/action,
   Telegram-offset, manual-command and startup/reboot invariant checks.
 - [ ] T012 Compare 24-hour shadow latency/request/quality metrics with baseline
   and rehearse flag rollback with deterministic parity.

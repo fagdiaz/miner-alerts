@@ -11,41 +11,43 @@ ESTE PROMPT ES EXCLUSIVO PARA MODELOS DE ALTO RAZONAMIENTO CLAUDE:
 =============================================================================
 ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 =============================================================================
-- Spec 021 D+1: PASADO. Gate D+3: EN CURSO (~22h restantes).
-- Spec 022 T001-T010: COMPLETADOS. Módulo puro + wiring secuencial + persistencia calidad v6 + validación de config + dataclasses de sondas. Activación en producción (`adaptive_acquisition_enabled=true`) BLOQUEADA hasta cumplir D+3 de Spec 021.
-- Spec 023 T001-T018: COMPLETADOS (344/344 tests PASS, 0 fallos, 0 errores, 0 skips).
-  - T014: Adaptador defensivo Telegram `/diagnose` (`app/miner_monitor.py`).
-  - T015: Dashboard integrado con sección "Evaluaciones de incidente" (`tools/operations_dashboard.py`).
-  - T016: Claves y defaults en `app/config.example.json`.
-  - T017: Validación determinista formal SC-001 a SC-004 (`tests/test_t017_deterministic_validation.py`, 17 tests PASS).
-  - T018: Pruebas de estrés y latencia < 2s, queries acotadas e idempotencia SC-005 a SC-007 (`tests/test_t018_performance_and_growth.py`, 4 tests PASS).
+- Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO al 100%. Gate D+3 superado formalmente con 77h 20m de soak ininterrumpido (278.4k s > 259.2k s), PID 8520 estable, 9.193 ticks y 0 incidentes. T013 cerrado con evidencia en `specs/021-monitor-liveness-watchdog/evidence.md`.
+- Spec 022 (Adaptive Acquisition): DESBLOQUEADA para activación y rollout. Módulo puro `app/acquisition.py`, esquema SQLite v6 y wiring secuencial T006 listos. Tareas abiertas: T009 (exponer datos diagnósticos a solo lectura) y Fase 4 (T011 validación de invariantes de acción/offset y T012 shadow comparison).
+- Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018, 344 tests PASS). Queda solo su observación runtime (T019) posterior al exit de Spec 022.
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
-- Suite global: 344 tests ejecutados en 2.7s sin regresiones ni fallos.
+- Suite global: 344 tests ejecutados en 2.7s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
 
 COMANDO DE VERIFICACIÓN DE PRUEBAS (344 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 DIRECTIVAS DE LECTURA DE CONTEXTO RÁPIDO:
-1. `specs/023-incident-evidence-fusion/tasks.md` (T001-T018 completos; T019 observación en soak; T020 docs).
-2. `docs/speckit/ROADMAP.md` (Spec 023 al 95%).
-3. `docs/audit/DEVELOPMENT_LOG.md` (Entrada 2026-08-26 con registro completo).
+1. `specs/022-adaptive-acquisition/tasks.md` (Tareas abiertas T009 y T011-T014).
+2. `specs/022-adaptive-acquisition/plan.md` y `specs/022-adaptive-acquisition/contracts/config.md`.
+3. `AGENTS.md` (Reglas de validación en Windows y preservación de invariantes de reboot).
 
 =============================================================================
-ESTADO DEL SPRINT Y PRÓXIMOS PASOS (ESPERA DE GATES OPERACIONALES)
+OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T009 & T011 (Diagnósticos Read-Only e Invariantes)
 =============================================================================
 
-1. Spec 023 Fase de Código: COMPLETADA ✓
-   - Toda la suite de lógica pura, base de datos, adaptadores de Telegram/Dashboard y validación formal de propiedades está 100% implementada y verificada.
+1. Spec 022 T009 (Exponer datos diagnósticos solo a contexto de lectura):
+   - Verificar en `app/miner_monitor.py` y `app/acquisition.py` que las sondas diagnósticas episódicas (`DiagnosticProbeResult`, `EpisodeDiagnosticEnvelope`) solo alimenten contextos de solo lectura (`/diagnose`, logs de diagnóstico) y NUNCA alteren `miner_states`, `streak`, contadores de reinicio ni el loop autoritativo.
+   - Agregar pruebas unitarias correspondientes en `tests/test_acquisition.py` si faltaran.
 
-2. Gate Operacional Bloqueante:
-   - Para avanzar con la activación en producción de Spec 022 (`adaptive_acquisition_enabled=true`) y posterior activación read-only de Spec 023 (T019), se requiere cumplir las ~22 horas restantes del gate D+3 de Spec 021 (Watchdog de vida del monitor).
+2. Spec 022 T011 (Validación formal de invariantes pre-rollout):
+   - Ejecutar la suite completa y verificar compilación: `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py app\acquisition.py`.
+   - Verificar invariantes:
+     * Invariante de estado: cero diferencias en transiciones entre adquisición adaptativa y fallback secuencial.
+     * Invariante de acción: cero llamadas no autorizadas a Hashcore o reinicios espurios.
+     * Invariante de Telegram: offsets de polling y comandos interactivos intactos.
+     * Invariante de startup guard: el tiempo de gracia inicial se mantiene estricto.
 
-3. Handoff de Modelos:
-   - Todo el trabajo pendiente a nivel de código fue completamente resuelto.
-   - Cuando se cumpla el gate D+3 o cuando la cuota de Claude se renueve (~4h), el próximo paso será la verificación de logs de producción de `MinerAlerts` para autorizar los flags de rollout.
+3. Actualización de Evidencia y Trazabilidad:
+   - Marcar `[x] T009` y `[x] T011` en `specs/022-adaptive-acquisition/tasks.md`.
+   - Registrar la ejecución y los resultados en `specs/022-adaptive-acquisition/evidence.md`.
+   - Dejar nota de cierre al final de este archivo.
 
 =============================================================================
-NOTA DE CIERRE T015 — 2026-08-26 (Claude Sonnet 4.6 Thinking)
+MODELO RECOMENDADO: Claude Sonnet 4.6 (Thinking)
 =============================================================================
 ESTADO: T015 COMPLETADO ✓
 

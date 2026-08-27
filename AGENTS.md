@@ -14,7 +14,7 @@ Active implementation plan:
 `specs/022-adaptive-acquisition/plan.md`
 
 Active production observation gate:
-`specs/021-monitor-liveness-watchdog/plan.md` (D+1/D+3 still required)
+`specs/021-monitor-liveness-watchdog/plan.md` (D+1/D+3 PASSED 2026-08-27; closed)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

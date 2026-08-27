@@ -265,3 +265,21 @@
   `stale_worker=telegram_poller_stale,telegram_sender_stale`.
 - Source authority scan found no Hashcore, miner API, miner address or monitor
   action import in the watchdog.
+
+## D+3 Production Soak Closeout — 2026-08-27 14:03 ART
+
+- **Observation Period**: From 2026-08-24 08:43:14 to 2026-08-27 14:03:50 ART.
+- **Elapsed Duration**: 278,435 seconds (77.34 hours), surpassing the 259,200 seconds (72.0h) D+3 requirement.
+- **Service & Process Health**:
+  * Service wrapper PID 4568, monitor child PID 8520 maintained continuous execution with zero crashes, unhandled exits, or SCM recovery triggers.
+  * Tick sequence reached 9,193 completed fleet ticks with queue depth 0.
+  * Tick age (12.4s), Telegram poller age (31.4s), Telegram sender age (15.5s) all within healthy thresholds (< 120s).
+- **Watchdog Audit**:
+  * 4,642 watchdog samples evaluated across the 77-hour window.
+  * Zero watchdog incidents, alarms, or alerts after the initial 9-minute collector warmup on 2026-08-24 08:52:55.
+  * Cadence coverage: 1.0.
+- **Fleet Safety Audit**:
+  * Exactly 1 legitimate automatic reboot occurred during the soak on 2026-08-25 10:23:06 for miner 25 following 604.8 seconds of sustained 0.0 TH/s (respecting all safety interlocks, low elapsed thresholds, and cooldowns).
+  * Current fleet state: 4/4 miners OK with finite rates (78.8 to 84.3 TH/s), `ok_streak` = 12,267.
+- **Exit Gate Decision**: **SPEC 021 GATE D+3 PASSED AND CLOSED**. Production activation of Spec 022 is unblocked.
+

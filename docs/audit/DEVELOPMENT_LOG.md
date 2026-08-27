@@ -3,6 +3,20 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-27] - Cierre de Gate D+3 (Spec 021 Liveness Watchdog) y Desbloqueo de Spec 022
+
+* **Objetivo**: Auditar el período de soak de 72 horas continuas en producción para Spec 021, cerrar la especificación con evidencia runtime y desbloquear la fase de activación de Spec 022 (Adaptive Acquisition).
+* **Auditoría Runtime y Evidencia (77h 20m continuas)**:
+  - Proceso de producción (PID 8520, wrapper 4568) iniciado el 2026-08-24 08:43:14 superó formalmente las 72h con 278.435 segundos acumulados (77.34 horas) sin un solo reinicio, cuelgue o fallo de proceso.
+  - Ticks de flota completados: 9.193 con cola 0. Edades de workers y tick estrictamente frescas (< 35s).
+  - Watchdog de vida evaluó 4.642 muestras con 0 alarmas tras el calentamiento inicial del colector.
+  - Seguridad operativa: 1 auto-reboot legítimo y controlado en minero 25 (2026-08-25 10:23:06) tras 604s de hashrate 0.0 TH/s, respetando todos los interlocks. Flota actual 100% OK (`ok_streak` = 12.267).
+  - T013 y Definition of Done de Spec 021 marcados como completados en `specs/021-monitor-liveness-watchdog/tasks.md` y documentados en `evidence.md`. Spec 021 cerrada formalmente al 100%.
+* **Próximo Paso**:
+  - Desbloqueada la activación de Spec 022 (Adquisición Adaptativa). Siguiente tarea: T011 (Verificaciones de invariantes de acción/estado y preparación de rollout en modo shadow).
+
+---
+
 ## [2026-08-26] - Spec 023 Fases 3 y 4 (Adaptador /diagnose, Dashboard, Validación Determinista y Rendimiento T014-T018)
 
 * **Objetivo**: Integrar el adaptador defensivo en `/diagnose`, proyectar evaluaciones en el dashboard de operaciones sin duplicar scoring, formalizar la validación determinista SC-001 a SC-004 y probar latencia/consultas acotadas SC-005 a SC-007.

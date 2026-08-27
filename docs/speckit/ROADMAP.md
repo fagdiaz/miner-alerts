@@ -13,8 +13,8 @@
 1. **[COMPLETADO] Specs 001 a 019 — Arquitectura Base y Telemetría**: Polling autoritativo API 4028, base SQLite (esquema v1-v6), integración Hashcore Toolkit, captura de logs Vnish, diagnósticos de calidad y perfil de estabilidad.
 2. **[COMPLETADO] Spec 020 — Estabilización de Estados y Autoreinicio**: Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`), interlocks térmicos/de flota y cero reinicios espurios (`e502ab9`).
 3. **[COMPLETADO] Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
-4. **[EN PROCESO - 90%] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 superado (86.7k/86.4k s), cierre D+3 en curso (~22h restantes).
-5. **[EN PROCESO - 80%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, persistencia de calidad en esquema v6, validaciones de configuración, dataclasses de sondas episódicas y wiring secuencial T006 deshabilitado por defecto.
+4. **[COMPLETADO] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 (86.7k s) y D+3 (278.4k s / 77.3h) superados con éxito continuo; spec cerrada.
+5. **[EN PROCESO - 85%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, persistencia de calidad en esquema v6, validaciones de configuración, dataclasses de sondas episódicas y wiring secuencial T006. Desbloqueada para validación y rollout tras cierre de Spec 021.
 6. **[EN PROCESO - 95%] Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T008-T011), tablas aditivas `incident_assessments` e `assessment_fact_refs` (T012), renderizador semántico (T013), adaptador `/diagnose` (T014), integración dashboard (T015), config defaults (T016), validación determinista SC-001 a SC-004 (T017) y pruebas de rendimiento/latencia SC-005 a SC-007 (T018) completados con 344 tests PASS.
 
 ---

@@ -26,7 +26,7 @@
 
 - [x] T011 Run targeted/full tests, compile, PowerShell parse, config parse and invariant scan.
 - [x] T012 Execute QA kill, hang and stale-worker scenarios and prove no Hashcore calls.
-- [ ] T013 Perform controlled activation and D+1/D+3 observation with the
+- [x] T013 Perform controlled activation and D+1/D+3 observation with the
   read-only observation gate; D+0 is complete and hidden one-shot captures are
   scheduled for the real D+1/D+3 windows.
 - [x] T014 Update evidence, roadmap, delivery calendar, runbook and development log.
@@ -57,9 +57,9 @@ Spec 020 T020 blocks all work. Pure model/tests precede monitor integration; wat
 
 ## Definition Of Done
 
-- [ ] All T001-T014 tasks are complete with evidence.
-- [ ] Acceptance scenarios and negative paths pass.
-- [ ] No real config, state, database, logs or secrets enter Git.
-- [ ] Action-policy and polling-offset invariants pass when applicable.
-- [ ] Runtime activation and observation are recorded; blocked checks remain open.
-- [ ] Roadmap, delivery calendar, strategy docs and development log agree.
+- [x] All T001-T014 tasks are complete with evidence.
+- [x] Acceptance scenarios and negative paths pass.
+- [x] No real config, state, database, logs or secrets enter Git.
+- [x] Action-policy and polling-offset invariants pass when applicable.
+- [x] Runtime activation and observation are recorded; blocked checks remain open.
+- [x] Roadmap, delivery calendar, strategy docs and development log agree.

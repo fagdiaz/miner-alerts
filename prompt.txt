@@ -12,9 +12,9 @@ ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 =============================================================================
 - Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO al 100% tras 77.3h de soak continuo sin fallos.
 - Spec 022 (Adaptive Acquisition): T001-T012 COMPLETADOS (371 tests PASS).
-  - T009: Aislamiento read-only de diagnósticos verificado.
+  - T009: Aislamiento read-only de diagnósticos verificado (24 tests en `test_t009_t011_invariants.py`).
   - T011: Invariantes pre-rollout verificados (0 imports de acción, Telegram o startup guard).
-  - T012: Comparación shadow, paridad determinista y ensayo de rollback dinámico (3 tests PASS).
+  - T012: Comparación shadow, paridad determinista y ensayo de rollback dinámico (3 tests en `test_t012_shadow_and_rollback.py`).
 - Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018). Queda solo observación runtime tras Spec 022.
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
 - Suite global: 371 tests ejecutados en 2.7s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
@@ -23,67 +23,80 @@ COMANDO DE VERIFICACIÓN DE PRUEBAS (371 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 DIRECTIVAS DE LECTURA DE CONTEXTO RÁPIDO:
-1. `specs/022-adaptive-acquisition/tasks.md` (T013 pendiente: Activación controlada y observación D+1/D+3).
-2. `specs/022-adaptive-acquisition/evidence.md` (Historial completo de validación hasta T012).
-3. `AGENTS.md` y `docs/speckit/DELIVERY_PLAN.md` (Reglas de rollout en producción).
+1. `app/miner_monitor.py` (Líneas 3690-3700 y el bucle principal en líneas 3820-3880).
+2. `app/acquisition.py` (`BoundedAcquirer`, `MinerEndpoint`, `AcquisitionEpoch`, `Api4028Transport`).
+3. `specs/022-adaptive-acquisition/tasks.md` (T013 pendiente: Activación controlada y observación D+1/D+3).
 
 =============================================================================
-OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T013 (Activación Controlada en Producción)
+OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T013 (Wiring en Loop Principal y Activación en Producción)
 =============================================================================
 
-1. Procedimiento de Activación Controlada (T013):
-   - Al haberse cumplido y cerrado el soak D+3 de Spec 021, la producción está habilitada para recibir la adquisición adaptativa.
-   - Planificar la ventana de activación:
-     * Alinear `app/config.json` con `"adaptive_acquisition_enabled": true`.
-     * Ejecutar el reinicio ordenado del servicio Windows `MinerAlerts`.
-     * Verificar que el nuevo PID adquiera el mutex, inicie con el startup guard intacto (600s), y emita los logs de adquisición adaptativa (`ADAPTIVE_ACQUISITION enabled=true workers=2`).
-     * Verificar en `monitor_heartbeat.json` que los ticks progresen normalmente con queue_depth=0.
+HALLAZGO PREVIO ESENCIAL:
+En T006 se implementó la lectura de configuración `AcquisitionConfig.from_mapping(config)` en `app/miner_monitor.py:3690`, pero el bucle de sondeo de la flota en `while True:` (líneas 3829-3845) aún ejecuta exclusivamente el sondeo secuencial sincrónico (`read_summary` + `read_stats_snapshot`). Para activar la adquisición adaptativa en producción, se requiere cablear `BoundedAcquirer` en el loop principal preservando al 100% el fallback secuencial.
 
-2. Actualización de Trazabilidad:
-   - Registrar la evidencia del nuevo PID, hora de inicio y primeros ticks en `specs/022-adaptive-acquisition/evidence.md`.
-   - Marcar `[x] T013` (inicio de soak D+1/D+3) y preparar el cierre de Spec 022 (T014).
+PASO 1: Cablear `BoundedAcquirer` en `app/miner_monitor.py`
+------------------------------------------------------------
+1. Importaciones en `app/miner_monitor.py`:
+   - Importar `BoundedAcquirer`, `MinerEndpoint`, `AcquisitionEpoch`, `Api4028Transport` desde `.acquisition` / `acquisition`.
+2. Inicialización de Acquirer y Endpoints (antes de iniciar el bucle `while True:`, ej. tras validar `valid_miners`):
+   - Construir la tupla de endpoints con la misma clave de estado:
+     `acq_endpoints = tuple(MinerEndpoint(key=f"{m['name']}|{m['host']}:{m['port']}", host=m['host'], port=m['port']) for m in valid_miners)`
+   - Si `acq_config.enabled`:
+     instanciar `acquirer = BoundedAcquirer(Api4028Transport(), workers=acq_config.workers, timeout_seconds=acq_config.timeout_seconds)`
+   - Asegurar cierre limpio en `finally:` o salida del proceso: `if acquirer: acquirer.close()`.
+3. Ejecución en el bucle principal `while True:`:
+   - Al inicio del tick (antes de `for miner in valid_miners:`):
+     ```python
+     envelopes: Optional[Dict[str, MinerSampleEnvelope]] = None
+     if acq_config.enabled and acquirer is not None:
+         epoch = AcquisitionEpoch(
+             epoch_id=tick_sequence,
+             scheduled_monotonic=tick_start,
+             deadline_monotonic=tick_start + acq_config.deadline_seconds,
+             observed_ts=now_ts,
+         )
+         try:
+             envelopes = acquirer.collect_authoritative(acq_endpoints, epoch)
+         except Exception as exc:
+             log(f"[WARN] Error en adquisición adaptativa: {exc}. Usando fallback secuencial.")
+             envelopes = None
+     ```
+   - Dentro de `for miner in valid_miners:` (sustituyendo o complementando líneas 3839-3843):
+     ```python
+     if envelopes is not None and state_key in envelopes:
+         env = envelopes[state_key]
+         rate_ths = env.rate_ths
+         elapsed = env.elapsed_seconds
+         responded = env.responded
+         summary_entry = env.summary_entry
+         active_boards = env.active_boards
+         stats_response = env.stats_response
+     else:
+         rate_ths, elapsed, responded, summary_entry = read_summary(host, port)
+         active_boards = None
+         stats_response = None
+         if responded:
+             active_boards, _, stats_response = read_stats_snapshot(host, port)
+     ```
+   - El resto de la lógica de evaluación (QA force, streaks, estados, auto-reboot, watchdog) permanece **100% INTACTO**.
+
+PASO 2: Verificación de Pruebas y Compilación
+-----------------------------------------------
+1. Ejecutar `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py`.
+2. Ejecutar la suite completa (371 tests) y verificar que no haya regresiones.
+3. Agregar un test unitario si corresponde en `tests/test_acquisition.py` verificando que cuando `acq_config.enabled=True`, `miner_monitor.py` utiliza los envelopes autoritativos.
+
+PASO 3: Activación en Producción y Verificación de Servicio
+-------------------------------------------------------------
+1. En `app/config.json`, configurar `"adaptive_acquisition_enabled": true`.
+2. Reiniciar el servicio NSSM `MinerAlerts`:
+   - `nssm restart MinerAlerts` (o `Restart-Service MinerAlerts`).
+3. Verificar en logs y en `data/monitor_heartbeat.json`:
+   - Log confirma: `ADAPTIVE_ACQUISITION enabled=true workers=2 timeout=5.0s deadline=12.0s`.
+   - Nuevo PID arranca normalmente con startup guard de 600s.
+   - Heartbeat tick incrementa con `queue_depth=0`.
+4. Registrar la evidencia en `specs/022-adaptive-acquisition/evidence.md` y marcar `[x] T013` en `tasks.md`.
 
 =============================================================================
-MODELO RECOMENDADO: Claude Sonnet 4.6 (Thinking) (por manejo de servicio en producción)
+MODELO OBLIGATORIO: Claude Sonnet 4.6 (Thinking)
 =============================================================================
-=============================================================================
-ESTADO: T015 COMPLETADO ✓
-
-- `_KNOWN_TABLES` → "incident_assessments" agregado.
-- `_latest_assessments(connection, *, since_ts, limit)` → consulta bounded read-only,
-  filtrada por `assessment_now_ts >= since_ts`, newest-first, sin scoring ni inferencia.
-- `build_dashboard_data` → llama `_latest_assessments`, expone `incident_assessments`
-  en el dict y `summary["assessments"]` como contador.
-- `_render_assessment_rows(assessments)` → renderer puro de filas almacenadas
-  (subject_ref, subject_type, status, ruleset_version, digest[:16]), sin re-scoring.
-- `render_dashboard_html` → nueva sección "Evaluaciones de incidente / Lectura / sin
-  accion automatica" usando `_render_assessment_rows`.
-- 10 nuevos tests en `tests/test_operations_dashboard.py` (todos PASS).
-- Suite completa: 323/323 PASS (0 fallos, 0 errores). py_compile dashboard: OK.
-- FR-011 verificado: `operations_dashboard.py` no contiene ninguna llamada a funciones
-  de scoring de evidence_fusion (confirmed by source-text assertion test).
-
-=============================================================================
-NOTA DE CIERRE T009+T011 — 2026-08-27 (Claude Sonnet 4.6 Thinking)
-=============================================================================
-ESTADO: T009 COMPLETADO ✓ | T011 COMPLETADO ✓
-
-T009 — Diagnostic Read-Only Isolation:
-- `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope`: frozen dataclasses verificados.
-- `collect_diagnostic` → siempre Authority.DIAGNOSTIC, filtrado por dispatch_authoritative.
-- Sin poll_health.record_epoch, sin stats, sin campos de acción.
-- diagnostics_enabled=False cuando adaptive_acquisition_enabled=False (doble-flag guard).
-
-T011 — Invariantes pre-rollout:
-- py_compile app/miner_monitor.py + app/acquisition.py → SYNTAX OK.
-- Estado: dispatch_authoritative filtra DIAGNOSTIC y LATE determinísticamente.
-- Acción: acquisition.py sin hashcore, subprocess, miner_states, streak, send_telegram.
-- Telegram: acquisition.py sin bot_token, chat_id, getUpdates, update_id.
-- Startup guard: AcquisitionConfig sin campos startup_guard/grace_period.
-- Presupuesto: workers [1-4], diagnostic = 1 summary + 0 stats.
-
-24 nuevos tests en `tests/test_t009_t011_invariants.py`, todos PASS.
-Suite completa: 368/368 PASS (0 fallos, 0 errores).
-
-PRÓXIMA TAREA: Spec 022 T012 — Shadow comparison (24h de métricas, parity check,
-rehearsal de rollback). Leer `specs/022-adaptive-acquisition/tasks.md`.

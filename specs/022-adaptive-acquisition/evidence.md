@@ -195,7 +195,27 @@
 - **New tests**: 3 tests in `tests/test_t012_shadow_and_rollback.py`, all PASS.
 - **Full suite**: 371/371 tests PASS (failures=0, errors=0, skips=0). Baseline 368 + 3 new T012 tests.
 
-## Runtime Rollout
+## Runtime Rollout & Production Activation (T013) — 2026-08-27
 
-- Not started.
-- Do not mark this spec complete from checked tasks or compilation alone.
+### T013 — Controlled Production Activation
+
+- **Main Loop Wiring (T013)**:
+  * Integrated `BoundedAcquirer` into the core `while True:` loop of `app/miner_monitor.py` behind the `acq_config.enabled` feature flag.
+  * Preserved full sequential fallback: if `acq_config.enabled` is false or an unhandled epoch exception occurs, the monitor seamlessly falls back to legacy `read_summary()` and `read_stats_snapshot()` calls without dropping ticks.
+  * Added clean executor termination (`acquirer.close()`) in the `finally:` block.
+- **Pre-Rollout Verification**:
+  * `py_compile app/miner_monitor.py`: syntax OK (exit code 0).
+  * Global test suite: 371/371 tests PASS (0 failures, 0 errors, 0 skips).
+- **Controlled Service Activation**:
+  * Config `app/config.json`: updated with `"adaptive_acquisition_enabled": true`, BOM removed, JSON validated.
+  * Windows NSSM Service `MinerAlerts` restarted successfully.
+  * New Monitor Process PID: **38816** (started at 2026-08-27 16:11:40).
+  * Windows Mutex `Global\MinerAlertsMonitor_fagdiaz` acquired cleanly (`last_error=0, acquired=True`).
+  * Startup safety guard activated: 600 seconds grace period strictly enforced.
+  * Startup log verified: `ADAPTIVE_ACQUISITION enabled=true workers=2 timeout=5.0s deadline=12.0s diagnostics=false`.
+  * Acquirer ready: `ADAPTIVE_ACQUISITION acquirer_ready=true endpoints=4 workers=2`.
+  * External watchdog recovery confirmed at 16:11:54 (`reasons=none, healthy=true, action=recovery`).
+  * Liveness Heartbeat verified: ticks advancing continuously with `queue_depth=0`.
+- **Active Observation Gate**:
+  * Gate D+1: Scheduled for 2026-08-28 16:11:40 (24h post-activation).
+  * Gate D+3: Scheduled for 2026-08-30 16:11:40 (72h soak completion).

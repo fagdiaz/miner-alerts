@@ -3,9 +3,9 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-08-27] - Cierre de Spec 021 (D+3), Enmienda Constitucional v1.4.0 y Validación Pre-Rollout de Spec 022 (T009, T011, T012)
+## [2026-08-27] - Cierre de Spec 021 (D+3), Enmienda Constitucional v1.4.0 y Activación en Producción de Spec 022 (T009-T013)
 
-* **Objetivo**: Cerrar formalmente Spec 021 con evidencia de 77h de soak en producción, ratificar la Constitución v1.4.0 con la regla de maximización de Gemini 3.7 y completar las validaciones de invariantes, shadow y rollback de Spec 022.
+* **Objetivo**: Cerrar formalmente Spec 021 con evidencia de 77h de soak en producción, ratificar la Constitución v1.4.0 con la regla de maximización de Gemini 3.7 y completar la validación, cableado y activación en producción de Spec 022 (Adaptive Acquisition).
 * **Cierre de Spec 021 (Liveness Watchdog)**:
   - Uptime continuo de 77h 20m (278.4k s > 259.2k s), PID 8520 estable, 9.193 ticks y 0 incidentes. 1 auto-reboot legítimo en minero 25 auditado. Spec 021 cerrada formalmente al 100%.
 * **Enmienda Constitucional v1.4.0 y Actualización de AGENTS.md**:
@@ -14,13 +14,16 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - T009: Aislamiento read-only de dataclasses congeladas `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope`; filtrado mecánico de envelopes DIAGNOSTIC en `dispatch_authoritative`; 0 mutaciones a `miner_states`.
   - T011: Validación estricta de invariantes: `acquisition.py` verificado libre de imports de `hashcore`, `subprocess`, mutación de streaks, tokens de Telegram o startup guard. 24 nuevos tests en `tests/test_t009_t011_invariants.py`.
 * **Spec 022 T012 (Gemini 3.7 Flash High)**:
-  - Implementado `tests/test_t012_shadow_and_rollback.py` con 3 tests formales:
-    1. Paridad determinista y replay equality entre ejecuciones independientes (SC-006 / FR-012).
-    2. Ensayo de rollback dinámico a 4 fases (`disabled` -> `adaptive` -> `rollback` -> `adaptive`): 0 leases residuales, despacho íntegro de 48 muestras a través de 12 epochs y continuidad de estado (FR-012 / SC-006).
-    3. Simulación de 100 ciclos de flota (700 requests API): presupuesto de 1 summary + stats condicional estrictamente cumplido (SC-005 / FR-014); cero retries; memoria de `PollHealth` estrictamente acotada a `maxlen=32` (FR-011).
+  - Implementado `tests/test_t012_shadow_and_rollback.py` con 3 tests formales: paridad determinista (SC-006 / FR-012), ensayo de rollback dinámico a 4 fases con 0 leases residuales (FR-012 / SC-006) y simulación de 100 ciclos de flota con presupuesto estricto de requests y memoria de `PollHealth` acotada a `maxlen=32` (SC-005 / FR-011 / FR-014).
+* **Spec 022 T013: Cableado en Loop y Activación en Producción**:
+  - Cableado de `BoundedAcquirer` en el loop principal `while True:` de `app/miner_monitor.py` con fallback completo al método secuencial sincrónico en caso de excepción.
+  - Eliminado UTF-8 BOM de `app/config.json` y activado `"adaptive_acquisition_enabled": true`.
+  - Servicio NSSM `MinerAlerts` reiniciado exitosamente en producción con nuevo **PID 38816** (16:11:40). Mutex adquirido limpiamente.
+  - Startup safety guard activo (600s). Logs confirman: `ADAPTIVE_ACQUISITION enabled=true workers=2` y `acquirer_ready=true endpoints=4`.
+  - Watchdog confirmó recuperación a las 16:11:54 y permanece 100% `healthy=true`. Ticks avanzando continuamente con `queue_depth=0`.
 * **Estado Final de Pruebas**: **371/371 tests PASS** (0 fallos, 0 errores, 0 skips).
 * **Próximo Paso**:
-  - Spec 022 T013: Activación en producción en ventana controlada y observación D+1/D+3.
+  - Observación activa del gate D+1 (2026-08-28 16:11:40) y D+3 (2026-08-30 16:11:40) de Spec 022. T014 sincronización documental.
 
 ---
 

@@ -14,7 +14,7 @@
 2. **[COMPLETADO] Spec 020 — Estabilización de Estados y Autoreinicio**: Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`), interlocks térmicos/de flota y cero reinicios espurios (`e502ab9`).
 3. **[COMPLETADO] Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
 4. **[COMPLETADO] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 (86.7k s) y D+3 (278.4k s / 77.3h) superados con éxito continuo; spec cerrada.
-5. **[EN PROCESO - 85%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, persistencia de calidad en esquema v6, validaciones de configuración, dataclasses de sondas episódicas y wiring secuencial T006. Desbloqueada para validación y rollout tras cierre de Spec 021.
+5. **[EN PROCESO - 95%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Módulo puro de adquisición, persistencia de calidad v6, aislamiento read-only de diagnósticos (T009), validación de invariantes (T011) y comparación shadow / rollback rehearsal (T012) completados con 371 tests PASS.
 6. **[EN PROCESO - 95%] Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T008-T011), tablas aditivas `incident_assessments` e `assessment_fact_refs` (T012), renderizador semántico (T013), adaptador `/diagnose` (T014), integración dashboard (T015), config defaults (T016), validación determinista SC-001 a SC-004 (T017) y pruebas de rendimiento/latencia SC-005 a SC-007 (T018) completados con 344 tests PASS.
 
 ---
@@ -186,9 +186,8 @@ production activation waits for Spec 021 D+3.
 - [x] Pure typed authoritative/diagnostic envelope and epoch contracts.
 - [x] Bounded executor, lease and peer-isolation contracts without runtime wiring.
 - [x] Explicit valid/partial/invalid/timeout/error/late quality normalization.
-- [x] Sequential request/count/latency baseline with sanitized ignored output.
-- [ ] Optional diagnostic recovery probes that cannot update state or actions.
-- [ ] Baseline/shadow comparison for latency, requests, sample age and alerts.
+- [x] Optional diagnostic recovery probes that cannot update state or actions (T009).
+- [x] Baseline/shadow comparison for latency, requests, sample age and alerts (T012).
 
 **Invariant**: thresholds, hysteresis, polling offset and action policy unchanged.
 

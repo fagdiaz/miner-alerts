@@ -172,6 +172,29 @@
 - **Full suite**: 368/368 tests PASS (failures=0, errors=0, skips=0).
   Previous baseline was 344; 24 new T009/T011 tests added.
 
+## Shadow Comparison and Rollback Rehearsal (T012) — 2026-08-27
+
+### T012 — Shadow Comparison & Parity Rollback
+
+- **Deterministic Parity & Replay Equality (SC-006 / FR-012)**:
+  * Replaying identical transport fixtures across two independent instances of `BoundedAcquirer` produced 100% identical outputs for all miners: identical authority, quality, responded flags, rate_ths, active_boards, and reason codes.
+  * Verified output order strictly respects configured miner endpoint ordering.
+- **Rollback Rehearsal & Lease Hygiene (FR-012 / SC-006)**:
+  * Simulated live dynamic flag alternations across 4 phases: `disabled` (phase 1) -> `adaptive` (phase 2) -> `rollback to disabled` (phase 3) -> `re-enable adaptive` (phase 4).
+  * Confirmed:
+    - Zero residual in-flight leases remain locked at the completion of each epoch (`leases.is_owned(...) == False` for all miners).
+    - Dispatch authoritative delivered all 4 miner sample envelopes per epoch (3 responsive miners and 1 timeout miner with `responded=False`).
+    - Consumer state history remained continuous and intact (48 dispatched samples across 12 epochs) with zero state-machine corruption or false triggers.
+- **Request Budget & 24-Hour Equivalent Simulation (SC-005 / FR-014)**:
+  * Simulated 100 fleet cycles (equivalent to 700 transport requests across 4 miners) with realistic latency.
+  * Verified:
+    - Exactly 1 summary request per miner per epoch.
+    - Exactly 1 stats request for responsive miners, and 0 stats requests for timed-out/offline miners.
+    - Strictly 0 retries on failure (FR-014).
+    - Memory bounded in `PollHealth`: latency deque strictly bounded at `maxlen=32`; snapshot remains clean and finite.
+- **New tests**: 3 tests in `tests/test_t012_shadow_and_rollback.py`, all PASS.
+- **Full suite**: 371/371 tests PASS (failures=0, errors=0, skips=0). Baseline 368 + 3 new T012 tests.
+
 ## Runtime Rollout
 
 - Not started.

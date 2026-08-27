@@ -38,7 +38,7 @@
 
 - [x] T011 Run targeted/full tests, compile, JSON and exact state/action,
   Telegram-offset, manual-command and startup/reboot invariant checks.
-- [ ] T012 Compare 24-hour shadow latency/request/quality metrics with baseline
+- [x] T012 Compare 24-hour shadow latency/request/quality metrics with baseline
   and rehearse flag rollback with deterministic parity.
 - [ ] T013 Activate in a controlled window and observe D+1/D+3.
 - [ ] T014 Synchronize evidence, roadmap, calendar, diagnostics docs and development log.

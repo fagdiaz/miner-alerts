@@ -3,17 +3,24 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-08-27] - Cierre de Gate D+3 (Spec 021 Liveness Watchdog) y Desbloqueo de Spec 022
+## [2026-08-27] - Cierre de Spec 021 (D+3), Enmienda Constitucional v1.4.0 y Validación Pre-Rollout de Spec 022 (T009, T011, T012)
 
-* **Objetivo**: Auditar el período de soak de 72 horas continuas en producción para Spec 021, cerrar la especificación con evidencia runtime y desbloquear la fase de activación de Spec 022 (Adaptive Acquisition).
-* **Auditoría Runtime y Evidencia (77h 20m continuas)**:
-  - Proceso de producción (PID 8520, wrapper 4568) iniciado el 2026-08-24 08:43:14 superó formalmente las 72h con 278.435 segundos acumulados (77.34 horas) sin un solo reinicio, cuelgue o fallo de proceso.
-  - Ticks de flota completados: 9.193 con cola 0. Edades de workers y tick estrictamente frescas (< 35s).
-  - Watchdog de vida evaluó 4.642 muestras con 0 alarmas tras el calentamiento inicial del colector.
-  - Seguridad operativa: 1 auto-reboot legítimo y controlado en minero 25 (2026-08-25 10:23:06) tras 604s de hashrate 0.0 TH/s, respetando todos los interlocks. Flota actual 100% OK (`ok_streak` = 12.267).
-  - T013 y Definition of Done de Spec 021 marcados como completados en `specs/021-monitor-liveness-watchdog/tasks.md` y documentados en `evidence.md`. Spec 021 cerrada formalmente al 100%.
+* **Objetivo**: Cerrar formalmente Spec 021 con evidencia de 77h de soak en producción, ratificar la Constitución v1.4.0 con la regla de maximización de Gemini 3.7 y completar las validaciones de invariantes, shadow y rollback de Spec 022.
+* **Cierre de Spec 021 (Liveness Watchdog)**:
+  - Uptime continuo de 77h 20m (278.4k s > 259.2k s), PID 8520 estable, 9.193 ticks y 0 incidentes. 1 auto-reboot legítimo en minero 25 auditado. Spec 021 cerrada formalmente al 100%.
+* **Enmienda Constitucional v1.4.0 y Actualización de AGENTS.md**:
+  - Ratificada la Enmienda 1.4.0 formalizando la regla de *Maximización de Gemini 3.7 Flash High y Delegación Escalada*: Gemini 3.7 como motor primario (análisis, lógica pura, schemas, suites completas de tests, benchmarks y trazabilidad en turnos iterativos y bounded); Claude Sonnet 4.6 (Thinking) reservado para concurrencia viva multi-hilo en producción y máquinas de estado/reboot; Claude Opus 4.6 (Thinking) estrictamente para deadlocks cíclicos.
+* **Spec 022 T009 y T011 (Claude Sonnet 4.6 Thinking)**:
+  - T009: Aislamiento read-only de dataclasses congeladas `DiagnosticProbeResult` y `EpisodeDiagnosticEnvelope`; filtrado mecánico de envelopes DIAGNOSTIC en `dispatch_authoritative`; 0 mutaciones a `miner_states`.
+  - T011: Validación estricta de invariantes: `acquisition.py` verificado libre de imports de `hashcore`, `subprocess`, mutación de streaks, tokens de Telegram o startup guard. 24 nuevos tests en `tests/test_t009_t011_invariants.py`.
+* **Spec 022 T012 (Gemini 3.7 Flash High)**:
+  - Implementado `tests/test_t012_shadow_and_rollback.py` con 3 tests formales:
+    1. Paridad determinista y replay equality entre ejecuciones independientes (SC-006 / FR-012).
+    2. Ensayo de rollback dinámico a 4 fases (`disabled` -> `adaptive` -> `rollback` -> `adaptive`): 0 leases residuales, despacho íntegro de 48 muestras a través de 12 epochs y continuidad de estado (FR-012 / SC-006).
+    3. Simulación de 100 ciclos de flota (700 requests API): presupuesto de 1 summary + stats condicional estrictamente cumplido (SC-005 / FR-014); cero retries; memoria de `PollHealth` estrictamente acotada a `maxlen=32` (FR-011).
+* **Estado Final de Pruebas**: **371/371 tests PASS** (0 fallos, 0 errores, 0 skips).
 * **Próximo Paso**:
-  - Desbloqueada la activación de Spec 022 (Adquisición Adaptativa). Siguiente tarea: T011 (Verificaciones de invariantes de acción/estado y preparación de rollout en modo shadow).
+  - Spec 022 T013: Activación en producción en ventana controlada y observación D+1/D+3.
 
 ---
 

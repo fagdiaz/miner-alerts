@@ -11,58 +11,41 @@ POLÍTICA DE MODELOS Y DELEGACIÓN ESCALADA (CONSTITUCIÓN v1.4.0)
 ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 =============================================================================
 - Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO al 100% tras 77.3h de soak continuo sin fallos.
-- Spec 022 (Adaptive Acquisition): DESBLOQUEADA. T001-T011 COMPLETADOS (incluyendo T009 y T011 formalizados con 24 nuevos tests). Tareas abiertas: T012 (shadow comparison & rollback rehearsal), T013 (activación controlada), T014 (sync docs).
-- Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018, 344 tests PASS).
+- Spec 022 (Adaptive Acquisition): T001-T012 COMPLETADOS (371 tests PASS).
+  - T009: Aislamiento read-only de diagnósticos verificado.
+  - T011: Invariantes pre-rollout verificados (0 imports de acción, Telegram o startup guard).
+  - T012: Comparación shadow, paridad determinista y ensayo de rollback dinámico (3 tests PASS).
+- Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018). Queda solo observación runtime tras Spec 022.
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
-- Suite global: 368 tests ejecutados en 2.7s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Suite global: 371 tests ejecutados en 2.7s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS (368 tests actuales):
+COMANDO DE VERIFICACIÓN DE PRUEBAS (371 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 DIRECTIVAS DE LECTURA DE CONTEXTO RÁPIDO:
-1. `specs/022-adaptive-acquisition/tasks.md` (Estado T012-T014).
-2. `specs/022-adaptive-acquisition/baseline.md` (Línea base secuencial previa: P50=171ms, P95=204ms).
-3. `contracts/config.md` y `spec.md` (Criterios SC-005, SC-006).
+1. `specs/022-adaptive-acquisition/tasks.md` (T013 pendiente: Activación controlada y observación D+1/D+3).
+2. `specs/022-adaptive-acquisition/evidence.md` (Historial completo de validación hasta T012).
+3. `AGENTS.md` y `docs/speckit/DELIVERY_PLAN.md` (Reglas de rollout en producción).
 
 =============================================================================
-OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T012 (Comparación Shadow y Rollback Parity)
+OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T013 (Activación Controlada en Producción)
 =============================================================================
 
-1. Comparación de Métricas Shadow y Línea Base (SC-005 / FR-010 / FR-014):
-   - Comparar métricas de ciclo, requests por epoch (1 summary + stats condicional) y latencia respecto a `baseline.md`.
-   - Demostrar que los presupuestos numéricos se cumplen de forma idéntica o superior sin generar ráfagas.
+1. Procedimiento de Activación Controlada (T013):
+   - Al haberse cumplido y cerrado el soak D+3 de Spec 021, la producción está habilitada para recibir la adquisición adaptativa.
+   - Planificar la ventana de activación:
+     * Alinear `app/config.json` con `"adaptive_acquisition_enabled": true`.
+     * Ejecutar el reinicio ordenado del servicio Windows `MinerAlerts`.
+     * Verificar que el nuevo PID adquiera el mutex, inicie con el startup guard intacto (600s), y emita los logs de adquisición adaptativa (`ADAPTIVE_ACQUISITION enabled=true workers=2`).
+     * Verificar en `monitor_heartbeat.json` que los ticks progresen normalmente con queue_depth=0.
 
-2. Ensayo de Rollback Determinista con Paridad (SC-006 / FR-012):
-   - Crear pruebas formales de paridad (`tests/test_t012_shadow_and_rollback.py`):
-     * Con `adaptive_acquisition_enabled=false`, la ejecución produce exactamente la misma secuencia de entradas, estados y decisiones que el baseline secuencial previo.
-     * Alternar el flag dinámicamente (`true` -> `false` -> `true`) no corrompe ningún estado, lease, streak o contador.
-
-3. Actualización de Trazabilidad:
-   - Marcar `[x] T012` en `specs/022-adaptive-acquisition/tasks.md` y registrar evidencia en `evidence.md`.
-
-=============================================================================
-MODELO RECOMENDADO: Gemini 3.7 Flash High (o Claude Sonnet 4.6 Thinking si se prefiere)
-=============================================================================
-
-1. Spec 022 T009 (Exponer datos diagnósticos solo a contexto de lectura):
-   - Verificar en `app/miner_monitor.py` y `app/acquisition.py` que las sondas diagnósticas episódicas (`DiagnosticProbeResult`, `EpisodeDiagnosticEnvelope`) solo alimenten contextos de solo lectura (`/diagnose`, logs de diagnóstico) y NUNCA alteren `miner_states`, `streak`, contadores de reinicio ni el loop autoritativo.
-   - Agregar pruebas unitarias correspondientes en `tests/test_acquisition.py` si faltaran.
-
-2. Spec 022 T011 (Validación formal de invariantes pre-rollout):
-   - Ejecutar la suite completa y verificar compilación: `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py app\acquisition.py`.
-   - Verificar invariantes:
-     * Invariante de estado: cero diferencias en transiciones entre adquisición adaptativa y fallback secuencial.
-     * Invariante de acción: cero llamadas no autorizadas a Hashcore o reinicios espurios.
-     * Invariante de Telegram: offsets de polling y comandos interactivos intactos.
-     * Invariante de startup guard: el tiempo de gracia inicial se mantiene estricto.
-
-3. Actualización de Evidencia y Trazabilidad:
-   - Marcar `[x] T009` y `[x] T011` en `specs/022-adaptive-acquisition/tasks.md`.
-   - Registrar la ejecución y los resultados en `specs/022-adaptive-acquisition/evidence.md`.
-   - Dejar nota de cierre al final de este archivo.
+2. Actualización de Trazabilidad:
+   - Registrar la evidencia del nuevo PID, hora de inicio y primeros ticks en `specs/022-adaptive-acquisition/evidence.md`.
+   - Marcar `[x] T013` (inicio de soak D+1/D+3) y preparar el cierre de Spec 022 (T014).
 
 =============================================================================
-MODELO RECOMENDADO: Claude Sonnet 4.6 (Thinking)
+MODELO RECOMENDADO: Claude Sonnet 4.6 (Thinking) (por manejo de servicio en producción)
+=============================================================================
 =============================================================================
 ESTADO: T015 COMPLETADO ✓
 

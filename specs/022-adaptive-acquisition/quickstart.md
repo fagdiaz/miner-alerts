@@ -1,16 +1,13 @@
 # Quickstart: Adaptive Acquisition Resilience
 
-**Status**: Isolated module validation is active. Monitor wiring remains blocked
-until Spec 021 D+1 and production activation until D+3.
+**Status**: Implemented and active in production (PID 38816, 2 workers). Gate D+1 passed (49+ hours continuous uptime, 5,900+ ticks). Gate D+3 soak completes 2026-08-30 16:11:40.
 
-## Preconditions
+## Preconditions (All Passed)
 
-- The owner-approved 19 h 40 min healthy observation permits only isolated
-  tests/module work. Spec 021 D+1 is required before monitor wiring and D+3
-  before production activation.
-- Spec 020 episode/status behavior is production-verified.
-- Current sequential acquisition metrics have been captured before changing
-  request scheduling.
+- Spec 021 D+1 and D+3 closed with 77h soak and SCM recovery verified.
+- Spec 020 episode/status behavior production-verified.
+- Sequential acquisition baseline captured (`artifacts/spec022-sequential-baseline.json`).
+- Pre-rollout invariants (T011) and shadow/rollback rehearsal (T012) verified with 371 tests PASS.
 
 ## Static And Automated Validation
 

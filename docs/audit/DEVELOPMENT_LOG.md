@@ -3,6 +3,22 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-29] - Superación Formal del Gate D+1 de Spec 022 (Adaptive Acquisition)
+
+* **Objetivo**: Auditar el período de soak de 24 horas continuas en producción para Spec 022, verificar estabilidad de adquisición adaptativa concurrente, registrar evidencia y evaluar el backlog operativo.
+* **Auditoría Runtime y Evidencia (42.7h continuas post-rollout)**:
+  - Proceso de producción PID 38816 iniciado el 2026-08-27 16:11:40 alcanzó **153.800 segundos continuos (42.72 horas > 86.400s requeridos)** sin reinicios, caídas ni fallos de proceso.
+  - Heartbeat operativo: **5.099 ticks completados** sin interrupción con `queue_depth = 0`.
+  - Base SQLite: 2.036 muestras de telemetría procesadas e ingeridas en paralelo con 2 workers.
+  - Watchdog de vida: 2.563 evaluaciones continuas ejecutadas con 0 alarmas, 0 fallas (`healthy=true`, `reasons=none`, `action_count=0`).
+  - Seguridad de flota: Cero reinicios espurios o bloqueos. Los 4 mineros operan 100% estables en `STATE_OK` a ~95-99 TH/s.
+  - Verificación formal: `tools/observe_liveness.py --stage d1 --since 2026-08-27T16:12:00` confirmó `passed: true` sin fallos.
+  - Gate D+1 superado formalmente. Gate D+3 (72h soak) activo en curso hasta 2026-08-30 16:11:40 (~29h restantes).
+* **Próximo Paso**:
+  - Preparar el cierre de Spec 022 (T014) y coordinar el siguiente paquete del programa (Spec 023 T019 tras cierre de D+3, o descubrimiento de hardware en Spec 024).
+
+---
+
 ## [2026-08-27] - Cierre de Spec 021 (D+3), Enmienda Constitucional v1.4.0 y Activación en Producción de Spec 022 (T009-T013)
 
 * **Objetivo**: Cerrar formalmente Spec 021 con evidencia de 77h de soak en producción, ratificar la Constitución v1.4.0 con la regla de maximización de Gemini 3.7 y completar la validación, cableado y activación en producción de Spec 022 (Adaptive Acquisition).

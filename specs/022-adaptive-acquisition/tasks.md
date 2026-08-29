@@ -40,7 +40,7 @@
   Telegram-offset, manual-command and startup/reboot invariant checks.
 - [x] T012 Compare 24-hour shadow latency/request/quality metrics with baseline
   and rehearse flag rollback with deterministic parity.
-- [x] T013 Activate in a controlled window and observe D+1/D+3 (activated 2026-08-27 16:11:40, PID 38816, under observation).
+- [x] T013 Activate in a controlled window and observe D+1/D+3 (activated 2026-08-27 16:11:40, PID 38816; D+1 PASSED at 42.7h; D+3 soak active).
 - [ ] T014 Synchronize evidence, roadmap, calendar, diagnostics docs and development log.
 
 ## Dependencies And Execution Order

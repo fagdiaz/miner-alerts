@@ -216,6 +216,13 @@
   * Acquirer ready: `ADAPTIVE_ACQUISITION acquirer_ready=true endpoints=4 workers=2`.
   * External watchdog recovery confirmed at 16:11:54 (`reasons=none, healthy=true, action=recovery`).
   * Liveness Heartbeat verified: ticks advancing continuously with `queue_depth=0`.
-- **Active Observation Gate**:
-  * Gate D+1: Scheduled for 2026-08-28 16:11:40 (24h post-activation).
-  * Gate D+3: Scheduled for 2026-08-30 16:11:40 (72h soak completion).
+- **Observation Gates & Soak Evidence**:
+  * **Gate D+1 (24h Observation)**: **PASSED** on 2026-08-29 10:55:20.
+    - Continuous Uptime: **153,800 seconds (42.72 hours > 86,400s required)** under PID 38816.
+    - Process Stability: 0 restarts, 0 unhandled exceptions, mutex held continuously.
+    - Tick Progress: 5,099 ticks completed with `queue_depth: 0`.
+    - SQLite Ingestion: 2,036 telemetry samples persisted with 0 database errors.
+    - External Watchdog: 2,563 evaluations evaluated with 0 failures (`healthy=true`, `reasons=none`, `action_count=0`).
+    - Operational Safety: 0 false auto-reboot decisions; all 4 miners mining stably at ~95-99 TH/s in STATE_OK.
+    - Tool verification: `tools/observe_liveness.py --stage d1 --since 2026-08-27T16:12:00` confirmed `passed: true`.
+  * **Gate D+3 (72h Soak Completion)**: Ongoing; scheduled for 2026-08-30 16:11:40 (~29h remaining).

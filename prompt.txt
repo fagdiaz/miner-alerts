@@ -17,16 +17,17 @@ ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 - Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018, 344 tests PASS). T019 activará rutas de lectura tras cierre de Spec 022.
 - Spec 024 (Electrical Source Discovery): Discovery Gate T001-T004 COMPLETADO. Decisión formal `blocked: missing_hardware_dependency` ante ausencia de PDU/UPS de red; sin inferencias erróneas de tensión AC.
 - Spec 026 (Hashcore Capability Inventory): T001-T018 COMPLETADOS (`tools/hashcore_inventory.py`, 10 tests unitarios, metadatos PE `1.6.0+167`, allowlist vacía con resultado `blocked`).
+- Spec 028 (Backup, Retention & Restore): T001-T014 COMPLETADOS (`tools/event_store_backup.py`, `tools/install_backup_task.ps1`, 10 tests unitarios, simulacro real de 20.4 MB en 6.2s completado con éxito, runbook documentado).
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
-- Suite global: 381 tests ejecutados en 3.3s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Suite global: 391 tests ejecutados en 3.4s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS (381 tests actuales):
+COMANDO DE VERIFICACIÓN DE PRUEBAS (391 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 =============================================================================
 PRÓXIMOS PASOS RECOMENDADOS
 =============================================================================
-1. Spec 025 (Prometheus Metrics & Grafana) o Spec 028 (Backup, Retention & Restore): desarrollo modular de software puro que no afecta el monitor en producción.
+1. Spec 025 (Prometheus Metrics & Grafana): desarrollo modular con Docker/exporter fuera de proceso.
 2. Mañana domingo 2026-08-30 16:11:40: auditar el cierre del Gate D+3 de Spec 022 y activar Spec 023 (T019).
 
 =============================================================================

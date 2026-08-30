@@ -1,5 +1,7 @@
 # Tasks: Hashcore Capability Inventory
 
+# Tasks: Hashcore Capability Inventory
+
 **Input**: Design artifacts from `specs/026-hashcore-capability-inventory/`
 
 **Risk**: MEDIUM
@@ -8,30 +10,30 @@
 
 ## Phase 1: Safety Baseline
 
-- [ ] T001 Record hashes of the current `app/miner_monitor.py` action seams and sanitized shapes/counts of the reboot/restart templates without storing local values.
-- [ ] T002 Reproduce the static installation baseline in metadata-only mode and prove zero subprocess, miner IO and settings reads.
-- [ ] T003 Identify vendor-proven help/version invocations; if none exist, preserve the empty allowlist and explicit `blocked` result.
-- [ ] T004 [P] Add failing tests for metadata-only, absent/mismatched allowlist, invalid argv, changed fingerprint and zero-process rejection.
-- [ ] T005 [P] Add failing classification, timeout, no-window, disabled-stdin, bounded-stream and sanitization tests.
-- [ ] T006 [P] Add raw-output ignore patterns and committed-artifact path/address/secret scans.
+- [x] T001 Record hashes of the current `app/miner_monitor.py` action seams and sanitized shapes/counts of the reboot/restart templates without storing local values.
+- [x] T002 Reproduce the static installation baseline in metadata-only mode and prove zero subprocess, miner IO and settings reads.
+- [x] T003 Identify vendor-proven help/version invocations; if none exist, preserve the empty allowlist and explicit `blocked` result.
+- [x] T004 [P] Add failing tests for metadata-only, absent/mismatched allowlist, invalid argv, changed fingerprint and zero-process rejection.
+- [x] T005 [P] Add failing classification, timeout, no-window, disabled-stdin, bounded-stream and sanitization tests.
+- [x] T006 [P] Add raw-output ignore patterns and committed-artifact path/address/secret scans.
 ## Phase 2: Inventory Tool
 
-- [ ] T007 [US1] Implement standalone `tools/hashcore_inventory.py` with metadata-only as the default and no monitor imports.
-- [ ] T008 [US1] Implement exact fingerprint-bound allowlist validation before any process creation.
-- [ ] T009 [US1] Implement fixed argv execution with `shell=False`, no-window, stdin disabled, 10-second timeout, one attempt and 64 KiB per-stream bounds.
-- [ ] T010 [US2] Implement conservative risk classification with unknown prohibited and one classification per command.
-- [ ] T011 Generate deterministic versioned sanitized JSON and Markdown artifacts through temporary-file validation and atomic promotion.
+- [x] T007 [US1] Implement standalone `tools/hashcore_inventory.py` with metadata-only as the default and no monitor imports.
+- [x] T008 [US1] Implement exact fingerprint-bound allowlist validation before any process creation.
+- [x] T009 [US1] Implement fixed argv execution with `shell=False`, no-window, stdin disabled, 10-second timeout, one attempt and 64 KiB per-stream bounds.
+- [x] T010 [US2] Implement conservative risk classification with unknown prohibited and one classification per command.
+- [x] T011 Generate deterministic versioned sanitized JSON and Markdown artifacts through temporary-file validation and atomic promotion.
 ## Phase 3: Capability Assessment
 
-- [ ] T012 [US3] Compare evidenced read-only commands with API 4028, Vnish, EventStore and current diagnostics.
-- [ ] T013 Rank only unique read-only gaps by operator value, reliability and implementation cost.
-- [ ] T014 Record a separate-spec prerequisite for every accepted candidate; accept zero candidates as a valid result.
+- [x] T012 [US3] Compare evidenced read-only commands with API 4028, Vnish, EventStore and current diagnostics.
+- [x] T013 Rank only unique read-only gaps by operator value, reliability and implementation cost.
+- [x] T014 Record a separate-spec prerequisite for every accepted candidate; accept zero candidates as a valid result.
 ## Phase 4: Validation And Closeout
 
-- [ ] T015 Run targeted/full tests, compile, deterministic-output, timeout, no-window, bounded-output and secret scans.
-- [ ] T016 Execute metadata-only locally; execute reviewed discovery only if the allowlist is non-empty and exact fingerprints match, then review every artifact.
-- [ ] T017 Prove existing action scope, templates, QA gate and monitor call sites unchanged.
-- [ ] T018 Synchronize evidence, roadmap, calendar, Hashcore strategy and development log without marking blocked invocation as completed discovery.
+- [x] T015 Run targeted/full tests, compile, deterministic-output, timeout, no-window, bounded-output and secret scans.
+- [x] T016 Execute metadata-only locally; execute reviewed discovery only if the allowlist is non-empty and exact fingerprints match, then review every artifact.
+- [x] T017 Prove existing action scope, templates, QA gate and monitor call sites unchanged.
+- [x] T018 Synchronize evidence, roadmap, calendar, Hashcore strategy and development log without marking blocked invocation as completed discovery.
 
 ## Requirement Coverage
 

@@ -17,6 +17,7 @@
 5. **[EN OBSERVACIÓN D+3 - 95%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Producción activa con PID 38816 (2 workers paralelos). Gate D+1 superado formalmente (153.8k s / 42.7h > 86.4k s, 5.099 ticks, 0 alarmas). Gate D+3 en progreso hasta 2026-08-30 16:11.
 6. **[EN PROCESO - 95%] Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T008-T011), tablas aditivas `incident_assessments` e `assessment_fact_refs` (T012), renderizador semántico (T013), adaptador `/diagnose` (T014), integración dashboard (T015), config defaults (T016), validación determinista SC-001 a SC-004 (T017) y pruebas de rendimiento/latencia SC-005 a SC-007 (T018) completados con 344 tests PASS.
 7. **[DISCOVERY GATE COMPLETADO - BLOQUEADO POR HARDWARE] Spec 024 — Descubrimiento de Telemetría Eléctrica**: Relevamiento completado (T001-T004). Prohibida la inferencia de AC desde voltajes DC de hashboards; resultado formal `blocked: missing_hardware_dependency` ante ausencia de PDU/UPS de red. Adaptadores pausados sin deuda técnica ni falsas asunciones.
+8. **[COMPLETADO] Spec 026 — Inventario de Capacidades Hashcore**: Herramienta desacoplada `tools/hashcore_inventory.py` (T001-T018), 10 nuevos tests unitarios (381 tests PASS global), metadatos de instalación PE verificados (`1.6.0+167`, wrapper `toolkit_cli.bat` SHA `2c204d87`, exe `hashcore-toolkit.exe` SHA `9db18421`), cero llamadas a subprocess en modo metadata y allowlist vacía con resultado `blocked` sin alterar el monitor en producción.
 
 ---
 

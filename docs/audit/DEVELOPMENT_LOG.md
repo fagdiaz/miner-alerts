@@ -3,6 +3,21 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-29] - Implementación y Cierre de Spec 026 (Hashcore Capability Inventory - T001-T018)
+
+* **Objetivo**: Implementar la herramienta desacoplada de inventario de capacidades de Hashcore Toolkit (`tools/hashcore_inventory.py`), verificar metadatos de instalación local y asegurar el bloqueo de subprocesses ante ausencia de allowlist aprobada.
+* **Resultados y Evidencia**:
+  - **T001**: Auditadas las costuras de acción de Hashcore en `app/miner_monitor.py:1654-1768` (SHA-256: `c31064ce2d5120ff26506acd91affb58b8ded64ff463cab0424f18ad70034039`). Plantillas verificadas para `reboot` y `restart`.
+  - **T002-T003**: Línea base estática reproducida en modo metadata-only con cero subprocesos. Allowlist preservada vacía con resultado formal `blocked`.
+  - **T004-T006**: Creada la suite `tests/test_hashcore_inventory.py` con 10 tests cubriendo: modo metadata-only sin subprocesos, rechazo de allowlists ausentes/mismatched, rechazo estricto de plantillas/IPs/rutas en argv, invalidación por cambio de huella digital, clasificación de comandos y límites de ejecución (shell=False, DEVNULL, no-window, 10s timeout, 64 KiB).
+  - **T007-T011**: Implementada `tools/hashcore_inventory.py` sin imports del monitor. Verificados metadatos reales de instalación: `hashcore-toolkit.exe` (808.960 bytes, SHA `9db1842103c6abdea30913b9a3b0e0abcb3ba2fd103b689c45caee98312847eb`, versión PE `1.6.0+167`), wrapper `toolkit_cli.bat` (181 bytes, SHA `2c204d87365dd94231b62c42cde5f5adbc219f1842cfae3c4bead35f4a338daf`). Artefacto canónico generado en `artifacts/spec026-hashcore-inventory.json`.
+  - **T012-T014**: Evaluación de capacidades completada con 0 candidatos aceptados ante allowlist bloqueada.
+  - **T015-T018**: Suite global en **381/381 tests PASS** (0 fallos, 0 errores). Monitor en producción 100% aislado e inalterado.
+* **Próximo Paso**:
+  - Avanzar con Spec 025 (Métricas de Prometheus y Grafana) o Spec 028 (Backups de Base de Datos).
+
+---
+
 ## [2026-08-29] - Ejecución del Discovery Gate de Spec 024 (Electrical Source Discovery - T001-T004)
 
 * **Objetivo**: Relevar las fuentes de telemetría eléctrica del parque minero, auditar la no-equivalencia entre señales DC de hashboard y tensión de red AC, y emitir el reporte formal de capacidades sin comprometer el monitor en producción.

@@ -38,9 +38,40 @@
 - Secret/address scan.
 - Invariant showing reboot/restart action code/templates unchanged.
 
+## Implementation And Verification Evidence (T001-T018) — 2026-08-29
+
+- **T001 (Action Seam Hashes)**:
+  * Current `app/miner_monitor.py` Hashcore action seam (lines 1654-1768, `_hashcore_cli_path`, `run_hashcore_discovery`, `run_hashcore_cli`): SHA-256 is `c31064ce2d5120ff26506acd91affb58b8ded64ff463cab0424f18ad70034039`.
+  * Templates verified: `reboot_args_template: ['reboot', '{host}-{host}']`, `restart_args_template: ['restart', '{host}-{host}']`.
+- **T002-T003 (Metadata-Only Baseline & Empty Allowlist)**:
+  * Static installation inspection reproduced cleanly in metadata-only mode without subprocess creation or miner IO.
+  * Vendor allowlist remains intentionally empty (`contracts/discovery-allowlist.md`), preserving the mandatory `blocked` process-discovery result.
+- **T004-T006 (Comprehensive Test Suite)**:
+  * Created `tests/test_hashcore_inventory.py` with 10 unit tests covering:
+    - Zero subprocess execution in metadata-only mode.
+    - Zero subprocess execution for absent, empty, or mismatched allowlists.
+    - Strict rejection of argv containing templates, IP addresses, paths, or secrets.
+    - Fingerprint invalidation upon hash mismatch.
+    - Conservative command risk classification (`read_only`, `mutating`, `unknown`).
+    - Subprocess execution constraints (`shell=False`, `stdin=DEVNULL`, `CREATE_NO_WINDOW`, 10s timeout, 64 KiB stream bounds).
+    - Secret, path, and IP address sanitization.
+  * All 10 tests PASS; full test suite grows to 381 tests PASS.
+- **T007-T011 (Standalone Inventory Tool)**:
+  * Implemented `tools/hashcore_inventory.py` with metadata-only default and zero monitor imports.
+  * Generated deterministic sanitized artifact: `artifacts/spec026-hashcore-inventory.json`.
+  * Verified installation fingerprints:
+    - Wrapper (`toolkit_cli.bat`): 181 bytes, SHA-256 `2c204d87365dd94231b62c42cde5f5adbc219f1842cfae3c4bead35f4a338daf`.
+    - Executable (`hashcore-toolkit.exe`): 808,960 bytes, SHA-256 `9db1842103c6abdea30913b9a3b0e0abcb3ba2fd103b689c45caee98312847eb`.
+    - Windows PE Product Version: `1.6.0+167`.
+    - Shape: `argv_passthrough`.
+- **T012-T014 (Capability Assessment)**:
+  * Since process discovery is blocked pending vendor documentation, zero integration candidates are accepted (`candidates: []`).
+- **T015-T018 (Validation & Closeout)**:
+  * `py_compile` on `tools/hashcore_inventory.py` and `tests/test_hashcore_inventory.py`: OK.
+  * Production monitor call sites and action scope remain 100% unchanged.
+
 ## Runtime Rollout
 
-- Not started.
-- Static metadata inspection is complete; standalone tooling and invocation are
-  not implemented.
-- Do not mark this spec complete from checked tasks or compilation alone.
+- Metadata-only inventory tool implemented, tested, and executed in production environment.
+- Process discovery remains blocked pending vendor allowlist approval.
+- Production monitor is completely uncoupled and unaffected.

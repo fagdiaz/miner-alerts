@@ -63,10 +63,10 @@ alone is insufficient.
 - [x] T018 Measure bounded query count, 24-hour latency under two seconds and
   database growth; run targeted/full tests, migration checks, `py_compile` and
   core/action invariant comparisons for SC-005-SC-007.
-- [ ] T019 Activate only the read-only paths in a controlled window after Spec
+- [x] T019 Activate only the read-only paths in a controlled window after Spec
   022 exit, capture D+0/D+1/D+3 wording/failure/performance evidence and disable
   on any unsupported confirmed claim.
-- [ ] T020 Synchronize `evidence.md`, roadmap, delivery calendar, diagnostics
+- [x] T020 Synchronize `evidence.md`, roadmap, delivery calendar, diagnostics
   docs and newest-first development log; leave blocked checks open.
 
 ## Requirement Coverage

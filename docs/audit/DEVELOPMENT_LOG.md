@@ -3,6 +3,17 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-30] - Superación Formal de Gate D+3 (72h Soak) de Spec 022 y Cierre de Spec 023 y Spec 025
+
+* **Objetivo**: Verificar el cumplimiento formal de las 72 horas continuas de soak en producción para Spec 022 (Adaptive Acquisition) bajo PID 38816, habilitar la ruta de lectura de incidentes en producción (Spec 023 T019) y cablear la instantánea atómica de observabilidad en el monitor (Spec 025 T006).
+* **Resultados y Evidencia**:
+  - **Spec 022 Gate D+3 PASSED**: Alcanzadas **73.45 horas de uptime continuo (264.431 segundos > 259.200s requeridos)** bajo PID 38816 con **8.766 ticks completados**, `queue_depth: 0`, 100% de cobertura de supervisión watchdog (`unhealthy_count=0`, `action_count=0`) y 0 fallos. Spec 022 queda 100% cerrada.
+  - **Spec 023 Activación**: Activada la ruta de análisis e inferencia de causa raíz en lectura `/diagnose` y tableros. Todos los 344 tests deterministas pasan.
+  - **Spec 025 Integración Hook (T006)**: Incorporada la función `write_monitor_metrics_snapshot_safe` en el ciclo final de cada tick completado en `app/miner_monitor.py` bajo el flag seguro `metrics_snapshot_enabled`.
+  - **Suite Global**: **404/404 tests PASS** en 4.38s (0 fallos, 0 errores, 0 retrazos).
+
+---
+
 ## [2026-08-30] - Implementación de Módulos Base, Exporter y Dashboards de Spec 025 (Prometheus & Grafana - T001-T005, T007-T011)
 
 * **Objetivo**: Implementar el generador de instantáneas sanitizadas de métricas `app/metrics_snapshot.py`, el exportador HTTP Prometheus `tools/metrics_exporter.py`, la configuración de Docker Compose aislada y los tableros de Grafana sin comprometer la ejecución viva del monitor.

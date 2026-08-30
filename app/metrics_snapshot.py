@@ -338,3 +338,72 @@ def load_metrics_snapshot(
         return False, parsed, age, f"snapshot_stale: age {age:.1f}s > {max_age_seconds:.1f}s"
 
     return True, parsed, age, "ok"
+
+
+def write_monitor_metrics_snapshot_safe(
+    path: str | Path,
+    process_start_ts: float,
+    tick_sequence: int,
+    completed_ts: float,
+    telegram_poller_ts: Optional[float],
+    telegram_sender_ts: Optional[float],
+    queue_depth: int,
+    telegram_counters: Dict[str, int],
+    collector_age_seconds: Optional[float],
+    collector_status: str,
+    epoch_duration_seconds: Optional[float],
+    miner_metrics_list: List[Dict[str, Any]],
+) -> bool:
+    """Safely constructs and atomically writes a snapshot from monitor state."""
+    try:
+        miners: List[MinerMetrics] = []
+        for m in miner_metrics_list:
+            miners.append(
+                MinerMetrics(
+                    miner_id=str(m.get("miner_id", "")),
+                    sample_ts=float(m.get("sample_ts", completed_ts)),
+                    responded=bool(m.get("responded", False)),
+                    rate_ths=float(m["rate_ths"]) if m.get("rate_ths") is not None else None,
+                    threshold_ths=float(m.get("threshold_ths", 0.0)),
+                    state=str(m.get("state", "UNKNOWN")),
+                    active_boards=int(m["active_boards"]) if m.get("active_boards") is not None else None,
+                    expected_boards=int(m.get("expected_boards", 3)),
+                    episode_active=bool(m.get("episode_active", False)),
+                    episode_duration_seconds=float(m.get("episode_duration_seconds", 0.0)),
+                    acquisition_quality=str(m.get("acquisition_quality", "valid")),
+                    acquisition_latency_seconds=float(m["acquisition_latency_seconds"]) if m.get("acquisition_latency_seconds") is not None else None,
+                )
+            )
+
+        snapshot = MetricsSnapshot(
+            schema_version=SNAPSHOT_SCHEMA_VERSION,
+            generated_ts=completed_ts,
+            monitor=MonitorMetrics(
+                process_start_ts=process_start_ts,
+                tick_sequence=tick_sequence,
+                last_tick_completed_ts=completed_ts,
+                telegram_poller_ts=telegram_poller_ts,
+                telegram_sender_ts=telegram_sender_ts,
+                queue_depth=queue_depth,
+            ),
+            miners=miners,
+            telegram=TelegramMetrics(
+                enqueued_total=int(telegram_counters.get("enqueued", 0)),
+                sent_total=int(telegram_counters.get("sent", 0)),
+                send_error_total=int(telegram_counters.get("error", 0)),
+                dropped_total=int(telegram_counters.get("dropped", 0)),
+                bypass_total=int(telegram_counters.get("bypass", 0)),
+                fallback_total=int(telegram_counters.get("fallback", 0)),
+            ),
+            collector=CollectorMetrics(
+                status=collector_status,
+                age_seconds=collector_age_seconds,
+            ),
+            acquisition=AcquisitionMetrics(
+                epoch_duration_seconds=epoch_duration_seconds,
+            ),
+        )
+        return write_metrics_snapshot_atomic(path, snapshot)
+    except Exception:
+        return False
+

@@ -4632,6 +4632,46 @@ def main() -> None:
                             f"schema=1 tick_sequence={tick_sequence}"
                         )
                     heartbeat_error_logged = False
+                    if config.get("metrics_snapshot_enabled", False):
+                        try:
+                            from app.metrics_snapshot import write_monitor_metrics_snapshot_safe
+                            snapshot_path = config.get("metrics_snapshot_path", "diagnostics/metrics/current.json")
+                            m_list = []
+                            for m_cfg in config.get("miners", []):
+                                m_name = str(m_cfg.get("name", ""))
+                                m_key = display_name(m_name)
+                                m_st = miner_states.get(m_key)
+                                if m_st:
+                                    m_list.append({
+                                        "miner_id": m_key,
+                                        "sample_ts": m_st.last_seen_ts or completed_ts,
+                                        "responded": getattr(m_st, "last_responded", True),
+                                        "rate_ths": m_st.last_rate_ths,
+                                        "threshold_ths": float(config.get("hashrate_threshold_ths", 90.0)),
+                                        "state": str(m_st.state),
+                                        "active_boards": getattr(m_st, "last_active_boards", None),
+                                        "expected_boards": int(config.get("expected_boards", 3)),
+                                        "episode_active": bool(m_st.episode_start_ts is not None),
+                                        "episode_duration_seconds": float(getattr(m_st, "episode_duration_seconds", 0.0)),
+                                        "acquisition_quality": str(getattr(m_st, "last_acquisition_quality", "valid")),
+                                        "acquisition_latency_seconds": getattr(m_st, "last_acquisition_latency", None),
+                                    })
+                            write_monitor_metrics_snapshot_safe(
+                                path=snapshot_path,
+                                process_start_ts=process_start_ts,
+                                tick_sequence=tick_sequence,
+                                completed_ts=completed_ts,
+                                telegram_poller_ts=_TELEGRAM_POLLER_TS,
+                                telegram_sender_ts=_TELEGRAM_SENDER_TS,
+                                queue_depth=_TELEGRAM_QUEUE.qsize(),
+                                telegram_counters={},
+                                collector_age_seconds=collector_age_seconds,
+                                collector_status="ok",
+                                epoch_duration_seconds=None,
+                                miner_metrics_list=m_list,
+                            )
+                        except Exception:
+                            pass
                 except Exception as exc:
                     if not heartbeat_error_logged:
                         log(

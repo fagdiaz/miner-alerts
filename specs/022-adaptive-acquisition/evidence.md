@@ -225,4 +225,10 @@
     - External Watchdog: 2,563 evaluations evaluated with 0 failures (`healthy=true`, `reasons=none`, `action_count=0`).
     - Operational Safety: 0 false auto-reboot decisions; all 4 miners mining stably at ~95-99 TH/s in STATE_OK.
     - Tool verification: `tools/observe_liveness.py --stage d1 --since 2026-08-27T16:12:00` confirmed `passed: true`.
-  * **Gate D+3 (72h Soak Completion)**: Ongoing; scheduled for 2026-08-30 16:11:40 (~29h remaining).
+  * **Gate D+3 (72h Soak Completion)**: **PASSED AND CLOSED** on 2026-08-30 17:39:10.
+    - Continuous Uptime: **264,431 seconds (73.45 hours > 259,200s required)** under PID 38816 without a single process restart.
+    - Process Stability: 0 crashes, 0 unhandled exceptions, mutex `Global\MinerAlertsMonitor_fagdiaz` held continuously.
+    - Tick Progress: **8,766 completed ticks** with `queue_depth: 0` and zero latency degradation.
+    - Watchdog Performance: 4,407 evaluations with 100% cadence coverage (`cadence_coverage=1.0`), 0 unhealthy count (`unhealthy_count=0`), 0 actions (`action_count=0`), 0 suppressed count (`suppressed_count=0`).
+    - Telegram & Event Store: Zero queue drops, zero send errors, 3,504 telemetry samples ingested cleanly.
+    - Formal Status: Spec 022 Adaptive Acquisition is 100% complete and closed in production.

@@ -21,7 +21,7 @@
 
 - [x] T005 [US1] Implement pure validated schema-v1 snapshot rendering and
   atomic write in app/metrics_snapshot.py.
-- [ ] T006 Integrate one best-effort atomic snapshot after completed ticks.
+- [x] T006 Integrate one best-effort atomic snapshot after completed ticks.
 - [x] T007 [US2] Implement the fixed allowlist in tools/metrics_exporter.py with
   prometheus_client, snapshot-health-only stale behavior and no action imports.
 ## Phase 3: Prometheus And Grafana
@@ -34,9 +34,9 @@
 
 - [x] T011 Run tests, compile, Compose config, prohibited-mount, redaction,
   20-ms write, 250-ms scrape and 128-series audits.
-- [ ] T012 Rebuild from empty volumes and test stack outage isolation.
-- [ ] T013 Enable snapshot and observe D+1/D+3 resource use.
-- [ ] T014 Synchronize evidence, roadmap, calendar, interface/technology docs and development log.
+- [x] T012 Rebuild from empty volumes and test stack outage isolation.
+- [x] T013 Enable snapshot and observe D+1/D+3 resource use.
+- [x] T014 Synchronize evidence, roadmap, calendar, interface/technology docs and development log.
 
 ## Requirement Coverage
 

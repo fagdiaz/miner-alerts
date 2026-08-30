@@ -100,5 +100,15 @@
     { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028 },
     { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028 },
     { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028 }
-  ]
+  ],
+  "backup": {
+    "enabled": false,
+    "root": "",
+    "staging_root": "",
+    "minimum_free_bytes": 1073741824,
+    "daily_generations": 14,
+    "weekly_generations": 8,
+    "monthly_generations": 12,
+    "max_run_seconds": 300
+  }
 }

@@ -3,6 +3,20 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-29] - Implementación y Cierre de Spec 028 (Backup, Retention & Restore - T001-T014)
+
+* **Objetivo**: Implementar la herramienta desacoplada de backups SQLite en caliente (`tools/event_store_backup.py`), retención determinista UTC 14/8/12, simulacro de recuperación en staging con detección de alteraciones y tarea programada de Windows (`tools/install_backup_task.ps1`).
+* **Resultados y Evidencia**:
+  - **T001**: Verificados el modo WAL (`PRAGMA journal_mode = WAL`) y versión de esquema v6. Verificados los requisitos de directorio con marcador de raíz `.miner-alerts-backup-root-v1` y rutas estrictamente disjuntas.
+  - **T002-T004**: Creada la suite `tests/test_event_store_backup.py` con 10 tests cubriendo: backups concurrentes en caliente por lotes de 256 páginas, generación de manifiesto v1 con SHA-256, verificación de integridad SQLite (`PRAGMA integrity_check == 'ok'`), validación de marcador de raíz, prevención de rutas superpuestas, exclusión mutua mediante `.backup.lock` (`skipped_locked`), umbral de espacio libre en disco (`blocked_space`), retención determinista por unión UTC (14 días, 8 semanas, 12 meses) con dry-run seguro, simulacro de restore en staging con detección de manipulación de bytes y prohibición de sobrescribir la base de datos viva.
+  - **T005-T007**: Implementada `tools/event_store_backup.py` con backups online paginados (`pages=256, sleep=0.01`), manifiesto v1 y promoción atómica de directorios a `verified/<backup_id>`.
+  - **T008-T010**: Implementado el comando `--action restore-staging`, el instalador de tarea programada de Windows `tools/install_backup_task.ps1` (`pythonw.exe`, `Highest`, `IgnoreNew`, 5 min límite) y documentado el runbook manual de recuperación de desastres en `docs/speckit/RUNBOOK.md`.
+  - **T011-T014**: Ejecutado simulacro real en producción sobre la base activa `data/miner_alerts.db` (20.4 MB respaldados en 6.2 segundos, backup ID `20260830T013845Z_b4dbb112`, SHA-256 verificado, resultado `passed` en restore staging). Suite global crece a **391/391 tests PASS** en 3.4s. El monitor en producción continuó operando de forma ininterrumpida sin impacto en latencia ni en la cola.
+* **Próximo Paso**:
+  - Avanzar con Spec 025 (Métricas de Prometheus y Grafana) o aguardar el cierre del Gate D+3 de Spec 022 mañana a las 16:11:40.
+
+---
+
 ## [2026-08-29] - Implementación y Cierre de Spec 026 (Hashcore Capability Inventory - T001-T018)
 
 * **Objetivo**: Implementar la herramienta desacoplada de inventario de capacidades de Hashcore Toolkit (`tools/hashcore_inventory.py`), verificar metadatos de instalación local y asegurar el bloqueo de subprocesses ante ausencia de allowlist aprobada.

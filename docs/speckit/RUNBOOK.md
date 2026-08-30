@@ -567,6 +567,90 @@ Use `/why` or `/why <miner>` to inspect the durable reason. A fleet block means
 only that degradation was simultaneous; it does not prove a pool, network, or
 power root cause. Manual confirmed actions remain available and unchanged.
 
+## EventStore Backup, Retention And Staged Restore (Spec 028)
+
+Use `tools/event_store_backup.py` to perform verified hot backups of the SQLite database, apply union retention, or execute a staged restore drill. Live database is NEVER overwritten by restore drills.
+
+### Prerequisites
+
+- The backup destination directory must be initialized with the root marker `.miner-alerts-backup-root-v1`.
+- The backup directory and staging directory must be disjoint from the repository and live database path.
+
+### Manual Backup Run
+
+```powershell
+& ".\\.venv\\Scripts\\python.exe" tools\\event_store_backup.py --source-db data\\miner_alerts.db --backup-root D:\\MinerAlertsBackups --action backup
+```
+
+Expected output:
+```json
+{
+  "result": "verified",
+  "backup_id": "20260830T..._...",
+  "duration_seconds": 6.2,
+  "sha256": "...",
+  "size_bytes": 20467712,
+  "schema_version": 6
+}
+```
+
+### Retention Dry-Run and Pruning
+
+Retention keeps the union of 14 daily, 8 weekly, and 12 monthly UTC generations.
+
+```powershell
+# Dry-run inspection:
+& ".\\.venv\\Scripts\\python.exe" tools\\event_store_backup.py --backup-root D:\\MinerAlertsBackups --action retention-dry-run
+
+# Apply pruning:
+& ".\\.venv\\Scripts\\python.exe" tools\\event_store_backup.py --backup-root D:\\MinerAlertsBackups --action retention-apply
+```
+
+### Staged Restore Drill (Verification Only)
+
+A restore drill copies the database to a new staging folder and verifies SHA-256 checksum, SQLite integrity (`PRAGMA integrity_check == 'ok'`), schema version, and key table row counts against the manifest:
+
+```powershell
+& ".\\.venv\\Scripts\\python.exe" tools\\event_store_backup.py --source-db data\\miner_alerts.db --backup-root D:\\MinerAlertsBackups --staging-root D:\\MinerAlertsStaging --action restore-staging --backup-id <backup_id> --restore-target D:\\MinerAlertsStaging\\drill_01
+```
+
+### Manual Disaster Recovery Replacement Runbook
+
+In the event of catastrophic storage corruption where the live database must be restored from a verified backup:
+
+1. **Stop the monitor service**:
+   ```powershell
+   nssm stop MinerAlerts
+   ```
+2. **Execute a staging restore drill** to prove the candidate backup artifact's integrity:
+   ```powershell
+   & ".\\.venv\\Scripts\\python.exe" tools\\event_store_backup.py --source-db data\\miner_alerts.db --backup-root D:\\MinerAlertsBackups --action restore-staging --backup-id <verified_backup_id> --restore-target D:\\MinerAlertsStaging\\verified_recovery
+   ```
+3. **Archive the damaged live database**:
+   ```powershell
+   Move-Item data\\miner_alerts.db "data\\miner_alerts.db.corrupt.$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+   Remove-Item data\\miner_alerts.db-wal, data\\miner_alerts.db-shm -ErrorAction SilentlyContinue
+   ```
+4. **Copy the staged verified database into place**:
+   ```powershell
+   Copy-Item D:\\MinerAlertsStaging\\verified_recovery\\miner_alerts.db data\\miner_alerts.db
+   ```
+5. **Restart the monitor service and verify healthy startup**:
+   ```powershell
+   nssm start MinerAlerts
+   Get-Content data\\monitor_heartbeat.json
+   ```
+
+### Scheduled Task Installation
+
+```powershell
+# Check task status:
+.\tools\install_backup_task.ps1 -Action Status
+
+# Register daily 03:00 AM backup task (hidden pythonw.exe, SYSTEM/Highest, IgnoreNew, 5m limit):
+.\tools\install_backup_task.ps1 -Action Register -BackupRoot "D:\MinerAlertsBackups"
+```
+
 ## Evidence Rules
 
 Every spec should record:

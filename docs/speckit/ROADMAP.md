@@ -16,6 +16,7 @@
 4. **[COMPLETADO] Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 (86.7k s) y D+3 (278.4k s / 77.3h) superados con éxito continuo; spec cerrada.
 5. **[EN OBSERVACIÓN D+3 - 95%] Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Producción activa con PID 38816 (2 workers paralelos). Gate D+1 superado formalmente (153.8k s / 42.7h > 86.4k s, 5.099 ticks, 0 alarmas). Gate D+3 en progreso hasta 2026-08-30 16:11.
 6. **[EN PROCESO - 95%] Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T008-T011), tablas aditivas `incident_assessments` e `assessment_fact_refs` (T012), renderizador semántico (T013), adaptador `/diagnose` (T014), integración dashboard (T015), config defaults (T016), validación determinista SC-001 a SC-004 (T017) y pruebas de rendimiento/latencia SC-005 a SC-007 (T018) completados con 344 tests PASS.
+7. **[DISCOVERY GATE COMPLETADO - BLOQUEADO POR HARDWARE] Spec 024 — Descubrimiento de Telemetría Eléctrica**: Relevamiento completado (T001-T004). Prohibida la inferencia de AC desde voltajes DC de hashboards; resultado formal `blocked: missing_hardware_dependency` ante ausencia de PDU/UPS de red. Adaptadores pausados sin deuda técnica ni falsas asunciones.
 
 ---
 

@@ -2,18 +2,22 @@
 
 **Input**: Design artifacts from `specs/024-electrical-source-discovery/`
 
+# Tasks: Electrical Source Discovery
+
+**Input**: Design artifacts from `specs/024-electrical-source-discovery/`
+
 **Risk**: MEDIUM
 
 **Tests**: Test-first contracts and runtime evidence are required where behavior changes. `py_compile` alone is insufficient.
 
 ## Phase 1: Discovery Gate
 
-- [ ] T001 Inventory actual PSU, PDU, UPS, meter and breaker capabilities; record
+- [x] T001 Inventory actual PSU, PDU, UPS, meter and breaker capabilities; record
   current miner-domain fields as non-AC evidence.
-- [ ] T002 Produce the sanitized capability report with model, firmware,
+- [x] T002 Produce the sanitized capability report with model, firmware,
   protocol, exact read allowlist, units, scaling, update rate and authentication.
-- [ ] T003 Capture sanitized read-only evidence or record the missing hardware dependency.
-- [ ] T004 Decide supported, unsupported or blocked before adding a dependency.
+- [x] T003 Capture sanitized read-only evidence or record the missing hardware dependency.
+- [x] T004 Decide supported, unsupported or blocked before adding a dependency.
 ## Phase 2: Conditional Red Contracts
 
 - [ ] T005 [P] Add normalization, finite/unit/clock/stale/timeout/no-carry-forward

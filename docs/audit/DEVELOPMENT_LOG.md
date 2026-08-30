@@ -3,6 +3,19 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-29] - Ejecución del Discovery Gate de Spec 024 (Electrical Source Discovery - T001-T004)
+
+* **Objetivo**: Relevar las fuentes de telemetría eléctrica del parque minero, auditar la no-equivalencia entre señales DC de hashboard y tensión de red AC, y emitir el reporte formal de capacidades sin comprometer el monitor en producción.
+* **Resultados y Evidencia**:
+  - **T001**: Auditados los 4 mineros Antminer S19j Pro. Se verificó que `chain_voltage_mv_avg` (~13-14.5 V DC) y `chain_power_w_total` (~3000 W DC) corresponden estrictamente a la etapa de conversión interna de las placas hashboards y no a la entrada de red eléctrica AC.
+  - **T002**: Generado el reporte formal sanitizado de capacidades en `artifacts/spec024-electrical-capability-report.json` conforme a `contracts/capability-report.md`.
+  - **T003**: Registrada formalmente la ausencia de hardware dedicado de medición de energía AC (PDU inteligente, UPS de red o medidor Modbus/SNMP) en la subred de minería.
+  - **T004**: Decisión formal del Discovery Gate: **`blocked` (missing_hardware_dependency)**. En cumplimiento de la Constitución, se retienen adaptadores y dependencias hasta contar con hardware físico real verificado, evitando telemetría falsa o inferencias no probadas.
+* **Próximo Paso**:
+  - Continuar con paquetes independientes de software puro (Spec 025 / Spec 028) mientras concluye el soak D+3 de Spec 022.
+
+---
+
 ## [2026-08-29] - Superación Formal del Gate D+1 de Spec 022 (Adaptive Acquisition)
 
 * **Objetivo**: Auditar el período de soak de 24 horas continuas en producción para Spec 022, verificar estabilidad de adquisición adaptativa concurrente, registrar evidencia y evaluar el backlog operativo.

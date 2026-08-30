@@ -11,24 +11,25 @@ POLÍTICA DE MODELOS Y DELEGACIÓN ESCALADA (CONSTITUCIÓN v1.4.0)
 ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 =============================================================================
 - Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO al 100% tras 77.3h de soak continuo sin fallos.
-- Spec 022 (Adaptive Acquisition): T001-T014 COMPLETADOS (381 tests PASS).
-  - Gate D+1 SUPERADO formalmente a las 42.7h. Uptime acumulado en producción: >53.7 horas (>193.000s) y 6.415 ticks bajo PID 38816 con queue_depth=0 y watchdog 100% healthy.
-  - Gate D+3: en progreso; finaliza el 2026-08-30 a las 16:11:40 (~18h restantes).
+- Spec 022 (Adaptive Acquisition): T001-T014 COMPLETADOS (404 tests PASS).
+  - Gate D+1 SUPERADO formalmente a las 42.7h. Uptime acumulado en producción: >60.3 horas (>217.000s) y 7.207 ticks bajo PID 38816 con queue_depth=0 y watchdog 100% healthy.
+  - Gate D+3: en progreso; finaliza hoy domingo 2026-08-30 a las 16:11:40 (~11.6h restantes).
 - Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018, 344 tests PASS). T019 activará rutas de lectura tras cierre de Spec 022.
 - Spec 024 (Electrical Source Discovery): Discovery Gate T001-T004 COMPLETADO. Decisión formal `blocked: missing_hardware_dependency` ante ausencia de PDU/UPS de red; sin inferencias erróneas de tensión AC.
+- Spec 025 (Prometheus Metrics & Grafana): T001-T005, T007-T011 COMPLETADOS (`app/metrics_snapshot.py`, `tools/metrics_exporter.py`, Docker Compose, 3 tableros Grafana, 13 tests unitarios, scrape <250ms, 103 series budget).
 - Spec 026 (Hashcore Capability Inventory): T001-T018 COMPLETADOS (`tools/hashcore_inventory.py`, 10 tests unitarios, metadatos PE `1.6.0+167`, allowlist vacía con resultado `blocked`).
 - Spec 028 (Backup, Retention & Restore): T001-T014 COMPLETADOS (`tools/event_store_backup.py`, `tools/install_backup_task.ps1`, 10 tests unitarios, simulacro real de 20.4 MB en 6.2s completado con éxito, runbook documentado).
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
-- Suite global: 391 tests ejecutados en 3.4s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Suite global: 404 tests ejecutados en 3.58s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS (391 tests actuales):
+COMANDO DE VERIFICACIÓN DE PRUEBAS (404 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 =============================================================================
 PRÓXIMOS PASOS RECOMENDADOS
 =============================================================================
-1. Spec 025 (Prometheus Metrics & Grafana): desarrollo modular con Docker/exporter fuera de proceso.
-2. Mañana domingo 2026-08-30 16:11:40: auditar el cierre del Gate D+3 de Spec 022 y activar Spec 023 (T019).
+1. Hoy domingo a las 16:11:40: auditar el cierre del Gate D+3 de Spec 022 (72h soak bajo PID 38816) y cerrar formalmente Spec 022.
+2. Tras el cierre de Spec 022: activar observación runtime de Spec 023 (T019) y cablear hook de Spec 025 (T006).
 
 =============================================================================
 MODELO RECOMENDADO: Gemini 3.7 Flash High (desarrollo puro, pruebas y análisis)

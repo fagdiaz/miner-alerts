@@ -11,43 +11,24 @@ POLÍTICA DE MODELOS Y DELEGACIÓN ESCALADA (CONSTITUCIÓN v1.4.0)
 ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 =============================================================================
 - Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO al 100% tras 77.3h de soak continuo sin fallos.
-- Spec 022 (Adaptive Acquisition): T001-T012 COMPLETADOS (371 tests PASS).
-  - T009: Aislamiento read-only de diagnósticos verificado (24 tests en `test_t009_t011_invariants.py`).
-  - T011: Invariantes pre-rollout verificados (0 imports de acción, Telegram o startup guard).
-  - T012: Comparación shadow, paridad determinista y ensayo de rollback dinámico (3 tests en `test_t012_shadow_and_rollback.py`).
-- Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018). Queda solo observación runtime tras Spec 022.
+- Spec 022 (Adaptive Acquisition): T001-T014 COMPLETADOS (381 tests PASS).
+  - Gate D+1 SUPERADO formalmente a las 42.7h. Uptime acumulado en producción: >53.7 horas (>193.000s) y 6.415 ticks bajo PID 38816 con queue_depth=0 y watchdog 100% healthy.
+  - Gate D+3: en progreso; finaliza el 2026-08-30 a las 16:11:40 (~18h restantes).
+- Spec 023 (Incident Evidence Fusion): Código 100% completado (T001-T018, 344 tests PASS). T019 activará rutas de lectura tras cierre de Spec 022.
+- Spec 024 (Electrical Source Discovery): Discovery Gate T001-T004 COMPLETADO. Decisión formal `blocked: missing_hardware_dependency` ante ausencia de PDU/UPS de red; sin inferencias erróneas de tensión AC.
+- Spec 026 (Hashcore Capability Inventory): T001-T018 COMPLETADOS (`tools/hashcore_inventory.py`, 10 tests unitarios, metadatos PE `1.6.0+167`, allowlist vacía con resultado `blocked`).
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
-- Suite global: 371 tests ejecutados en 2.7s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Suite global: 381 tests ejecutados en 3.3s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS (371 tests actuales):
+COMANDO DE VERIFICACIÓN DE PRUEBAS (381 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
-DIRECTIVAS DE LECTURA DE CONTEXTO RÁPIDO:
-1. `app/miner_monitor.py` (Líneas 3690-3700 y el bucle principal en líneas 3820-3880).
-2. `app/acquisition.py` (`BoundedAcquirer`, `MinerEndpoint`, `AcquisitionEpoch`, `Api4028Transport`).
-3. `specs/022-adaptive-acquisition/tasks.md` (T013 pendiente: Activación controlada y observación D+1/D+3).
+=============================================================================
+PRÓXIMOS PASOS RECOMENDADOS
+=============================================================================
+1. Spec 025 (Prometheus Metrics & Grafana) o Spec 028 (Backup, Retention & Restore): desarrollo modular de software puro que no afecta el monitor en producción.
+2. Mañana domingo 2026-08-30 16:11:40: auditar el cierre del Gate D+3 de Spec 022 y activar Spec 023 (T019).
 
 =============================================================================
-OBJETIVO DE ESTA ITERACIÓN: SPEC 022 — T014 & OBSERVACIÓN D+1/D+3
-=============================================================================
-
-ESTADO: T013 COMPLETADO Y ACTIVO EN PRODUCCIÓN ✓
-- `BoundedAcquirer` cableado en el loop principal `while True:` de `app/miner_monitor.py`.
-- `"adaptive_acquisition_enabled": true` configurado en `app/config.json` (BOM eliminado).
-- Servicio NSSM `MinerAlerts` reiniciado exitosamente: nuevo **PID 38816** iniciado a las 16:11:40.
-- Mutex `Global\MinerAlertsMonitor_fagdiaz` adquirido limpiamente.
-- Startup guard activo (600s).
-- Logs confirman:
-  * `ADAPTIVE_ACQUISITION enabled=true workers=2 timeout=5.0s deadline=12.0s diagnostics=false`
-  * `ADAPTIVE_ACQUISITION acquirer_ready=true endpoints=4 workers=2`
-- Watchdog confirmó recuperación (16:11:54) y permanece 100% `healthy=true`.
-- Heartbeat activo con ticks avanzando y `queue_depth=0`.
-- Suite global: 371/371 tests PASS.
-
-PRÓXIMAS TAREAS:
-1. Spec 022 T014: Sincronizar documentación de cierre, calendario de gates (D+1: 2026-08-28 16:11, D+3: 2026-08-30 16:11) y release notes.
-2. Spec 023 T019: Observación runtime post-rollout de Spec 022 para activar rutas de solo lectura de evidencia de incidentes.
-
-=============================================================================
-MODELO RECOMENDADO: Gemini 3.7 Flash High (documentación, trazabilidad y análisis)
+MODELO RECOMENDADO: Gemini 3.7 Flash High (desarrollo puro, pruebas y análisis)
 =============================================================================

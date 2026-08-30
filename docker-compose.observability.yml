@@ -1,0 +1,70 @@
+# Docker Compose stack for Miner Alerts Local Observability (Spec 025).
+# Strictly isolated:
+# - No access to live database, state.json, config.json, secrets, or monitor process.
+# - Exporter runs on internal network without published host ports.
+# - Prometheus and Grafana bind strictly to 127.0.0.1 (loopback only).
+
+services:
+  exporter:
+    build:
+      context: .
+      dockerfile: Dockerfile.metrics
+    container_name: miner-alerts-exporter
+    restart: unless-stopped
+    read_only: true
+    volumes:
+      - ./diagnostics/metrics:/diagnostics/metrics:ro
+    networks:
+      - internal_observability
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:9100/healthz\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v2.53.2
+    container_name: miner-alerts-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - internal_observability
+    depends_on:
+      - exporter
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: miner-alerts-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - internal_observability
+    depends_on:
+      - prometheus
+
+networks:
+  internal_observability:
+    internal: false
+
+volumes:
+  prometheus_data:
+  grafana_data:

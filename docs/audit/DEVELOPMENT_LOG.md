@@ -3,6 +3,21 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-08-30] - Implementación de Módulos Base, Exporter y Dashboards de Spec 025 (Prometheus & Grafana - T001-T005, T007-T011)
+
+* **Objetivo**: Implementar el generador de instantáneas sanitizadas de métricas `app/metrics_snapshot.py`, el exportador HTTP Prometheus `tools/metrics_exporter.py`, la configuración de Docker Compose aislada y los tableros de Grafana sin comprometer la ejecución viva del monitor.
+* **Resultados y Evidencia**:
+  - **T001**: Definidas y registradas las 26 familias de métricas de Prometheus con el presupuesto estricto de cardinalidad: 23 series globales + 20 por minero (máximo 103 series para la flota de 4 mineros, con techo de seguridad de pruebas <=128).
+  - **T002**: Creada la suite `tests/test_metrics_snapshot.py` (7 tests unitarios) cubriendo: valores numéricos estrictamente finitos (rechazo de NaN e Infinito), rechazo de direcciones IP en nombres de mineros, validación estricta de enums (estados, calidad de adquisición, estado del collector, entregas de Telegram), detección de duplicados y detección de obsolescencia a los 60 segundos.
+  - **T003-T004**: Creada la suite `tests/test_metrics_exporter.py` (6 tests unitarios) cubriendo: exposición solo de salud ante snapshots obsoletos o ausentes (sin filtrar métricas antiguas de mineros), cardinalidad exacta de 103 series con flota activa y 101 series ante mineros offline con nulos, tiempo de raspado <250 ms (~10 ms medidos), verificación estática de Compose (imágenes fijadas, puertos loopback 127.0.0.1, exportador sin puertos públicos y 0 montajes prohibidos) y validación JSON de tableros.
+  - **T005 & T007**: Implementados `app/metrics_snapshot.py` y `tools/metrics_exporter.py` en Python puro con la biblioteca estándar (0 dependencias externas en el entorno local).
+  - **T008-T010**: Creados `Dockerfile.metrics`, `docker-compose.observability.yml`, `observability/prometheus/prometheus.yml` y los 3 tableros Grafana provisionados (`fleet_overview.json`, `monitor_liveness.json`, `telegram_delivery.json`). Agregadas las claves por defecto en `app/config.example.json` (`metrics_snapshot_enabled: false`).
+  - **T011**: Suite global en **404/404 tests PASS** en 3.58s (0 fallos, 0 errores). El monitor en producción continuó superando las 60 horas continuas de soak bajo PID 38816 con 0 colas y 0 demoras.
+* **Próximo Paso**:
+  - Aguardar la finalización formal del Gate D+3 de Spec 022 a las 16:11:40 para cablear el hook al monitor (T006) e iniciar la activación en vivo de Spec 023 y Spec 025.
+
+---
+
 ## [2026-08-29] - Implementación y Cierre de Spec 028 (Backup, Retention & Restore - T001-T014)
 
 * **Objetivo**: Implementar la herramienta desacoplada de backups SQLite en caliente (`tools/event_store_backup.py`), retención determinista UTC 14/8/12, simulacro de recuperación en staging con detección de alteraciones y tarea programada de Windows (`tools/install_backup_task.ps1`).

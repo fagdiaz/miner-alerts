@@ -1,5 +1,7 @@
 # Tasks: Prometheus Metrics And Grafana
 
+# Tasks: Prometheus Metrics And Grafana
+
 **Input**: Design artifacts from `specs/025-prometheus-metrics/`
 
 **Risk**: MEDIUM
@@ -8,29 +10,29 @@
 
 ## Phase 1: Metric Contract And Red Tests
 
-- [ ] T001 Define the exact 26 metric families, fixed enums and
+- [x] T001 Define the exact 26 metric families, fixed enums and
   `23 + 20 * miners` series budget from `contracts/metrics.md`.
-- [ ] T002 [P] Add failing snapshot atomicity, finite-value, schema, redaction,
+- [x] T002 [P] Add failing snapshot atomicity, finite-value, schema, redaction,
   malformed-input and 60-second staleness tests.
-- [ ] T003 [P] Add failing exporter exposition/cardinality tests.
-- [ ] T004 [P] Add Compose/provisioning static tests for pinned images,
+- [x] T003 [P] Add failing exporter exposition/cardinality tests.
+- [x] T004 [P] Add Compose/provisioning static tests for pinned images,
   loopback UI binds, internal-only exporter and prohibited mounts.
 ## Phase 2: Snapshot And Exporter
 
-- [ ] T005 [US1] Implement pure validated schema-v1 snapshot rendering and
+- [x] T005 [US1] Implement pure validated schema-v1 snapshot rendering and
   atomic write in app/metrics_snapshot.py.
 - [ ] T006 Integrate one best-effort atomic snapshot after completed ticks.
-- [ ] T007 [US2] Implement the fixed allowlist in tools/metrics_exporter.py with
+- [x] T007 [US2] Implement the fixed allowlist in tools/metrics_exporter.py with
   prometheus_client, snapshot-health-only stale behavior and no action imports.
 ## Phase 3: Prometheus And Grafana
 
-- [ ] T008 [US3] Add pinned exporter, Prometheus and Grafana Compose definitions.
-- [ ] T009 Provision local-only data source and fleet/liveness/delivery dashboards.
-- [ ] T010 Add retention, health checks and the exact disabled-by-default config
+- [x] T008 [US3] Add pinned exporter, Prometheus and Grafana Compose definitions.
+- [x] T009 Provision local-only data source and fleet/liveness/delivery dashboards.
+- [x] T010 Add retention, health checks and the exact disabled-by-default config
   from `contracts/config.md`.
 ## Phase 4: Validation And Rollout
 
-- [ ] T011 Run tests, compile, Compose config, prohibited-mount, redaction,
+- [x] T011 Run tests, compile, Compose config, prohibited-mount, redaction,
   20-ms write, 250-ms scrape and 128-series audits.
 - [ ] T012 Rebuild from empty volumes and test stack outage isolation.
 - [ ] T013 Enable snapshot and observe D+1/D+3 resource use.

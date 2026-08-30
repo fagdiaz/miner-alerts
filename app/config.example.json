@@ -101,6 +101,9 @@
     { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028 },
     { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028 }
   ],
+  "metrics_snapshot_enabled": false,
+  "metrics_snapshot_path": "diagnostics/metrics/current.json",
+  "metrics_snapshot_stale_seconds": 60,
   "backup": {
     "enabled": false,
     "root": "",

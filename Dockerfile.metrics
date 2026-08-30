@@ -1,0 +1,19 @@
+# Pinned lightweight Python image for auxiliary metrics exporter (Spec 025)
+FROM python:3.12-slim-bookworm
+
+WORKDIR /app
+
+COPY requirements-observability.txt .
+RUN pip install --no-cache-dir -r requirements-observability.txt
+
+COPY app/metrics_snapshot.py app/
+COPY tools/metrics_exporter.py tools/
+
+# Run non-root user for security
+RUN useradd -u 10001 -m exporteruser && chown -R exporteruser:exporteruser /app
+USER exporteruser
+
+EXPOSE 9100
+
+ENTRYPOINT ["python", "tools/metrics_exporter.py"]
+CMD ["--snapshot-path", "/diagnostics/metrics/current.json", "--port", "9100"]

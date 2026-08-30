@@ -1,0 +1,2 @@
+# Dependencies for auxiliary metrics exporter container (Spec 025)
+prometheus-client==0.20.0

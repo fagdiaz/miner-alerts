@@ -1,6 +1,6 @@
 # Evidence: Electrical Source Discovery
 
-**Status**: Planned; no implementation or runtime evidence yet
+**Status**: Completed (Discovery Gate: blocked_external - missing_hardware_dependency)
 
 ## Planning Baseline
 

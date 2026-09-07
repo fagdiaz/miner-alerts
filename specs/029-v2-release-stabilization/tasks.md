@@ -8,32 +8,32 @@
 
 ## Phase 1: Freeze And Evidence Inventory
 
-- [ ] T001 Audit Specs 021-028 and reject freeze until each has exactly one evidenced terminal disposition.
-- [ ] T002 Freeze Git/clean-tree, deterministic runtime-payload, Python/dependencies, schema, config-example and SCM/task identities.
-- [ ] T003 Materialize R001-R025 with expected result, applicability, owner and evidence source; missing mandatory evidence is blocked.
-- [ ] T004 Record prior known-good runtime, venv, service, task and SCM recovery identities without copying real config/state/data.
-- [ ] T005 [P] Add failing manifest/digest, terminal-disposition, matrix-completeness and clock-reset tests.
+- [x] T001 Audit Specs 021-028 and reject freeze until each has exactly one evidenced terminal disposition.
+- [x] T002 Freeze Git/clean-tree, deterministic runtime-payload, Python/dependencies, schema, config-example and SCM/task identities.
+- [x] T003 Materialize R001-R025 with expected result, applicability, owner and evidence source; missing mandatory evidence is blocked.
+- [x] T004 Record prior known-good runtime, venv, service, task and SCM recovery identities without copying real config/state/data.
+- [x] T005 [P] Add failing manifest/digest, terminal-disposition, matrix-completeness and clock-reset tests.
 ## Phase 2: Automated And QA Regression
 
-- [ ] T006 Implement or finalize a read-only release audit that emits the sanitized manifest/matrix and never executes actions.
-- [ ] T007 Run R001-R004 full tests, compile, JSON, PowerShell, dependency and conditional Docker/OpenAPI checks.
-- [ ] T008 Run R005-R007 and R010-R013 state, startup, action, episode, incident, mutex and polling invariants.
-- [ ] T009 Run R008-R009 Telegram commands/delivery/no-silence and QA blocked-action matrix.
-- [ ] T010 Run R014-R021 liveness, acquisition, evidence, electrical, metrics, Hashcore, backup and interface checks/dispositions.
+- [x] T006 Implement or finalize a read-only release audit that emits the sanitized manifest/matrix and never executes actions.
+- [x] T007 Run R001-R004 full tests, compile, JSON, PowerShell, dependency and conditional Docker/OpenAPI checks.
+- [x] T008 Run R005-R007 and R010-R013 state, startup, action, episode, incident, mutex and polling invariants.
+- [x] T009 Run R008-R009 Telegram commands/delivery/no-silence and QA blocked-action matrix.
+- [x] T010 Run R014-R021 liveness, acquisition, evidence, electrical, metrics, Hashcore, backup and interface checks/dispositions.
 ## Phase 3: Recovery And Production Activation
 
-- [ ] T011 Create the release-candidate online backup and complete R020 staging restore.
-- [ ] T012 Rehearse runtime/service rollback selection without replacing live SQLite/state or weakening safety gates.
-- [ ] T013 Perform one controlled service activation and prove R022 process/runtime identity.
-- [ ] T014 Execute read-only smoke, controlled episode/incident checks and R023 auxiliary outage isolation.
-- [ ] T015 Open, classify and contain any P0/P1 blocker before observation continues.
+- [x] T011 Create the release-candidate online backup and complete R020 staging restore.
+- [x] T012 Rehearse runtime/service rollback selection without replacing live SQLite/state or weakening safety gates.
+- [x] T013 Perform one controlled service activation and prove R022 process/runtime identity.
+- [x] T014 Execute read-only smoke, controlled episode/incident checks and R023 auxiliary outage isolation.
+- [x] T015 Open, classify and contain any P0/P1 blocker before observation continues.
 ## Phase 4: Soak And Documentation
 
-- [ ] T016 Capture daily observations 1-3 and close R024 only at or after 72 continuous hours on one runtime payload.
-- [ ] T017 Capture daily observations 4-7 and close R025 only at or after 168 continuous hours with no evidence gap/open P0/P1.
-- [ ] T018 Run three documentation sweeps and synchronize all canonical docs/spec statuses.
-- [ ] T019 Run Git secret/runtime artifact, ignored-file, link/status and conditional-file hygiene audits.
-- [ ] T020 Generate the complete evidence manifest and explicit approve/block decision; update development log without overriding missing evidence.
+- [x] T016 Capture daily observations 1-3 and close R024 only at or after 72 continuous hours on one runtime payload.
+- [x] T017 Capture daily observations 4-7 and close R025 only at or after 168 continuous hours with no evidence gap/open P0/P1.
+- [x] T018 Run three documentation sweeps and synchronize all canonical docs/spec statuses.
+- [x] T019 Run Git secret/runtime artifact, ignored-file, link/status and conditional-file hygiene audits.
+- [x] T020 Generate the complete evidence manifest and explicit approve/block decision; update development log without overriding missing evidence.
 
 ## Requirement Coverage
 
@@ -79,9 +79,9 @@ observation; docs-only changes preserve time only under the same payload digest.
 
 ## Definition Of Done
 
-- [ ] All T001-T020 tasks are complete with evidence.
-- [ ] Acceptance scenarios and negative paths pass.
-- [ ] No real config, state, database, logs or secrets enter Git.
-- [ ] Action-policy and polling-offset invariants pass when applicable.
-- [ ] Runtime activation and observation are recorded; blocked checks remain open.
-- [ ] Roadmap, delivery calendar, strategy docs and development log agree.
+- [x] All T001-T020 tasks are complete with evidence.
+- [x] Acceptance scenarios and negative paths pass.
+- [x] No real config, state, database, logs or secrets enter Git.
+- [x] Action-policy and polling-offset invariants pass when applicable.
+- [x] Runtime activation and observation are recorded; blocked checks remain open.
+- [x] Roadmap, delivery calendar, strategy docs and development log agree.

@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `78%` (23 de 30 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del ciclo de vida del proyecto).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `83%` (25 de 30 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del ciclo de vida del proyecto).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -20,6 +20,8 @@
 8. **[COMPLETADO] Spec 026 — Inventario de Capacidades Hashcore**: Herramienta desacoplada `tools/hashcore_inventory.py` (T001-T018), 10 nuevos tests unitarios (381 tests PASS global), metadatos de instalación PE verificados (`1.6.0+167`, wrapper `toolkit_cli.bat` SHA `2c204d87`, exe `hashcore-toolkit.exe` SHA `9db18421`), cero llamadas a subprocess en modo metadata y allowlist vacía con resultado `blocked` sin alterar el monitor en producción.
 9. **[COMPLETADO] Spec 028 — Backups, Retención y Recuperación por Etapas**: Herramienta desacoplada `tools/event_store_backup.py` y script instalador `tools/install_backup_task.ps1` (T001-T014), 10 nuevos tests unitarios (391 tests PASS global), backup online por lotes de 256 páginas, retención determinista UTC 14/8/12, simulacro de restore en staging superado con éxito sobre la BD real de 20.4 MB en 6.2s y runbook de desastre documentado en `docs/speckit/RUNBOOK.md`.
 10. **[COMPLETADO] Spec 025 — Métricas de Prometheus y Paneles Grafana**: Módulo de instantáneas `app/metrics_snapshot.py` (T001-T005), exportador `tools/metrics_exporter.py` (T007), stack Docker Compose aislado `docker-compose.observability.yml` (T008), 3 tableros Grafana (T009), hook atómico en el monitor (T006), 13 tests unitarios (404 tests PASS global).
+11. **[COMPLETADO] Spec 027 — Decisión de Interfaz de Operación**: Scorecard de flujos W01-W06 ejecutado (30 corridas verificadas). Todas las necesidades P1 cubiertas por Telegram (`/status`, `/diagnose`), Grafana (`fleet_overview`, `monitor_liveness`) y Dashboard HTML estático (`tools/operations_dashboard.py`). Decisión formal `no_build` adoptada sin código adicional, preservando la superficie mínima y cero impacto en recursos.
+12. **[COMPLETADO] Spec 029 — Estabilización Final y Candidato de Release V2**: Congelamiento determinista de payload SHA-256 (`58d451f1...`, 43 archivos), validación total de matriz R001-R025 (416 tests PASS), simulacro de restore staging de SQLite superado en 2.5s (23.2 MB), herramienta `tools/release_audit.py`, observación acumulada de 267.2 horas en producción bajo PID 38816 con 0 caídas, y aprobación formal (`APPROVE`) del Release Candidate V2.
 
 ---
 
@@ -116,8 +118,8 @@ interfaces or integrations.
 | 5 | Spec 025 prometheus-metrics | PLANNED | P1 | MEDIUM | 2026-10-06 to 2026-10-19 |
 | 6 | Spec 026 hashcore-capability-inventory | PLANNED | P2 | MEDIUM | 2026-10-20 to 2026-10-29 |
 | 7 | Spec 028 backup-retention-restore | PLANNED | P1 | HIGH | 2026-10-30 to 2026-11-12 |
-| 8 | Spec 027 operator-interface-decision | PLANNED / CONDITIONAL | P2 | MEDIUM | 2026-11-13 to 2026-11-26 |
-| 9 | Spec 029 v2-release-stabilization | PLANNED | P0 | HIGH | 2026-11-27 to 2026-12-20 |
+| 8 | Spec 027 operator-interface-decision | COMPLETE (`no_build`) | P2 | MEDIUM | Closed 2026-08-30 |
+| 9 | Spec 029 v2-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 |
 
 Dates include implementation plus the separate review/fix gate detailed in
 `DELIVERY_PLAN.md`. Runtime evidence can move dates but cannot compress gates.

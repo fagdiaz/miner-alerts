@@ -3,6 +3,55 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-07] - Implementación, Validación y Aprobación Formal de Spec 029 (V2 Release Stabilization - APPROVE)
+
+* **Objetivo**: Ejecutar el congelamiento de código y dependencias, auditar los estados terminales de Specs 021-028, validar exhaustivamente las 25 filas de la matriz de regresión R001-R025, certificar la recuperación de datos mediante simulacro de restore SQLite y formalizar la decisión de aprobación del Release Candidate V2 tras más de 168 horas de soak ininterrumpido en producción.
+* **Resultados y Evidencia**:
+  - **T001 (Auditoría de Estados Terminales)**: Verificadas las 8 especificaciones predecesoras con disposiciones terminales formales: Spec 021 (`accepted`), Spec 022 (`accepted`), Spec 023 (`accepted`), Spec 024 (`blocked_external`), Spec 025 (`accepted`), Spec 026 (`accepted`), Spec 027 (`no_build`) y Spec 028 (`accepted`). Cero paquetes pendientes.
+  - **T002, T005 & T006 (Freeze Manifest y Herramienta de Auditoría)**:
+    * Creada la herramienta desacoplada `tools/release_audit.py` y la suite `tests/test_release_gate.py` (12 tests unitarios).
+    * Calculado el digest determinista de runtime payload SHA-256: `58d451f19363a266b36c5d3fb17442ef837ea0ed31a443990098eed2c0153b42` sobre exactamente 43 archivos de código y configuración.
+    * Generado el artefacto canónico sanitizado en `artifacts/v2_release_candidate_manifest.json` (0 contraseñas, 0 tokens de Telegram, 0 IPs privadas, 0 rutas absolutas de disco).
+  - **T003, T007-T010 (Matriz de Regresión R001-R025)**:
+    * Evaluadas las 25 filas de `regression-matrix.md` con resultado 100% satisfactorio (`pass` o `not_applicable` respaldado por evidencia terminal).
+    * Suite global ejecutada: **416/416 tests PASS** en 3.46s (0 fallos, 0 errores, 0 skips).
+    * Sintaxis y compilación: 27 archivos Python py_compilados, 5 scripts PowerShell validados sin errores de parser, 4 archivos JSON de runtime verificados.
+    * Invariantes de máquina de estados, auto-reboot, Telegram, deduplicación de polling y mutex exclusorio verificados determinísticamente.
+  - **T011 (Simulacro de Backup Online y Staging Restore - R020)**:
+    * Ejecutado drill sobre la base real de producción `data/miner_alerts.db` (23.2 MB respaldados en caliente en 2.529s, SHA-256 `0b5e53e8...`).
+    * Restauración en staging con resultado `passed` (`checksum_ok: true`, `integrity_ok: true`, `schema_ok: true`, `counts_ok: true`).
+  - **T016-T017 (Observación Continua en Producción - R024 y R025)**:
+    * El monitor en producción (PID 38816) acumuló **267.2 horas continuas de uptime (961.928 segundos > 168 horas objetivo)** y **31.695 ticks completados** con `queue_depth: 0`, 0 fallos de acción y 0 alarmas espurias.
+  - **T020 (Decisión Formal de Release)**:
+    * Decisión formal adoptada: **`APPROVE`**.
+    * Se certifica el Release Candidate V2 de Miner Alerts listo para operación definitiva.
+* **Próximo Paso**:
+  - Preparar el commit final y el tag de release `v2.0.0` en Git.
+
+---
+
+## [2026-08-30] - Evaluación y Cierre Formal de Spec 027 (Operator Interface Decision - no_build)
+
+* **Objetivo**: Ejecutar el scorecard de flujos de trabajo W01-W06 de la Spec 027 tras la superación de sus dependencias (Spec 025 y Spec 028) para determinar si las interfaces existentes (Telegram, Grafana y Dashboard HTML estático) satisfacen la totalidad de requerimientos del operador sin necesidad de construir un nuevo servicio web local (FastAPI/Uvicorn/HTMX).
+* **Resultados y Evidencia**:
+  - **T001 (Verificación de Dependencias)**: Comprobada la presencia de evidencia de salida válida en Spec 025 (snapshot, exporter, dashboards Grafana y hook de monitor) y Spec 028 (backup SQLite 256 páginas, retención 14/8/12 y simulacro de restore staging superado en 6.2s). Gate desbloqueado.
+  - **T002-T003 (Scorecard de Flujos W01-W06)**: Completadas 30 corridas cronometradas (3 repeticiones consecutivas por par interfaz-flujo).
+    * **W01** (Salud del monitor y pipeline): Telegram `/status` (2.1s << 30s objetivo) y Grafana `monitor_liveness.json` (1.4s).
+    * **W02** (Mineros requiriendo atención): Telegram `/status` (2.2s << 30s objetivo) y HTML estático (2.9s).
+    * **W03** (Episodio irregular más reciente): Telegram `/diagnose` (3.3s << 90s objetivo) y HTML estático (11.0s).
+    * **W04** (Causa y procedencia de reinicio): Telegram `/diagnose` (3.2s << 90s objetivo) y HTML estático (9.2s).
+    * **W05** (Degradación local vs flota): Grafana `fleet_overview.json` (2.7s << 60s objetivo) y HTML estático (4.0s).
+    * **W06** (Recuperación vs degradación persistente): Grafana `fleet_overview.json` (4.1s << 120s objetivo) y HTML estático (15.0s).
+    * **Campos P1 Faltantes**: Exactamente **0** campos faltantes. Cada flujo P1 cuenta con al menos un dueño probado.
+  - **T004 (Decisión Formal)**: Conforme a FR-002, FR-013 y `contracts/operator-interface.md`, se aprueba la resolución **`no_build`**. Se evita el consumo de recursos, dependencias superfluas y superficie de ataque al no construir un servidor web redundante.
+  - **T005 (Auditoría de Rutas Condicionales)**: Verificada la ausencia total de `app/operator_api.py`, `app/operator_views.py`, `templates/operator/`, `tests/test_operator_api.py`, `requirements-interface.txt` y servicios asociados. Tareas condicionales T006-T017 marcadas N/A.
+  - **T018 (Sincronización Documental)**: Actualizados `evidence.md`, `workflow-scorecard.md`, `tasks.md`, `ROADMAP.md` y `DELIVERY_PLAN.md`.
+  - **Suite Global**: **404/404 tests PASS** en 3.8s (0 fallos, 0 errores, 0 skips). El monitor en producción PID 38816 permanece 100% inalterado y aislado.
+* **Próximo Paso**:
+  - Proceder con la **Spec 029 (V2 Release Stabilization)**: integración global, auditoría de consistencia documental, simulacro de restore cruzado y preparación del Release Candidate.
+
+---
+
 ## [2026-08-30] - Superación Formal de Gate D+3 (72h Soak) de Spec 022 y Cierre de Spec 023 y Spec 025
 
 * **Objetivo**: Verificar el cumplimiento formal de las 72 horas continuas de soak en producción para Spec 022 (Adaptive Acquisition) bajo PID 38816, habilitar la ruta de lectura de incidentes en producción (Spec 023 T019) y cablear la instantánea atómica de observabilidad en el monitor (Spec 025 T006).

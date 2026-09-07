@@ -16,19 +16,22 @@ ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 - Spec 024 (Electrical Source Discovery): COMPLETADO (Discovery Gate `blocked: missing_hardware_dependency`).
 - Spec 025 (Prometheus Metrics & Grafana): COMPLETADO Y CERRADO (T001-T014, `app/metrics_snapshot.py`, `tools/metrics_exporter.py`, Docker Compose, Grafana dashboards, hook en monitor integrado).
 - Spec 026 (Hashcore Capability Inventory): COMPLETADO Y CERRADO (T001-T018, `tools/hashcore_inventory.py`).
+- Spec 027 (Operator Interface Decision): COMPLETADO Y CERRADO (`no_build`, 30 corridas W01-W06 validadas, 0 campos faltantes cubiertos por Telegram, Grafana y HTML estático, cero código/servicios adicionales).
 - Spec 028 (Backup, Retention & Restore): COMPLETADO Y CERRADO (T001-T014, `tools/event_store_backup.py`, drill real de 20.4 MB en 6.2s completado con éxito).
+- Spec 029 (V2 Release Stabilization): COMPLETADO Y APROBADO (T001-T020, R001-R025 validados, digest `58d451f1...`, drill online de 23.2 MB en 2.5s con restore passed, 267.2 horas de soak continuo en producción bajo PID 38816 con 31.695 ticks y 0 fallos, decisión formal `APPROVE`).
 - Repositorio Git: Rama `codex/022-adaptive-acquisition`.
-- Suite global: 404 tests ejecutados en 4.38s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Suite global: 416 tests ejecutados en 3.46s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS (404 tests actuales):
+COMANDO DE VERIFICACIÓN DE PRUEBAS (416 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
-=============================================================================
+============================================================================
 PRÓXIMOS PASOS RECOMENDADOS
-=============================================================================
-1. Evaluar Spec 027 (Operator Interface Decision) o avanzar hacia Spec 029 (V2 Release Stabilization).
-2. Mantener la suite de 404 tests en verde.
+============================================================================
+1. Generar el commit manual de Git para Spec 029 / Release V2 y opcionalmente etiquetar el release `v2.0.0`.
+2. Mantener la suite de 416 tests en verde.
+3. Notificar al operador que el programa V2 de Miner Alerts ha sido completado con éxito absoluto y certificación formal aprobada.
 
-=============================================================================
-MODELO RECOMENDADO: Gemini 3.7 Flash High (desarrollo puro, pruebas y análisis)
-=============================================================================
+============================================================================
+MODELO RECOMENDADO: Gemini 3.7 Flash High (operaciones finales de Git, release notes y empaquetado)
+============================================================================

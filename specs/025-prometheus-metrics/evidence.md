@@ -1,6 +1,6 @@
 # Evidence: Prometheus Metrics And Grafana
 
-**Status**: Planned; no implementation or runtime evidence yet
+**Status**: Completed and Closed (accepted)
 
 ## Planning Baseline
 

@@ -21,20 +21,21 @@ ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
 - Spec 028 (Backup, Retention & Restore): COMPLETADO Y CERRADO (T001-T014, `tools/event_store_backup.py`, drill real de 20.4 MB en 6.2s completado con éxito).
 - Spec 029 (V2 Release Stabilization): COMPLETADO Y APROBADO (T001-T020, R001-R025 validados, digest `58d451f1...`, drill online de 23.2 MB en 2.5s con restore passed, 267.2 horas de soak continuo en producción bajo PID 38816 con 31.695 ticks y 0 fallos, decisión formal `APPROVE`).
 - TAG DE PRODUCCIÓN: `v2.0.0` creado y publicado en remoto.
-- Repositorio Git: Rama `codex/022-adaptive-acquisition` (pendiente merge a `main`).
-- Suite global: 416 tests ejecutados en 3.73s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Repositorio Git: Ramas `main` y `codex/022-adaptive-acquisition` sincronizadas y empujadas a `origin` (commit `388c3d9`).
+- Suite global: 416 tests ejecutados en 3.51s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
+- Producción: PID 38816 corriendo estable (>267h continuas, >31.750 ticks, queue_depth=0).
 
 COMANDO DE VERIFICACIÓN DE PRUEBAS (416 tests actuales):
 .\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 
 ============================================================================
-PRÓXIMOS PASOS RECOMENDADOS
+PRÓXIMOS PASOS RECOMENDADOS (OPERACIÓN PASIVA & AUDITORÍA)
 ============================================================================
-1. Sincronización final de Git (commit y push de ROADMAP.md, SPEC_PROGRAM.md y AGENTS.md sincronizados al 100%).
-2. Si el usuario lo decide: realizar merge / fast-forward de la rama de trabajo hacia `main`.
-3. Mantener la suite de 416 tests en verde.
-4. Monitoreo pasivo de producción y retención de backups periódicos.
+1. Monitoreo pasivo en producción: supervisión continua del servicio Windows (PID 38816).
+2. Verificación de backups periódicos SQLite con `tools/event_store_backup.py`.
+3. Consultas y visualización mediante Telegram (`/status`, `/diagnose`), Grafana y dashboard HTML estático.
+4. Si en el futuro se incorporan nuevos requerimientos (sensores PDU externos, expansión de flota), iniciar nuevo programa V3 bajo disciplina SpecKit.
 
 ============================================================================
-MODELO RECOMENDADO: Gemini 3.7 Flash High (operaciones finales de Git y sincronización documental)
+MODELO RECOMENDADO: Gemini 3.7 Flash High (mantenimiento regular y lectura de auditoría)
 ============================================================================

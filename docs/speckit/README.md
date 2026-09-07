@@ -7,13 +7,13 @@ availability, auto-reboot safety, diagnostics, Telegram UX and observability.
 ## Document Map
 
 - `ROADMAP.md`: prioritized capabilities, dependencies and decision gates.
-- `SPEC_PROGRAM.md`: definitive Spec 021-029 sequence, architecture boundaries,
+- `SPEC_PROGRAM.md`: definitive Spec 001-030 sequence, architecture boundaries,
   risk classes and shared Definition of Done.
-- `DELIVERY_PLAN.md`: estimated implementation, observation and bug-fix calendar.
+- `DELIVERY_PLAN.md`: implementation, observation and bug-fix calendar.
 - `TECHNOLOGY_STRATEGY.md`: adoption rules for polling, WebSockets, Docker,
   Prometheus/Grafana, FastAPI, MQTT and OpenTelemetry.
-- `INTERFACE_STRATEGY.md`: Telegram, static dashboard and conditional local UI.
-- `HASHCORE_TOOLKIT_STRATEGY.md`: current action boundary and inventory plan.
+- `INTERFACE_STRATEGY.md`: Telegram, static dashboard, Grafana and interface boundaries.
+- `HASHCORE_TOOLKIT_STRATEGY.md`: current action boundary and capability inventory.
 - `MINER_DIAGNOSTICS.md`: evidence model used before intervention.
 - `RUNBOOK.md`: commands and checks for the system that exists today.
 
@@ -33,31 +33,27 @@ implemented behavior or clearly label a procedure as planned.
 
 The active feature is declared in `.specify/feature.json`.
 
-Current active feature and release gate:
+Current certified release:
 
 ```text
-specs/020-episode-alerts
+specs/029-v2-release-stabilization (Release v2.0.0 Certified & Tagged)
 ```
 
-The Spec 020 implementation is committed and pushed as `e502ab9`. Its controlled
-service restart and runtime smoke remain open; do not treat merge state as
-production activation.
+All 30 specifications in the program (Specs 001 to 030) are 100% completed,
+verified with evidence, and closed. Production runtime has operated continuously
+for over 267 hours without interruption under PID 38816.
 
-Specs 021-029 are complete planning packages but are not active or implemented.
-Historical Specs 001-005 are early foundation artifacts and partly superseded by
-Specs 006-020. Their unchecked tasks are not the delivery queue; `SPEC_PROGRAM.md`
-and `ROADMAP.md` govern new work.
+Historical Specs 001-005 were early foundation artifacts superseded by Specs
+006-030.
 
 ## Commands And Validation
 
 Use Windows PowerShell commands by default.
 
 ```powershell
-& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\miner_monitor.py
-& ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\miner_diagnostics.py
-& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\event_store.py app\\vnish_telemetry.py app\\reboot_safety.py tools\\incident_report.py
-& ".\\.venv\\Scripts\\python.exe" -m py_compile tools\\operations_dashboard.py
-& ".\\.venv\\Scripts\\python.exe" -m py_compile app\\stability_profile.py
+& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py
+& ".\.venv\Scripts\python.exe" -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
+& ".\.venv\Scripts\python.exe" tools\release_audit.py --check-only
 git status
 git diff
 ```

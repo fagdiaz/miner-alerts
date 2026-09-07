@@ -1,8 +1,8 @@
 # Hashcore Toolkit Strategy
 
-**Last reviewed**: 2026-08-13
-**Planned inventory window**: 2026-10-20 to 2026-10-29
-**Spec**: `specs/026-hashcore-capability-inventory`
+**Last reviewed**: 2026-09-07 (Release v2.0.0 Normalized)
+**Completed inventory gate**: 2026-08-29 (Closed)
+**Spec**: `specs/026-hashcore-capability-inventory` (Outcome: `accepted`)
 
 ## Current Integration
 

@@ -6,9 +6,9 @@ This runbook documents implemented behavior and executable checks. Planned work
 belongs in `ROADMAP.md`; estimated implementation and bug-fix windows belong in
 `DELIVERY_PLAN.md`.
 
-Current release gate as of 2026-08-13: Spec 030 commit `2afd65e` is deployed and
-its Telegram smoke passed. Spec 021 liveness is implemented and activated; its
-controlled SCM recovery proof passed and D+1/D+3 observation remains open.
+Current certified release: Version 2.0.0 released and certified (commit `388c3d9` /
+tag `v2.0.0`). All Specs 001-030 complete, 416 tests passing, 267.2h continuous
+production soak achieved under PID 38816 with zero P0/P1 alerts.
 
 ## Baseline Checks
 
@@ -649,6 +649,59 @@ In the event of catastrophic storage corruption where the live database must be 
 
 # Register daily 03:00 AM backup task (hidden pythonw.exe, SYSTEM/Highest, IgnoreNew, 5m limit):
 .\tools\install_backup_task.ps1 -Action Register -BackupRoot "D:\MinerAlertsBackups"
+```
+
+## Prometheus Metrics And Grafana
+
+The metrics subsystem exports sanitized fleet, episode, liveness, and delivery
+metrics from the atomic snapshot written by the native monitor.
+
+### Standalone Exporter (Python)
+
+Run the exporter as a standalone process reading `data/metrics_snapshot.json`:
+
+```powershell
+& ".\.venv\Scripts\python.exe" tools\metrics_exporter.py --config app\config.json --port 9108
+```
+
+Verify metrics endpoint locally:
+
+```powershell
+curl.exe http://localhost:9108/metrics
+```
+
+### Auxiliary Docker Compose Stack
+
+The optional Docker Compose stack runs Prometheus and Grafana bound to localhost:
+
+```powershell
+# Start Prometheus (:9090) and Grafana (:3000)
+docker compose -f observability\docker-compose.metrics.yml up -d
+
+# Check service health:
+docker compose -f observability\docker-compose.metrics.yml ps
+
+# View Grafana dashboards at http://localhost:3000 (admin/admin)
+```
+
+Dashboards are provisioned in `observability/grafana/dashboards/`:
+- `fleet_overview.json`: fleet hashrate, active boards, temperatures, status.
+- `monitor_liveness.json`: tick duration, queue depth, heartbeat age, Telegram latency.
+
+## Release Audit And Verification Gate
+
+Verify all release preconditions, code-freeze payload checksum, and regression
+matrix status before tagging or deploying:
+
+```powershell
+# Run read-only release gate verification:
+& ".\.venv\Scripts\python.exe" tools\release_audit.py --check-only
+
+# Generate sanitized release candidate manifest:
+& ".\.venv\Scripts\python.exe" tools\release_audit.py --output artifacts\v2_release_candidate_manifest.json
+
+# Run full automated test suite (416 tests):
+& ".\.venv\Scripts\python.exe" -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 ```
 
 ## Evidence Rules

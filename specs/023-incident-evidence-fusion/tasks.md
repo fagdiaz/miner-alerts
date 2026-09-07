@@ -106,10 +106,10 @@ the conservative-causality and action-invariant gates.
 
 ## Definition Of Done
 
-- [ ] All T001-T020 tasks are complete with evidence.
-- [ ] Every FR/SC mapping above passes or remains explicitly blocked.
-- [ ] Acceptance scenarios and negative paths pass deterministically.
-- [ ] No real config, state, database, logs, addresses or secrets enter Git.
-- [ ] State/action, polling-offset and Telegram-delivery invariants pass.
-- [ ] D+0/D+1/D+3 evidence has no unsupported confirmed cause or open P0/P1.
-- [ ] Roadmap, delivery calendar, strategy docs and development log agree.
+- [x] All T001-T020 tasks are complete with evidence.
+- [x] Every FR/SC mapping above passes or remains explicitly blocked.
+- [x] Acceptance scenarios and negative paths pass deterministically.
+- [x] No real config, state, database, logs, addresses or secrets enter Git.
+- [x] State/action, polling-offset and Telegram-delivery invariants pass.
+- [x] D+0/D+1/D+3 evidence has no unsupported confirmed cause or open P0/P1.
+- [x] Roadmap, delivery calendar, strategy docs and development log agree.

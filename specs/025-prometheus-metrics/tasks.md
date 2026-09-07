@@ -65,9 +65,9 @@ Heartbeat/acquisition schemas block snapshot design. Contract tests precede moni
 
 ## Definition Of Done
 
-- [ ] All T001-T014 tasks are complete with evidence.
-- [ ] Acceptance scenarios and negative paths pass.
-- [ ] No real config, state, database, logs or secrets enter Git.
-- [ ] Action-policy and polling-offset invariants pass when applicable.
-- [ ] Runtime activation and observation are recorded; blocked checks remain open.
-- [ ] Roadmap, delivery calendar, strategy docs and development log agree.
+- [x] All T001-T014 tasks are complete with evidence.
+- [x] Acceptance scenarios and negative paths pass.
+- [x] No real config, state, database, logs or secrets enter Git.
+- [x] Action-policy and polling-offset invariants pass when applicable.
+- [x] Runtime activation and observation are recorded; blocked checks remain open.
+- [x] Roadmap, delivery calendar, strategy docs and development log agree.

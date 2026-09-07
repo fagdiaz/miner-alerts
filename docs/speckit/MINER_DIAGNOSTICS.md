@@ -1,7 +1,7 @@
 # Miner Diagnostics Strategy
 
-**Last reviewed**: 2026-08-13
-**Future contracts**: Specs 021-024 in `docs/speckit/SPEC_PROGRAM.md`
+**Last reviewed**: 2026-09-07 (Release v2.0.0 Normalized)
+**Implemented contracts**: Specs 021-024 in `docs/speckit/SPEC_PROGRAM.md` (Completed)
 
 ## Objective
 

@@ -3,7 +3,7 @@
 Monitor de mineros ASIC (API 4028) con alertas por Telegram, cambios de estado agrupados, deteccion de reboots y hashboards caidos. Pensado para correr en Windows con PowerShell y evitar spam.
 
 **Documentacion del proyecto**
-- Programa completo de Specs 021-029: `docs/speckit/SPEC_PROGRAM.md`.
+- Programa completo de Specs 001-030 (Release v2.0.0): `docs/speckit/SPEC_PROGRAM.md`.
 - Prioridades y features: `docs/speckit/ROADMAP.md`.
 - Calendario de implementacion, observacion y fixes: `docs/speckit/DELIVERY_PLAN.md`.
 - Decisiones tecnologicas: `docs/speckit/TECHNOLOGY_STRATEGY.md`.
@@ -252,15 +252,30 @@ Para ayuda: `python tools\debug_4028.py -h`.
 - Simula OFFLINE con un puerto incorrecto y confirma transicion a OFFLINE y luego RECOVERED.
 - Simula LOW subiendo `threshold_ths` y confirma LOW y RECOVERED.
 
+**Herramientas Auxiliares de Producción (Release v2.0.0)**
+- **Supervisión de Liveness (Watchdog)**:
+  `& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py --config app\config.json`
+- **Métricas Prometheus**:
+  `& ".\.venv\Scripts\python.exe" tools\metrics_exporter.py --config app\config.json --port 9108`
+- **Stack Grafana Local**:
+  `docker compose -f observability\docker-compose.metrics.yml up -d`
+- **Backups Online SQLite**:
+  `& ".\.venv\Scripts\python.exe" tools\event_store_backup.py --source-db data\miner_alerts.db --backup-root D:\MinerAlertsBackups --action backup`
+- **Simulacro de Restore en Staging**:
+  `& ".\.venv\Scripts\python.exe" tools\event_store_backup.py --source-db data\miner_alerts.db --backup-root D:\MinerAlertsBackups --staging-root D:\MinerAlertsStaging --action restore-staging --backup-id <ID> --restore-target D:\MinerAlertsStaging\drill`
+- **Auditoría de Release**:
+  `& ".\.venv\Scripts\python.exe" tools\release_audit.py --check-only`
+
 **Release checklist**
 1. `& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py`
-2. Ejecutar bot en produccion y verificar startup.
+2. Ejecutar bot en produccion y verificar startup y heartbeat.
 3. Telegram: `help/status/info/selftest/health/quality/firmware/diagnose`.
 4. (Opcional) `reboot 23` + confirm (si queres probar).
-5. `git status` / `git diff`
-6. commit + push
+5. `tools/release_audit.py --check-only`
+6. `git status` / `git diff`
+7. commit + push
 
 **Comandos utiles**
 - Instalar: `pip install -r requirements.txt`
 - Ejecutar: `python app\miner_monitor.py`
-- Debug: `python app\debug_4028.py <IP>`
+- Debug: `python tools\debug_4028.py <IP>`

@@ -3,6 +3,26 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-07] - Certificación Oficial de Release v2.0.0 y Normalización Integral de Documentación
+
+* **Objetivo**: Concluir la sincronización de ramas (`main` y `codex/022-adaptive-acquisition`), publicar el tag de release `v2.0.0`, formalizar la Enmienda 1.5.0 de la Constitución adoptando Gemini 3.8 Flash High como motor primario, y ejecutar la normalización integral de la documentación del proyecto (30 especificaciones, guías de SpecKit, Runbook operativo y README raíz).
+* **Resultados y Evidencia**:
+  - **Sincronización Git y Tag v2.0.0**:
+    * Publicado tag oficial `v2.0.0` sobre el commit de certificación `79f0172`.
+    * Sincronizada la rama principal `main` mediante fast-forward limpio sin alterar el árbol de trabajo ni interrumpir el proceso de producción vivo (PID 38816). Ambas ramas y GitHub alineadas al 100%.
+  - **Enmienda 1.5.0 a la Constitución**:
+    * Actualizado el Principio VII en `.specify/memory/constitution.md` y las directivas en `AGENTS.md` y `prompt.txt` para incorporar a Gemini 3.8 Flash High (y Gemini 3.7 compatible) como motor primario, preservando la delegación escalada hacia Claude Sonnet 4.6 (Thinking) y Claude Opus 4.6 (Thinking).
+  - **Normalización Documental**:
+    * `README.md`: Documentadas las herramientas auxiliares de V2 (Prometheus, Grafana, Backups, Watchdog, Release Audit), corregida errata de ruta en `tools/debug_4028.py` y actualizado alcance a Specs 001-030.
+    * `docs/speckit/`: Normalizados `README.md`, `RUNBOOK.md` (con procedimientos para `metrics_exporter.py` y `release_audit.py`), `TECHNOLOGY_STRATEGY.md`, `INTERFACE_STRATEGY.md` (decisión formal `no_build`), `HASHCORE_TOOLKIT_STRATEGY.md` y `MINER_DIAGNOSTICS.md`.
+    * `specs/`: Normalizadas las casillas y checklists de Definition of Done en Specs 022, 023, 024 (`blocked_external`), 025, 026 y 028, y archivadas formalmente las fundaciones 001 y 002. Cero tareas pendientes en la totalidad de los 30 paquetes.
+  - **Suite Global**: **416/416 tests PASS** en 3.51s con 0 fallos y 0 errores.
+  - **Producción**: Monitor vivo (PID 38816) con >267 horas de operación ininterrumpida y heartbeat fresco.
+* **Próximo Paso**:
+  - Modo de operación pasiva y monitoreo estable en producción.
+
+---
+
 ## [2026-09-07] - Implementación, Validación y Aprobación Formal de Spec 029 (V2 Release Stabilization - APPROVE)
 
 * **Objetivo**: Ejecutar el congelamiento de código y dependencias, auditar los estados terminales de Specs 021-028, validar exhaustivamente las 25 filas de la matriz de regresión R001-R025, certificar la recuperación de datos mediante simulacro de restore SQLite y formalizar la decisión de aprobación del Release Candidate V2 tras más de 168 horas de soak ininterrumpido en producción.

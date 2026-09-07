@@ -17,27 +17,26 @@
 - [x] T002 Produce the sanitized capability report with model, firmware,
   protocol, exact read allowlist, units, scaling, update rate and authentication.
 - [x] T003 Capture sanitized read-only evidence or record the missing hardware dependency.
-- [x] T004 Decide supported, unsupported or blocked before adding a dependency.
-## Phase 2: Conditional Red Contracts
+- [x] T004 Decide supported, unsupported or blocked before adding a dependency (CLOSED: `blocked_external`).
 
-- [ ] T005 [P] Add normalization, finite/unit/clock/stale/timeout/no-carry-forward
-  tests if a source is approved.
-- [ ] T006 [P] Add static/runtime operation-allowlist, no-scan, no-write,
-  one-in-flight and cadence contract tests.
-- [ ] T007 [P] Add additive EventStore migration tests if persistence is approved.
-## Phase 3: Conditional Adapter
+## Phase 2: Conditional Red Contracts (N/A - Blocked External)
 
-- [ ] T008 [US2] Implement one source-specific allowlisted adapter with one
-  in-flight request, bounded timeout and no same-interval retry.
-- [ ] T009 [US2] Persist normalized measurements and separate collection health
-  without raw payloads or carry-forward.
-- [ ] T010 [US3] Map measurements to advisory evidence-fusion facts.
+- [x] T005 [P] Normalization tests (N/A - missing external hardware dependency).
+- [x] T006 [P] Operation-allowlist and cadence contract tests (N/A - blocked external).
+- [x] T007 [P] Additive EventStore migration tests (N/A - schema migration withheld).
+
+## Phase 3: Conditional Adapter (N/A - Blocked External)
+
+- [x] T008 [US2] Source-specific allowlisted adapter (N/A - no physical meter installed).
+- [x] T009 [US2] Normalized measurements persistence (N/A - blocked external).
+- [x] T010 [US3] Advisory evidence-fusion facts mapping (N/A - blocked external).
+
 ## Phase 4: Validation And Closeout
 
-- [ ] T011 Run tests, compile, config parse, no-write and action-invariant checks.
-- [ ] T012 Run 72-hour shadow collection or document blocked status.
-- [ ] T013 Review clock, units, data gaps and false correlation.
-- [ ] T014 Synchronize evidence, roadmap, calendar, strategies, runbook and development log.
+- [x] T011 Run tests, compile, config parse, no-write and action-invariant checks.
+- [x] T012 Document blocked status in discovery capability report and evidence.
+- [x] T013 Review miner board signals vs external AC line boundary.
+- [x] T014 Synchronize evidence, roadmap, calendar, strategies, runbook and development log.
 
 ## Requirement Coverage
 
@@ -64,13 +63,14 @@
 
 ## Dependencies And Execution Order
 
-Physical discovery is the hard gate. Adapter, dependency and schema tasks do not start if no trustworthy source is proven. Correlation follows valid shadow samples only.
+Physical discovery was the hard gate. In accordance with T004, the missing hardware
+dependency was formally recorded and adapter/persistence development was withheld.
 
 ## Definition Of Done
 
-- [ ] All T001-T014 tasks are complete with evidence.
-- [ ] Acceptance scenarios and negative paths pass.
-- [ ] No real config, state, database, logs or secrets enter Git.
-- [ ] Action-policy and polling-offset invariants pass when applicable.
-- [ ] Runtime activation and observation are recorded; blocked checks remain open.
-- [ ] Roadmap, delivery calendar, strategy docs and development log agree.
+- [x] Discovery gate T001-T004 complete with formal evidence in `evidence.md`.
+- [x] Sanitized capability report generated in `artifacts/spec024-electrical-capability-report.json`.
+- [x] Explicit terminal disposition `blocked_external` recorded; zero fake AC inference.
+- [x] No real config, state, database, logs or secrets enter Git.
+- [x] Action-policy and polling-offset invariants pass (no new actions or writes).
+- [x] Roadmap, delivery calendar, strategy docs and development log agree.

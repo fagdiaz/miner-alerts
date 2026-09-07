@@ -1,6 +1,6 @@
 # Miner Alerts Technology Strategy
 
-**Last reviewed**: 2026-08-13
+**Last reviewed**: 2026-09-07 (Release v2.0.0 Normalized)
 **Program**: `docs/speckit/SPEC_PROGRAM.md`
 
 ## Principle
@@ -14,16 +14,18 @@ then controlled automation.
 
 - Python: appropriate for ASIC API tooling, Telegram polling, CLI automation and
   fast diagnostics.
-- API 4028: request/response polling every 30 seconds is the current source of
+- API 4028: adaptive acquisition with authoritative typed envelopes is the source of
   truth for availability, hashrate, uptime and boards.
 - Vnish WebSockets: bounded read-only log acquisition in a separate scheduled
   process; not a replacement for miner health samples.
-- SQLite schema v5: operational history, diagnostics and audit evidence.
+- SQLite schema v5: operational history, diagnostics, decision audit, and online hot backups.
 - Windows service/process: appropriate while Hashcore Toolkit CLI is local and
   Windows-based.
-- Docker: appropriate for isolated read-only tools, reports and future local
-  dashboards; not yet appropriate for the main monitor while Hashcore CLI and
-  Windows service integration remain local.
+- Watchdog: independent out-of-process monitor liveness supervision and SCM recovery.
+- Prometheus + Grafana: auxiliary metrics exporter and local dashboards for long-term trends.
+- Docker: appropriate for isolated read-only tools, reports and auxiliary metrics
+  dashboards; not used for the main monitor while Hashcore CLI and
+  Windows service integration remain host-local.
 
 ## Acquisition And Supervision Decision
 
@@ -33,101 +35,54 @@ field. The deployed API 4028 endpoint is pull-oriented, so the target design is
 hybrid rather than a protocol rewrite:
 
 - Keep conservative API 4028 polling for current state.
-- Stagger and measure requests before considering adaptive cadence.
+- Stagger and measure requests with adaptive acquisition envelopes.
 - Use Vnish WebSockets for asynchronous firmware evidence only.
-- Add an independent heartbeat/watchdog so a stalled poll loop is detected by a
-  different process.
+- Independent heartbeat/watchdog ensures stalled poll loops are detected out of process.
 - Mark data stale explicitly; never reuse an old rate as current evidence.
 
 This follows the same operational principle used by Prometheus: pull-based
 collection remains a contemporary monitoring model when freshness and target
 failure are meaningful signals.
 
-## Recommended Technology Path
+## Implemented And Evaluated Technology Path
 
 ### Docker
 
-Use for:
+Implemented for:
 
-- Read-only diagnostics collectors.
-- Static report generation.
-- Spec 025's isolated metrics exporter, Prometheus and Grafana stack.
-- Future local dashboards that do not execute reboot/restart actions.
+- Spec 025's isolated metrics exporter, Prometheus and Grafana stack (`observability/docker-compose.metrics.yml`).
+- Read-only diagnostics collectors and static report generation.
 
-Why it matters:
-
-- High market demand.
-- Standard for reproducible environments.
-- Useful for CI/CD and operations.
-
-Do not use yet for:
+Do not use for:
 
 - The production monitor process.
 - Hashcore Toolkit actions that depend on Windows-local installation paths.
 
-### FastAPI
+### FastAPI (Evaluated & Closed: `no_build`)
 
-Potential use:
+Status:
 
-- Local read-only API over diagnostics snapshots and baseline reports.
-- Future dashboard backend.
+- Formally evaluated under Spec 027 (Operator Interface Decision).
+- 30 timed runs across workflows W01-W06 confirmed that Telegram, Grafana, and the static HTML dashboard cover 100% of operator needs with zero missing fields.
+- Decision: **`no_build`**. A web server framework was rejected to avoid unnecessary attack surface, dependencies, and operational overhead.
 
-Why it matters:
+### SQLite (Implemented: Online Hot Backup & Retention)
 
-- Popular Python web framework.
-- Strong async support, OpenAPI docs, typing-first design.
-- High demand in automation, AI tooling and internal platforms.
+Status:
 
-Adoption rule:
+- SQLite schema v5 is the operational and incident store through v2.
+- Spec 028 implemented online hot backups via SQLite backup API (`tools/event_store_backup.py`), union retention (14 daily / 8 weekly / 12 monthly), and safe staging restore drills.
+- Live database is never overwritten automatically.
 
-- Start only after the Spec 027 workflow scorecard proves a gap.
-- Bind to `127.0.0.1` and open SQLite with `mode=ro`.
-- No reboot/restart endpoints until authentication, audit logs and confirmation
-  are designed in a separate high-risk spec.
+### Prometheus + Grafana (Implemented)
 
-### SQLite Or DuckDB
+Status:
 
-Potential use:
-
-- Store historical diagnostics snapshots locally.
-- Query trend windows for TH/s, temperature, chain voltage, consumption and HW
-  errors.
-
-Why it matters:
-
-- SQLite is ubiquitous, reliable and built into Python.
-- DuckDB is strong for analytics over local files and time-series-like reports.
-
-Adoption rule:
-
-- SQLite remains the operational and incident source through v2.
-- Spec 028 uses the SQLite online backup API and staged restores; it never copies
-  a live database blindly.
-- DuckDB/Parquet remain deferred until an analytical workload cannot be served by
-  bounded SQLite queries or Prometheus.
-
-### Prometheus + Grafana
-
-Potential use:
-
-- Long-term metrics dashboard for hash, temps, board count and Telegram delivery
-  health.
-
-Why it matters:
-
-- Very high operations market demand.
-- Industry-standard monitoring stack.
-
-Adoption rule:
-
-- Planned for Spec 025, after liveness and acquisition metrics are stable.
-- The native monitor writes one atomic sanitized snapshot; a separate
-  `prometheus_client` exporter serves it inside the optional Compose network.
-- Prometheus and Grafana use pinned containers; host UI ports bind to localhost.
-- Keep label cardinality bounded and never use event IDs, free text, addresses or
-  secrets as labels.
-- Keep Telegram as the action/control plane.
-- Use Grafana read-only at first.
+- Implemented under Spec 025.
+- The native monitor writes an atomic sanitized snapshot (`data/metrics_snapshot.json`).
+- Standalone exporter (`tools/metrics_exporter.py`) serves metrics on port 9108 with bounded cardinality.
+- Pinned Compose stack provides local dashboards for fleet overview and monitor liveness.
+- Telegram remains the sole action and control plane; Grafana is strictly read-only.
 
 Prometheus does not replace API 4028 acquisition. A local exporter converts the
 monitor's stable evidence into an HTTP scrape contract.

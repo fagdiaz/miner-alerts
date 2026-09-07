@@ -66,6 +66,7 @@
 
 ## Dependencies And Execution Order
 
+
 Metadata-only and negative zero-process tests precede all process code. Vendor
 evidence and exact fingerprint allowlisting precede execution. Sanitization and
 artifact validation precede promotion. Candidate ranking follows complete
@@ -74,9 +75,9 @@ allowlist remains empty; no task requires inventing an invocation.
 
 ## Definition Of Done
 
-- [ ] All T001-T018 tasks are complete with evidence.
-- [ ] Acceptance scenarios and negative paths pass.
-- [ ] No real config, state, database, logs or secrets enter Git.
-- [ ] Action-policy and polling-offset invariants pass when applicable.
-- [ ] Runtime activation and observation are recorded; blocked checks remain open.
-- [ ] Roadmap, delivery calendar, strategy docs and development log agree.
+- [x] All T001-T018 tasks are complete with evidence.
+- [x] Acceptance scenarios and negative paths pass.
+- [x] No real config, state, database, logs or secrets enter Git.
+- [x] Action-policy and polling-offset invariants pass when applicable.
+- [x] Runtime activation and observation are recorded; blocked checks remain open.
+- [x] Roadmap, delivery calendar, strategy docs and development log agree.

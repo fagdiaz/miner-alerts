@@ -15,6 +15,7 @@ availability, auto-reboot safety, diagnostics, Telegram UX and observability.
 - `INTERFACE_STRATEGY.md`: Telegram, static dashboard, Grafana and interface boundaries.
 - `HASHCORE_TOOLKIT_STRATEGY.md`: current action boundary and capability inventory.
 - `MINER_DIAGNOSTICS.md`: evidence model used before intervention.
+- `V3_EXPANSION_PLAN.md`: strategic roadmap for Telegram Max, predictive health, and V3 capabilities.
 - `RUNBOOK.md`: commands and checks for the system that exists today.
 
 Roadmap documents may describe planned work. The runbook must only describe

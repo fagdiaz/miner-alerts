@@ -307,6 +307,18 @@ activation and controlled SCM recovery proof are complete. D+1/D+3 gates closed.
 - [x] Telegram no-silence delivery and click-safe actions.
 - [x] Persistent/episode alerts and truthful current status in committed code.
 
+## V3 Expansion & Future Strategic Initiatives
+
+Strategic exploration and specifications for next-generation capabilities are
+detailed in:
+`docs/speckit/V3_EXPANSION_PLAN.md`
+
+- **Telegram Max**: Inline Keyboards (1-tap actions), in-memory PNG charts (`/chart`),
+  temporary snooze/maintenance mode (`/snooze`), and daily executive digest.
+- **Advanced Monitor Health**: Fan degradation & thermal runaway predictive alerts,
+  real-time energy efficiency metric ($J/\text{TH}$), Vnish autotuning preset tracking.
+- **Autonomous Operations**: Scheduled auto-refresh for the native HTML dashboard.
+
 ## Governance
 
 - All 30 specifications in the program are complete, verified with evidence, and closed.

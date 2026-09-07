@@ -8,6 +8,7 @@ Monitor de mineros ASIC (API 4028) con alertas por Telegram, cambios de estado a
 - Calendario de implementacion, observacion y fixes: `docs/speckit/DELIVERY_PLAN.md`.
 - Decisiones tecnologicas: `docs/speckit/TECHNOLOGY_STRATEGY.md`.
 - Operacion y validacion: `docs/speckit/RUNBOOK.md`.
+- Plan de expansion V3 y Telegram Max: `docs/speckit/V3_EXPANSION_PLAN.md`.
 - Historial de specs completadas: `docs/audit/DEVELOPMENT_LOG.md`.
 
 **Requisitos**

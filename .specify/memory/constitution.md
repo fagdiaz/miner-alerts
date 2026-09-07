@@ -21,6 +21,8 @@ SYNC IMPACT REPORT
   and bounded implementations) in iterative turns without overloading; reserve Claude Sonnet 4.6
   Thinking strictly for live concurrency, production threading, and delicate state machine refactors;
   reserve Claude Opus 4.6 Thinking for persistent architectural deadlocks.
+- Amendment 1.5.0: upgrade Primary Engine to Gemini 3.8 Flash High (with 3.7 Flash High as compatible baseline),
+  retaining the scaled escalation protocol to Claude Sonnet 4.6 (Thinking) and Claude Opus 4.6 (Thinking).
 -->
 
 # Miner Alerts Constitution
@@ -51,9 +53,9 @@ The project targets Windows with PowerShell, Python virtualenv, Telegram polling
 
 `py_compile` is required but insufficient for production-affecting changes. Each completed spec MUST record the exact commands run, Telegram command checks when relevant, observed logs, and any blocked runtime validation.
 
-### VII. Gemini 3.7 Flash High Maximization & Scaled Delegation Rule
+### VII. Gemini 3.8 Flash High Maximization & Scaled Delegation Rule
 
-Gemini 3.7 Flash High MUST be prioritized as the primary engine for all tasks within its reasoning and context capacity: code reading, architecture analysis, pure domain logic, data contracts, schemas, comprehensive test suites (unit, integration, deterministic proofs, performance/stress benchmarks), documentation, SpecKit tracking, and bounded feature implementations with established contracts. To maintain quality without overloading, Gemini tasks MUST be executed in iterative, bounded turns without asking for unbounded multi-file refactors in a single turn.
+Gemini 3.8 Flash High (or Gemini 3.7 Flash High) MUST be prioritized as the primary engine for all tasks within its reasoning and context capacity: code reading, architecture analysis, pure domain logic, data contracts, schemas, comprehensive test suites (unit, integration, deterministic proofs, performance/stress benchmarks), documentation, SpecKit tracking, and bounded feature implementations with established contracts. To maintain quality without overloading, Gemini tasks MUST be executed in iterative, bounded turns without asking for unbounded multi-file refactors in a single turn.
 
 Higher-reasoning models MUST be invoked on-demand only when the specific task requires it:
 1. **Claude Sonnet 4.6 (Thinking)**: Escalate ONLY when implementing or modifying live multi-threaded production loops (`miner_monitor.py` concurrency, socket timeouts, Windows mutexes, threading queues) or core finite state machines (`miner_states`, streak calculations, auto-reboot policies) where subtle timing or race conditions pose production risk.
@@ -61,7 +63,7 @@ Higher-reasoning models MUST be invoked on-demand only when the specific task re
 
 ### VIII. Handoff & Prompt Protocol (prompt.txt)
 
-Every model at the conclusion of its turn or session MUST leave an updated, ready-to-run prompt in `prompt.txt`. The prompt MUST provide the simplest yet most optimal and functional way for the next model to enter context easily (either by explaining key context explicitly in `prompt.txt` or by giving specific, line-bounded or full-file Markdown reading directives). In console text output, the model MUST explicitly inform the user which model to select next (recommending `Gemini 3.7 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
+Every model at the conclusion of its turn or session MUST leave an updated, ready-to-run prompt in `prompt.txt`. The prompt MUST provide the simplest yet most optimal and functional way for the next model to enter context easily (either by explaining key context explicitly in `prompt.txt` or by giving specific, line-bounded or full-file Markdown reading directives). In console text output, the model MUST explicitly inform the user which model to select next (recommending `Gemini 3.8 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
 
 ## Development Workflow And Quality Gates
 

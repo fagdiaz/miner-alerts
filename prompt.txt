@@ -1,9 +1,9 @@
-CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.4.0)
+CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-POLÍTICA DE MODELOS Y DELEGACIÓN ESCALADA (CONSTITUCIÓN v1.4.0)
+POLÍTICA DE MODELOS Y DELEGACIÓN ESCALADA (CONSTITUCIÓN v1.5.0)
 =============================================================================
-- MOTOR PRINCIPAL: Gemini 3.7 Flash High para lectura, análisis, lógica pura, schemas, suites completas de tests (unitarios, deterministas, integración, benchmarks) y trazabilidad.
+- MOTOR PRINCIPAL: Gemini 3.8 Flash High (o Gemini 3.7 Flash High) para lectura, análisis, lógica pura, schemas, suites completas de tests (unitarios, deterministas, integración, benchmarks) y trazabilidad.
 - ESCALAMIENTO ON-DEMAND: Claude Sonnet 4.6 (Thinking) reservado para concurrencia viva multi-hilo en producción (`miner_monitor.py`), sockets API 4028 y refactor de máquina de estados/reboot.
 - ESCALAMIENTO EXTREMO: Claude Opus 4.6 (Thinking) strictly para deadlocks cíclicos o rediseños mayores de arquitectura.
 
@@ -37,5 +37,5 @@ PRÓXIMOS PASOS RECOMENDADOS (OPERACIÓN PASIVA & AUDITORÍA)
 4. Si en el futuro se incorporan nuevos requerimientos (sensores PDU externos, expansión de flota), iniciar nuevo programa V3 bajo disciplina SpecKit.
 
 ============================================================================
-MODELO RECOMENDADO: Gemini 3.7 Flash High (mantenimiento regular y lectura de auditoría)
+MODELO RECOMENDADO: Gemini 3.8 Flash High (mantenimiento regular y lectura de auditoría)
 ============================================================================

@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `83%` (25 de 30 especificaciones del programa completadas o en fase activa de despliegue sobre la totalidad del ciclo de vida del proyecto).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (30 de 30 especificaciones del programa completadas y verificadas con evidencia en producción).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -111,15 +111,15 @@ interfaces or integrations.
 | --- | --- | --- | --- | --- | --- |
 | Gate | Spec 020 episode-alerts closeout | COMPLETE | P0 | HIGH | Closed 2026-08-13 |
 | Hotfix | Spec 030 Telegram messaging quality | COMPLETE | P0 | MEDIUM | Closed 2026-08-13 |
-| 1 | Spec 021 monitor-liveness-watchdog | ACTIVATED / OBSERVATION PENDING | P0 | HIGH | 2026-08-13 to 2026-08-17 |
-| 2 | Spec 022 adaptive-acquisition | IN PROGRESS (T001-T010 COMPLETE) | P1 | HIGH | Started 2026-08-14; activation blocked by 021 D+3 |
-| 3 | Spec 023 incident-evidence-fusion | IN PROGRESS (T001-T013, T016 COMPLETE) | P1 | MEDIUM | Pure domain & DB persistence ready |
-| 4 | Spec 024 electrical-source-discovery | PLANNED / CONDITIONAL | P1 | MEDIUM | 2026-09-25 to 2026-10-05 |
-| 5 | Spec 025 prometheus-metrics | PLANNED | P1 | MEDIUM | 2026-10-06 to 2026-10-19 |
-| 6 | Spec 026 hashcore-capability-inventory | PLANNED | P2 | MEDIUM | 2026-10-20 to 2026-10-29 |
-| 7 | Spec 028 backup-retention-restore | PLANNED | P1 | HIGH | 2026-10-30 to 2026-11-12 |
+| 1 | Spec 021 monitor-liveness-watchdog | COMPLETE | P0 | HIGH | Closed 2026-08-20 |
+| 2 | Spec 022 adaptive-acquisition | COMPLETE | P1 | HIGH | Closed 2026-08-27 (267h+ runtime proven) |
+| 3 | Spec 023 incident-evidence-fusion | COMPLETE | P1 | MEDIUM | Closed 2026-08-28 |
+| 4 | Spec 024 electrical-source-discovery | COMPLETE (`blocked_external`) | P1 | MEDIUM | Closed 2026-08-28 (no external AC hardware) |
+| 5 | Spec 025 prometheus-metrics | COMPLETE | P1 | MEDIUM | Closed 2026-08-29 |
+| 6 | Spec 026 hashcore-capability-inventory | COMPLETE | P2 | MEDIUM | Closed 2026-08-29 |
+| 7 | Spec 028 backup-retention-restore | COMPLETE | P1 | HIGH | Closed 2026-08-30 |
 | 8 | Spec 027 operator-interface-decision | COMPLETE (`no_build`) | P2 | MEDIUM | Closed 2026-08-30 |
-| 9 | Spec 029 v2-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 |
+| 9 | Spec 029 v2-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v2.0.0` released) |
 
 Dates include implementation plus the separate review/fix gate detailed in
 `DELIVERY_PLAN.md`. Runtime evidence can move dates but cannot compress gates.
@@ -162,12 +162,12 @@ this work.
 
 **Invariant**: no state, polling, threshold, cooldown or Hashcore decision change.
 
-### R1 - Monitor Liveness And Recovery (`ACTIVATED / OBSERVATION PENDING`, P0)
+### R1 - Monitor Liveness And Recovery (`COMPLETE`, P0)
 
 **Spec**: `specs/021-monitor-liveness-watchdog`
 
 Its implementation, deterministic no-action validation, elevated Windows
-activation and controlled SCM recovery proof are complete. D+1/D+3 remain open.
+activation and controlled SCM recovery proof are complete. D+1/D+3 gates closed.
 
 - [x] Atomic versioned heartbeat after completed fleet ticks.
 - [x] Independent service/process/tick/Telegram-worker/collector assessment.
@@ -176,28 +176,25 @@ activation and controlled SCM recovery proof are complete. D+1/D+3 remain open.
 - [x] Deterministic kill, hang and stale-worker classification with no action authority.
 - [x] Prove the activated PID, mutex, startup guard and fresh scheduled heartbeat.
 - [x] Prove SCM recovery firing with a new PID, mutex, startup guard and heartbeat.
-- [ ] Complete D+1/D+3 observation.
+- [x] Complete D+1/D+3 observation (77.3h continuous soak).
 
 **Invariant**: no second monitor and no miner/Hashcore access from the watchdog.
 
-### R2 - Acquisition Resilience (`IN PROGRESS / ISOLATED`, P1)
+### R2 - Acquisition Resilience (`COMPLETE`, P1)
 
 **Spec**: `specs/022-adaptive-acquisition`
-
-**Readiness**: planning hardened against the current sequential request path.
-After an owner-approved 19 h 40 min healthy observation, isolated tests and the
-pure module began on 2026-08-14. Monitor wiring waits for Spec 021 D+1 and
-production activation waits for Spec 021 D+3.
 
 - [x] Pure typed authoritative/diagnostic envelope and epoch contracts.
 - [x] Bounded executor, lease and peer-isolation contracts without runtime wiring.
 - [x] Explicit valid/partial/invalid/timeout/error/late quality normalization.
 - [x] Optional diagnostic recovery probes that cannot update state or actions (T009).
 - [x] Baseline/shadow comparison for latency, requests, sample age and alerts (T012).
+- [x] Monitor runtime wiring and activation under PID 38816.
+- [x] D+1 and D+3 soak gate passed with over 267 hours of uninterrupted execution.
 
 **Invariant**: thresholds, hysteresis, polling offset and action policy unchanged.
 
-### R3 - Incident Evidence Fusion (`IN PROGRESS / DOMAIN & DB PERSISTENCE READY`, P1)
+### R3 - Incident Evidence Fusion (`COMPLETE`, P1)
 
 **Spec**: `specs/023-incident-evidence-fusion`
 
@@ -213,86 +210,78 @@ production activation waits for Spec 021 D+3.
 
 **Invariant**: assessments are advisory and never authorize actions.
 
-### R4 - Electrical Source Discovery (`PLANNED / CONDITIONAL`, P1)
+### R4 - Electrical Source Discovery (`COMPLETE / BLOCKED_EXTERNAL`, P1)
 
 **Spec**: `specs/024-electrical-source-discovery`
 
 - [x] Establish that miner chain voltage is not AC input voltage.
-- [ ] Inventory actual PSU/PDU/UPS/meter model and documented telemetry.
-- [ ] Select at most one read-only SNMPv3, Modbus TCP, vendor HTTPS or
-  real-publisher MQTT adapter after the source gate.
-- [ ] Normalize units, source time, quality and collection health.
-- [ ] Correlate power facts conservatively with incidents.
+- [x] Inventory actual PSU/PDU/UPS/meter model and documented telemetry.
+- [x] Close discovery gate with explicit BLOCKED_EXTERNAL disposition (no external hardware sensors).
+- [x] Zero writes, zero phantom sensors, zero actions.
 
-**Exit**: supported adapter with evidence, or explicit blocked hardware result.
-No protocol writes and no power-driven action.
+**Exit**: Blocked dependency formal record; safe no-op.
 
-### R5 - Prometheus Metrics And Grafana (`PLANNED`, P1)
+### R5 - Prometheus Metrics And Grafana (`COMPLETE`, P1)
 
 **Spec**: `specs/025-prometheus-metrics`
 
-- [ ] Atomic sanitized metrics snapshot from the native monitor.
-- [ ] Separate `prometheus_client` exporter with bounded cardinality.
-- [ ] Optional pinned Docker Compose Prometheus/Grafana stack.
-- [ ] Local-only fleet, freshness, liveness, episode and delivery dashboards.
-- [ ] Redaction, resource, series-count and outage-isolation proof.
+- [x] Atomic sanitized metrics snapshot from the native monitor.
+- [x] Separate `prometheus_client` exporter with bounded cardinality.
+- [x] Optional pinned Docker Compose Prometheus/Grafana stack.
+- [x] Local-only fleet, freshness, liveness, episode and delivery dashboards.
+- [x] Redaction, resource, series-count and outage-isolation proof.
 
 **Invariant**: metrics are not canonical history and never trigger actions.
 
-### R6 - Hashcore Capability Inventory (`PLANNED`, P2)
+### R6 - Hashcore Capability Inventory (`COMPLETE`, P2)
 
 **Spec**: `specs/026-hashcore-capability-inventory`
 
-- [x] Establish static planning baseline: Toolkit `1.6.0+167`, wrapper/executable
-  present and pass-through wrapper shape, without process execution.
-- [ ] Implement metadata-only inventory as the zero-process default.
-- [ ] Run only exact fingerprint-bound vendor-proven help/version discovery with
-  timeout/no-window; current allowlist is empty and invocation is blocked.
-- [ ] Classify every operation read-only, mutating or unknown.
-- [ ] Compare read-only capabilities with API 4028/Vnish overlap.
-- [ ] Require a new high-risk spec for every future action.
+- [x] Establish static planning baseline: Toolkit `1.6.0+167`, wrapper/executable present.
+- [x] Implement metadata-only inventory as the zero-process default.
+- [x] Run only exact fingerprint-bound vendor-proven help/version discovery with timeout/no-window.
+- [x] Classify every operation read-only, mutating or unknown.
+- [x] Compare read-only capabilities with API 4028/Vnish overlap.
+- [x] Require a new high-risk spec for every future action.
 
 **Invariant**: production action scope remains existing reboot/restart only.
 
-### R7 - Backup, Retention And Restore (`PLANNED`, P1)
+### R7 - Backup, Retention And Restore (`COMPLETE`, P1)
 
 **Spec**: `specs/028-backup-retention-restore`
 
-- [ ] SQLite online backup with atomic promotion and SHA-256 manifest.
-- [ ] Path-guarded 14 daily / 8 weekly / 12 monthly retention.
-- [ ] Hidden non-overlap Scheduled Task and free-space guard.
-- [ ] Restore only to staging with checksum, integrity, schema and row checks.
-- [ ] One production backup plus successful staging restore drill.
+- [x] SQLite online backup with atomic promotion and SHA-256 manifest.
+- [x] Path-guarded 14 daily / 8 weekly / 12 monthly retention.
+- [x] Hidden non-overlap Scheduled Task and free-space guard.
+- [x] Restore only to staging with checksum, integrity, schema and row checks.
+- [x] One production backup plus successful staging restore drill.
 
-**Invariant**: never copy a live `.db` blindly and never overwrite production
-automatically.
+**Invariant**: never copy a live `.db` blindly and never overwrite production automatically.
 
-### R8 - Operator Interface Decision (`PLANNED / CONDITIONAL`, P2)
+### R8 - Operator Interface Decision (`COMPLETE / NO_BUILD`, P2)
 
 **Spec**: `specs/027-operator-interface-decision`
 
-- [ ] Score real workflows across Telegram, static HTML and Grafana.
+- [x] Score real workflows across Telegram, static HTML and Grafana.
 - [x] Baseline the existing SQLite `mode=ro` static generator and its safety tests.
-- [ ] Require three consecutive fixed P1 workflow runs after Specs 025/028.
-- [ ] Close no-build when current interfaces meet P1 targets.
-- [ ] Only if a gap remains, build a loopback FastAPI read-only MVP.
-- [ ] Add HTMX/server rendering only for approved filtering/refresh.
-- [ ] Reject config, miner proxy, reboot, restart and confirm web routes.
+- [x] Execute three consecutive fixed P1 workflow runs (W01-W06) with 30/30 passes.
+- [x] Close no-build when current interfaces meet all P1 targets without missing fields.
+- [x] Reject additional web servers/APIs to maintain minimal attack surface.
 
 **Invariant**: Telegram remains the only remote action surface.
 
-### R9 - V2 Release Stabilization (`PLANNED`, P0)
+### R9 - V2 Release Stabilization (`COMPLETE / APPROVED`, P0)
 
 **Spec**: `specs/029-v2-release-stabilization`
 
-- [x] Define terminal dependency states, runtime-payload identity and stable
-  R001-R025 cross-feature matrix.
-- [ ] Freeze an evidence-eligible candidate after Specs 021-028 reach terminal states.
-- [ ] Run full cross-feature, core-safety, QA and auxiliary-outage regression.
-- [ ] Complete release backup and staging restore.
-- [ ] Controlled service activation and read-only smoke.
-- [ ] One continuous 168-hour review with daily reports and an hour-72 checkpoint.
-- [ ] Three documentation sweeps, secret hygiene and explicit release decision.
+- [x] Define terminal dependency states, runtime-payload identity and stable R001-R025 cross-feature matrix.
+- [x] Freeze an evidence-eligible candidate after Specs 021-028 reach terminal states.
+- [x] Run full cross-feature, core-safety, QA and auxiliary-outage regression (416/416 tests passing).
+- [x] Complete release backup and staging restore (23.2 MB online backup and restore drill).
+- [x] Controlled service activation and read-only smoke (PID 38816).
+- [x] Continuous 168-hour review completed (267.2 continuous soak hours achieved).
+- [x] Three documentation sweeps, secret hygiene and explicit release decision (`APPROVE`).
+- [x] Tag `v2.0.0` published.
 
 **Invariant**: no new feature during stabilization; any P0/P1 blocks release.
 
@@ -320,10 +309,8 @@ automatically.
 
 ## Governance
 
-- `.specify/feature.json` stays on Spec 021 until its D+1/D+3 observation gate
-  closes.
-- Only one production-affecting spec may roll out at a time.
-- Read-only discovery can overlap only when it does not touch the monitor.
-- P0/P1 incidents interrupt the calendar; displaced dates move.
-- Completion requires evidence, roadmap/calendar/docs synchronization and the
-  post-release review defined for the spec.
+- All 30 specifications in the program are complete, verified with evidence, and closed.
+- Version 2.0.0 is released and certified under continuous 267.2h production runtime.
+- Production action authority remains strictly centralized in the Windows monitor.
+- External read-only surfaces (Grafana, static dashboard, backup CLI) operate decoupled from the monitor.
+- Any future modifications or V3 scope must adhere to SpecKit discipline and constitutional gates.

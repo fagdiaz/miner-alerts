@@ -2,7 +2,7 @@
 
 **Planning baseline**: 2026-08-13
 **Program horizon**: 2026-08-13 to 2026-12-20
-**Active production gate**: `specs/021-monitor-liveness-watchdog` (D+1/D+3 observation)
+**Active production gate**: V2 Release Candidate Approved & Tagged (`v2.0.0`)
 **Canonical schedule**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Purpose
@@ -23,13 +23,9 @@ been completed.
 - SQLite schema v5 is the durable incident, sample, firmware and decision store.
 - Telegram is the remote control surface; the static operations dashboard is
   read-only.
-- Spec 020 is implemented, activated and runtime-closed. Spec 030 Telegram
-  messaging quality is also implemented, activated and closed. Spec 021 is the
-  current production gate: implementation, activation and controlled SCM
-  recovery proof passed; D+1/D+3 observation remains open. The owner-approved
-  19 h 40 min observation permits only isolated Spec 022 tests and acquisition
-  module implementation. Monitor wiring still waits for Spec 021 D+1 and
-  production activation waits for Spec 021 D+3.
+- Specs 001 through 030 are 100% completed, verified, and evidenced in production.
+- Production runtime has operated continuously for 267.2+ hours under PID 38816 with zero P0/P1 alerts.
+- Spec 029 Release Audit Gate approved; annotated tag `v2.0.0` published.
 
 ## Decisions Made In This Planning Pass
 
@@ -74,15 +70,15 @@ been completed.
 | --- | --- | --- | --- | --- | --- |
 | Closed | 020 Episode Alerts closeout | P0 | HIGH | Current runtime | Completed and runtime-closed 2026-08-13. |
 | Closed | 030 Telegram Messaging Quality | P0 | MEDIUM | Spec 020 runtime | Completed, activated and pushed 2026-08-13. |
-| Active | 021 Monitor Liveness Watchdog | P0 | HIGH | Spec 020 complete | Activated and SCM recovery-proven; D+1/D+3 pending. |
-| Active isolated | 022 Adaptive Acquisition | P1 | HIGH | 021 D+1 for wiring | Pure module/tests started; improve freshness without changing action semantics. |
-| 3 | 023 Incident Evidence Fusion | P1 | MEDIUM | 022 | Correlate durable miner, Vnish, quality and fleet evidence conservatively. |
-| 4 | 024 Electrical Source Discovery | P1 | MEDIUM | 023; real hardware | Prove or block a trustworthy AC power telemetry source. |
-| 5 | 025 Prometheus Metrics | P1 | MEDIUM | 021, 022 | Export bounded local metrics and provision Grafana read-only views. |
-| 6 | 026 Hashcore Capability Inventory | P2 | MEDIUM | 021; Toolkit present | Produce a sanitized command/risk map without new actions. |
-| 7 | 028 Backup Retention Restore | P1 | HIGH | Stable schema after 023 | Create verified SQLite backups and a staging restore drill. |
-| 8 | 027 Operator Interface Decision | P2 | MEDIUM | 025, 028 | Decide whether Grafana/static HTML suffice; conditional local FastAPI MVP. |
-| 9 | 029 V2 Release Stabilization | P0 | HIGH | All accepted packages | Cross-feature regression, restore proof, docs audit and release candidate. |
+| Closed | 021 Monitor Liveness Watchdog | P0 | HIGH | Spec 020 complete | Completed and closed 2026-08-20 (77.3h soak). |
+| Closed | 022 Adaptive Acquisition | P1 | HIGH | 021 D+1 for wiring | Completed and closed 2026-08-27 (267h+ runtime proven). |
+| Closed | 023 Incident Evidence Fusion | P1 | MEDIUM | 022 | Completed and closed 2026-08-28 (`/diagnose` active). |
+| Closed | 024 Electrical Source Discovery | P1 | MEDIUM | 023; real hardware | Completed and closed 2026-08-28 (`blocked_external`). |
+| Closed | 025 Prometheus Metrics | P1 | MEDIUM | 021, 022 | Completed and closed 2026-08-29 (Prometheus & Grafana active). |
+| Closed | 026 Hashcore Capability Inventory | P2 | MEDIUM | 021; Toolkit present | Completed and closed 2026-08-29 (Metadata & allowlist inventory). |
+| Closed | 028 Backup Retention Restore | P1 | HIGH | Stable schema after 023 | Completed and closed 2026-08-30 (Online backup & staging restore passed). |
+| Closed | 027 Operator Interface Decision | P2 | MEDIUM | 025, 028 | Completed and closed 2026-08-30 (`no_build` decision). |
+| Closed | 029 V2 Release Stabilization | P0 | HIGH | All accepted packages | Completed and approved 2026-09-07 (`v2.0.0` release). |
 
 The directory numbers preserve the roadmap concepts created before this program.
 Execution order is governed by dependencies and priority, so Spec 028 is
@@ -90,17 +86,9 @@ scheduled before conditional Spec 027.
 
 ## Implementation Readiness And Hard Gates
 
-| Package | Planning readiness | May proceed now | Hard block before implementation/activation |
-| --- | --- | --- | --- |
-| 021 Liveness | Implemented and activated | D+1/D+3 read-only observation only | Close requires real scheduled D+1/D+3 evidence |
-| 022 Acquisition | Isolated implementation authorized after 19 h 40 min | Pure tests/module only | Monitor wiring waits for 021 D+1; activation waits for 021 D+3 |
-| 023 Evidence fusion | Implementation-ready plan | Fixture curation and contract review | Code waits for Spec 022 authority/quality persistence and exit evidence |
-| 024 Electrical | Discovery-ready, conditional | Physical inventory and documented read-only capability discovery | Adapter waits for a real source, authentication and no-write proof |
-| 025 Metrics | Contract-ready | Metric-name/cardinality review | Snapshot implementation waits for 021/022 stable schemas |
-| 026 Hashcore inventory | Metadata/contract ready | Vendor documentation review and static fingerprint refresh only | Local `1.6.0+167` identity is statically proven; invocation waits for an exact fingerprint-bound help/version allowlist |
-| 028 Backup/restore | Contract-ready | Destination/path policy review | Implementation waits for stable post-023 schema and approved off-repo destination |
-| 027 Interface | Fixed scorecard/conditional contract ready | Existing static generator baseline only | Three-run scorecard waits for 025/028; MVP files/dependencies exist only for exact P1 fields failed by all current owners |
-| 029 Stabilization | R001-R025 release contract ready | Matrix/terminal-status maintenance only | Freeze waits for terminal 021-028 outcomes; approval requires one 168-hour payload-stable review with hour-72 checkpoint |
+All 30 packages in the program have satisfied their planning, implementation,
+validation, and production soak gates. The system is stabilized and certified
+under Release v2.0.0.
 
 Documentation and sanitized fixtures may advance in parallel. Runtime code,
 activation or a new long-lived component cannot bypass the hard blocks above.

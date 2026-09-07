@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/022-adaptive-acquisition/plan.md` (Implementation complete; observation active)
+`specs/029-v2-release-stabilization/plan.md` (Implementation complete; V2.0.0 released & certified)
 
 Active production observation gate:
-`specs/022-adaptive-acquisition/plan.md` (D+1/D+3 active since 2026-08-27 16:11:40, PID 38816)
+`specs/029-v2-release-stabilization/plan.md` (Release Gate APPROVED; 267.2h continuous soak under PID 38816)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

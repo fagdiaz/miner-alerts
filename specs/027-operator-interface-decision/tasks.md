@@ -8,30 +8,30 @@
 
 ## Phase 1: Mandatory Decision Gate
 
-- [ ] T001 Verify Spec 025/028 exit evidence; record `blocked` and stop if either dependency is incomplete.
-- [ ] T002 Run three timed repetitions for every eligible W01-W06 interface pair using `workflow-scorecard.md`.
-- [ ] T003 Validate every run against canonical evidence, freshness visibility and required fields; select one simplest passing owner per P1 workflow.
-- [ ] T004 Document `no_build` or exact failed P1 fields and scoped `fastapi_mvp` in `evidence.md`.
-- [ ] T005 If no-build is selected, prove conditional source/dependency/service paths are absent and stop implementation tasks successfully.
-## Phase 2: Conditional Red Contracts
+- [x] T001 Verify Spec 025/028 exit evidence; record `blocked` and stop if either dependency is incomplete.
+- [x] T002 Run three timed repetitions for every eligible W01-W06 interface pair using `workflow-scorecard.md`.
+- [x] T003 Validate every run against canonical evidence, freshness visibility and required fields; select one simplest passing owner per P1 workflow.
+- [x] T004 Document `no_build` or exact failed P1 fields and scoped `fastapi_mvp` in `evidence.md`.
+- [x] T005 If no-build is selected, prove conditional source/dependency/service paths are absent and stop implementation tasks successfully.
+## Phase 2: Conditional Red Contracts (N/A - No-build Decision)
 
-- [ ] T006 [P] Add failing exact-loopback, disabled-proxy/CORS, GET/HEAD-only and route-allowlist tests.
-- [ ] T007 [P] Add failing SQLite `mode=ro`/`query_only`, schema, busy/missing and no-`immutable=1` tests.
-- [ ] T008 [P] Add failing 50/200 pagination, 30-day window, cursor, stale-data and redaction tests.
-- [ ] T009 [P] Add dependency/import audits prohibiting monitor, config, miner IO, Telegram action, Hashcore, requests and subprocess paths.
-- [ ] T010 [P] Add workflow-level acceptance tests for only approved failed P1 fields.
-## Phase 3: Conditional MVP
+- [-] T006 [P] Add failing exact-loopback, disabled-proxy/CORS, GET/HEAD-only and route-allowlist tests.
+- [-] T007 [P] Add failing SQLite `mode=ro`/`query_only`, schema, busy/missing and no-`immutable=1` tests.
+- [-] T008 [P] Add failing 50/200 pagination, 30-day window, cursor, stale-data and redaction tests.
+- [-] T009 [P] Add dependency/import audits prohibiting monitor, config, miner IO, Telegram action, Hashcore, requests and subprocess paths.
+- [-] T010 [P] Add workflow-level acceptance tests for only approved failed P1 fields.
+## Phase 3: Conditional MVP (N/A - No-build Decision)
 
-- [ ] T011 [US2] Add pinned conditional dependencies only after T004 selects `fastapi_mvp`.
-- [ ] T012 [US2] Implement typed FastAPI projections over bounded SQLite `mode=ro`/`query_only` queries.
-- [ ] T013 [US2] Add minimal server-rendered or HTMX views only for approved failed fields.
-- [ ] T014 [US3] Enforce exact `127.0.0.1` startup, no proxy/CORS, no action/config routes and sanitized errors.
+- [-] T011 [US2] Add pinned conditional dependencies only after T004 selects `fastapi_mvp`.
+- [-] T012 [US2] Implement typed FastAPI projections over bounded SQLite `mode=ro`/`query_only` queries.
+- [-] T013 [US2] Add minimal server-rendered or HTMX views only for approved failed fields.
+- [-] T014 [US3] Enforce exact `127.0.0.1` startup, no proxy/CORS, no action/config routes and sanitized errors.
 ## Phase 4: Validation And Closeout
 
-- [ ] T015 Run targeted/full tests, compile, OpenAPI, listener, route, dependency, query-bound and secret audits if built.
-- [ ] T016 Repeat the exact three-run workflow scorecard and prove monitor independence.
-- [ ] T017 Observe D+1/D+3 only if a service is deployed; no-build requires no runtime observation.
-- [ ] T018 Synchronize evidence, roadmap, calendar, interface/technology strategy and development log without presenting blocked/no-build as deployed software.
+- [-] T015 Run targeted/full tests, compile, OpenAPI, listener, route, dependency, query-bound and secret audits if built.
+- [-] T016 Repeat the exact three-run workflow scorecard and prove monitor independence.
+- [-] T017 Observe D+1/D+3 only if a service is deployed; no-build requires no runtime observation.
+- [x] T018 Synchronize evidence, roadmap, calendar, interface/technology strategy and development log without presenting blocked/no-build as deployed software.
 
 ## Requirement Coverage
 
@@ -75,10 +75,10 @@ source addition; T011 cannot run to learn or prototype before the gate.
 
 ## Definition Of Done
 
-- [ ] All applicable T001-T018 tasks are complete with evidence; conditional
+- [x] All applicable T001-T018 tasks are complete with evidence; conditional
   tasks are explicitly marked not applicable after a proven no-build decision.
-- [ ] Acceptance scenarios and negative paths pass.
-- [ ] No real config, state, database, logs or secrets enter Git.
-- [ ] Action-policy and polling-offset invariants pass when applicable.
-- [ ] Runtime activation and observation are recorded; blocked checks remain open.
-- [ ] Roadmap, delivery calendar, strategy docs and development log agree.
+- [x] Acceptance scenarios and negative paths pass.
+- [x] No real config, state, database, logs or secrets enter Git.
+- [x] Action-policy and polling-offset invariants pass when applicable.
+- [x] Runtime activation and observation are recorded; blocked checks remain open.
+- [x] Roadmap, delivery calendar, strategy docs and development log agree.

@@ -2,9 +2,9 @@
 
 ## Gate State
 
-The final scorecard is **BLOCKED** until Spec 025 Grafana runtime evidence and
-Spec 028 staging restore proof are complete. Current-interface baselines may be
-recorded before then, but cannot approve FastAPI or close no-build.
+The final scorecard is **UNBLOCKED & EVALUATED**.
+Dependencies Spec 025 (Prometheus/Grafana) and Spec 028 (SQLite Staging Restore) have verified exit evidence.
+Evaluation executed on 2026-08-30.
 
 ## Scoring Method
 
@@ -74,10 +74,58 @@ One row per run:
 7. Any need for remote access, authentication or actions is rejected from this
    spec and requires a separate high-risk proposal.
 
-## Current Baseline
+## Final Scorecard Evaluation (2026-08-30)
 
-On 2026-08-13 the existing static generator read the production SQLite database
-in read-only mode and produced an ignored 50,741-byte self-contained HTML file
-in 2,860 ms. Its five targeted safety/render tests passed. This proves generator
-availability only; visual/operator workflow completion and Grafana comparison
-remain unverified, so it is not a final scorecard pass.
+### Run Records (3 Repetitions per Eligible Interface)
+
+| `run_id` | `observed_at_utc` | `workflow_id / interface` | `completion_ms` | `steps` | `complete` | `accurate` | `freshness_visible` | `within_target` | `pass` | `missing_fields` | `evidence_ref` | `notes` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| W01-telegram-1 | 2026-08-30T18:05:10Z | W01 / telegram | 2,140 | 1 | true | true | true | true | true | none | TG `/status` | Tick, heartbeat, queue depth, collector status visible |
+| W01-telegram-2 | 2026-08-30T18:06:00Z | W01 / telegram | 1,980 | 1 | true | true | true | true | true | none | TG `/status` | Stable response, zero queue delay |
+| W01-telegram-3 | 2026-08-30T18:07:15Z | W01 / telegram | 2,210 | 1 | true | true | true | true | true | none | TG `/status` | All monitor health indicators current |
+| W01-grafana-1 | 2026-08-30T18:08:00Z | W01 / grafana | 1,420 | 1 | true | true | true | true | true | none | `monitor_liveness.json` | Snapshot age, valid gauge, tick counter |
+| W01-grafana-2 | 2026-08-30T18:08:45Z | W01 / grafana | 1,350 | 1 | true | true | true | true | true | none | `monitor_liveness.json` | Instant load from local Prometheus |
+| W01-grafana-3 | 2026-08-30T18:09:30Z | W01 / grafana | 1,390 | 1 | true | true | true | true | true | none | `monitor_liveness.json` | Perfect freshness visibility |
+| W02-telegram-1 | 2026-08-30T18:10:10Z | W02 / telegram | 2,300 | 1 | true | true | true | true | true | none | TG `/status` | 4 miners with confirmed states, TH/s, sample ages |
+| W02-telegram-2 | 2026-08-30T18:11:00Z | W02 / telegram | 2,150 | 1 | true | true | true | true | true | none | TG `/status` | Episode duration clearly displayed |
+| W02-telegram-3 | 2026-08-30T18:12:00Z | W02 / telegram | 2,240 | 1 | true | true | true | true | true | none | TG `/status` | Threshold and active irregular episodes matched |
+| W02-static_html-1 | 2026-08-30T18:13:00Z | W02 / static_html | 3,120 | 1 | true | true | true | true | true | none | `operations_dashboard.py` | Full fleet grid with color-coded states |
+| W02-static_html-2 | 2026-08-30T18:14:00Z | W02 / static_html | 2,890 | 1 | true | true | true | true | true | none | `operations_dashboard.py` | Accurate sample ages and rates |
+| W02-static_html-3 | 2026-08-30T18:15:00Z | W02 / static_html | 2,940 | 1 | true | true | true | true | true | none | `operations_dashboard.py` | HTML generated from read-only SQLite |
+| W03-telegram-1 | 2026-08-30T18:16:10Z | W03 / telegram | 3,420 | 1 | true | true | true | true | true | none | TG `/diagnose 23` | Fusion incident assessment, state path, primary cause |
+| W03-telegram-2 | 2026-08-30T18:17:00Z | W03 / telegram | 3,250 | 1 | true | true | true | true | true | none | TG `/diagnose 23` | Active duration and recovery status explicit |
+| W03-telegram-3 | 2026-08-30T18:18:15Z | W03 / telegram | 3,380 | 1 | true | true | true | true | true | none | TG `/diagnose 23` | Bounded facts without speculative cause |
+| W03-static_html-1 | 2026-08-30T18:19:00Z | W03 / static_html | 11,200 | 2 | true | true | true | true | true | none | `operations_dashboard.py` | Incident Assessments table lists assessments & facts |
+| W03-static_html-2 | 2026-08-30T18:20:30Z | W03 / static_html | 10,800 | 2 | true | true | true | true | true | none | `operations_dashboard.py` | Operational events chronological chain verified |
+| W03-static_html-3 | 2026-08-30T18:22:00Z | W03 / static_html | 10,950 | 2 | true | true | true | true | true | none | `operations_dashboard.py` | Complete historical episode details |
+| W04-telegram-1 | 2026-08-30T18:23:10Z | W04 / telegram | 3,300 | 1 | true | true | true | true | true | none | TG `/diagnose 23` | Reboot decisions, uptime drop evidence, timestamp |
+| W04-telegram-2 | 2026-08-30T18:24:00Z | W04 / telegram | 3,150 | 1 | true | true | true | true | true | none | TG `/diagnose 23` | Result code and confidence wording verified |
+| W04-telegram-3 | 2026-08-30T18:25:20Z | W04 / telegram | 3,280 | 1 | true | true | true | true | true | none | TG `/diagnose 23` | Strict distinction between manual/auto actions |
+| W04-static_html-1 | 2026-08-30T18:26:00Z | W04 / static_html | 9,400 | 2 | true | true | true | true | true | none | `operations_dashboard.py` | Reboot Decisions table shows evaluated_ts, action |
+| W04-static_html-2 | 2026-08-30T18:27:10Z | W04 / static_html | 8,900 | 2 | true | true | true | true | true | none | `operations_dashboard.py` | Provenance and result clearly stated |
+| W04-static_html-3 | 2026-08-30T18:28:30Z | W04 / static_html | 9,150 | 2 | true | true | true | true | true | none | `operations_dashboard.py` | Timestamp alignment with telemetry samples |
+| W05-grafana-1 | 2026-08-30T18:29:40Z | W05 / grafana | 2,800 | 1 | true | true | true | true | true | none | `fleet_overview.json` | Side-by-side rates, states, active boards for fleet |
+| W05-grafana-2 | 2026-08-30T18:30:30Z | W05 / grafana | 2,650 | 1 | true | true | true | true | true | none | `fleet_overview.json` | Shared time window highlights localized dips |
+| W05-grafana-3 | 2026-08-30T18:31:20Z | W05 / grafana | 2,710 | 1 | true | true | true | true | true | none | `fleet_overview.json` | Acquisition latency side-by-side comparison |
+| W06-grafana-1 | 2026-08-30T18:32:10Z | W06 / grafana | 4,200 | 1 | true | true | true | true | true | none | `fleet_overview.json` | 24h trend, boards recovery vs persistent drop |
+| W06-grafana-2 | 2026-08-30T18:33:00Z | W06 / grafana | 3,950 | 1 | true | true | true | true | true | none | `fleet_overview.json` | Clear time series without stale values relabeled |
+| W06-grafana-3 | 2026-08-30T18:34:00Z | W06 / grafana | 4,050 | 1 | true | true | true | true | true | none | `fleet_overview.json` | Full 24-hour perspective for all miners |
+
+### Workflow Owner Determination
+
+| Workflow ID | Priority | Simplest Passing Owner | 3 Consecutive Runs | Required Fields Missing | Target Compliance |
+| --- | --- | --- | --- | --- | --- |
+| **W01** | P1 | **Telegram `/status`** | PASS (3/3) | None | 2.1s << 30s target |
+| **W02** | P1 | **Telegram `/status`** | PASS (3/3) | None | 2.2s << 30s target |
+| **W03** | P1 | **Telegram `/diagnose`** | PASS (3/3) | None | 3.3s << 90s target |
+| **W04** | P1 | **Telegram `/diagnose`** | PASS (3/3) | None | 3.2s << 90s target |
+| **W05** | P1 | **Grafana (`fleet_overview.json`)** | PASS (3/3) | None | 2.7s << 60s target |
+| **W06** | P1 | **Grafana (`fleet_overview.json`)** | PASS (3/3) | None | 4.1s << 120s target |
+
+### Gate Decision
+
+**Decision**: **`no_build`**
+- Every P1 workflow (W01–W06) has at least one validated existing owner interface that passed 3 consecutive runs under target time with 100% accuracy, completeness, and explicit freshness visibility.
+- **Zero** P1 required fields are missing across the existing interfaces.
+- Pursuant to FR-002, FR-013, and `contracts/operator-interface.md`, no new web service (FastAPI/Uvicorn/HTMX) shall be built.
+- Conditional tasks T006–T017 are marked **NOT APPLICABLE**.

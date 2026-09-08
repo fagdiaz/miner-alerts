@@ -1,30 +1,32 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: GOBERNADOR Y BALANCEADOR ACTIVOS POR DEFECTO EN PRODUCCIÓN
+ESTADO DEL PROYECTO: GOBERNADOR CON RECUPERACIÓN DE AUTOSWITCH VNISH
 =============================================================================
-1. PRODUCCIÓN ACTIVA (V3.2.0):
+1. PRODUCCIÓN ACTIVA:
    - Servicio Windows `MinerAlerts` configurado y operando con control activo de hardware por defecto:
      * Spec 039 Fan Governor: `fan_governor_enabled: true`, `fan_governor_dry_run: false`.
-     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: false`.
+     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: true` (monitoreo y telemetría de elevadores sin interferir con el autoswitch nativo de Vnish).
    - Control Manual Interactivo en Caliente (Telegram):
-     * Desactivación segura: `/gov off` (aplica fallback de 100% PWM), `/balancer off` (congela presets).
+     * Desactivación: `/gov off` (fallback automático a 100% PWM), `/balancer off`.
      * Reactivación: `/gov on`, `/balancer on`.
-     * Ajustes: `/gov set <temp>` (target 75-83°C), `/balancer setmax <miner> <preset>`.
+     * Ajustes: `/gov set <temp>` (target térmico), `/balancer setmax <miner> <preset>`.
      * Consultas: `/gov`, `/balancer`, `/fans`, `/presets`, `/digest`.
 
 2. ESTRATEGIA OPERATIVA INTEGRADA:
-   - Gobernador Térmico (Lazo Rápido 30s): Target 83.0°C | Banda muerta [82.0, 83.5]°C | Emergencia 84.0°C (100% PWM).
-   - Balanceador de Presets (Lazo Lento 30m):
-     * Step-Down Térmico: Si temp >= 84.0°C (margen <= 1.0°C frente a corte 85°C), baja escalón de potencia (2700W -> 2500W -> 2300W).
-     * Step-Down Eléctrico: >= 2 reinicios en 24h o cascada grupal en elevador de tensión en < 30m.
-     * Step-Up: Requiere 72h de soak continuo sin caídas y margen térmico >= 4.0°C.
+   - Recuperación de Autoswitch Vnish (`ACTION_RECOVERY_MAX_COOLING`):
+     * Si la potencia del minero está por debajo del objetivo (`current_power_w < target_power_w - 120W`):
+       Los ventiladores se fuerzan al 100% de PWM de forma incondicional.
+     * Con 100% de PWM, la temperatura del chip desciende por debajo de `rise_temp` (79°C de Vnish), permitiendo que el autoswitch nativo de Vnish aumente el preset hacia el techo máximo configurado (2700W en 23/24, 2500W en 25/26).
+     * Solo cuando el equipo alcanza su potencia máxima objetivo y la temperatura es <= 82.0°C, el gobernador modula los ventiladores hacia abajo para estabilizar en 83.0°C sana.
+   - Formato REST API Vnish:
+     * Nombres de preset limpios sin sufijo 'W' (ej: '2700', '2500') para evitar HTTP 400.
    - Anti-Spam: Alertas de saturación ajustadas a 84.0°C / 98% PWM / cooldown 2h; notificaciones de autotune suprimidas.
 
 3. CERTIFICACIÓN GLOBAL DE PRUEBAS:
-   - 576/576 tests PASS en 8.52s (0 fallos, 0 errores, 0 regresiones).
+   - 580/580 tests PASS en 8.86s (0 fallos, 0 errores, 0 regresiones).
    - Documentación 100% normalizada (`ROADMAP.md`, `DELIVERY_PLAN.md`, `SPEC_PROGRAM.md`, `DEVELOPMENT_LOG.md`, evidence records).
-   - Commits manuales y feature-scoped sincronizados con `origin/codex/022-adaptive-acquisition`.
+   - Commits feature-scoped sincronizados con `origin/codex/022-adaptive-acquisition`.
 
 =============================================================================
 SIGUIENTES PASOS:

@@ -1,44 +1,69 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-OBJETIVO DE LA SESIÓN: AUDITORÍA ARQUITECTÓNICA FORMAL (SPEC 039)
+OBJETIVO DE LA SESIÓN: IMPLEMENTACIÓN FASES 4 Y 5 — SPEC 039 (FAN GOVERNOR)
 =============================================================================
-Se requiere una auditoría exhaustiva y rigurosa por parte de Claude Sonnet 4.6 (Thinking)
-sobre la propuesta formal de la especificación:
-`specs/039-vnish-fan-governor` (Vnish Thermal & Acoustic Fan Governor).
+Se requiere la intervención de Claude Sonnet 4.6 (Thinking) para implementar
+las Fases 4 y 5 de Spec 039 (Vnish Thermal & Acoustic Fan Governor),
+que implican multi-threading de producción en `app/miner_monitor.py`,
+gestión de timeouts de sockets, cerrojos `state_lock`, comandos Telegram y tests de concurrencia.
 
-CONTEXTO Y PROBLEMA OPERATIVO:
-1. Mineros Antminer S19j Pro corriendo firmware Vnish (v1.2.7 a v1.2.9).
-2. En modo automático nativo de Vnish, el delay térmico provoca que los chips alcancen 84.0°C.
-   Vnish tiene activo `preset_switcher` con `decrease_temp: 84°C`, por lo que reduce automáticamente
-   la frecuencia (downclocking) y el hashrate cae abruptamente.
-3. El operador configuró manualmente los ventiladores al 100% (~6.000 RPM, 75-80°C), evitando el downclock
-   pero produciendo contaminación acústica máxima y desgaste acelerado de ventiladores.
-4. Se propone un Gobernador Térmico de Lazo Cerrado que module el porcentaje PWM en modo manual
-   para mantener una temperatura estable de 82.0°C (margen seguro antes de los 84°C de downclock
-   y 85°C de corte de seguridad), bajando el ruido y consumo de forma suave y controlada.
-5. El sistema actualmente tampoco muestra en `/fans` si los coolers están en modo Manual o Auto.
+ESTADO ACTUAL DEL PROYECTO:
+1. Fases 1, 2 y 3 implementadas, probadas (537/537 tests PASS) y commiteadas en `55a8dbe`:
+   - `app/vnish_telemetry.py`: Parseo de `fan_mode` ("manual"/"auto") y `fan_pwm`.
+   - `app/fan_health.py`: `CoolingAssessment` extendido con `fan_mode`, visualización en `/fans`.
+   - `app/vnish_client.py`: Cliente REST seguro con `safe_set_fan_duty()` y enmascaramiento de tokens.
+   - `app/fan_governor.py`: Motor determinista puro `compute_governor_step()` con reglas R1-R4 y spike 83°C.
+2. Monitor en producción PID 88348: Activo, saludable y corriendo V3.0.0 (>1.720 ticks, 197 handles).
+3. Repositorio: Rama `codex/022-adaptive-acquisition`, limpio y sincronizado con origin (`git push` completado).
 
-ARCHIVOS A AUDITAR:
-1. `specs/039-vnish-fan-governor/spec.md`: Requisitos, historias de usuario y criterios de aceptación.
-2. `specs/039-vnish-fan-governor/contracts/governor-contract.md`: Contrato REST de Vnish y modelo matemático de control.
-3. `specs/039-vnish-fan-governor/plan.md`: Arquitectura, fases, modelo de amenazas y mitigaciones.
-4. `specs/039-vnish-fan-governor/tasks.md`: Desglose de tareas T001 a T021.
-5. `app/fan_health.py` y `app/vnish_telemetry.py`: Módulos actuales de telemetría y salud de ventiladores.
-6. `app/miner_monitor.py`: Bucle principal de producción y concurrencia.
+CONTRATOS Y HARDENING ACORDADOS (AUDITORÍA CLAUDE):
+- R1 (Anti-Hunting): Dwell base 90s, adaptativo 120s si consecutive_holds >= 3, deadband [81.0, 82.5]°C.
+- R2 (HTTP Concurrency): Modulación de hardware de la flota ejecutada en paralelo mediante
+  `ThreadPoolExecutor(max_workers=4)` con timeout individual de 2.5s y timeout global de 5.0s,
+  blindando el ciclo autoritativo de 30s de la API 4028.
+- R3 (Fail-Safe Explícito a 100%): Fallback a 100% ante `/gov off`, >= 3 fallos consecutivos de red o excepciones.
+- R4 (PWM Floor): Piso mínimo de 75% duty cycle.
+- Feature Flags por defecto: `fan_governor_enabled: false`, `fan_governor_dry_run: true`.
 
-FOCOS ESPECÍFICOS DE LA AUDITORÍA DE CLAUDE SONNET 4.6 THINKING:
-- Modelo de Concurrencia y Sockets: ¿Cómo deben ejecutarse las llamadas HTTP REST (unlock/set/lock)
-  para que un timeout de red en un minero no retrase ni bloquee el tick autoritativo de 30s de la API 4028?
-- Anti-Hunting & Estabilidad Térmica: ¿Es suficiente la banda muerta de 1.5°C ([81.0, 82.5]°C)
-  con dwell time de 90s y pasos de ±2-3% para prevenir oscilaciones térmicas en disipadores S19j Pro?
-- Fail-Safe & Spike Override: ¿Es robusto el salto defensivo a 100% PWM ante T >= 83.0°C?
-- Higiene de Credenciales: Garantías de que contraseñas y tokens no escapen a logs o estado git.
-- Evaluación de Riesgos Operativos antes de autorizar el inicio de la Fase 1 / Fase 2.
+TAREAS ESPECÍFICAS A IMPLEMENTAR:
+1. **T014: Integración en `app/miner_monitor.py`**:
+   - Agregar configuración del gobernador en `config`:
+     `fan_governor_enabled` (bool, def: False), `fan_governor_dry_run` (bool, def: True),
+     `fan_governor_target_temp_c` (float, def: 82.0), `vnish_api_password` (str, def: "admin").
+   - Crear función ejecutora `execute_governor_cycle(miners, states, config)`:
+     * Evaluar cada minero con `compute_governor_step()`.
+     * Si `decision.requires_write` y `not config.fan_governor_dry_run`:
+       Despachar escritura usando `ThreadPoolExecutor(max_workers=min(4, len(miners)))`
+       con `safe_set_fan_duty(host, password, duty, timeout=2.5)`.
+       Esperar con `concurrent.futures.wait(..., timeout=5.0)`.
+     * Actualizar métricas del gobernador en `state` bajo `state_lock`.
+     * Registrar en log: `[GOV] miner=23 action=STEP_DOWN duty=98% temp=79.5°C dry_run=False`.
 
-ESTADO DEL MONITOR EN PRODUCCIÓN:
-- PID 88348: Servicio `MinerAlerts` activo, saludable y corriendo V3.0.0 (>1.718 ticks).
-- Working tree: Limpio (`working tree clean`).
+2. **T015: Comandos Telegram**:
+   - `/gov` o `/governor`: Muestra tabla con estado global (ON/OFF, DRY-RUN/ACTIVE), target (82°C) y estado por minero (T_max, Duty actual, Última acción, Holds, Failures).
+   - `/gov on`: Habilita el gobernador en memoria.
+   - `/gov off`: Deshabilita el gobernador y ejecuta fallback de seguridad a 100% PWM en todos los mineros.
+   - `/gov set <temp>`: Ajusta el target térmico (validado entre 75.0°C y 83.0°C).
+
+3. **T016: Persistencia en `app/state.json`**:
+   - Persistir estado del gobernador por minero (`governor_duty`, `governor_holds`, `governor_last_change_ts`, `governor_failures`) respetando `state_lock`.
+
+4. **T017: Esquema y Documentación de Configuración**:
+   - Actualizar `app/config.example.json` con los nuevos campos documentados.
+
+5. **T018 & T019: Tests de Concurrencia y Suite Global**:
+   - Crear `tests/test_fan_governor_concurrency.py`:
+     * Test de timeout global de flota (minero lento que demora 10s no bloquea al executor más de 5.0s).
+     * Test de fallback a 100% en `/gov off`.
+     * Test de aislamiento de excepciones y thread-safety de `state_lock`.
+   - Ejecutar suite global: `$env:OPENBLAS_NUM_THREADS="1"; python -m unittest discover -s tests -p "test_*.py"`.
+
+ARCHIVOS DE REFERENCIA:
+- `specs/039-vnish-fan-governor/contracts/governor-contract.md`
+- `app/fan_governor.py`
+- `app/vnish_client.py`
+- `app/miner_monitor.py` (Líneas 5130-5170 ciclo de enfriamiento, y bloque de dispatch de comandos Telegram)
 
 =============================================================================
 MODELO A SELECCIONAR: Claude Sonnet 4.6 (Thinking)

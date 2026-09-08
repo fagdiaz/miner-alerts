@@ -3,6 +3,30 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Auditoría y Reorganización Documental de Speckit (Archivo de Estrategias y Modernización del Índice)
+
+* **Objetivo**: Limpiar y desfragmentar la estructura de archivos markdown en `docs/speckit/`, separando nítidamente la documentación operativa viva y de referencia activa de aquellas propuestas y estrategias históricas cerradas o concluidas, preservando la trazabilidad completa del proyecto sin saturar el contexto de los operadores y modelos.
+* **Acciones y Reorganización Realizada**:
+  1. **Creación del Directorio de Archivo (`docs/speckit/archive/`)**:
+     - Traslado mediante `git mv` (preservando historial de git) de los siguientes documentos históricos cerrados:
+       * `HASHCORE_TOOLKIT_STRATEGY.md` -> `docs/speckit/archive/HASHCORE_TOOLKIT_STRATEGY.md` (Inventario de capacidades Hashcore - Spec 026; concluido y congelado).
+       * `INTERFACE_STRATEGY.md` -> `docs/speckit/archive/INTERFACE_STRATEGY.md` (Evaluación de interfaz web FastAPI - Spec 027; decisión formal `no_build`).
+       * `V3_EXPANSION_PLAN.md` -> `docs/speckit/archive/V3_EXPANSION_PLAN.md` (Plan inicial Telegram Max y V3 - Specs 031 a 038; 100% implementado y certificado en producción).
+     - Creación de [`docs/speckit/archive/README.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/archive/README.md) explicando el motivo de archivo, contexto de origen, estado terminal y referencia a la implementación viva correspondiente.
+  2. **Modernización del Índice Maestro (`docs/speckit/README.md`)**:
+     - Reescritura del índice principal para mapear claramente:
+       * **Documentación Operativa Viva**: `ROADMAP.md` (backlog/entregas), `RUNBOOK.md` (manual operativo/comandos), `SPEC_PROGRAM.md` (marco programático y DoD), `DELIVERY_PLAN.md` (calendario y soak), `MINER_DIAGNOSTICS.md` (diagnósticos) y `TECHNOLOGY_STRATEGY.md` (arquitectura y decisiones técnicas).
+       * **Sección de Archivo**: Referencia clara al contenido histórico en `archive/`.
+       * **Estado del Sistema**: Actualizado a Release V3.0.0 Certificado y V3.1 (Gobernador térmico/potencia y autodescubrimiento Vnish en producción, 40/40 specs completadas).
+       * **La Joya del Proyecto**: Referencia destacada a `docs/audit/DEVELOPMENT_LOG.md`.
+  3. **Alineación de Enlaces Raíz (`README.md`)**:
+     - Actualización de los enlaces del bloque de documentación en el `README.md` principal para reflejar la estructura reorganizada y evitar referencias rotas.
+* **Certificación**:
+  - Estructura validada: 0 archivos rotos, links relativos y markdown links normalizados.
+  - Suite de tests íntegra: 587/587 tests PASS.
+
+---
+
 ## [2026-09-08] - Autodescubrimiento Dinámico de Presets Vnish y Diagnóstico de Sensibilidad de Elevadores de Tensión
 
 * **Objetivo**: Implementar la adaptación dinámica automática del sistema ante decisiones del usuario en Vnish (e.g. cambios manuales en `top_preset` o autoswitch como el incremento de los mineros 25 y 26 a 2700W) sin requerir modificaciones estáticas manuales en `config.json`, e incorporar el registro, correlación y diagnóstico integral de la sensibilidad eléctrica de los elevadores de tensión ante reinicios y caídas de carga.

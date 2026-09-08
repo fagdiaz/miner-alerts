@@ -386,6 +386,18 @@ def extract_miner_stability_metrics(
         power = sample.get("chain_power_w_total")
         elapsed = sample.get("elapsed_seconds")
 
+        # Fallback to in-memory state if db sample does not yet contain power, temp, or elapsed
+        if states:
+            for sk, st in states.items():
+                if m_name in sk or (m_host and m_host in sk):
+                    if max_temp is None and getattr(st, "governor_last_temp_c", None) is not None:
+                        max_temp = st.governor_last_temp_c
+                    if power is None and getattr(st, "governor_last_power_w", None) is not None:
+                        power = st.governor_last_power_w
+                    if elapsed is None and getattr(st, "last_elapsed", None) is not None:
+                        elapsed = st.last_elapsed
+                    break
+
         headroom = max(0.0, 85.0 - max_temp) if max_temp is not None else 10.0
 
         if elapsed is not None and elapsed > 0:

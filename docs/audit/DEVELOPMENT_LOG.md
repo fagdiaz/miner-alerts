@@ -3,6 +3,22 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Desacople de Telemetría de Gobernador y Fallback en Memoria para Balanceador de Presets
+
+* **Objetivo**: Auditar y robustecer la resiliencia operativa: desacoplar la ingesta de telemetría del Fan Governor respecto de las alertas preventivas de cooling, evitar que mineros offline operen sobre telemetría fantasma, y agregar fallback de estado en memoria en el Balanceador de Presets para inferir potencias y márgenes térmicos reales aun cuando la base SQLite no haya grabado muestras recientes.
+* **Mejoras Implementadas**:
+  - **Desacople de Ingesta de Telemetría (`app/miner_monitor.py:5901`)**:
+    * La alimentación de `state.governor_last_temp_c` y `state.governor_last_power_w` se movió fuera del bloque condicional de `cooling_alert_enabled`, garantizando que el gobernador reciba telemetría en tiempo real independientemente de cómo esté configurado el subsistema de alertas de enfriamiento.
+    * Ante desconexión o falla de respuesta del minero (`not responded`), se limpian los valores a `None`, garantizando que el gobernador devuelva `ACTION_UNKNOWN` con `requires_write=False` y nunca intente ajustar ventiladores sobre datos obsoletos o en mineros inalcanzables.
+  - **Fallback en Memoria para Métricas de Estabilidad (`app/preset_balancer.py:386`)**:
+    * En `extract_miner_stability_metrics()`, si la tabla `telemetry_samples` de SQLite no contiene filas recientes para un minero, se recurre automáticamente a los valores en memoria de `states` (`st.governor_last_power_w`, `st.governor_last_temp_c` y `st.last_elapsed`).
+    * Erradica la inferencia errónea del preset por defecto ("1600W") en mineros que operan en 2500W o 2700W.
+* **Certificación**:
+  - 581/581 tests PASS en 8.77s.
+  - Sintaxis limpia (`py_compile`) y servicio reiniciado en producción.
+
+---
+
 ## [2026-09-08] - Calibración Térmica de Fan Governor a 82.0°C para Prevención de Autoswitch Vnish
 
 * **Objetivo**: Reducir el target térmico del gobernador de 83.0°C a 82.0°C para maximizar la estabilidad operativa y evitar que fluctuaciones térmicas normales se acerquen al umbral de corte/desescalado de Vnish (`decrease_temp: 84.0°C`).

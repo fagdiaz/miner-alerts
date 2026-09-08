@@ -5901,15 +5901,9 @@ def main() -> None:
                             },
                         )
 
-                # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
-                cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
-                if cooling_alert_enabled and not first_tick and responded:
-                    critical_temp = float(config.get("cooling_critical_temp_c", 84.5))
-                    saturate_temp = float(config.get("cooling_saturate_temp_c", 84.0))
-                    saturate_pwm = float(config.get("cooling_saturate_pwm_pct", 98.0))
-                    saturate_rpm = int(config.get("cooling_saturate_rpm", 5800))
+                # Spec 039: Feed live telemetry to governor state for next cycle
+                if responded:
                     state.last_fan_mode = vnish_telemetry.fan_mode
-                    # Spec 039: Feed live telemetry to governor state for next cycle
                     if vnish_telemetry.max_temp_c is not None:
                         state.governor_last_temp_c = vnish_telemetry.max_temp_c
                     if vnish_telemetry.chain_power_w_total is not None:
@@ -5917,6 +5911,18 @@ def main() -> None:
                     if state.governor_duty is None and vnish_telemetry.fan_pwm_percent is not None:
                         # Seed initial duty from hardware reading
                         state.governor_duty = int(round(vnish_telemetry.fan_pwm_percent))
+                else:
+                    # When miner does not respond, clear telemetry so governor does not act on stale data
+                    state.governor_last_temp_c = None
+                    state.governor_last_power_w = None
+
+                # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
+                cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
+                if cooling_alert_enabled and not first_tick and responded:
+                    critical_temp = float(config.get("cooling_critical_temp_c", 84.5))
+                    saturate_temp = float(config.get("cooling_saturate_temp_c", 84.0))
+                    saturate_pwm = float(config.get("cooling_saturate_pwm_pct", 98.0))
+                    saturate_rpm = int(config.get("cooling_saturate_rpm", 5800))
                     cooling_ass = assess_miner_cooling(
                         miner_name=name_display,
                         max_temp_c=vnish_telemetry.max_temp_c,

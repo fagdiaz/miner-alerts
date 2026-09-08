@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (30 de 30 especificaciones del programa completadas y verificadas con evidencia en producción).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (38 de 38 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -171,6 +171,14 @@ interfaces or integrations.
 | 7 | Spec 028 backup-retention-restore | COMPLETE | P1 | HIGH | Closed 2026-08-30 |
 | 8 | Spec 027 operator-interface-decision | COMPLETE (`no_build`) | P2 | MEDIUM | Closed 2026-08-30 |
 | 9 | Spec 029 v2-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v2.0.0` released) |
+| 10 | Spec 031 telegram-interactive-callbacks | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 11 | Spec 032 telegram-visual-charts | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 12 | Spec 033 miner-maintenance-snooze | COMPLETE | P1 | MEDIUM | Closed 2026-09-07 |
+| 13 | Spec 034 daily-executive-digest | COMPLETE | P2 | LOW | Closed 2026-09-07 |
+| 14 | Spec 035 cooling-fan-health | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 15 | Spec 036 efficiency-energy-tracking | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 16 | Spec 037 vnish-presets-autotuning | COMPLETE | P2 | LOW | Closed 2026-09-07 |
+| 17 | Spec 038 v3-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v3.0.0` released) |
 
 Dates include implementation plus the separate review/fix gate detailed in
 `DELIVERY_PLAN.md`. Runtime evidence can move dates but cannot compress gates.
@@ -334,7 +342,20 @@ activation and controlled SCM recovery proof are complete. D+1/D+3 gates closed.
 - [x] Three documentation sweeps, secret hygiene and explicit release decision (`APPROVE`).
 - [x] Tag `v2.0.0` published.
 
-**Invariant**: no new feature during stabilization; any P0/P1 blocks release.
+### R10 - Telegram Max, Intelligence & Concurrency Release V3 (`COMPLETE / APPROVED`, P0)
+
+**Specs**: `specs/031-telegram-interactive-callbacks` a `specs/038-v3-release-stabilization`
+
+- [x] Spec 031: Botones interactivos Telegram inline (1-tap) y flujo de confirmación en 2 pasos para reinicios seguros (`app/telegram_callbacks.py`).
+- [x] Spec 032: Gráficos nativos de telemetría en formato PNG generados en RAM sin almacenamiento en disco (`app/telegram_charts.py`).
+- [x] Spec 033: Modo mantenimiento y silenciamiento temporal con bloqueo de autoreinicios (`app/telegram_snooze.py`).
+- [x] Spec 034: Reporte ejecutivo diario programado (08:00 AM) y on-demand (`app/daily_digest.py`).
+- [x] Spec 035: Inteligencia térmica, cálculo de headroom a 85°C y alertas predictivas de saturación de ventiladores (`app/fan_health.py`).
+- [x] Spec 036: Seguimiento en tiempo real de eficiencia energética ($J/\text{TH}$) y alertas de degradación (`app/energy_efficiency.py`).
+- [x] Spec 037: Auditoría dinámica de presets Vnish y alertas de downclocking ($\ge 25\text{ MHz}$) (`app/vnish_presets.py`).
+- [x] Spec 038: Endurecimiento de concurrencia multihilo, mitigación de condiciones de carrera, 19 tests de estrés (`tests/test_v3_concurrency.py`), 514 tests globales PASS y certificación del Release V3.0.0.
+
+**Invariant**: cero impacto sobre la máquina de estados, aislamiento estricto de hilos lectores SQLite con `?mode=ro`.
 
 ## Deferred Technology
 
@@ -357,23 +378,24 @@ activation and controlled SCM recovery proof are complete. D+1/D+3 gates closed.
 - [x] Static operations dashboard.
 - [x] Telegram no-silence delivery and click-safe actions.
 - [x] Persistent/episode alerts and truthful current status in committed code.
+- [x] Botones interactivos Telegram inline (1-tap) y flujo de confirmación en 2 pasos (Spec 031).
+- [x] Envío de gráficos nativos de telemetría en PNG sin archivos en disco (Spec 032).
+- [x] Silenciamiento temporal y bloqueo de reinicios por mantenimiento programado (Spec 033).
+- [x] Reporte ejecutivo diario programado y bajo demanda (Spec 034).
+- [x] Diagnóstico predictivo de saturación térmica y degradación de ventiladores (Spec 035).
+- [x] Métrica en tiempo real de Joules por Terahash y alertas de consumo (Spec 036).
+- [x] Auditoría dinámica de perfiles de autotuning Vnish y caídas de frecuencia (Spec 037).
+- [x] Blindaje de concurrencia en memoria y sockets SQLite para consultas analíticas (Spec 038).
 
-## V3 Expansion & Future Strategic Initiatives
+## Future Strategic Initiatives (V4 / Next Horizon)
 
-Strategic exploration and specifications for next-generation capabilities are
-detailed in:
-`docs/speckit/V3_EXPANSION_PLAN.md`
-
-- **Telegram Max**: Inline Keyboards (1-tap actions), in-memory PNG charts (`/chart`),
-  temporary snooze/maintenance mode (`/snooze`), and daily executive digest.
-- **Advanced Monitor Health**: Fan degradation & thermal runaway predictive alerts,
-  real-time energy efficiency metric ($J/\text{TH}$), Vnish autotuning preset tracking.
-- **Autonomous Operations**: Scheduled auto-refresh for the native HTML dashboard.
+Strategic exploration and specifications for next-generation capabilities:
+- **Spec 039 — Vnish REST API Client & Electrical Adaptive Governor**: Control dinámico de presets y ventiladores por lazo cerrado para mitigar disparos en elevadores de tensión sensibles.
 
 ## Governance
 
-- All 30 specifications in the program are complete, verified with evidence, and closed.
-- Version 2.0.0 is released and certified under continuous 267.2h production runtime.
+- All 38 specifications in the program are complete, verified with evidence, and closed.
+- Version 3.0.0 is released, certified, and fully hardened with 514/514 tests PASS.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI) operate decoupled from the monitor.
-- Any future modifications or V3 scope must adhere to SpecKit discipline and constitutional gates.
+- Any future modifications or V4 scope must adhere to SpecKit discipline and constitutional gates.

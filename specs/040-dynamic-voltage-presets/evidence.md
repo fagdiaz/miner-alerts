@@ -16,9 +16,10 @@
 1. **Fase 1 (Cliente REST Vnish Presets)**:
    - `tests/test_vnish_client.py`: 15/15 tests PASS. Cubre lectura de presets, posteo atómico de presets y ciclo transaccional seguro con garantía `finally` para bloqueo de API.
 2. **Fase 2 y 3 (Motor Matemático Determinista)**:
-   - `tests/test_preset_balancer.py`: 13/13 tests PASS en 0.002s:
+   - `tests/test_preset_balancer.py`: 14/14 tests PASS en 0.002s:
      * `test_compute_effective_hashrate`: Demuestra matemáticamente que operar a 93 TH/s (2500W) sin reinicios genera más hashrate neto (93.0 TH/s) que forzar a 98 TH/s (2700W) con 3 reinicios diarios (89.96 TH/s netos).
      * `test_step_down_on_frequent_restarts`: $\ge 2$ reinicios en 24h fuerza desescalado preventivo.
+     * `test_step_down_on_thermal_overload`: Temperatura $\ge 84.0^\circ\text{C}$ (margen térmico $\le 1.0^\circ\text{C}$ frente al corte de 85°C) desescala secuencialmente de potencia de inmediato.
      * `test_group_cascade_step_down`: 2 mineros en el mismo elevador reiniciándose en ventana de 30m activan desescalado grupal para proteger la fase eléctrica.
      * `test_step_up_after_soak_stability`: 80h de uptime, 0 reinicios en 72h y margen $\ge 4^\circ\text{C}$ promueven optimización ascendente de preset.
      * `test_extract_miner_stability_metrics_against_live_db`: Consulta SQLite en modo `?mode=ro` ejecutada en < 20ms sin bloquear el hilo de monitoreo.
@@ -33,4 +34,5 @@
      * `test_state_lock_concurrency_no_deadlock`: Concurrencia de 5 hilos bajo `state_lock` sin excepciones ni carreras.
      * `test_help_index_includes_balancer_and_governor`: Ayuda `/help` indexa correctamente `/balancer` y `/gov`.
 4. **Suite Global de Regresión Completa**:
-   - `& ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py"`: **575/575 tests PASS** en 10.08s (0 fallos, 0 errores, 0 regresiones).
+   - `& ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py"`: **576/576 tests PASS** en 8.52s (0 fallos, 0 errores, 0 regresiones).
+   - Activado por defecto en producción (`preset_balancer_enabled: true`, `preset_balancer_dry_run: false`).

@@ -1,37 +1,35 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: CALIBRACIÓN TÉRMICA 83°C-84°C Y ANTI-SPAM EN PRODUCCIÓN
+ESTADO DEL PROYECTO: GOBERNADOR Y BALANCEADOR ACTIVOS POR DEFECTO EN PRODUCCIÓN
 =============================================================================
-1. PRODUCCIÓN ACTIVA (V3.2.0 - PID 3408):
-   - Servicio Windows `MinerAlerts` reiniciado exitosamente y operando bajo PID 3408 (supervisado por NSSM PID 102080).
-   - Ticks regulares autoritativos cada 30s (`tick_sequence >= 1`, `queue_depth: 0`).
-   - Cero errores en ejecución.
-   - Modos defensivos seguros activos por defecto (`dry_run: true`).
+1. PRODUCCIÓN ACTIVA (V3.2.0):
+   - Servicio Windows `MinerAlerts` configurado y operando con control activo de hardware por defecto:
+     * Spec 039 Fan Governor: `fan_governor_enabled: true`, `fan_governor_dry_run: false`.
+     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: false`.
+   - Control Manual Interactivo en Caliente (Telegram):
+     * Desactivación segura: `/gov off` (aplica fallback de 100% PWM), `/balancer off` (congela presets).
+     * Reactivación: `/gov on`, `/balancer on`.
+     * Ajustes: `/gov set <temp>` (target 75-83°C), `/balancer setmax <miner> <preset>`.
+     * Consultas: `/gov`, `/balancer`, `/fans`, `/presets`, `/digest`.
 
-2. ESTRATEGIA OPERATIVA Y HARDENING APLICADO:
-   - Estrategia Térmica:
-     * Target del Gobernador de Ventiladores (Spec 039): 83.0°C (punto dulce de eficiencia y salud).
-     * Deadband: [82.0°C, 83.5°C]. Si temp < 82°C reduce ventiladores (-2%); si > 83.5°C acelera (+3%).
-     * Emergencia Ventiladores: 84.0°C -> Spike instantáneo a 100% PWM.
-     * Desescalado Térmico en Balanceador (Spec 040): Si temp >= 84.0°C (headroom <= 1.0°C frente a corte 85°C)
-       y ventiladores al 100%, baja secuencialmente el preset (`2700W -> 2500W -> 2300W`).
-   - Mitigación de Spam en Telegram:
-     * Saturación térmica: umbral elevado a 84.0°C con 98% PWM, racha de 5 ticks y cooldown de 7200s (2h).
-     * Autotune Vnish: notificaciones desactivadas (`preset_alert_enabled: false`). Información disponible bajo demanda vía `/presets` y `/digest`.
-   - Protección de Elevadores:
-     * Desescalado grupal en cascada si mineros del mismo elevador reinician en < 30m.
+2. ESTRATEGIA OPERATIVA INTEGRADA:
+   - Gobernador Térmico (Lazo Rápido 30s): Target 83.0°C | Banda muerta [82.0, 83.5]°C | Emergencia 84.0°C (100% PWM).
+   - Balanceador de Presets (Lazo Lento 30m):
+     * Step-Down Térmico: Si temp >= 84.0°C (margen <= 1.0°C frente a corte 85°C), baja escalón de potencia (2700W -> 2500W -> 2300W).
+     * Step-Down Eléctrico: >= 2 reinicios en 24h o cascada grupal en elevador de tensión en < 30m.
+     * Step-Up: Requiere 72h de soak continuo sin caídas y margen térmico >= 4.0°C.
+   - Anti-Spam: Alertas de saturación ajustadas a 84.0°C / 98% PWM / cooldown 2h; notificaciones de autotune suprimidas.
 
 3. CERTIFICACIÓN GLOBAL DE PRUEBAS:
-   - 576/576 tests PASS en 8.66s (0 fallos, 0 errores, 0 regresiones).
-   - Sintaxis limpia (`py_compile` exitoso en todos los módulos).
-   - Commits registrados y sincronizados con `origin/codex/022-adaptive-acquisition`.
+   - 576/576 tests PASS en 8.52s (0 fallos, 0 errores, 0 regresiones).
+   - Documentación 100% normalizada (`ROADMAP.md`, `DELIVERY_PLAN.md`, `SPEC_PROGRAM.md`, `DEVELOPMENT_LOG.md`, evidence records).
+   - Commits manuales y feature-scoped sincronizados con `origin/codex/022-adaptive-acquisition`.
 
 =============================================================================
 SIGUIENTES PASOS:
-- Monitoreo en caliente de la telemetría en `logs/out.log`.
-- Los comandos `/balancer`, `/gov`, `/fans` y `/presets` en Telegram están listos para consulta.
-- Si se desea que el sistema empiece a modular coolers o presets en hardware real, alternar con `/gov on` o `/balancer on`.
+- Operación autónoma en producción continua.
+- Supervisión pasiva periódica vía Telegram (`/status`, `/gov`, `/balancer`).
 =============================================================================
 MODELO SUGERIDO: Gemini 3.8 Flash High (Capacidad óptima para análisis, métricas operativas y siguientes tareas del roadmap)
 =============================================================================

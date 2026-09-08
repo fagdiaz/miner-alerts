@@ -48,6 +48,8 @@ safety gates are not compressed to recover an estimate.
 | Spec 036 efficiency | Closed 2026-09-07 | `/efficiency`, J/TH real-time tracking, `EFFICIENCY_WARNING` | 12 unit tests PASS, streak filter. |
 | Spec 037 presets | Closed 2026-09-07 | `/presets`, Vnish autotuning & downclock tracking | 11 unit tests PASS, 1.77ms query latency. |
 | Spec 038 v3 release | Closed 2026-09-07 (`approved`) | Multi-threading concurrency audit, thread-safety hardening | 19 concurrency tests PASS, 514 total tests PASS, v3.0.0 approved. |
+| Spec 039 fan governor | Closed 2026-09-08 (`approved`) | Vnish fan governor, target 83°C, fail-safe 100%, active in production | 12 concurrency tests PASS, 549 tests PASS. |
+| Spec 040 dynamic presets | Closed 2026-09-08 (`approved`) | Preset balancer, elevator cascade & thermal step-down, active in production | 23 tests PASS (14 unit + 9 integration), 576 tests PASS. |
 
 ## Milestones
 

@@ -3,6 +3,25 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Activación Plena por Defecto de Gobernador Térmico y Balanceador de Presets en Producción
+
+* **Objetivo**: Configurar como activas por defecto (`enabled: true`, `dry_run: false`) las nuevas aplicaciones de control y gobernanza de hardware (Spec 039 Fan Governor y Spec 040 Preset Balancer), manteniendo intacta la capacidad de desconexión y reconexión manual interactiva en caliente vía Telegram (`/gov on`/`/gov off`, `/balancer on`/`/balancer off`). Normalizar y sincronizar toda la documentación del proyecto, reiniciar el servicio en modo activo y certificar la estabilidad absoluta del sistema.
+* **Resultados y Evidencia**:
+  - **Activación por Defecto en Configuración (`app/config.json` y `app/config.example.json`)**:
+    * `fan_governor_enabled: true` y `fan_governor_dry_run: false`: Gobernador térmico de lazo cerrado activo al arrancar el servicio. Modula coolers al target de 83.0°C en base a la telemetría periódica. Desactivable en cualquier momento con `/gov off` (fallback automático a 100% PWM).
+    * `preset_balancer_enabled: true` y `preset_balancer_dry_run: false`: Balanceador de presets activo al arrancar el servicio. Desescala preventivamente por reinicios en 24h, caídas en cascada del mismo elevador o temperatura límite $\ge 84.0^\circ\text{C}$. Desactivable en cualquier momento con `/balancer off`.
+  - **Normalización de Documentación**:
+    * `specs/039-vnish-fan-governor/evidence.md`: Actualizado con la activación en producción, target 83°C y umbrales definitivos.
+    * `specs/040-dynamic-voltage-presets/evidence.md`: Actualizado con los 14 tests unitarios deterministas (incluyendo sobrecarga térmica) y activación en producción.
+    * `docs/speckit/ROADMAP.md`: Specs 039 y 040 marcadas formalmente como *COMPLETADAS Y ACTIVAS EN PRODUCCIÓN*.
+    * `docs/speckit/DELIVERY_PLAN.md`: Hitos de cierre registrados para Specs 039 y 040.
+    * `docs/speckit/SPEC_PROGRAM.md`: Estado del programa actualizado a 40 especificaciones cerradas (V1 a V3.1) y 576 tests automáticos.
+  - **Certificación de Pruebas**:
+    * 576/576 tests PASS en 8.52s (0 fallos, 0 errores, 0 regresiones).
+    * Validación de sintaxis limpia en todo el árbol de código.
+
+---
+
 ## [2026-09-08] - Calibración Operativa Térmica 83°C–84°C, Step-Down por Temperatura y Mitigación de Spam en Telegram
 
 * **Objetivo**: Alinear la estrategia física de operación solicitada por el operador: punto de trabajo sano a 83.0°C, límite máximo estable de 84.0°C con desescalado secuencial de potencia (2700W -> 2500W -> 2300W) si los ventiladores al 100% no son suficientes para contener la temperatura, modulación descendente de ventiladores cuando exista margen térmico, y erradicación definitiva de falsas alertas de saturación y ruido de autotune en Telegram.

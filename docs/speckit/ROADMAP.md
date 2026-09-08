@@ -76,21 +76,28 @@ El programa completo de expansión V3 (Specs 031 a 038) está cerrado y validado
 
 ---
 
-### ⚡ Programa V3.1: Control y Gobernanza de Hardware
+### ⚡ Programa V3.1: Control y Gobernanza de Hardware (Activación Plena en Producción)
 
-9. **[COMPLETADO] Spec 039 — Gobernador Térmico y Acústico de Ventiladores Vnish (`039-vnish-fan-governor`)**:
-   - *Objetivo*: Detección de modo en `/fans` (`manual`/`auto`), cliente REST seguro (`app/vnish_client.py`) y algoritmo de lazo cerrado determinista (`app/fan_governor.py`) para modular el PWM manual hacia una temperatura óptima de ~82.0°C (evitando el downclocking a 84°C del `preset_switcher` y el corte a 85°C), reduciendo el ruido acústico y el desgaste de rodamientos.
-   - *Hardening Incorporado (Auditoría Claude Sonnet 4.6 Thinking)*:
-     * R1 (Anti-Hunting): Dwell time adaptativo (90s base, 120s para holds $\ge 3$) y banda muerta $[81.0, 82.5]^\circ\text{C}$.
-     * R2 (Concurrencia HTTP): ThreadPoolExecutor con 2.5s por solicitud, 5.0s límite global y `shutdown(wait=False)` para proteger el tick autoritativo.
-     * R3 (Fail-Safe Explícito): Retorno forzado a 100% ante `/gov off`, $\ge 3$ fallos consecutivos o excepciones no capturadas.
-     * R4 (Piso de Seguridad Infranqueable): Límite mínimo elevado a 75% PWM.
-   - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T021), visibilidad implementada en `/fans`, comandos interactivos Telegram (`/gov`, `/gov on`, `/gov off`, `/gov set`), 12 tests de concurrencia y estrés (`tests/test_fan_governor_concurrency.py`), 549 tests globales PASS sin regresiones, PID 101508 en producción 100% ininterrumpido.
-   - *Modelo*: Gemini 3.8 Flash High (Fases 1, 2, 3, bugfix y certificación) + Claude Sonnet 4.6 Thinking (Auditoría y Fases 4/5).
+9. **[COMPLETADO Y ACTIVO EN PRODUCCIÓN] Spec 039 — Gobernador Térmico y Acústico de Ventiladores Vnish (`039-vnish-fan-governor`)**:
+   - *Objetivo*: Detección de modo en `/fans` (`manual`/`auto`), cliente REST seguro (`app/vnish_client.py`) y algoritmo de lazo cerrado determinista (`app/fan_governor.py`) modulando coolers hacia la temperatura sana de 83.0°C (banda muerta [82.0, 83.5]°C), reduciendo el estrés acústico y el desgaste mecánico sin comprometer hashrate.
+   - *Calibración y Hardening*:
+     * Target: 83.0°C; Deadband: [82.0, 83.5]°C; Emergencia: 84.0°C (spike inmediato a 100% PWM).
+     * Modulación descendente de ventiladores (-2%) ante temperaturas < 82.0°C y ascendente (+3%) ante > 83.5°C.
+     * Concurrencia HTTP: ThreadPoolExecutor con timeout de 2.5s por minero, 5.0s límite de flota y `shutdown(wait=False)`.
+     * Fail-Safe: Retorno forzado a 100% ante `/gov off`, $\ge 3$ fallos consecutivos o excepciones.
+     * Configurado como **ACTIVO POR DEFECTO** (`fan_governor_enabled: true`, `fan_governor_dry_run: false`), con control manual interactivo en caliente vía Telegram (`/gov on`, `/gov off`, `/gov set`).
+   - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T021), 12 tests de concurrencia y estrés (`tests/test_fan_governor_concurrency.py`), 576 tests globales PASS.
+   - *Modelo*: Gemini 3.8 Flash High + Claude Sonnet 4.6 Thinking.
 
-10. **[COMPLETADO] Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión (`040-dynamic-voltage-presets`)**:
-    - *Objetivo*: Algoritmo inteligente de optimización de Costo/Beneficio que evalúa la estabilidad eléctrica por elevador de tensión y frecuencia de reinicios, calibrando el preset de potencia Vnish (de 1600W a 2800W) para maximizar el hashrate efectivo continuo y prevenir caídas en cascada.
-    - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T020), extensión de `app/vnish_client.py` con métodos de presets seguros, motor matemático puro `app/preset_balancer.py`, soporte para `electrical_group` en configuración, integración periódica y concurrente en `app/miner_monitor.py` (con `dry_run: true` por defecto), comandos Telegram (`/balancer`, `/balancer on`, `/balancer off`, `/balancer setmax`, `/balancer run`), 22 nuevos tests deterministas e integración (13 unitarios + 9 integración) y **575 tests globales PASS** sin regresiones.
+10. **[COMPLETADO Y ACTIVO EN PRODUCCIÓN] Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión (`040-dynamic-voltage-presets`)**:
+    - *Objetivo*: Algoritmo inteligente de optimización de Costo/Beneficio que evalúa la estabilidad eléctrica por elevador de tensión, frecuencia de reinicios y margen térmico, calibrando el preset de potencia Vnish (de 1600W a 2800W) para maximizar el hashrate efectivo continuo y prevenir caídas en cascada.
+    - *Calibración y Hardening*:
+      * Desescalado Térmico (`ACTION_STEP_DOWN_THERMAL`): Si a 2700W con ventiladores al 100% la temperatura es $\ge 84.0^\circ\text{C}$ (margen $\le 1.0^\circ\text{C}$ frente al corte de 85°C), desescala secuencialmente de potencia (`2700W -> 2500W -> 2300W`).
+      * Protección de Elevadores: Desescalado rápido individual ante $\ge 2$ reinicios en 24h y desescalado grupal en cascada si $\ge 2$ mineros del mismo elevador reinician en ventana de 30m.
+      * Subida conservadora: Requiere 72h de soak continuo sin reinicios y margen térmico $\ge 4.0^\circ\text{C}$.
+      * Mitigación de Spam: Alertas de autotune de Vnish suprimidas (`preset_alert_enabled: false`) y saturación térmica ajustada a 84.0°C/98% PWM/cooldown 2h.
+      * Configurado como **ACTIVO POR DEFECTO** (`preset_balancer_enabled: true`, `preset_balancer_dry_run: false`), con control manual interactivo en caliente vía Telegram (`/balancer on`, `/balancer off`, `/balancer setmax`, `/balancer run`).
+    - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T020), 23 tests unitarios e integración (`tests/test_preset_balancer.py`, `tests/test_preset_balancer_integration.py`), **576 tests globales PASS**.
     - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
 
 ---

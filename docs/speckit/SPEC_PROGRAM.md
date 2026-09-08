@@ -281,8 +281,9 @@ The program requires three documentation sweeps.
 
 - Specs 001 through 030 are **Completed, Tagged and Evidenced in Production** (`v2.0.0`).
 - Specs 031 through 038 are **Completed, Hardened and Certified in Production** (`v3.0.0`).
-- All 38 specifications across V1, V2, and V3 have satisfied their design, test, concurrency, and evidence gates with 514/514 passing automated tests.
-- `.specify/feature.json` points to `specs/038-v3-release-stabilization` (terminal release certification).
+- Specs 039 and 040 are **Completed, Calibrated for 83°C–84°C Operation, and Active in Production** (`v3.2.0`).
+- All 40 specifications across V1, V2, V3, and V3.1 have satisfied their design, test, concurrency, and evidence gates with 576/576 passing automated tests.
+- Active features in production: Spec 039 (Vnish Fan Governor) and Spec 040 (Dynamic Power & Preset Balancer).
 
 ## Planning Hardening Record - 2026-08-13
 

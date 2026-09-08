@@ -1,4 +1,4 @@
-﻿# Evidence: Spec 039 - Vnish Thermal & Acoustic Fan Governor
+# Evidence: Spec 039 - Vnish Thermal & Acoustic Fan Governor
 
 **Fecha**: 2026-09-08  
 **Implementado por**: Gemini 3.8 Flash High (Fases 1-3) + Claude Sonnet 4.6 Thinking (Fases 4-5)
@@ -92,10 +92,14 @@ Activo, saludable. NO tocado durante la implementacion.
 
 ---
 
-## 4. Feature Flags por Defecto (Seguro en Produccion)
+## 4. Feature Flags (Activación en Producción y Calibración 83°C)
 
-fan_governor_enabled: false (gobernador inactivo)
-fan_governor_dry_run: true  (solo logs, sin escritura a hardware)
+fan_governor_enabled: true (gobernador activo por defecto)
+fan_governor_dry_run: false (modulación activa en hardware Vnish)
+fan_governor_target_temp_c: 83.0 (target de trabajo sano)
+fan_governor_deadband_low_c: 82.0 (reducción -2% duty por debajo)
+fan_governor_deadband_high_c: 83.5 (incremento +3% duty por encima)
+fan_governor_emergency_temp_c: 84.0 (spike a 100% duty inmediato)
 vnish_api_password: "CHANGE_ME" (cargar en config.json, nunca commitar)
 
 ---

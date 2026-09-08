@@ -18,6 +18,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
+# Ensure repository root is in sys.path so 'import app.xxx' works from both root and app/ directory
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import requests
 
 try:

@@ -230,6 +230,69 @@ Comandos oficiales para acciones confirmadas: `/rb<ID>`, `/reboot_no_ok` y
 `/c<code>`. `/help <comando>` muestra la ficha del registro central sin ejecutar
 la accion.
 
+### Botones Interactivos y Callbacks (Spec 031)
+
+Las alertas de episodios para un único minero incluyen botones táctiles interactivos (Inline Keyboards):
+
+- `[ 🩺 Diagnosticar ]`: Despacha `/diagnose <miner>` automáticamente.
+- `[ 📊 Ver Gráfico ]`: Atajo visual para inspección del minero.
+- `[ 🔄 Reiniciar Minero <ID> ]`: Despliega la confirmación interactiva en 2 pasos.
+- `[ 🔕 Silenciar 1h ]`: Atajo para silenciar alertas temporales.
+
+**Flujo de confirmación segura en 2 pasos**:
+1. El operador pulsa `[ 🔄 Reiniciar Minero 23 ]`.
+2. El mensaje se edita in-situ mostrando `[ ⚠️ CONFIRMAR REINICIO 23 ]` y `[ ❌ Cancelar ]`.
+3. El token de confirmación expira a los 60 segundos. Si expira o se pulsa Cancelar, el teclado se restaura a su estado neutral sin ejecutar acción.
+4. Si se confirma dentro de los 60 segundos, se ejecuta el reinicio respetando los interlocks de seguridad de producción, y el botón se actualiza a `[ ✅ Reinicio Iniciado ]`.
+
+### Gráficos Nativos Visuales en Telegram (Spec 032)
+
+Permite visualizar la salud y tendencia operativa directamente en el chat de Telegram como imagen PNG de alto contraste:
+
+- `/chart` o `/chart fleet`: Gráfico comparativo de hashrate de todos los mineros de la flota.
+- `/chart <miner>`: Gráfico detallado en 2 subpaneles para un minero específico:
+  - Panel superior: Hashrate en tiempo real, promedio de la ventana y línea de umbral nominal.
+  - Panel inferior: Curva de temperatura máxima de chips (°C) y velocidad de ventiladores (RPM).
+- Parámetro de ventana temporal: ej. `/chart 23 24h` o `/chart fleet 6h` (entre 0.25h y 72h; por defecto 1h).
+- Botón `[ 📊 Ver Gráfico ]`: Atajo táctil 1-Tap en alertas de episodios que envía automáticamente el gráfico del minero afectado.
+- Cero archivos temporales: El renderizado se realiza 100% en memoria RAM (`io.BytesIO`) y se entrega vía `sendPhoto`.
+
+### Modo Mantenimiento y Silenciamiento Temporal (Spec 033)
+
+Permite suspender temporalmente alertas de episodios, recordatorios periódicos, reportes degradados y autorreinicios para mineros bajo intervención física (mantenimiento preventivo, limpieza de disipadores, reemplazo de ventiladores o fuentes):
+
+- **Comandos de control**:
+  - `/snooze <miner|all> [minutos]`: Silencia el minero o toda la flota por la duración indicada (por defecto 60m; rango 1 a 1440m / 24h). Ejemplo: `/snooze 23 45`, `/snooze all 30`.
+  - `/unsnooze <miner|all>`: Cancela inmediatamente el silenciamiento y restaura la supervisión activa.
+  - `/snoozed`: Lista todos los mineros en mantenimiento con su tiempo restante y hora estimada de finalización.
+- **Botón táctil 1-Tap `[ 🔕 Silenciar 1h ]`**:
+  - Presente en alertas de episodios; silencia instantáneamente el minero por 60 minutos con un solo toque y actualiza el mensaje a `[ 🔕 Silenciado (60m) ]`.
+- **Garantías de seguridad física**:
+  - **Bloqueo absoluto de autorreinicio**: Mientras un minero esté en mantenimiento (`snoozed`), el monitor jamás intentará ejecutar autorreinicios sobre él, protegiendo al operador y al hardware.
+  - **Supresión de spam**: Las alertas y recordatorios persistentes quedan completamente silenciados mientras dure la ventana.
+  - **Visibilidad en `/status`**: Cada minero silenciado muestra la etiqueta `[🔕 Silenciado: Xm rest.]` en el reporte de estado.
+  - **Persistencia ante caídas**: El timestamp de expiración se persiste en `app/state.json`, sobreviviendo reinicios del proceso o del sistema operativo.
+
+### Reporte Ejecutivo Diario (Spec 034)
+
+Brinda una radiografía consolidada de las últimas 24 horas de operación, ideal para el seguimiento diario sin ingresar a dashboards:
+
+- **Despacho programado matutino**:
+  - Se envía automáticamente a la hora configurada (por defecto `08:00` en Argentina UTC-3).
+  - Configurable vía `"daily_digest_enabled": true` y `"daily_digest_time": "08:00"` en `app/config.json`.
+  - Protección de envío único por fecha calendario (`YYYY-MM-DD`) persistida en `app/state.json`.
+- **Consulta bajo demanda**:
+  - Comando `/digest` (o atajo `/summary`): genera y envía inmediatamente el reporte actualizado con las últimas 24 horas.
+- **Métricas integradas en la tarjeta**:
+  - **Uptime Flota**: Porcentaje global de muestras OK y relación de mineros activos vs nominales.
+  - **Hashrate Promedio**: TH/s total promedio de la flota vs umbral nominal total.
+  - **Eficiencia Energética**: Watts totales / TH/s acumulados = Joules por Terahash (J/TH).
+  - **Calidad de Minado**: Shares aceptados vs rechazados (%) y variación de errores de hardware.
+  - **Eventos en 24h**: Conteo de incidentes operativos y cantidad de reinicios automáticos o manuales.
+  - **Estado del Backup**: Verificación del último backup SQLite en `backups/verified/` (tamaño e integridad).
+  - **Mantenimiento**: Si hay mineros silenciados, los lista con su nombre para visibilidad total.
+- **Rendimiento**: Ejecución en ~27 ms sobre la base de producción (23 MB), sin bloqueos de escritura.
+
 ## Telegram Alert Policy
 
 Production Telegram notifications should be event-driven by default:
@@ -703,6 +766,68 @@ matrix status before tagging or deploying:
 # Run full automated test suite (416 tests):
 & ".\.venv\Scripts\python.exe" -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
 ```
+
+## Cooling & Fan Health Intelligence (Spec 035)
+
+### Verification Commands
+
+1. Interactive Telegram Commands:
+   - `/fans`: Outputs fleet overview table with Fan RPM, PWM %, Max Temp, Thermal Headroom (to 85°C trip ceiling), and status labels.
+   - `/fans <miner>`: Outputs deep diagnostic card for a specific miner with actionable recommendations.
+
+2. Unit & Integration Tests:
+   ```powershell
+   & ".\.venv\Scripts\python.exe" -m unittest tests/test_fan_health.py
+   ```
+
+3. Operational Response to Preventative Alerts:
+   - `⚠️ [ENFRIAMIENTO] <miner> — Saturación térmica detectada...`:
+     1. Send `/fans <miner>` to inspect exact fan RPM, PWM % and headroom margin.
+     2. Send `/chart <miner> 12h` to verify recent thermal slope.
+     3. Schedule maintenance: if headroom is < 6°C with fans > 95% PWM, inspect intake mesh and clean dust filters.
+     4. Use `/snooze <miner> 60` during physical cleaning to prevent false reboot cycles.
+   - `🚨 [VENTILADOR] <miner> — Falla mecánica de ventilador detectada...`:
+     1. Check physical miner fans immediately (tachometer drop < 2000 RPM or cable disconnection).
+     2. If fan is stalled, place miner in maintenance or reboot if firmware hung.
+
+## Hashrate Efficiency & Energy Tracking (Spec 036)
+
+### Verification Commands
+
+1. Interactive Telegram Commands:
+   - `/efficiency`: Outputs fleet table with J/TH, power in Watts, hashrate, total power (in kW) and fleet average J/TH.
+   - `/efficiency <miner>`: Outputs single-miner deep diagnostic card with technical evaluation and recommendations.
+
+2. Unit & Integration Tests:
+   ```powershell
+   & ".\.venv\Scripts\python.exe" -m unittest tests/test_energy_efficiency.py
+   ```
+
+3. Operational Response to Degradation Alerts:
+   - `⚠️ [EFICIENCIA] <miner> — Degradación energética detectada...`:
+     1. Run `/efficiency <miner>` to inspect exact power draw vs TH/s.
+     2. Run `/quality <miner>` to verify if one or more hashboards have hardware errors or are not mining.
+     3. Check voltages and frequencies via `/diagnose <miner>`.
+     4. If a hashboard has failed chips, consider downclocking or replacing the affected board to avoid wasting energy.
+
+## Vnish Preset & Autotuning Dynamic Tracking (Spec 037)
+
+### Verification Commands
+
+1. Interactive Telegram Commands:
+   - `/presets` (aliases `/preset`, `/profile`): Outputs fleet table with MHz, chain voltage (V), power (W), hashrate (TH/s), inferred profile and autotune state.
+   - `/presets <miner>`: Outputs single-miner deep profile diagnostic card with recent firmware autotuning events and recommendations.
+
+2. Unit & Integration Tests:
+   ```powershell
+   & ".\.venv\Scripts\python.exe" -m unittest tests/test_vnish_presets.py
+   ```
+
+3. Operational Response to Autotune & Downclock Alerts:
+   - `ℹ️ [PERFIL/AUTOTUNE] <miner> — Ajuste automático de perfil detectado...`:
+     1. Run `/presets <miner>` to check current frequency vs nominal profile.
+     2. Run `/fans <miner>` to verify whether thermal saturation prompted the firmware to downclock.
+     3. If autotuning remains in progress (`🟡 AUTOTUNING`), allow the calibration cycle to complete without issuing manual reboots.
 
 ## Evidence Rules
 

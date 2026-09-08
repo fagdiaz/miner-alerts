@@ -1,42 +1,39 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-POLÍTICA DE MODELOS Y DELEGACIÓN ESCALADA (CONSTITUCIÓN v1.5.0)
+ESTADO DEL PROGRAMA: SPECS 031 A 038 100% COMPLETADAS Y CERTIFICADAS
 =============================================================================
-- MOTOR PRINCIPAL: Gemini 3.8 Flash High (o Gemini 3.7 Flash High) para lectura, análisis, lógica pura, schemas, suites completas de tests (unitarios, deterministas, integración, benchmarks) y trazabilidad.
-- ESCALAMIENTO ON-DEMAND: Claude Sonnet 4.6 (Thinking) reservado para concurrencia viva multi-hilo en producción (`miner_monitor.py`), sockets API 4028 y refactor de máquina de estados/reboot.
-- ESCALAMIENTO EXTREMO: Claude Opus 4.6 (Thinking) strictly para deadlocks cíclicos o rediseños mayores de arquitectura.
+- Spec 031 (Telegram Interactive Callbacks): COMPLETADA Y CERRADA.
+- Spec 032 (Telegram Visual Charts - /chart): COMPLETADA Y CERRADA.
+- Spec 033 (Miner Maintenance Snooze - /snooze): COMPLETADA Y CERRADA.
+- Spec 034 (Daily Executive Digest - /digest): COMPLETADA Y CERRADA.
+- Spec 035 (Cooling & Fan Health Intelligence - /fans): COMPLETADA Y CERRADA.
+- Spec 036 (Hashrate Efficiency & Energy Tracking - /efficiency): COMPLETADA Y CERRADA.
+- Spec 037 (Vnish Preset & Autotuning Dynamic Tracking - /presets): COMPLETADA Y CERRADA.
+- Spec 038 (V3 Core Concurrency, Race Conditions & Release Stabilization): COMPLETADA Y CERRADA.
+  * Thread-safety lock en `CallbackTokenRegistry` (`app/telegram_callbacks.py`).
+  * Snapshot de iteración inmutable en `save_state()` (`app/miner_monitor.py`).
+  * Bloques `finally: if conn: conn.close()` en todos los módulos de lectura SQLite (`fan_health.py`, `energy_efficiency.py`, `vnish_presets.py`).
+  * 19 tests de estrés y concurrencia multi-hilo en `tests/test_v3_concurrency.py`.
+  * Suite global del proyecto: 514 tests PASS en 14.61s (0 fallos, 0 errores, 0 regresiones).
+  * RELEASE CANDIDATE V3.0.0 APROBADO Y CERTIFICADO.
 
 =============================================================================
-ESTADO ACTUAL PRE-CARGADO (NO REPETIR RELEVAMIENTO)
+ESTADO DEL MONITOR EN PRODUCCIÓN:
 =============================================================================
-- ROADMAP COMPLETO: 100% (30 de 30 especificaciones completadas, verificadas y cerradas).
-- Spec 021 (Liveness Watchdog): COMPLETADO Y CERRADO (77.3h soak).
-- Spec 022 (Adaptive Acquisition): COMPLETADO Y CERRADO (Gate D+1 y Gate D+3 PASSED tras 73.45h / 264.4k s de uptime continuo y 8.766 ticks bajo PID 38816 con queue_depth=0).
-- Spec 023 (Incident Evidence Fusion): COMPLETADO Y CERRADO (T001-T020, 344 tests PASS, `/diagnose` activado).
-- Spec 024 (Electrical Source Discovery): COMPLETADO (Discovery Gate `blocked_external: missing_hardware_dependency`).
-- Spec 025 (Prometheus Metrics & Grafana): COMPLETADO Y CERRADO (T001-T014, `app/metrics_snapshot.py`, `tools/metrics_exporter.py`, Docker Compose, Grafana dashboards, hook en monitor integrado).
-- Spec 026 (Hashcore Capability Inventory): COMPLETADO Y CERRADO (T001-T018, `tools/hashcore_inventory.py`).
-- Spec 027 (Operator Interface Decision): COMPLETADO Y CERRADO (`no_build`, 30 corridas W01-W06 validadas, 0 campos faltantes cubiertos por Telegram, Grafana y HTML estático, cero código/servicios adicionales).
-- Spec 028 (Backup, Retention & Restore): COMPLETADO Y CERRADO (T001-T014, `tools/event_store_backup.py`, drill real de 20.4 MB en 6.2s completado con éxito).
-- Spec 029 (V2 Release Stabilization): COMPLETADO Y APROBADO (T001-T020, R001-R025 validados, digest `58d451f1...`, drill online de 23.2 MB en 2.5s con restore passed, 267.2 horas de soak continuo en producción bajo PID 38816 con 31.695 ticks y 0 fallos, decisión formal `APPROVE`).
-- TAG DE PRODUCCIÓN: `v2.0.0` creado y publicado en remoto.
-- Repositorio Git: Ramas `main` y `codex/022-adaptive-acquisition` sincronizadas y empujadas a `origin` (commit `05a7540`).
-- Suite global: 416 tests ejecutados en 3.70s sin regresiones ni fallos (0 fallos, 0 errores, 0 skips).
-- Producción: PID 38816 corriendo estable (>267h continuas, >31.750 ticks, queue_depth=0).
-- Plan Estratégico V3: Formalizado en `docs/speckit/V3_EXPANSION_PLAN.md` (Telegram Max, predictivo de fans, J/TH).
+- PID 38816: Corriendo ininterrumpido (>267.3h continuas, >32.120 ticks, 0 fallos).
+- Interfaz HTML: puerto 8080 activa (http://192.168.100.22:8080/).
+- Grafana: puerto 3000 activa (http://192.168.100.22:3000/).
 
-COMANDO DE VERIFICACIÓN DE PRUEBAS (416 tests actuales):
-.\.venv\Scripts\python.exe -c "import unittest, os; loader = unittest.TestLoader(); suite = unittest.TestSuite(); [suite.addTests(loader.discover('tests', pattern=f)) for f in os.listdir('tests') if f.startswith('test_') and f.endswith('.py')]; runner = unittest.TextTestRunner(verbosity=0); res = runner.run(suite); print(f'PASS: {res.testsRun} tests, failures={len(res.failures)}, errors={len(res.errors)}')"
+=============================================================================
+PRÓXIMA CAPACIDAD PLANIFICADA (DISCUSIÓN OPERADOR):
+=============================================================================
+- Spec 039: Vnish REST API Client & Electrical Adaptive Governor
+  * Cliente HTTP seguro (`POST /api/v1/unlock`) para leer y cambiar presets y control de ventiladores.
+  * Mapeo de circuitos por elevador de tensión en `app/config.json`.
+  * Algoritmo de lazo cerrado para desescalar presets ante reinicios frecuentes en elevadores sensibles,
+    maximizando la rentabilidad real mediante continuidad operativa vs hashrate nominal.
 
-============================================================================
-PRÓXIMOS PASOS RECOMENDADOS (OPERACIÓN PASIVA & PLAN V3)
-============================================================================
-1. Monitoreo pasivo en producción: supervisión continua del servicio Windows (PID 38816).
-2. Verificación de backups periódicos SQLite con `tools/event_store_backup.py`.
-3. Consultas y visualización mediante Telegram (`/status`, `/diagnose`), Grafana y dashboard HTML estático (`tools/operations_dashboard.py`).
-4. Cuando se decida avanzar con V3: iniciar especificaciones según `docs/speckit/V3_EXPANSION_PLAN.md`.
-
-============================================================================
-MODELO RECOMENDADO: Gemini 3.8 Flash High (mantenimiento regular y lectura de auditoría)
-============================================================================
+=============================================================================
+MODELO RECOMENDADO: Gemini 3.8 Flash High
+=============================================================================

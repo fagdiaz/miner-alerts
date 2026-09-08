@@ -25,6 +25,57 @@
 
 ---
 
+### 🚀 Programa V3: Maximización de Telegram & Capacidades Avanzadas
+
+1. **[COMPLETADO] Spec 031 — Botones Interactivos y Callbacks Telegram (`031-telegram-interactive-callbacks`)**:
+   - *Objetivo*: Inline Keyboards en alertas de episodios para diagnósticos y gráficos en 1 toque.
+   - *Valor y Beneficio*: Flujo interactivo seguro de reinicio en 2 toques (`[ 🔄 Reiniciar ]` -> `[ ✅ Confirmar ]` / `[ ❌ Cancelar ]`) con token de 60s, eliminando tipeo manual sin riesgos de toques accidentales.
+   - *Resultados*: 14 tests PASS en `tests/test_telegram_callbacks.py`, 430 tests globales PASS, cero impacto en estabilidad.
+   - *Modelo*: Gemini 3.8 Flash High (Fases 1, 2, 4, 5) + Claude Sonnet 4.6 Thinking (Fase 3).
+
+2. **[COMPLETADO] Spec 032 — Gráficos Nativos Visuales en Telegram (`032-telegram-visual-charts`)**:
+   - *Objetivo*: Envío directo de imágenes PNG con la curva de hashrate, temperaturas y RPM al chat vía `/chart <id>` y `/chart fleet`.
+   - *Resultados*: 6 tests PASS en `tests/test_telegram_charts.py`, 436 tests globales PASS, renderizado en RAM en 219ms sobre 23.2 MB, cero archivos temporales.
+   - *Modelo*: Gemini 3.8 Flash High.
+
+3. **[COMPLETADO] Spec 033 — Mantenimiento y Silenciamiento Temporal (`033-miner-maintenance-snooze`)**:
+   - *Objetivo*: Modo `/snooze <miner|all> [minutos]` y botón 1-Tap `[ 🔕 Silenciar 1h ]` para suprimir alertas, recordatorios persistentes y bloquear autorreinicios durante intervenciones físicas programadas con auto-expiración.
+   - *Resultados*: 12 tests PASS en `tests/test_telegram_snooze.py`, 448 tests globales PASS, persistencia en `state.json`, bloqueo de autorreinicio en caliente y cero impacto en producción.
+   - *Modelo*: Gemini 3.8 Flash High.
+
+4. **[COMPLETADO] Spec 034 — Reporte Ejecutivo Diario (`034-daily-executive-digest`)**:
+   - *Objetivo*: Resumen programado diario matutino (08:00 AM) y on-demand `/digest` con uptime de flota, TH/s promedio, J/TH, shares %, anomalías y verificación de integridad de backups SQLite.
+   - *Resultados*: 10 tests PASS en `tests/test_daily_digest.py`, 458 tests globales PASS, rendimiento real medido de 27.2 ms de consulta y 0.07 ms de render, cero bloqueos de escritura y despacho blindado una sola vez al día.
+   - *Modelo*: Gemini 3.8 Flash High.
+
+5. **[COMPLETADO] Spec 035 — Inteligencia Térmica y de Ventiladores (`035-cooling-fan-health`)**:
+   - *Objetivo*: Supervisión analítica de ventiladores (`/fans [miner]`), cálculo de margen térmico hacia el corte (85.0°C), y alertas preventivas de saturación térmica (`COOLING_WARNING`) para anticipar limpieza de filtros antes del disparo de temperatura por hardware.
+   - *Resultados*: 14 tests PASS en `tests/test_fan_health.py`, 472 tests globales PASS en 4.60s, consulta SQLite en < 1ms sobre base de 23.2 MB, cero bloqueos y monitoreo en vivo PID 38816 100% ininterrumpido.
+   - *Modelo*: Gemini 3.8 Flash High.
+
+6. **[COMPLETADO] Spec 036 — Eficiencia Energética Continua (`036-efficiency-energy-tracking`)**:
+   - *Objetivo*: Seguimiento en tiempo real del ratio Joules por Terahash (J/TH), potencia de cadenas en Watts/kW, y alertas tempranas de degradación energética (`EFFICIENCY_WARNING`) vía `/efficiency` (alias `/eff`).
+   - *Resultados*: 12 tests PASS en `tests/test_energy_efficiency.py`, 484 tests globales PASS en 4.84s, consulta SQLite en < 1ms, cero bloqueos y monitoreo en vivo PID 38816 100% ininterrumpido.
+   - *Modelo*: Gemini 3.8 Flash High.
+
+7. **[COMPLETADO] Spec 037 — Seguimiento de Presets y Autotuning Dinámico (`037-vnish-presets-autotuning`)**:
+   - *Objetivo*: Monitoreo de frecuencias (MHz), tensión de cadena (V), potencia y calibración autotune del firmware Vnish vía `/presets` (alias `/preset`, `/profile [minero]`) y alerta preventiva `PROFILE_CHANGE_ALERT` ante reducciones de frecuencia ($\ge 25\text{ MHz}$).
+   - *Resultados*: 11 tests PASS en `tests/test_vnish_presets.py`, 495 tests globales PASS en 5.04s, consulta SQLite en 1.77ms sobre BD de 23.2 MB, cero bloqueos y monitor en vivo PID 38816 100% ininterrumpido.
+   - *Modelo*: Gemini 3.8 Flash High.
+
+8. **[COMPLETADO] Spec 038 — Auditoría de Concurrencia y Estabilización Release V3 (`038-v3-release-stabilization`)**:
+   - *Objetivo*: Auditoría profunda de concurrencia multihilo, cerrojos `state_lock`, prevención de deadlocks en callbacks/colas y suite determinista de tests de estrés (`tests/test_v3_concurrency.py`).
+   - *Resultados*: 19 tests PASS en `tests/test_v3_concurrency.py`, 514 tests globales PASS en 14.61s, resolución de race condition en `CallbackTokenRegistry`, snapshots inmutables en `save_state()`, higiene SQLite `?mode=ro` con `finally: conn.close()`, PID 38816 > 267.3h continuo y Release Candidate V3 (v3.0.0) aprobado.
+   - *Modelo*: Claude Sonnet 4.6 (Thinking) + Gemini 3.8 Flash High (Colaboración Multi-Modelo).
+
+---
+
+### 🎉 Release V3.0.0 Certificado y Aprobado (Specs 031 a 038): 100% COMPLETADAS Y CERTIFICADAS
+
+El programa completo de expansión V3 (Specs 031 a 038) está cerrado y validado, con 514 tests automáticos aprobados y cero impacto sobre el monitor vivo PID 38816 (>267.3h soak).
+
+---
+
 ### 🎯 Objetivos a Futuro, Hitos Pendientes y Valor Aportado
 
 1. **Spec 023 — Fusión de Evidencia de Incidentes**:

@@ -70,6 +70,14 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
   - `/quality [all|miner]` (shares, errores y estado de cadenas por intervalo).
   - `/firmware [all|miner]` (evidencia Vnish normalizada almacenada localmente).
   - `/diagnose [all|miner]` (senal, calidad, firmware, eventos y decisiones desde SQLite).
+  - `/chart [miner|fleet] [horas]` (grafico PNG visual nativo de hashrate, umbral y temperaturas).
+  - `/snooze <miner|all> [minutos]` (silencia alertas y suspende autorreinicios por mantenimiento; default: 60m).
+  - `/unsnooze <miner|all>` (reactiva inmediatamente la supervisión normal).
+  - `/snoozed` (lista los mineros silenciados y tiempo restante).
+  - `/digest` (resumen ejecutivo 24h de uptime, hashrate, J/TH, shares, eventos y backup; alias: `/summary`).
+  - `/fans [all|miner]` (supervisión de ventiladores, RPM, PWM %, temperatura máxima y margen térmico a 85°C; alias: `/fan`).
+  - `/efficiency [all|miner]` (supervisión de eficiencia energética en Joules por Terahash J/TH y potencia total; alias: `/eff`).
+  - `/presets [all|miner]` (supervisión de frecuencias MHz, tensión V y estado de autotuning Vnish; alias: `/preset`, `/profile`).
   - `/reboot` (guiado) y `/rb<ID>` (seleccion click-safe) -> piden confirmacion.
   - `/reboot_no_ok` -> preview bulk; `/c<code>` confirma de forma click-safe.
   - `/restart <miner>` -> pide confirmacion.
@@ -84,9 +92,22 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
     realizan un envio directo acotado; un descarte no-comando siempre deja
     `TG QUEUE_DROP` en el log.
 
-**Confirm code (operativo)**
-- Comando: `reboot 23`.
-- Bot responde: `confirm reboot 23 <code>`.
+**Botones Interactivos en Alertas (Inline Keyboards 1-Tap - Specs 031 / 033)**
+- Las alertas de incidentes y episodios incorporan botones táctiles interactivos:
+  - `[ 🩺 Diagnosticar ]`: Ejecuta inmediatamente `/diagnose <miner>` sin necesidad de escribir.
+  - `[ 📊 Ver Gráfico ]`: Atajo visual para consulta del estado del minero vía `/chart`.
+  - `[ 🔄 Reiniciar Minero <ID> ]`: Inicia el flujo interactivo de confirmación segura en 2 pasos.
+  - `[ 🔕 Silenciar 1h ]`: Silencia el minero por 60 min; suprime alertas y bloquea autorreinicios durante mantenimiento.
+- **Confirmación interactiva en 2 toques (Zero-Typing)**:
+  - Al presionar `[ 🔄 Reiniciar Minero 23 ]`, el teclado del mensaje se edita in-situ mostrando:
+    `[ ⚠️ CONFIRMAR REINICIO 23 ]` y `[ ❌ Cancelar ]`.
+  - El token de confirmación expira estrictamente a los 60 segundos por seguridad física.
+  - Al pulsar `[ ❌ Cancelar ]`, el teclado regresa a su estado neutral sin ejecutar acción.
+  - Al pulsar `[ ⚠️ CONFIRMAR ]`, se despacha el reinicio guardado y el mensaje se actualiza a `[ ✅ Reinicio Iniciado ]`.
+
+**Confirm code (operativo tradicional)**
+- Comando manual de texto: `reboot 23` o `/rb23`.
+- Bot responde: `confirm reboot 23 <code>` o enlace click-safe `/c<code>`.
 - TTL 60s; si expira, pedir `reboot 23` de nuevo.
 - Si el script reinicia, el pending se pierde: hay que reemitir `reboot 23`.
 
@@ -106,6 +127,31 @@ Tabla de claves principales (valores por defecto en `app/config.example.json`):
 - Auto-reboot: si un minero permanece LOW por 10 minutos continuos y supera todos los guardrails, se envia reboot automatico.
   - Limite recomendado: max 3 auto-reboots por 6 horas. Luego entra en degraded mode.
 - Degraded mode se registra siempre; el STATUS horario esta deshabilitado por defecto con `notify_degraded_hourly=false`.
+
+**Cooling & Fan Health Intelligence (Spec 035)**
+- Supervisión en tiempo real de la disipación térmica y salud mecánica de los ventiladores.
+- Comando `/fans` (o alias `/fan`):
+  - `/fans`: Tabla completa de la flota con RPM de ventiladores, potencia PWM %, temperatura máxima del chip y margen térmico restante hasta el corte de emergencia (85.0°C).
+  - `/fans <miner>`: Diagnóstico profundo individual con recomendaciones operativas (inspección de flujo, limpieza de filtros antipolvo o reemplazo de ventilador).
+- Alertas preventivas tempranas:
+  - `⚠️ [ENFRIAMIENTO]`: Emite advertencia si un minero sostiene saturación térmica ($T_{\text{max}} \ge 78^\circ\text{C}$ con PWM ≥ 95% o RPM ≥ 5800) durante 3 lecturas consecutivas, permitiendo programar limpieza de filtros antes del disparo térmico a 85°C.
+  - `🚨 [VENTILADOR]`: Detecta caídas mecánicas de tacómetro (< 2000 RPM bajo carga) o señal ausente para prevenir daños catastróficos.
+  - Cooldown configurable de 1 hora (`cooling_cooldown_seconds: 3600`) para evitar repeticiones innecesarias.
+
+**Hashrate Efficiency & Energy Tracking (Spec 036)**
+- Cálculo y seguimiento en tiempo real del ratio energético: $\text{Eficiencia (J/TH)} = \frac{\text{Potencia (Watts)}}{\text{Hashrate (TH/s)}}$.
+- Comando `/efficiency` (o alias `/eff`):
+  - `/efficiency`: Tabla de la flota con J/TH, potencia individual en Watts, hashrate actual, potencia total de la granja (en kW) y promedio global de eficiencia.
+  - `/efficiency <miner>`: Tarjeta de diagnóstico individual con evaluación técnica y recomendaciones ante anomalías de consumo.
+- Clasificación de eficiencia: Óptima ($\le 28.5\text{ J/TH}$), Normal ($28.5 - 31.5$), Elevada ($31.5 - 35.0$) y Degradada ($> 35.0\text{ J/TH}$).
+- Alerta preventiva `⚠️ [EFICIENCIA]`: Detecta consumo anómalo prolongado ($> 35.0\text{ J/TH}$ durante 3 lecturas) para advertir sobre chips descalibrados o caídas de tensión por cadena antes de un apagado total.
+
+**Vnish Preset & Autotuning Tracking (Spec 037)**
+- Monitoreo dinámico de frecuencias operativas (`frequency_mhz_avg`), tensión de cadena (`chain_voltage_mv_avg`) y potencia.
+- Comando `/presets` (o alias `/preset`, `/profile`):
+  - `/presets`: Tabla consolidada con MHz, tensión (V), Watts, TH/s, perfil inferido (ej. `~2700W (516 MHz)`) y estado de calibración (`🟢 ESTABLE`, `🟡 AUTOTUNING`, `🟠 DOWNCLOCK`).
+  - `/presets <miner>`: Ficha diagnóstica profunda con historial reciente de eventos de firmware (`firmware_events`) y recomendaciones técnicas.
+- Alerta preventiva `ℹ️ [PERFIL/AUTOTUNE]`: Notifica inmediatamente si el firmware reduce la frecuencia operativa ($\ge 25\text{ MHz}$ respecto al perfil nominal) o entra en calibración por inestabilidad o temperatura.
 
 **Vnish log intelligence (read-only)**
 - Instalar dependencias: `& ".\.venv\Scripts\python.exe" -m pip install -r requirements.txt`.

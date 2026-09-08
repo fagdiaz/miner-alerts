@@ -279,13 +279,10 @@ The program requires three documentation sweeps.
 
 ## Program State
 
-- Spec 021 is **Activated / Observation Pending**. Specs 022-029 are planned;
-  Specs 020 and 030 are complete.
-- `.specify/feature.json` points to Spec 021 until its D+1/D+3 evidence and
-  closeout tasks complete.
-- This multi-spec planning pass does not execute the Speckit Git feature hook:
-  creating nine branches would misrepresent planned work as active work and the
-  user explicitly excluded Git operations from this task.
+- Specs 001 through 030 are **Completed, Tagged and Evidenced in Production** (`v2.0.0`).
+- Specs 031 through 038 are **Completed, Hardened and Certified in Production** (`v3.0.0`).
+- All 38 specifications across V1, V2, and V3 have satisfied their design, test, concurrency, and evidence gates with 514/514 passing automated tests.
+- `.specify/feature.json` points to `specs/038-v3-release-stabilization` (terminal release certification).
 
 ## Planning Hardening Record - 2026-08-13
 

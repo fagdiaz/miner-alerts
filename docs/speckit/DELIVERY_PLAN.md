@@ -40,6 +40,14 @@ safety gates are not compressed to recover an estimate.
 | Spec 028 backup/restore | 2026-10-30 to 2026-11-08 | 2026-11-09 to 2026-11-12 | Scheduled verified backup, retention/path proof and successful staging restore. |
 | Spec 027 interface decision | Closed 2026-08-30 (`no_build`) | Scorecard executed; all P1 workflows passed by Telegram/Grafana/HTML; conditional paths absent | Three-run fixed P1 scorecard passed, no-build formal decision recorded. |
 | Spec 029 release stabilization | Closed 2026-09-07 (`approved`) | Terminal dependency manifest, R001-R025, restore drill and 267.2h continuous soak verified | Complete matrix R001-R025 pass, 0 open P0/P1, approve decision. |
+| Spec 031 callbacks | Closed 2026-09-07 | 1-Tap inline keyboards on episode alerts & 2-step reboot | 14 unit tests PASS, single-use token registry. |
+| Spec 032 charts | Closed 2026-09-07 | In-memory visual PNG curves via `/chart` | 6 unit tests PASS, 0 disk files. |
+| Spec 033 snooze | Closed 2026-09-07 | `/snooze`, `/unsnooze`, `/snoozed`, 1-Tap alert button | 12 unit tests PASS, auto-reboot hard block. |
+| Spec 034 digest | Closed 2026-09-07 | Daily executive digest at 08:00 AM & `/digest` | 10 unit tests PASS, 27.2ms query latency. |
+| Spec 035 cooling | Closed 2026-09-07 | `/fans`, thermal headroom to 85°C, `COOLING_WARNING` | 14 unit tests PASS, streak filter. |
+| Spec 036 efficiency | Closed 2026-09-07 | `/efficiency`, J/TH real-time tracking, `EFFICIENCY_WARNING` | 12 unit tests PASS, streak filter. |
+| Spec 037 presets | Closed 2026-09-07 | `/presets`, Vnish autotuning & downclock tracking | 11 unit tests PASS, 1.77ms query latency. |
+| Spec 038 v3 release | Closed 2026-09-07 (`approved`) | Multi-threading concurrency audit, thread-safety hardening | 19 concurrency tests PASS, 514 total tests PASS, v3.0.0 approved. |
 
 ## Milestones
 
@@ -56,6 +64,8 @@ safety gates are not compressed to recover an estimate.
 | 2026-11-12 | Recoverability proven | Verified backup plus staging restore. |
 | 2026-08-30 | Interface scope closed | Scorecard completed; no-build formal decision recorded with zero missing fields. |
 | 2026-09-07 | V2 release decision | Complete matrix, 267.2h soak, docs audit and approve record. |
+| 2026-09-07 | V3 Telegram Max & Intelligence (Specs 031-037) | All 7 modules implemented, tested and verified. |
+| 2026-09-07 | V3 Release Decision (Spec 038) | 514 tests PASS, 267.3h soak, concurrency hardened, v3.0.0 approve record. |
 
 ## Review And Bug-Fix Rhythm
 

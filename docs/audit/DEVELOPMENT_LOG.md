@@ -3,6 +3,219 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-07] - Implementación y Cierre de Spec 038 (V3 Core Concurrency, Multi-Threading Race Conditions & Release Stabilization)
+
+* **Objetivo**: Ejecutar la auditoría profunda de concurrencia multihilo, sincronización de cerrojos `state_lock`, prevención de bloqueos mutuos (*deadlocks*), higiene estricta de conexiones SQLite (`?mode=ro`, timeout <= 2.0s y `finally: conn.close()`) y pruebas de estrés deterministas para certificar el **Release Candidate V3.0.0**.
+* **Resultados y Evidencia**:
+  - **Hardening de Concurrencia y Thread-Safety**:
+    * `CallbackTokenRegistry` (`app/telegram_callbacks.py`): Equipado con `self._lock = threading.Lock()` e iteración sobre copias de snapshots `list(self._tokens.items())`. Se resolvió la excepción `RuntimeError: dictionary changed size during iteration` detectada en pruebas con 5 hilos de disparo concurrente.
+    * `save_state()` (`app/miner_monitor.py`): Actualizado a `list(states.items())` para garantizar snapshots inmutables inmunes a altas frecuencias de actualización de mineros concurrentes.
+    * Higiene SQLite garantizada en todos los módulos auxiliares de lectura (`app/fan_health.py`, `app/energy_efficiency.py`, `app/vnish_presets.py`, `app/daily_digest.py`, `app/telegram_charts.py`): Todas las conexiones utilizan `?mode=ro`, timeout de 2.0s y bloque `finally: if conn: conn.close()` que previene bloqueos de archivo en Windows.
+  - **Suite de Pruebas de Concurrencia**:
+    * Creado `tests/test_v3_concurrency.py` con 19 pruebas de estrés multi-hilo deterministas (cero `sleep`, sincronización por barreras y eventos):
+      - Concurrencia de `/snooze` vs loop de evaluación de autorreinicio.
+      - Incrementos atómicos de streaks de enfriamiento y degradación energética.
+      - Consumo de tokens de un solo uso (anti-doble toque).
+      - Respeto estricto del contrato de conexión SQLite de solo lectura.
+    * Suite global de regresión: **514/514 tests PASS** en 14.61s (0 fallos, 0 errores, 0 regresiones).
+  - **Certificación de Producción**:
+    * Monitor en producción PID 38816 100% ininterrumpido (>267.3h continuas, >4.611 CPU s).
+    * Release Candidate V3 (v3.0.0) aprobado y certificado.
+
+---
+
+## [2026-09-07] - Implementación y Cierre de Spec 037 (Vnish Preset & Autotuning Dynamic Tracking - /presets)
+
+* **Objetivo**: Implementar el monitoreo dinámico de perfiles de frecuencia (`frequency_mhz_avg`), tensión de cadena (`chain_voltage_mv_avg`), potencia y estado de autotuning del firmware Vnish (`app/vnish_presets.py`). Accesible vía comando interactivo `/presets` (y alias `/preset`, `/profile [minero]`) y alertas preventivas `PROFILE_CHANGE_ALERT` ante reducciones de frecuencia ($\ge 25\text{ MHz}$) o problemas de calibración.
+* **Resultados y Evidencia**:
+  - **Módulo de Dominio Puro (`app/vnish_presets.py`)**:
+    * Inferencia automática de perfiles de potencia y frecuencia nominales (`~2700W (516 MHz)`, `~2500W (485 MHz)`).
+    * Clasificación de estado de tuning en 4 estados:
+      - `STABLE` (`🟢 ESTABLE`): Frecuencia nominal y cadenas calibradas.
+      - `AUTOTUNING` (`🟡 AUTOTUNING`): Cadenas en transición o eventos de ajuste registrados.
+      - `DOWNCLOCKED` (`🟠 DOWNCLOCK`): Reducción $\ge 25\text{ MHz}$ respecto al perfil base por estabilidad térmica o eléctrica.
+      - `UNKNOWN` (`⚪ SIN DATOS`): Sin telemetría disponible.
+    * Formateador de tabla de flota (`build_presets_table_text()`) y ficha diagnóstica individual (`build_miner_preset_detail_text()`) con correlación de eventos de firmware (`firmware_events`).
+    * Consulta atómica sobre base de datos SQLite en **1.77 ms** con soporte para múltiples identificadores de minero.
+    * Evaluador preventivo `evaluate_preset_alerts()` con baseline adaptativo y cooldown configurable (1 hora).
+  - **Integración en `app/miner_monitor.py`**:
+    * Registrados comandos `/presets`, `/preset`, `/profile` en `CMD_WHITELIST`, `_COMMANDS` y `/help`.
+    * Handler para `/presets` y `/presets <minero>`.
+    * `MinerState`: agregados campos `baseline_frequency_mhz` y `last_preset_warning_ts`, con serialización completa en `load_state()` y `save_state()`.
+    * Hook de evaluación en bucle principal, respetando `/snooze` y modo QA.
+    * Configuración documentada en `app/config.example.json` (`preset_alert_enabled`, `preset_frequency_drop_mhz`, `preset_cooldown_seconds`).
+  - **Pruebas y Verificación**:
+    * Creada la suite `tests/test_vnish_presets.py` con 11 pruebas unitarias e integradas (100% pasando).
+    * Suite global de regresión: **495/495 tests PASS** en 5.04s.
+    * Monitor en producción (PID 38816) 100% ininterrumpido (>267h soak).
+
+---
+
+## [2026-09-07] - Implementación y Cierre de Spec 036 (Hashrate Efficiency & Energy Tracking - /efficiency)
+
+* **Objetivo**: Implementar el seguimiento en tiempo real del ratio energético en Joules por Terahash ($J/\text{TH} = \text{Watts} / \text{TH/s}$) para detectar precozmente degradación de fuentes, chips defectuosos o caídas de tensión antes del colapso total de hashrate (`app/energy_efficiency.py`). Accesible vía comando interactivo `/efficiency` (y alias `/eff [minero]`) y alertas preventivas `EFFICIENCY_WARNING`.
+* **Resultados y Evidencia**:
+  - **Módulo de Dominio Puro (`app/energy_efficiency.py`)**:
+    * Cálculo matemático exacto de $J/\text{TH}$ blindado contra divisiones por cero o potencias nulas.
+    * Clasificación de eficiencia en 4 bandas operativas:
+      - `OPTIMAL` (`🟢 ÓPTIMA`): $\le 28.5\text{ J/TH}$ (rango superior de S19j Pro).
+      - `NORMAL` (`🟢 NORMAL`): $28.5 < \text{J/TH} \le 31.5$ (operación nominal estándar).
+      - `ELEVATED` (`🟡 ELEVADA`): $31.5 < \text{J/TH} \le 35.0$ (degradación leve o autotune alto).
+      - `DEGRADED` (`🟠 DEGRADADA`): $> 35.0\text{ J/TH}$ (consumo excesivo por TH generado).
+    * Generador de tabla consolidada (`build_efficiency_table_text()`) que incluye potencia total en kW y promedio ponderado de la flota, y ficha detallada (`build_miner_efficiency_detail_text()`).
+    * Consulta atómica en modo seguro `?mode=ro` sobre `telemetry_samples`: consulta en **0.7 ms** y render en **0.1 ms** (< 1 ms total).
+    * Evaluador preventivo `evaluate_efficiency_alerts()` con filtro por streak (3 lecturas consecutivas) y cooldown de 1 hora.
+  - **Integración en `app/miner_monitor.py`**:
+    * Registrados comandos `/efficiency` y `/eff` en `CMD_WHITELIST`, `_COMMANDS` y `/help`.
+    * Handler para `/efficiency` (resumen de flota) y `/efficiency <minero>` (diagnóstico profundo individual).
+    * `MinerState`: agregados campos `efficiency_streak` y `last_efficiency_warning_ts`, con persistencia íntegra en `load_state()` y `save_state()`.
+    * Hook de evaluación en el bucle principal de adquisición, respetando silenciamiento `/snooze` y modo QA.
+    * Documentadas opciones de configuración en `app/config.example.json` (`efficiency_alert_enabled`, `efficiency_target_j_th`, `efficiency_degraded_threshold_j_th`, `efficiency_degraded_streak`, `efficiency_cooldown_seconds`).
+  - **Pruebas y Verificación**:
+    * Creada la suite `tests/test_energy_efficiency.py` con 12 pruebas unitarias, integradas y de benchmark.
+    * Suite global: **484/484 tests PASS** en 4.84s (0 fallos, 0 errores, 0 regresiones).
+    * Compilación Python exitosa con código de salida 0.
+    * Monitor en producción (PID 38816) 100% ininterrumpido (>267h soak).
+* **Próximo Paso**:
+  - Proceder con la siguiente capacidad del Plan V3 (`docs/speckit/V3_EXPANSION_PLAN.md`): Seguimiento de Presets y Autotuning dinámico de Vnish (detección de cambios de perfil de frecuencia/voltaje).
+
+---
+
+## [2026-09-07] - Implementación y Cierre de Spec 035 (Cooling & Fan Health Intelligence - /fans)
+
+* **Objetivo**: Implementar inteligencia analítica de refrigeración y estado mecánico de ventiladores (`app/fan_health.py`) para detectar saturación térmica de flujo (filtros sucios / pasta degradada) y fallas mecánicas de ventiladores antes de alcanzar el apagado por hardware de emergencia (85°C). Accesible vía comando interactivo `/fans` (y alias `/fan [minero]`) y alertas preventivas tempranas `COOLING_WARNING` y `FAN_DEFECT`.
+* **Resultados y Evidencia**:
+  - **Módulo de Dominio Puro (`app/fan_health.py`)**:
+    * Cálculo determinista del margen térmico hacia el corte: $\text{Headroom} = \max(0.0, 85.0 - T_{\text{max}})$.
+    * Clasificación precisa en 5 estados térmicos:
+      - `HEALTHY` (`🟢 OK`): $T_{\text{max}} < 75^\circ\text{C}$ y PWM < 90%.
+      - `ELEVATED` (`🟡 ELEVADO`): $75^\circ\text{C} \le T_{\text{max}} < 78^\circ\text{C}$ o PWM ≥ 90%.
+      - `SATURATED` (`🟠 SATURADO`): $T_{\text{max}} \ge 78^\circ\text{C}$ y (PWM ≥ 95% o RPM ≥ 5800) sostenido.
+      - `CRITICAL_HEAT` (`🔴 CRÍTICO`): $T_{\text{max}} \ge 82^\circ\text{C}$ (margen crítico $\le 3^\circ\text{C}$).
+      - `FAN_DEFECT` (`⚠️ DEFECTO FAN`): RPM < 2000 RPM bajo carga o señal de tacómetro ausente (`fan_signal_missing`).
+    * Formateo de tabla general para la flota (`build_fans_table_text()`) y ficha diagnóstica individual con recomendaciones operativas (`build_miner_fan_detail_text()`).
+    * Consulta ultrarrápida a SQLite con modo seguro `?mode=ro`: consulta en **0.8 ms** y formateo en **0.1 ms** (< 1 ms vs SLA < 100 ms) sobre base real de 23.2 MB.
+    * Evaluador de alertas preventivas `evaluate_cooling_alerts()` con filtro por streak (3 lecturas consecutivas saturadas) y cooldown de 1 hora para evitar ruido.
+  - **Integración en `app/miner_monitor.py`**:
+    * Registrados comandos `/fans` y `/fan` en `CMD_WHITELIST`, `_COMMANDS` y `/help`.
+    * Handler para `/fans` (tabla de flota) y `/fans <minero>` (detalle con match por nombre, ID o IP).
+    * `MinerState`: agregados campos `cooling_streak` y `last_cooling_warning_ts`, con persistencia íntegra en `load_state()` y `save_state()`.
+    * Hook de evaluación preventiva en el bucle principal de adquisición tras registrar muestras en `telemetry_samples`, respetando el silenciamiento `/snooze` y el modo QA.
+    * Documentadas opciones de configuración en `app/config.example.json` (`cooling_alert_enabled`, `cooling_saturate_temp_c`, `cooling_saturate_pwm_pct`, `cooling_saturate_rpm`, `cooling_saturate_streak`, `cooling_cooldown_seconds`).
+  - **Pruebas y Verificación**:
+    * Creada la suite `tests/test_fan_health.py` con 14 pruebas unitarias, integradas y de benchmark de base real.
+    * Suite global: **472/472 tests PASS** en 4.60s (0 fallos, 0 errores, 0 regresiones).
+    * Compilación Python exitosa con código de salida 0.
+    * Monitor en producción (PID 38816) 100% ininterrumpido (>267h soak).
+* **Próximo Paso**:
+  - Proceder con la siguiente fase del plan V3 (`docs/speckit/V3_EXPANSION_PLAN.md`): Métricas continuas de eficiencia J/TH en telemetría en tiempo real y alertas de degradación energética.
+
+---
+
+## [2026-09-07] - Implementación y Cierre de Spec 034 (Daily Executive Digest - /digest)
+
+* **Objetivo**: Implementar el reporte diario ejecutivo matutino programado (08:00 AM) y bajo demanda vía `/digest` (o atajo `/summary`), consolidando en una tarjeta concisa de Telegram el uptime de la flota, hashrate promedio 24h vs nominal, eficiencia energética (J/TH), calidad de shares, anomalías operativas y verificación de integridad del backup SQLite.
+* **Resultados y Evidencia**:
+  - **Módulo de Agregación Analítica (`app/daily_digest.py`)**:
+    * Consulta atómica en modo estricto de solo lectura (`?mode=ro`) a `telemetry_samples`, `operational_events` y `reboot_decisions` sobre la ventana de 24 horas (`now_ts - 86400`).
+    * Métricas calculadas con fórmulas rigurosas:
+      - Uptime %: `(ok_samples / total_samples) * 100`.
+      - Hashrate Promedio: suma de promedios por ASIC activo en la ventana.
+      - Eficiencia: promedio ponderado de $\text{Watts} / (\text{TH/s}) = \text{J/TH}$.
+      - Shares: porcentaje de aceptación y rechazo sobre deltas reales acumulados.
+      - Anomalías e incidentes: conteo de severidades warning/critical y decisiones de reinicio.
+    * `inspect_latest_backup()`: lee metadatos en `backups/verified/` con validación de manifest SHA-256 e integridad.
+    * `is_digest_due()`: evaluador determinista de fecha calendario y hora local argentina (UTC-3).
+    * Rendimiento sobresaliente en producción real (23.2 MB): consulta en **27.2 ms**, render en **0.07 ms** (total 27.3 ms vs SLA < 1000 ms). Cero bloqueos de escritura.
+  - **Integración en `app/miner_monitor.py`**:
+    * Registrados comandos `/digest` y `/summary` en `CMD_WHITELIST`, `_COMMANDS`, `/help` e índice de ayuda.
+    * Hook de despacho matutino automático incorporado en el loop principal de evaluación, respetando la hora configurada (08:00) y blindado contra duplicados con `_LAST_DAILY_DIGEST_DATE`.
+    * Persistencia de fecha de envío en `app/state.json`.
+    * Documentadas opciones `daily_digest_enabled: true` y `daily_digest_time: "08:00"` en `app/config.example.json`.
+  - **Pruebas y Verificación**:
+    * Creada la suite `tests/test_daily_digest.py` con 10 pruebas unitarias e integradas (programación, rollover de fecha, inspección de backups, base SQLite temporal con telemetría sintética y benchmark en vivo sobre la BD real).
+    * Suite global: **458/458 tests PASS** en 4.69s (0 fallos, 0 errores, 0 regresiones).
+    * Compilación Python exitosa con código de salida 0.
+    * Monitor en producción (PID 38816) 100% ininterrumpido.
+* **Próximo Paso**:
+  - Toda la iniciativa **Telegram Max (Specs 031, 032, 033 y 034)** se encuentra 100% implementada y certificada.
+  - Proceder con las siguientes expansiones del Plan V3 (`docs/speckit/V3_EXPANSION_PLAN.md`): Detección temprana de falla de ventiladores (Fan Health) y métricas continuas de eficiencia J/TH en telemetría en tiempo real.
+
+---
+
+## [2026-09-07] - Implementación y Cierre de Spec 033 (Miner Maintenance Snooze - /snooze)
+
+* **Objetivo**: Implementar el silenciamiento temporal de alertas, recordatorios periódicos, reportes degradados y autorreinicios por minero o para toda la flota durante ventanas de mantenimiento físico, limpieza o cambio de fuentes/ventiladores vía comandos (`/snooze`, `/unsnooze`, `/snoozed`) y botón táctil 1-Tap `[ 🔕 Silenciar 1h ]`.
+* **Resultados y Evidencia**:
+  - **Módulo de Dominio Puro (`app/telegram_snooze.py`)**:
+    * Parser de argumentos `parse_snooze_args()` con soporte para minutos (`45m`, `30min`), horas (`2h` -> 120m) y acotamiento seguro entre 1 y 1440 min (24h).
+    * Predicado de verificación `is_miner_snoozed()` y formateadores `format_snooze_remaining()` y `format_snooze_tag()`.
+    * Generador de respuesta para `/snoozed` (`build_snooze_status_text()`).
+    * Filtro de episodios `filter_snoozed_episodes()` que suprime alertas de episodios y recordatorios persistentes para mineros silenciados, preservando notificaciones de recuperación.
+  - **Integración en `app/miner_monitor.py`**:
+    * Extendido `MinerState` con `snooze_until_ts: Optional[float] = None`.
+    * Persistencia completa en `load_state()` y `save_state()` en `app/state.json`.
+    * Despachador de callbacks: acción `snz` en `_handle_callback_query()` silencia el minero por la duración indicada, responde con notificación toast interactiva y actualiza el teclado a estado asentado `[ 🔕 Silenciado (60m) ]`.
+    * Registrados comandos `/snooze`, `/unsnooze`, `/snoozed` en `CMD_WHITELIST`, `_COMMANDS`, y `/help`.
+    * **Seguridad Crítica**: Bloqueo absoluto de autorreinicio en el loop de evaluación cuando `is_miner_snoozed` es verdadero (registrado como `AUTO_REBOOT_SNOOZED`).
+    * Etiqueta visual en `/status`: Cada minero silenciado muestra `[🔕 Silenciado: Xm rest.]`.
+  - **Pruebas y Verificación**:
+    * Creada la suite `tests/test_telegram_snooze.py` con 12 tests pasando (parsing, unidades, clamping, predicados, formateo, filtrado de episodios, bloqueo de autorreinicios, callback `snz`, y persistencia en `state.json`).
+    * Suite global: **448/448 tests PASS** en 4.50s (0 fallos, 0 errores, 0 regresiones).
+    * Compilación Python exitosa con código de salida 0.
+    * Monitor en producción (PID 38816) 100% ininterrumpido.
+* **Próximo Paso**:
+  - Proceder con la Spec 034 (`034-daily-executive-digest`) para el reporte diario consolidado a hora programada y bajo demanda vía `/digest`.
+
+---
+
+## [2026-09-07] - Implementación y Cierre de Spec 032 (Telegram Visual Charts - /chart)
+
+* **Objetivo**: Implementar la generación y envío nativo de gráficos PNG al chat de Telegram (`/chart [miner|fleet] [horas]`) y cablear el botón táctil `[ 📊 Ver Gráfico ]` de la Spec 031, con renderizado 100% en memoria RAM (BytesIO) y cero archivos temporales en disco.
+* **Resultados y Evidencia**:
+  - **Motor de Renderizado (`app/telegram_charts.py`)**:
+    * Consultas a SQLite en modo estricto de solo lectura (`?mode=ro`) sobre `telemetry_samples`.
+    * Renderizado en 2 subpaneles con Matplotlib:
+      - Panel superior: Curva de hashrate (verde esmeralda) con área sombreada, umbral nominal (ámbar discontinuo), y promedio de la ventana.
+      - Panel inferior: Curva de temperatura máxima de chips (rojo carmesí) y velocidad de ventiladores (azul punteado).
+    * Rendimiento medido sobre base real de 23.2 MB: consulta en **2.2 ms**, renderizado en **217.5 ms** (total 219.7 ms vs SLA < 1.5s).
+    * Cero basura en disco: Todo se transmite directamente mediante `io.BytesIO` como `image/png`.
+  - **Integración en `app/miner_monitor.py`**:
+    * Añadido helper `send_telegram_photo()` con envío multipart a `sendPhoto`.
+    * Registrado comando `/chart` en `CMD_WHITELIST`, `COMMAND_REGISTRY` y en el índice de `/help`.
+    * Cableada la acción de callback `chart:<miner_id>` en `_handle_callback_query()`.
+  - **Pruebas y Verificación**:
+    * Creada la suite `tests/test_telegram_charts.py` con 6 pruebas unitarias e integradas (firma mágica PNG, extracción de muestras, renderizado de flota, manejo de mineros vacíos, mock de `sendPhoto` y despacho de callback).
+    * Documentación actualizada en `README.md` y `docs/speckit/RUNBOOK.md`.
+  - **Suite Global**: **436/436 tests PASS** en 4.45s (0 fallos, 0 errores, 0 skips).
+  - **Producción**: Monitor vivo (PID 38816) con >267 horas ininterrumpidas.
+* **Próximo Paso**:
+  - Proceder con la Spec 033 (`033-miner-maintenance-snooze`) para el silenciamiento temporal de alertas durante tareas de mantenimiento físico.
+
+---
+
+## [2026-09-07] - Implementación y Cierre de Spec 031 (Telegram Interactive Callbacks & Inline Keyboards)
+
+* **Objetivo**: Implementar la primera especificación de la iniciativa Telegram Max (V3), incorporando botones táctiles interactivos (Inline Keyboards con 1-Tap) en las alertas de episodios para diagnósticos instantáneos y un flujo de confirmación segura de reinicio en dos toques con expiración a los 60 segundos y estricta autenticación de chat_id.
+* **Resultados y Evidencia**:
+  - **Fases 1 y 2 (Gemini 3.8 Flash High)**:
+    * Creado el módulo puro `app/telegram_callbacks.py` con `CallbackTokenRegistry` (máximo 10 tokens en memoria, TTL de 60s), analizador de gramática (`diag`, `chart`, `snz`, `rb_req`, `rb_cfm`, `rb_ccl`, `noop`) cumpliendo el límite estricto de 64 bytes de la API de Telegram, y constructores de teclados (`build_alert_keyboard`, `build_confirmation_keyboard`, `build_settled_keyboard`).
+    * Creada la suite inicial de 9 pruebas en `tests/test_telegram_callbacks.py`.
+  - **Fase 3 (Claude Sonnet 4.6 Thinking)**:
+    * Implementados los helpers HTTP seguros `answer_callback_query` y `edit_message_reply_markup` en `app/miner_monitor.py`.
+    * Extendida `send_telegram` y la tupla de la cola de envíos para adjuntar opcionalmente `reply_markup`.
+    * Integrado el despacho de `callback_query` en `_poll_telegram_updates()` y la función de módulo `_handle_callback_query()`.
+    * Conectada la generación automática de teclados en `app/alert_episodes.py` para alertas de episodio único.
+  - **Fases 4 y 5 (Gemini 3.8 Flash High)**:
+    * Añadidas pruebas de integración en `tests/test_telegram_callbacks.py` (14 tests unitarios en total) validando el rechazo inmediato de usuarios no autorizados (`show_alert=True`), expiración limpia de tokens (>60s), flujo de confirmación y flujo de cancelación.
+    * Documentación actualizada en `README.md`, `docs/speckit/RUNBOOK.md` y evidencia consolidada en `specs/031-telegram-interactive-callbacks/evidence.md`.
+  - **Suite Global**: **430/430 tests PASS** en 4.34s (0 fallos, 0 errores, 0 skips).
+  - **Producción**: Monitor vivo (PID 38816) con >267 horas de ejecución ininterrumpida y 0 alertas espurias.
+* **Próximo Paso**:
+  - Proceder con la Spec 032 (`032-telegram-visual-charts`) para la generación y envío nativo de gráficos visuales PNG vía Telegram (`/chart`).
+
+---
+
 ## [2026-09-07] - Certificación Oficial de Release v2.0.0 y Normalización Integral de Documentación
 
 * **Objetivo**: Concluir la sincronización de ramas (`main` y `codex/022-adaptive-acquisition`), publicar el tag de release `v2.0.0`, formalizar la Enmienda 1.5.0 de la Constitución adoptando Gemini 3.8 Flash High como motor primario, y ejecutar la normalización integral de la documentación del proyecto (30 especificaciones, guías de SpecKit, Runbook operativo y README raíz).

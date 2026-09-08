@@ -20,12 +20,12 @@
 - [x] **T013**: [P1] Implementar tests de hysteresis de 72h y respeto estricto de techo `max_preset`.
 
 ## Fase 4: Integración en Monitor y Comandos Telegram
-- [ ] **T014**: [P1] Soporte para la clave `electrical_group` en cada minero en `app/config.json` y `app/config.example.json`.
-- [ ] **T015**: [P1] Función extractora de métricas de estabilidad (`extract_miner_stability_metrics`) desde `data/miner_alerts.db` y `state.json`.
-- [ ] **T016**: [P1] Ciclo evaluador periódico del balanceador integrado en `app/miner_monitor.py` en modo `dry_run: true` por defecto.
-- [ ] **T017**: [P1] Comandos Telegram `/balancer` (tabla ejecutiva), `/balancer setmax <miner> <preset>`, `/balancer on` y `/balancer off`.
+- [x] **T014**: [P1] Soporte para la clave `electrical_group` en cada minero en `app/config.json` y `app/config.example.json`.
+- [x] **T015**: [P1] Función extractora de métricas de estabilidad (`extract_miner_stability_metrics`) desde `data/miner_alerts.db` y `state.json`.
+- [x] **T016**: [P1] Ciclo evaluador periódico del balanceador integrado en `app/miner_monitor.py` en modo `dry_run: true` por defecto.
+- [x] **T017**: [P1] Comandos Telegram `/balancer` (tabla ejecutiva), `/balancer setmax <miner> <preset>`, `/balancer on` y `/balancer off`.
 
 ## Fase 5: Validación, Regresiones y Documentación
-- [ ] **T018**: [P1] Verificar 100% de pase de suite global sin regresiones (>560 tests PASS).
-- [ ] **T019**: [P1] Registrar evidencia de validación en `specs/040-dynamic-voltage-presets/evidence.md`.
-- [ ] **T020**: [P1] Actualizar `docs/audit/DEVELOPMENT_LOG.md` y `docs/speckit/ROADMAP.md`.
+- [x] **T018**: [P1] Verificar 100% de pase de suite global sin regresiones (>560 tests PASS).
+- [x] **T019**: [P1] Registrar evidencia de validación en `specs/040-dynamic-voltage-presets/evidence.md`.
+- [x] **T020**: [P1] Actualizar `docs/audit/DEVELOPMENT_LOG.md` y `docs/speckit/ROADMAP.md`.

@@ -105,7 +105,16 @@ try:
         ACTION_STEP_DOWN,
         ACTION_STEP_UP,
     )
-    from .vnish_client import safe_set_fan_duty, mask_secret
+    from .preset_balancer import (
+        BalancerConfig,
+        BalancerDecision,
+        StabilityMetrics,
+        evaluate_balancer_step,
+        extract_miner_stability_metrics,
+        build_balancer_table_text,
+        build_miner_balancer_detail_text,
+    )
+    from .vnish_client import safe_set_fan_duty, safe_set_miner_preset, mask_secret
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -186,7 +195,16 @@ except ImportError:
         ACTION_STEP_DOWN,
         ACTION_STEP_UP,
     )
-    from vnish_client import safe_set_fan_duty, mask_secret
+    from preset_balancer import (
+        BalancerConfig,
+        BalancerDecision,
+        StabilityMetrics,
+        evaluate_balancer_step,
+        extract_miner_stability_metrics,
+        build_balancer_table_text,
+        build_miner_balancer_detail_text,
+    )
+    from vnish_client import safe_set_fan_duty, safe_set_miner_preset, mask_secret
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -251,6 +269,11 @@ CMD_WHITELIST = {
     "snoozed",
     "digest",
     "summary",
+    "governor",
+    "gov",
+    "balancer",
+    "bal",
+    "power",
 }
 
 
@@ -548,6 +571,30 @@ _COMMANDS = [
         "aliases": ["preset", "profile"],
     },
     {
+        "name": "governor",
+        "summary": "Controlador térmico de lazo cerrado para coolers Vnish.",
+        "usage": "/gov  |  /gov on  |  /gov off  |  /gov set <temp>",
+        "detail": [
+            "Detalle: supervisa y modula el % PWM para sostener temperatura objetivo estable evitando oscilaciones.",
+        ],
+        "examples": ["/gov", "/gov on", "/gov off", "/gov set 82.0"],
+        "notes": ["Soporta modo dry-run para operar con total seguridad."],
+        "danger_level": "safe",
+        "aliases": ["gov"],
+    },
+    {
+        "name": "balancer",
+        "summary": "Balanceador dinámico de potencia y presets para protección de elevadores.",
+        "usage": "/balancer  |  /balancer on  |  /balancer off  |  /balancer setmax <miner> <preset>",
+        "detail": [
+            "Detalle: optimiza presets Vnish contra reinicios por sensibilidad eléctrica y maximiza hashrate neto.",
+        ],
+        "examples": ["/balancer", "/balancer on", "/balancer 23", "/balancer setmax 23 2500W"],
+        "notes": ["Arranca en dry-run seguro por defecto."],
+        "danger_level": "safe",
+        "aliases": ["bal", "power"],
+    },
+    {
         "name": "snooze",
         "summary": "Silencia alertas y autorreinicios por mantenimiento.",
         "usage": "/snooze <miner|all> [minutos]",
@@ -675,6 +722,11 @@ def render_help_index() -> str:
         "quality",
         "diagnose",
         "chart",
+        "fans",
+        "efficiency",
+        "presets",
+        "governor",
+        "balancer",
         "snooze",
         "unsnooze",
         "snoozed",
@@ -692,6 +744,11 @@ def render_help_index() -> str:
         "quality": "/quality [miner|all]",
         "diagnose": "/diagnose [miner|all]",
         "chart": "/chart [miner|fleet] [hours]",
+        "fans": "/fans [miner|all]",
+        "efficiency": "/efficiency [miner|all]",
+        "presets": "/presets [miner|all]",
+        "governor": "/gov [on|off|set]",
+        "balancer": "/balancer [on|off|miner]",
         "snooze": "/snooze <miner|all> [min]",
         "unsnooze": "/unsnooze <miner|all>",
         "snoozed": "/snoozed",
@@ -923,6 +980,11 @@ class MinerState:
     governor_failures: int = 0                    # Consecutive HTTP failures
     governor_last_action: str = ""                # Last action string for /gov display
     governor_last_temp_c: Optional[float] = None  # Last temp seen by governor
+    # Spec 040: Dynamic Preset Balancer per-miner persistent state
+    balancer_preset: Optional[str] = None          # Last known or applied preset (e.g. "2700W")
+    balancer_last_change_ts: float = 0.0          # Timestamp of last preset adjustment
+    balancer_last_action: str = ""                # Last decision action string
+    balancer_last_reason: str = ""                # Last decision reason
 
 
 def load_config() -> Dict[str, Any]:
@@ -2251,6 +2313,15 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("governor_last_temp_c") is not None
                     else None
                 ),
+                # Spec 040: Dynamic Preset Balancer
+                balancer_preset=(
+                    str(data.get("balancer_preset"))
+                    if data.get("balancer_preset") is not None
+                    else None
+                ),
+                balancer_last_change_ts=float(data.get("balancer_last_change_ts", 0.0)),
+                balancer_last_action=str(data.get("balancer_last_action", "")),
+                balancer_last_reason=str(data.get("balancer_last_reason", "")),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2308,6 +2379,11 @@ def save_state(
             "governor_failures": getattr(state, "governor_failures", 0),
             "governor_last_action": getattr(state, "governor_last_action", ""),
             "governor_last_temp_c": getattr(state, "governor_last_temp_c", None),
+            # Spec 040: Dynamic Preset Balancer
+            "balancer_preset": getattr(state, "balancer_preset", None),
+            "balancer_last_change_ts": getattr(state, "balancer_last_change_ts", 0.0),
+            "balancer_last_action": getattr(state, "balancer_last_action", ""),
+            "balancer_last_reason": getattr(state, "balancer_last_reason", ""),
         }
     tmp_path = state_path.with_suffix(".tmp")
     try:
@@ -2489,6 +2565,160 @@ def execute_governor_cycle(
                 f"{duty_tag} target={new_duty}% "
                 f"holds={state.governor_holds} fails={state.governor_failures}{err_tag}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Spec 040: Dynamic Power & Preset Balancer (Elevator Voltage Sensitivity)
+# ---------------------------------------------------------------------------
+_BALANCER_RUNTIME_ENABLED: Optional[bool] = None
+_LAST_BALANCER_CYCLE_TS: float = 0.0
+
+
+def execute_balancer_cycle(
+    miners: list,
+    states: Dict[str, "MinerState"],
+    state_lock: threading.Lock,
+    config: dict,
+    now_ts: float,
+    qa_mode: bool,
+    db_path: str = "data/miner_alerts.db",
+    force: bool = False,
+) -> List[Tuple[StabilityMetrics, BalancerDecision]]:
+    """
+    Spec 040: Dynamic Power & Preset Balancer execution cycle.
+    Periodically (or on force) extracts restart and thermal metrics,
+    evaluates stability per miner and across electrical groups (elevators),
+    and executes non-blocking parallel hardware preset changes if required.
+    """
+    import concurrent.futures
+
+    global _LAST_BALANCER_CYCLE_TS
+    bal_enabled_cfg = bool(config.get("preset_balancer_enabled", False))
+    bal_enabled = (
+        _BALANCER_RUNTIME_ENABLED
+        if _BALANCER_RUNTIME_ENABLED is not None
+        else bal_enabled_cfg
+    )
+    interval = float(config.get("preset_balancer_interval_seconds", 1800.0))
+    dry_run = bool(config.get("preset_balancer_dry_run", True))
+
+    if not force:
+        if not bal_enabled or qa_mode:
+            return []
+        if (now_ts - _LAST_BALANCER_CYCLE_TS) < interval:
+            return []
+
+    _LAST_BALANCER_CYCLE_TS = now_ts
+
+    bal_cfg = BalancerConfig(
+        enabled=True,
+        dry_run=dry_run,
+        restarts_threshold_step_down=int(config.get("preset_balancer_restarts_step_down", 2)),
+        soak_hours_step_up=float(config.get("preset_balancer_soak_hours_step_up", 72.0)),
+        default_max_preset=str(config.get("preset_balancer_default_max_preset", "2700W")),
+        group_cascade_threshold=int(config.get("preset_balancer_group_cascade_threshold", 2)),
+        group_cascade_window_s=float(config.get("preset_balancer_group_cascade_window_s", 1800.0)),
+        min_thermal_headroom_c=float(config.get("preset_balancer_min_thermal_headroom_c", 4.0)),
+    )
+
+    vnish_pw = str(config.get("vnish_api_password", "admin"))
+
+    with state_lock:
+        metrics_list = extract_miner_stability_metrics(
+            db_path=db_path,
+            miners=miners,
+            states=states,
+            config=config,
+            now_ts=now_ts,
+        )
+
+    decisions: List[Tuple[StabilityMetrics, BalancerDecision]] = []
+    miner_map = {m.get("name", m.get("host", "")): m for m in miners}
+
+    for m_metrics in metrics_list:
+        m_dict = miner_map.get(m_metrics.miner_name, {})
+        max_override = m_dict.get("max_preset")
+        decision = evaluate_balancer_step(
+            metrics=m_metrics,
+            config=bal_cfg,
+            group_metrics=metrics_list,
+            max_preset_override=max_override,
+        )
+        decisions.append((m_metrics, decision))
+
+    writers = [
+        (miner_map.get(m.miner_name, {}), m, d)
+        for m, d in decisions
+        if d.requires_write and not dry_run
+    ]
+
+    write_results: Dict[str, tuple] = {}
+    if writers:
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(4, len(writers))
+        )
+        try:
+            future_to_name = {
+                executor.submit(
+                    safe_set_miner_preset,
+                    miner.get("host", ""),
+                    vnish_pw,
+                    d.target_preset,
+                    timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+                ): m.miner_name
+                for miner, m, d in writers
+            }
+            deadline = time.monotonic() + float(config.get("fan_governor_fleet_timeout", 5.0))
+            for future in concurrent.futures.as_completed(
+                future_to_name.keys(),
+                timeout=float(config.get("fan_governor_fleet_timeout", 5.0)),
+            ):
+                m_name = future_to_name[future]
+                try:
+                    ok, err = future.result(timeout=max(0.1, deadline - time.monotonic()))
+                    write_results[m_name] = (ok, err)
+                except Exception as exc:
+                    write_results[m_name] = (False, str(exc))
+        except concurrent.futures.TimeoutError:
+            for future, m_name in future_to_name.items():
+                if m_name not in write_results:
+                    write_results[m_name] = (False, "fleet_timeout")
+        finally:
+            executor.shutdown(wait=False)
+
+    with state_lock:
+        for m_metrics, decision in decisions:
+            m_dict = miner_map.get(m_metrics.miner_name, {})
+            m_name = m_metrics.miner_name
+            m_host = m_dict.get("host", "")
+            m_port = m_dict.get("port", 4028)
+            sk = f"{m_name}|{m_host}:{m_port}"
+            st = states.get(sk)
+
+            write_ok = True
+            write_err = None
+            if decision.requires_write and not dry_run:
+                write_ok, write_err = write_results.get(m_name, (False, "no_result"))
+
+            if st is not None:
+                st.balancer_last_action = decision.action
+                st.balancer_last_reason = decision.reason
+                if decision.requires_write and (dry_run or write_ok):
+                    st.balancer_preset = decision.target_preset
+                    st.balancer_last_change_ts = now_ts
+                elif not st.balancer_preset:
+                    st.balancer_preset = decision.current_preset
+
+            dr_tag = " DRY" if dry_run else ""
+            err_tag = f" err={write_err}" if write_err else ""
+            log(
+                f"[BALANCER{dr_tag}] miner={m_name} group={m_metrics.electrical_group} "
+                f"action={decision.action} preset={decision.current_preset}->{decision.target_preset} "
+                f"restarts_24h={m_metrics.restarts_24h} uptime={m_metrics.hours_since_last_restart:.0f}h "
+                f"reason='{decision.reason}'{err_tag}"
+            )
+
+    return decisions
 
 
 # ---------------------------------------------------------------------------
@@ -3826,6 +4056,138 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="gov",
+                    )
+                elif cmd_name in ("balancer", "bal", "power"):
+                    handled = True
+                    global _BALANCER_RUNTIME_ENABLED
+                    sub = args[0].strip().lower() if args else ""
+                    bal_enabled_cfg = bool(config.get("preset_balancer_enabled", False))
+                    bal_dry_run = bool(config.get("preset_balancer_dry_run", True))
+                    db_p = str(config.get("event_store_path", "data/miner_alerts.db"))
+
+                    if sub == "on":
+                        _BALANCER_RUNTIME_ENABLED = True
+                        bal_msg = (
+                            "✅ *Dynamic Preset Balancer: ACTIVADO*\n"
+                            f"Modo: {'🔇 DRY-RUN (simulación)' if bal_dry_run else '⚡ ACTIVO (escribe hardware)'}\n"
+                            f"Intervalo: {config.get('preset_balancer_interval_seconds', 1800)}s | Umbral: {config.get('preset_balancer_restarts_step_down', 2)} reinicios/24h"
+                        )
+                        log("[BALANCER] Balancer habilitado por comando /balancer on")
+
+                    elif sub == "off":
+                        _BALANCER_RUNTIME_ENABLED = False
+                        bal_msg = "🛑 *Dynamic Preset Balancer: DESACTIVADO*\n(Los presets actuales se mantendrán fijos)"
+                        log("[BALANCER] Balancer deshabilitado por comando /balancer off")
+
+                    elif sub == "run":
+                        decisions = execute_balancer_cycle(
+                            miners=miners,
+                            states=states,
+                            state_lock=state_lock,
+                            config=config,
+                            now_ts=time.time(),
+                            qa_mode=qa_mode,
+                            db_path=db_p,
+                            force=True,
+                        )
+                        is_enabled = _BALANCER_RUNTIME_ENABLED if _BALANCER_RUNTIME_ENABLED is not None else bal_enabled_cfg
+                        bal_msg = "🔄 *Ciclo Forzado Ejecutado*\n" + build_balancer_table_text(
+                            decisions, is_enabled=is_enabled, is_dry_run=bal_dry_run
+                        )
+
+                    elif sub == "setmax" and len(args) >= 3:
+                        target_miner_arg = args[1].strip()
+                        target_preset_arg = args[2].strip().upper()
+                        matched_miner = None
+                        for m in miners:
+                            m_n = str(m.get("name", ""))
+                            m_h = str(m.get("host", ""))
+                            if (target_miner_arg.lower() in m_n.lower()) or (target_miner_arg in m_h):
+                                matched_miner = m
+                                break
+                        if not matched_miner:
+                            bal_msg = f"⚠️ Minero '{target_miner_arg}' no encontrado en la configuración."
+                        else:
+                            matched_miner["max_preset"] = target_preset_arg
+                            bal_msg = (
+                                f"✅ Techo máximo para *{matched_miner.get('name')}* ajustado a *{target_preset_arg}*.\n"
+                                "El balanceador no escalará por encima de este nivel."
+                            )
+                            log(f"[BALANCER] Techo max de {matched_miner.get('name')} fijado a {target_preset_arg}")
+
+                    elif sub and sub not in ("status", "table", "help"):
+                        with state_lock:
+                            metrics_list = extract_miner_stability_metrics(
+                                db_path=db_p,
+                                miners=miners,
+                                states=states,
+                                config=config,
+                                now_ts=time.time(),
+                            )
+                        matched = None
+                        for m_metrics in metrics_list:
+                            if (sub.lower() in m_metrics.miner_name.lower()) or (sub in m_metrics.miner_name):
+                                matched = m_metrics
+                                break
+                        if matched:
+                            m_dict = next((m for m in miners if m.get("name") == matched.miner_name), {})
+                            max_ov = m_dict.get("max_preset")
+                            bal_cfg = BalancerConfig(
+                                enabled=True,
+                                dry_run=bal_dry_run,
+                                default_max_preset=str(config.get("preset_balancer_default_max_preset", "2700W")),
+                            )
+                            dec = evaluate_balancer_step(
+                                matched,
+                                config=bal_cfg,
+                                group_metrics=metrics_list,
+                                max_preset_override=max_ov,
+                            )
+                            bal_msg = build_miner_balancer_detail_text(matched, dec)
+                        else:
+                            bal_msg = f"⚠️ Minero '{sub}' no encontrado. Use `/balancer` para ver la flota."
+
+                    else:
+                        with state_lock:
+                            metrics_list = extract_miner_stability_metrics(
+                                db_path=db_p,
+                                miners=miners,
+                                states=states,
+                                config=config,
+                                now_ts=time.time(),
+                            )
+                        decisions_tuples = []
+                        bal_cfg = BalancerConfig(
+                            enabled=True,
+                            dry_run=bal_dry_run,
+                            default_max_preset=str(config.get("preset_balancer_default_max_preset", "2700W")),
+                        )
+                        for m_metrics in metrics_list:
+                            m_dict = next((m for m in miners if m.get("name") == m_metrics.miner_name), {})
+                            max_ov = m_dict.get("max_preset")
+                            dec = evaluate_balancer_step(
+                                m_metrics,
+                                config=bal_cfg,
+                                group_metrics=metrics_list,
+                                max_preset_override=max_ov,
+                            )
+                            decisions_tuples.append((m_metrics, dec))
+                        is_enabled = _BALANCER_RUNTIME_ENABLED if _BALANCER_RUNTIME_ENABLED is not None else bal_enabled_cfg
+                        bal_msg = build_balancer_table_text(
+                            decisions_tuples,
+                            is_enabled=is_enabled,
+                            is_dry_run=bal_dry_run,
+                        )
+
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        bal_msg,
+                        "BALANCER",
+                        "cmd_balancer",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="balancer",
                     )
                 elif cmd_name == "firmware":
                     handled = True
@@ -6246,6 +6608,20 @@ def main() -> None:
                 )
             except Exception as _gov_exc:
                 log(f"[GOV_ERR] Governor cycle failed: {type(_gov_exc).__name__}: {_gov_exc}")
+
+            # Spec 040: Dynamic Preset Balancer cycle — optimizes power & voltage sensitivity
+            try:
+                execute_balancer_cycle(
+                    miners=valid_miners,
+                    states=states,
+                    state_lock=state_lock,
+                    config=config,
+                    now_ts=now_ts,
+                    qa_mode=qa_mode,
+                    db_path=str(config.get("event_store_path", "data/miner_alerts.db")),
+                )
+            except Exception as _bal_exc:
+                log(f"[BALANCER_ERR] Balancer cycle failed: {type(_bal_exc).__name__}: {_bal_exc}")
 
             with state_lock:
                 save_state(state_path, states, current_last_update_id)

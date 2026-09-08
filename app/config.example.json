@@ -112,10 +112,10 @@
     "restart_args_template": ["restart", "{host}-{host}"]
   },
   "miners": [
-    { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028 },
-    { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028 },
-    { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028 },
-    { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028 }
+    { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028, "electrical_group": "elevator_1" },
+    { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028, "electrical_group": "elevator_1" },
+    { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028, "electrical_group": "elevator_2" },
+    { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028, "electrical_group": "elevator_2" }
   ],
   "metrics_snapshot_enabled": false,
   "metrics_snapshot_path": "diagnostics/metrics/current.json",
@@ -131,7 +131,7 @@
     "max_run_seconds": 300
   },
   "vnish_api": {
-    "_comment": "Credenciales Vnish REST para Fan Governor. NUNCA commitar con contraseña real.",
+    "_comment": "Credenciales Vnish REST para Fan Governor y Preset Balancer. NUNCA commitar con contraseña real.",
     "password": "CHANGE_ME"
   },
   "fan_governor_enabled": false,
@@ -150,5 +150,15 @@
   "fan_governor_request_timeout": 2.5,
   "fan_governor_fleet_timeout": 5.0,
   "fan_governor_max_failures": 3,
+  "preset_balancer_enabled": false,
+  "preset_balancer_dry_run": true,
+  "_comment_preset_balancer": "Balanceador dinámico de presets Vnish y protección de elevadores sensibles (Spec 040). Desescalado preventivo por reinicios y subida conservadora tras soak.",
+  "preset_balancer_interval_seconds": 1800,
+  "preset_balancer_restarts_step_down": 2,
+  "preset_balancer_soak_hours_step_up": 72.0,
+  "preset_balancer_group_cascade_threshold": 2,
+  "preset_balancer_group_cascade_window_s": 1800.0,
+  "preset_balancer_min_thermal_headroom_c": 4.0,
+  "preset_balancer_default_max_preset": "2700W",
   "vnish_api_password": "CHANGE_ME"
 }

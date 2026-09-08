@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+import sqlite3
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 ACTION_HOLD_STABLE = "HOLD_STABLE"
@@ -231,3 +234,217 @@ def evaluate_balancer_step(
         requires_write=False,
         estimated_effective_hashrate=eff_current,
     )
+
+
+def infer_preset_name_from_power(
+    power_w: Optional[float],
+    ladder: Optional[List[PresetTier]] = None,
+    default: str = "2500W",
+) -> str:
+    """Infer closest preset tier name from raw chain power in Watts."""
+    if power_w is None or power_w <= 0:
+        return default
+    tiers = ladder or list(DEFAULT_PRESET_LADDER)
+    best_tier = min(tiers, key=lambda t: abs(t.nominal_power_w - power_w))
+    return best_tier.name
+
+
+def extract_miner_stability_metrics(
+    db_path: Path | str,
+    miners: list,
+    states: Optional[dict] = None,
+    config: Optional[dict] = None,
+    now_ts: Optional[float] = None,
+) -> List[StabilityMetrics]:
+    """Extract 24h/72h restart frequency and thermal metrics from SQLite."""
+    now = now_ts or time.time()
+    db_file = Path(db_path)
+    if not db_file.exists():
+        candidate = Path(__file__).resolve().parent.parent / db_path
+        if candidate.exists():
+            db_file = candidate
+    metrics_list: List[StabilityMetrics] = []
+
+    db_samples: Dict[str, dict] = {}
+    restarts_by_miner: Dict[str, dict] = {}
+
+    if db_file.exists():
+        uri = f"file:{db_file.resolve().as_posix()}?mode=ro"
+        conn = None
+        try:
+            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            ts_24h = now - 86400.0
+            ts_72h = now - 259200.0
+
+            cursor.execute(
+                """
+                SELECT miner_key, miner_name, host, occurred_ts
+                FROM operational_events
+                WHERE event_type IN ('restart_detected', 'auto_reboot_success', 'manual_reboot_success')
+                  AND occurred_ts >= ?
+                ORDER BY occurred_ts DESC
+                """,
+                (ts_72h,),
+            )
+            for row in cursor.fetchall():
+                m_key = str(row["miner_key"] or "")
+                m_name = str(row["miner_name"] or "")
+                m_host = str(row["host"] or "")
+                occ_ts = float(row["occurred_ts"])
+
+                for ident in (m_key, m_name, m_host):
+                    if not ident:
+                        continue
+                    if ident not in restarts_by_miner:
+                        restarts_by_miner[ident] = {"24h": 0, "72h": 0, "latest_ts": 0.0}
+                    restarts_by_miner[ident]["72h"] += 1
+                    if occ_ts >= ts_24h:
+                        restarts_by_miner[ident]["24h"] += 1
+                    if occ_ts > restarts_by_miner[ident]["latest_ts"]:
+                        restarts_by_miner[ident]["latest_ts"] = occ_ts
+
+            for miner in miners:
+                m_name = miner.get("name")
+                m_host = miner.get("host") or miner.get("ip")
+                m_port = miner.get("port", 4028)
+                candidate_keys = []
+                if m_name and m_host:
+                    candidate_keys.append(f"{m_name}|{m_host}:{m_port}")
+                if m_host:
+                    candidate_keys.append(str(m_host))
+                if m_name:
+                    candidate_keys.append(str(m_name))
+
+                placeholders = ",".join("?" for _ in candidate_keys)
+                cursor.execute(
+                    f"""
+                    SELECT rate_ths, max_temp_c, chain_power_w_total, elapsed_seconds
+                    FROM telemetry_samples
+                    WHERE miner_key IN ({placeholders}) OR miner_name = ? OR host = ?
+                    ORDER BY observed_ts DESC
+                    LIMIT 1
+                    """,
+                    (*candidate_keys, str(m_name or ""), str(m_host or "")),
+                )
+                sample_row = cursor.fetchone()
+                if sample_row:
+                    db_samples[str(m_name or m_host)] = dict(sample_row)
+
+        except Exception:
+            pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    for miner in miners:
+        m_name = miner.get("name") or str(miner.get("host") or "unknown")
+        m_host = miner.get("host") or miner.get("ip") or ""
+        m_group = miner.get("electrical_group") or "default"
+
+        r_info = {"24h": 0, "72h": 0, "latest_ts": 0.0}
+        for k in (m_name, m_host, f"{m_name}|{m_host}:4028"):
+            if k in restarts_by_miner:
+                r_info = restarts_by_miner[k]
+                break
+
+        sample = db_samples.get(m_name) or db_samples.get(m_host) or {}
+        max_temp = sample.get("max_temp_c")
+        rate = float(sample.get("rate_ths") or 0.0)
+        power = sample.get("chain_power_w_total")
+        elapsed = sample.get("elapsed_seconds")
+
+        headroom = max(0.0, 85.0 - max_temp) if max_temp is not None else 10.0
+
+        if elapsed is not None and elapsed > 0:
+            uptime_h = round(elapsed / 3600.0, 1)
+        elif r_info["latest_ts"] > 0:
+            uptime_h = round(max(0.0, now - r_info["latest_ts"]) / 3600.0, 1)
+        else:
+            uptime_h = 72.0
+
+        preset_candidate = miner.get("preset")
+        if not preset_candidate and states:
+            for sk, st in states.items():
+                if m_name in sk or (m_host and m_host in sk):
+                    preset_candidate = getattr(st, "balancer_preset", None)
+                    break
+        if not preset_candidate:
+            preset_candidate = infer_preset_name_from_power(power)
+
+        metrics_list.append(
+            StabilityMetrics(
+                miner_name=m_name,
+                electrical_group=m_group,
+                current_preset=preset_candidate,
+                restarts_24h=r_info["24h"],
+                restarts_72h=r_info["72h"],
+                hours_since_last_restart=uptime_h,
+                avg_hashrate_24h_ths=rate,
+                downtime_minutes_24h=r_info["24h"] * 10.0,
+                thermal_headroom_c=round(headroom, 1),
+                last_restart_epoch_s=r_info["latest_ts"],
+            )
+        )
+
+    return metrics_list
+
+
+def build_balancer_table_text(
+    decisions: List[Tuple[StabilityMetrics, BalancerDecision]],
+    is_enabled: bool = False,
+    is_dry_run: bool = True,
+) -> str:
+    """Format fleet preset balance table grouped by electrical elevator."""
+    status_icon = "🟢 ON" if is_enabled else "🔴 OFF"
+    mode_icon = "🔇 DRY-RUN" if is_dry_run else "⚡ ACTIVO"
+    lines = [
+        f"⚖️ Balanceador de Presets y Elevadores — {status_icon} | {mode_icon}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+    if not decisions:
+        lines.append("No hay datos de mineros disponibles.")
+        return "\n".join(lines)
+
+    groups: Dict[str, List[Tuple[StabilityMetrics, BalancerDecision]]] = {}
+    for m, d in decisions:
+        groups.setdefault(m.electrical_group, []).append((m, d))
+
+    for grp_name, items in groups.items():
+        grp_title = f"🔌 Elevador / Grupo: {grp_name.upper()}"
+        lines.append(grp_title)
+        for m, d in items:
+            action_icon = "🟢" if d.action == ACTION_HOLD_STABLE else ("⬆️" if d.action == ACTION_STEP_UP_OPTIMIZE else "⚠️")
+            target_str = f" ➔ {d.target_preset}" if d.requires_write else ""
+            lines.append(
+                f"• {m.miner_name}: {m.current_preset}{target_str} | "
+                f"R: {m.restarts_24h} (24h) / {m.restarts_72h} (72h) | Uptime: {m.hours_since_last_restart:.0f}h"
+            )
+            lines.append(f"  {action_icon} [{d.action}] {d.reason}")
+        lines.append("────────────────────────────")
+
+    lines.append("💡 Comandos: `/balancer on` | `/balancer off` | `/balancer setmax <minero> <preset>`")
+    return "\n".join(lines)
+
+
+def build_miner_balancer_detail_text(metrics: StabilityMetrics, decision: BalancerDecision) -> str:
+    """Format individual miner balancer diagnostic card."""
+    target_str = f" ➔ {decision.target_preset}" if decision.requires_write else ""
+    return "\n".join([
+        f"⚖️ Balanceador de Potencia — {metrics.miner_name}",
+        f"• Elevador / Grupo: {metrics.electrical_group}",
+        f"• Preset Actual: {metrics.current_preset}{target_str}",
+        f"• Reinicios en 24h: {metrics.restarts_24h}",
+        f"• Reinicios en 72h: {metrics.restarts_72h}",
+        f"• Tiempo Continuo Uptime: {metrics.hours_since_last_restart:.1f} horas",
+        f"• Margen Térmico Libre: {metrics.thermal_headroom_c:.1f}°C",
+        f"• Hashrate Estimado Efectivo: {decision.estimated_effective_hashrate:.1f} TH/s",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"💡 Diagnóstico: {decision.reason}",
+    ])
+

@@ -88,9 +88,9 @@ El programa completo de expansión V3 (Specs 031 a 038) está cerrado y validado
    - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T021), visibilidad implementada en `/fans`, comandos interactivos Telegram (`/gov`, `/gov on`, `/gov off`, `/gov set`), 12 tests de concurrencia y estrés (`tests/test_fan_governor_concurrency.py`), 549 tests globales PASS sin regresiones, PID 101508 en producción 100% ininterrumpido.
    - *Modelo*: Gemini 3.8 Flash High (Fases 1, 2, 3, bugfix y certificación) + Claude Sonnet 4.6 Thinking (Auditoría y Fases 4/5).
 
-10. **[EN PROGRESO - FASES 1 A 3 CERTIFICADAS] Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión (`040-dynamic-voltage-presets`)**:
+10. **[COMPLETADO] Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión (`040-dynamic-voltage-presets`)**:
     - *Objetivo*: Algoritmo inteligente de optimización de Costo/Beneficio que evalúa la estabilidad eléctrica por elevador de tensión y frecuencia de reinicios, calibrando el preset de potencia Vnish (de 1600W a 2800W) para maximizar el hashrate efectivo continuo y prevenir caídas en cascada.
-    - *Resultados*: Fases 1 a 3 completadas (T001-T013), extensión de `app/vnish_client.py` con métodos de presets, motor puro `app/preset_balancer.py` y 9 tests unitarios nuevos deterministas. 562 tests globales PASS.
+    - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T020), extensión de `app/vnish_client.py` con métodos de presets seguros, motor matemático puro `app/preset_balancer.py`, soporte para `electrical_group` en configuración, integración periódica y concurrente en `app/miner_monitor.py` (con `dry_run: true` por defecto), comandos Telegram (`/balancer`, `/balancer on`, `/balancer off`, `/balancer setmax`, `/balancer run`), 22 nuevos tests deterministas e integración (13 unitarios + 9 integración) y **575 tests globales PASS** sin regresiones.
     - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
 
 ---

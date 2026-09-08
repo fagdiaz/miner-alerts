@@ -14,9 +14,13 @@ from app.preset_balancer import (
     DEFAULT_PRESET_LADDER,
     PresetTier,
     StabilityMetrics,
+    build_balancer_table_text,
+    build_miner_balancer_detail_text,
     compute_effective_hashrate,
     evaluate_balancer_step,
+    extract_miner_stability_metrics,
     find_preset_index,
+    infer_preset_name_from_power,
 )
 
 
@@ -192,6 +196,85 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertEqual(dec.target_preset, "2700W")
         self.assertFalse(dec.requires_write)
 
+    def test_infer_preset_name_from_power(self):
+        self.assertEqual(infer_preset_name_from_power(2480), "2500W")
+        self.assertEqual(infer_preset_name_from_power(2720), "2700W")
+        self.assertEqual(infer_preset_name_from_power(1610), "1600W")
+        self.assertEqual(infer_preset_name_from_power(None), "2500W")
+
+    def test_build_balancer_table_text(self):
+        m1 = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_sensible",
+            current_preset="2700W",
+            restarts_24h=2,
+            restarts_72h=3,
+            hours_since_last_restart=3.0,
+            avg_hashrate_24h_ths=88.0,
+            downtime_minutes_24h=20.0,
+            thermal_headroom_c=5.0,
+        )
+        d1 = evaluate_balancer_step(m1, self.cfg)
+
+        m2 = StabilityMetrics(
+            miner_name="S19JPRO-25",
+            electrical_group="elevator_estable",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=93.0,
+            downtime_minutes_24h=0.0,
+            thermal_headroom_c=6.0,
+        )
+        d2 = evaluate_balancer_step(m2, self.cfg)
+
+        text = build_balancer_table_text([(m1, d1), (m2, d2)], is_enabled=True, is_dry_run=True)
+        self.assertIn("Balanceador de Presets y Elevadores", text)
+        self.assertIn("ELEVATOR_SENSIBLE", text)
+        self.assertIn("ELEVATOR_ESTABLE", text)
+        self.assertIn("S19JPRO-23: 2700W ➔ 2500W", text)
+        self.assertIn("STEP_DOWN_RESTARTS", text)
+
+    def test_build_miner_balancer_detail_text(self):
+        m = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_sensible",
+            current_preset="2700W",
+            restarts_24h=2,
+            restarts_72h=3,
+            hours_since_last_restart=3.0,
+            avg_hashrate_24h_ths=88.0,
+            downtime_minutes_24h=20.0,
+            thermal_headroom_c=5.0,
+        )
+        d = evaluate_balancer_step(m, self.cfg)
+        card = build_miner_balancer_detail_text(m, d)
+        self.assertIn("Balanceador de Potencia — S19JPRO-23", card)
+        self.assertIn("Elevador / Grupo: elevator_sensible", card)
+        self.assertIn("Reinicios en 24h: 2", card)
+
+    def test_extract_miner_stability_metrics_against_live_db(self):
+        import time
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028, "electrical_group": "elevator_sensible"},
+            {"name": "S19JPRO-24", "host": "192.168.100.24", "port": 4028, "electrical_group": "elevator_sensible"},
+            {"name": "S19JPRO-25", "host": "192.168.100.25", "port": 4028, "electrical_group": "elevator_estable"},
+            {"name": "S19JPRO-26", "host": "192.168.100.26", "port": 4028, "electrical_group": "elevator_estable"},
+        ]
+        t0 = time.perf_counter()
+        metrics = extract_miner_stability_metrics(
+            db_path="data/miner_alerts.db",
+            miners=miners,
+        )
+        query_ms = (time.perf_counter() - t0) * 1000.0
+        self.assertLess(query_ms, 500.0, f"Query took {query_ms:.1f}ms, expected < 500ms")
+        self.assertEqual(len(metrics), 4)
+        for m in metrics:
+            self.assertIn(m.electrical_group, ("elevator_sensible", "elevator_estable"))
+            self.assertGreaterEqual(m.thermal_headroom_c, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

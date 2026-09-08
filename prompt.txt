@@ -1,39 +1,45 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROGRAMA: SPECS 031 A 038 100% COMPLETADAS Y CERTIFICADAS
+OBJETIVO DE LA SESIÓN: AUDITORÍA ARQUITECTÓNICA FORMAL (SPEC 039)
 =============================================================================
-- Spec 031 (Telegram Interactive Callbacks): COMPLETADA Y CERRADA.
-- Spec 032 (Telegram Visual Charts - /chart): COMPLETADA Y CERRADA.
-- Spec 033 (Miner Maintenance Snooze - /snooze): COMPLETADA Y CERRADA.
-- Spec 034 (Daily Executive Digest - /digest): COMPLETADA Y CERRADA.
-- Spec 035 (Cooling & Fan Health Intelligence - /fans): COMPLETADA Y CERRADA.
-- Spec 036 (Hashrate Efficiency & Energy Tracking - /efficiency): COMPLETADA Y CERRADA.
-- Spec 037 (Vnish Preset & Autotuning Dynamic Tracking - /presets): COMPLETADA Y CERRADA.
-- Spec 038 (V3 Core Concurrency, Race Conditions & Release Stabilization): COMPLETADA Y CERRADA.
-  * Thread-safety lock en `CallbackTokenRegistry` (`app/telegram_callbacks.py`).
-  * Snapshot de iteración inmutable en `save_state()` (`app/miner_monitor.py`).
-  * Bloques `finally: if conn: conn.close()` en todos los módulos de lectura SQLite (`fan_health.py`, `energy_efficiency.py`, `vnish_presets.py`).
-  * 19 tests de estrés y concurrencia multi-hilo en `tests/test_v3_concurrency.py`.
-  * Suite global del proyecto: 514 tests PASS en 14.61s (0 fallos, 0 errores, 0 regresiones).
-  * RELEASE CANDIDATE V3.0.0 APROBADO Y CERTIFICADO.
+Se requiere una auditoría exhaustiva y rigurosa por parte de Claude Sonnet 4.6 (Thinking)
+sobre la propuesta formal de la especificación:
+`specs/039-vnish-fan-governor` (Vnish Thermal & Acoustic Fan Governor).
 
-=============================================================================
+CONTEXTO Y PROBLEMA OPERATIVO:
+1. Mineros Antminer S19j Pro corriendo firmware Vnish (v1.2.7 a v1.2.9).
+2. En modo automático nativo de Vnish, el delay térmico provoca que los chips alcancen 84.0°C.
+   Vnish tiene activo `preset_switcher` con `decrease_temp: 84°C`, por lo que reduce automáticamente
+   la frecuencia (downclocking) y el hashrate cae abruptamente.
+3. El operador configuró manualmente los ventiladores al 100% (~6.000 RPM, 75-80°C), evitando el downclock
+   pero produciendo contaminación acústica máxima y desgaste acelerado de ventiladores.
+4. Se propone un Gobernador Térmico de Lazo Cerrado que module el porcentaje PWM en modo manual
+   para mantener una temperatura estable de 82.0°C (margen seguro antes de los 84°C de downclock
+   y 85°C de corte de seguridad), bajando el ruido y consumo de forma suave y controlada.
+5. El sistema actualmente tampoco muestra en `/fans` si los coolers están en modo Manual o Auto.
+
+ARCHIVOS A AUDITAR:
+1. `specs/039-vnish-fan-governor/spec.md`: Requisitos, historias de usuario y criterios de aceptación.
+2. `specs/039-vnish-fan-governor/contracts/governor-contract.md`: Contrato REST de Vnish y modelo matemático de control.
+3. `specs/039-vnish-fan-governor/plan.md`: Arquitectura, fases, modelo de amenazas y mitigaciones.
+4. `specs/039-vnish-fan-governor/tasks.md`: Desglose de tareas T001 a T021.
+5. `app/fan_health.py` y `app/vnish_telemetry.py`: Módulos actuales de telemetría y salud de ventiladores.
+6. `app/miner_monitor.py`: Bucle principal de producción y concurrencia.
+
+FOCOS ESPECÍFICOS DE LA AUDITORÍA DE CLAUDE SONNET 4.6 THINKING:
+- Modelo de Concurrencia y Sockets: ¿Cómo deben ejecutarse las llamadas HTTP REST (unlock/set/lock)
+  para que un timeout de red en un minero no retrase ni bloquee el tick autoritativo de 30s de la API 4028?
+- Anti-Hunting & Estabilidad Térmica: ¿Es suficiente la banda muerta de 1.5°C ([81.0, 82.5]°C)
+  con dwell time de 90s y pasos de ±2-3% para prevenir oscilaciones térmicas en disipadores S19j Pro?
+- Fail-Safe & Spike Override: ¿Es robusto el salto defensivo a 100% PWM ante T >= 83.0°C?
+- Higiene de Credenciales: Garantías de que contraseñas y tokens no escapen a logs o estado git.
+- Evaluación de Riesgos Operativos antes de autorizar el inicio de la Fase 1 / Fase 2.
+
 ESTADO DEL MONITOR EN PRODUCCIÓN:
-=============================================================================
-- PID 88348: Servicio `MinerAlerts` reiniciado y corriendo V3.0.0 en producción (Mutex adquirido, Heartbeat OK).
-- Interfaz HTML: puerto 8080 activa (http://192.168.100.22:8080/).
-- Grafana: puerto 3000 activa (http://192.168.100.22:3000/).
+- PID 88348: Servicio `MinerAlerts` activo, saludable y corriendo V3.0.0 (>1.718 ticks).
+- Working tree: Limpio (`working tree clean`).
 
 =============================================================================
-PRÓXIMA CAPACIDAD PLANIFICADA (DISCUSIÓN OPERADOR):
-=============================================================================
-- Spec 039: Vnish REST API Client & Electrical Adaptive Governor
-  * Cliente HTTP seguro (`POST /api/v1/unlock`) para leer y cambiar presets y control de ventiladores.
-  * Mapeo de circuitos por elevador de tensión en `app/config.json`.
-  * Algoritmo de lazo cerrado para desescalar presets ante reinicios frecuentes en elevadores sensibles,
-    maximizando la rentabilidad real mediante continuidad operativa vs hashrate nominal.
-
-=============================================================================
-MODELO RECOMENDADO: Gemini 3.8 Flash High
+MODELO A SELECCIONAR: Claude Sonnet 4.6 (Thinking)
 =============================================================================

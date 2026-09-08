@@ -1,22 +1,32 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: SPEC 039 EN PRODUCCIÓN (V3.1) + SPEC 040 FASES 1-3 LISTAS
+ESTADO DEL PROYECTO: SPEC 039 Y SPEC 040 COMPLETADAS Y EN PRODUCCIÓN V3.2
 =============================================================================
-1. PRODUCCIÓN ACTIVA (V3.1.0):
-   - Servicio `MinerAlerts` ejecutándose bajo PID 101508 (supervisado por NSSM PID 31296).
-   - Spec 039 (Vnish Fan Governor) activa en el loop con `dry_run: true` por defecto.
-   - Comandos Telegram operativos: `/fans` (con visibilidad [MANUAL]/[AUTO]) y `/gov`.
-   - Cero errores en `logs/err.log` tras corregir deprecación de `datetime.utcnow()`.
+1. PRODUCCIÓN ACTIVA (V3.2.0 - PID 73268):
+   - Servicio Windows `MinerAlerts` reiniciado y operando bajo PID 73268 (supervisado por NSSM PID 73280).
+   - Consumo de recursos: ~59.8 MB RAM, 203 handles, ticks continuos cada 30s (`tick_sequence >= 3`).
+   - Cero errores en `logs/err.log`.
+   - Modos defensivos seguros activos por defecto (`dry_run: true`).
 
-2. SPEC 040 (DYNAMIC POWER & PRESET BALANCER FOR VOLTAGE SENSITIVITY):
-   - Fases 1 a 3 100% completadas y certificadas con 9 tests unitarios nuevos (562 tests globales PASS).
-   - Extendido `app/vnish_client.py` con `get_available_presets`, `set_miner_preset`, `safe_set_miner_preset`.
-   - Motor puro `app/preset_balancer.py` implementando función de optimización de Hashrate Efectivo ($H_{eff}$),
-     desescalado preventivo ante inestabilidad (>=2 reinicios en 24h), protección de cascada grupal
-     para elevadores sensibles y escalado conservador (soak de 72h + margen térmico >=4°C).
-   - Próximo paso: Fase 4 (Integración en monitor `app/miner_monitor.py` y comando Telegram `/balancer`).
+2. CARACTERÍSTICAS ACTIVAS Y COMANDOS TELEGRAM:
+   - Spec 039 (Vnish Fan Governor):
+     * Comandos: `/gov` (status), `/gov on`, `/gov off` (fallback seguro 100%), `/gov set <temp>`.
+     * Supervisión de coolers: `/fans` (detecta y muestra tags `[MANUAL]` / `[AUTO]`).
+   - Spec 040 (Dynamic Power & Preset Balancer para Elevadores Sensibles):
+     * Comandos: `/balancer` (tabla ejecutiva agrupada por elevador), `/balancer on`, `/balancer off`,
+       `/balancer setmax <miner> <preset>`, `/balancer run` (ciclo forzado) y `/balancer <id>`.
+     * Motor determinista evaluando reinicios 24h/72h, cascadas grupales en elevadores y optimización de $H_{eff}$.
+
+3. CERTIFICACIÓN GLOBAL DE PRUEBAS:
+   - 575/575 tests PASS en 10.08s (0 fallos, 0 errores, 0 regresiones).
+   - Suite de integración y concurrencia: `tests/test_preset_balancer_integration.py` (9/9 PASS).
 
 =============================================================================
-MODELO SUGERIDO: Gemini 3.8 Flash High (100% autónomo para Fases 4 y 5)
+SIGUIENTES PASOS:
+- Observación en caliente de logs de producción (`logs/out.log`) durante la operación regular.
+- El operador puede consultar `/balancer` y `/gov` en Telegram para inspeccionar las sugerencias del sistema.
+- Activar control en hardware real cuando el operador lo desee vía `/gov on` o `/balancer on`.
+=============================================================================
+MODELO SUGERIDO: Gemini 3.8 Flash High (Óptimo para soporte, consultas, análisis de métricas y siguiente especificación del roadmap)
 =============================================================================

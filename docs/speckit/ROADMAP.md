@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (38 de 38 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (40 de 40 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 587 tests PASS).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -205,6 +205,8 @@ interfaces or integrations.
 | 15 | Spec 036 efficiency-energy-tracking | COMPLETE | P1 | LOW | Closed 2026-09-07 |
 | 16 | Spec 037 vnish-presets-autotuning | COMPLETE | P2 | LOW | Closed 2026-09-07 |
 | 17 | Spec 038 v3-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v3.0.0` released) |
+| 18 | Spec 039 vnish-fan-governor | COMPLETE (`active`) | P1 | MEDIUM | Closed 2026-09-08 (calibrado 82.0°C) |
+| 19 | Spec 040 dynamic-voltage-presets | COMPLETE (`active`) | P1 | HIGH | Closed 2026-09-08 (autodescubrimiento & elevadores) |
 
 Dates include implementation plus the separate review/fix gate detailed in
 `DELIVERY_PLAN.md`. Runtime evidence can move dates but cannot compress gates.

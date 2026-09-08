@@ -21,7 +21,7 @@ ESTADO DEL PROGRAMA: SPECS 031 A 038 100% COMPLETADAS Y CERTIFICADAS
 =============================================================================
 ESTADO DEL MONITOR EN PRODUCCIÓN:
 =============================================================================
-- PID 38816: Corriendo ininterrumpido (>267.3h continuas, >32.120 ticks, 0 fallos).
+- PID 88348: Servicio `MinerAlerts` reiniciado y corriendo V3.0.0 en producción (Mutex adquirido, Heartbeat OK).
 - Interfaz HTML: puerto 8080 activa (http://192.168.100.22:8080/).
 - Grafana: puerto 3000 activa (http://192.168.100.22:3000/).
 

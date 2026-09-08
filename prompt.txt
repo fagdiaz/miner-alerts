@@ -1,10 +1,10 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: AUTODESCUBRIMIENTO VNISH Y SENSIBILIDAD DE ELEVADORES
+ESTADO DEL PROYECTO: AUTODESCUBRIMIENTO VNISH, SENSIBILIDAD ELEVADORES Y DOCS SPECKIT
 =============================================================================
 1. PRODUCCIÓN ACTIVA:
-   - Servicio Windows `MinerAlerts` operando en vivo (PID verificado, NSSM):
+   - Servicio Windows `MinerAlerts` operando en vivo bajo NSSM (PID 71304):
      * Spec 039 Fan Governor: `fan_governor_enabled: true`, `fan_governor_dry_run: false`.
      * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: true` (monitoreo y diagnóstico de elevadores sin interferir con autoswitch nativo de Vnish).
    - Comandos Telegram Interactivos:
@@ -31,9 +31,26 @@ ESTADO DEL PROYECTO: AUTODESCUBRIMIENTO VNISH Y SENSIBILIDAD DE ELEVADORES
      * Provee recomendaciones operativas (e.g. reducir a 2500W un minero si la carga combinada supera la capacidad estable del elevador).
      * Consulta visual instantánea vía `/elevadores` y en la cabecera de grupo de `/balancer`.
 
-4. CERTIFICACIÓN GLOBAL DE PRUEBAS:
-   - 587/587 tests PASS en 10.93s (0 fallos, 0 errores, 0 regresiones).
-   - Verificado arranque y sincronización en caliente en `logs/out.log`.
+4. ESTRUCTURA DOCUMENTAL OPTIMIZADA EN `docs/speckit/`:
+   - Documentación Operativa Activa:
+     * `docs/speckit/ROADMAP.md`: Backlog maestro, cola de entregas, 40/40 specs completadas (100%).
+     * `docs/speckit/RUNBOOK.md`: Manual operativo, catálogo de comandos Telegram y contingencias.
+     * `docs/speckit/SPEC_PROGRAM.md`: Marco programático y Definition of Done.
+     * `docs/speckit/DELIVERY_PLAN.md`: Calendario de despliegue y estabilización.
+     * `docs/speckit/MINER_DIAGNOSTICS.md`: Manual de herramientas forenses.
+     * `docs/speckit/TECHNOLOGY_STRATEGY.md`: Arquitectura y matriz tecnológica.
+     * `docs/speckit/README.md`: Índice y guía de navegación moderna.
+   - Archivo Histórico (`docs/speckit/archive/`):
+     * `HASHCORE_TOOLKIT_STRATEGY.md`: Inventario Spec 026 (congelado).
+     * `INTERFACE_STRATEGY.md`: Evaluación Spec 027 (formal `no_build`).
+     * `V3_EXPANSION_PLAN.md`: Plan Spec 031-038 (100% certificado en prod).
+     * `archive/README.md`: Índice y trazabilidad de documentos archivados.
+   - Bitácora Central Inmutable:
+     * `docs/audit/DEVELOPMENT_LOG.md`: Historial cronológico inverso con las 40 specs y auditorías.
+
+5. CERTIFICACIÓN GLOBAL DE PRUEBAS:
+   - 587/587 tests PASS en 11.58s (0 fallos, 0 errores, 0 regresiones).
+   - Release Audit PASS (55 payloads verificados, SHA-256 limpio).
 
 =============================================================================
 SIGUIENTES PASOS:

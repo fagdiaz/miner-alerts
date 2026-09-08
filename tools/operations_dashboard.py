@@ -606,6 +606,7 @@ def render_dashboard_html(report: dict[str, Any], *, title: str = "Miner Alerts 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="30">
   <title>{_esc(title)}</title>
   <style>
     :root {{ --ink:#18221c; --muted:#667269; --paper:#f4f2e9; --card:#fffdf7; --line:#d8d4c7; --green:#0f6b47; --amber:#b06a09; --red:#a63a2a; --blue:#315e78; }}

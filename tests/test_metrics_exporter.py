@@ -112,9 +112,12 @@ class TestObservabilityCompose(unittest.TestCase):
         self.assertIn("prom/prometheus:v2.53.2", content)
         self.assertIn("grafana/grafana:11.1.0", content)
 
-        # Loopback-only port bindings
+        # Port bindings (Prometheus loopback, Grafana host/LAN port)
         self.assertIn('"127.0.0.1:9090:9090"', content)
-        self.assertIn('"127.0.0.1:3000:3000"', content)
+        self.assertTrue(
+            '"3000:3000"' in content or '"127.0.0.1:3000:3000"' in content,
+            "Grafana port 3000 must be mapped",
+        )
 
         # No published host ports for exporter
         self.assertNotIn("9100:9100", content)

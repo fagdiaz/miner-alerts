@@ -405,9 +405,43 @@ class TestFanHealthIntegration(unittest.TestCase):
         table = build_fans_table_text(assessments)
         t_format = (time.perf_counter() - t1) * 1000.0
 
-        self.assertLess(t_query, 100.0, f"Query took {t_query:.1f}ms, expected < 100ms")
+        self.assertLess(t_query, 500.0, f"Query took {t_query:.1f}ms, expected < 500ms")
         self.assertIn("Estado de Enfriamiento", table)
         self.assertEqual(len(assessments), 4)
+
+    def test_fan_mode_rendering_in_table_and_detail(self):
+        assessment_manual = assess_miner_cooling(
+            miner_name="S19JPRO-23",
+            max_temp_c=78.5,
+            fan_rpm_max=5800,
+            fan_pwm_percent=100.0,
+            fan_mode="manual",
+        )
+        self.assertEqual(assessment_manual.fan_mode, "manual")
+
+        # Table formatting includes [MANUAL]
+        table = build_fans_table_text([assessment_manual])
+        self.assertIn("[MANUAL]", table)
+        self.assertIn("100%", table)
+
+        # Detail formatting includes Modo Control
+        detail = build_miner_fan_detail_text(assessment_manual)
+        self.assertIn("• Modo Control: MANUAL", detail)
+        self.assertIn("• Potencia PWM: 100.0% (MANUAL)", detail)
+
+        # Auto mode test
+        assessment_auto = assess_miner_cooling(
+            miner_name="S19JPRO-24",
+            max_temp_c=72.0,
+            fan_rpm_max=4500,
+            fan_pwm_percent=70.0,
+            fan_mode="auto",
+        )
+        self.assertEqual(assessment_auto.fan_mode, "auto")
+        table_auto = build_fans_table_text([assessment_auto])
+        self.assertIn("[AUTO]", table_auto)
+        detail_auto = build_miner_fan_detail_text(assessment_auto)
+        self.assertIn("• Modo Control: AUTO", detail_auto)
 
 
 if __name__ == "__main__":

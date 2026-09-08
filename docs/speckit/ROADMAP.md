@@ -76,6 +76,20 @@ El programa completo de expansión V3 (Specs 031 a 038) está cerrado y validado
 
 ---
 
+### ⚡ Programa V3.1: Control y Gobernanza de Hardware
+
+9. **[EN PROGRESO - FASES 1 A 3 CERTIFICADAS] Spec 039 — Gobernador Térmico y Acústico de Ventiladores Vnish (`039-vnish-fan-governor`)**:
+   - *Objetivo*: Detección de modo en `/fans` (`manual`/`auto`), cliente REST seguro (`app/vnish_client.py`) y algoritmo de lazo cerrado determinista (`app/fan_governor.py`) para modular el PWM manual hacia una temperatura óptima de ~82.0°C (evitando el downclocking a 84°C del `preset_switcher` y el corte a 85°C), reduciendo el ruido acústico y el desgaste de rodamientos.
+   - *Hardening Incorporado (Auditoría Claude Sonnet 4.6 Thinking)*:
+     * R1 (Anti-Hunting): Dwell time adaptativo (90s base, 120s para holds $\ge 3$) y banda muerta $[81.0, 82.5]^\circ\text{C}$.
+     * R2 (Concurrencia HTTP): ThreadPoolExecutor con 2.5s por solicitud y 5.0s límite global para proteger el tick autoritativo.
+     * R3 (Fail-Safe Explícito): Retorno forzado a 100% ante `/gov off`, $\ge 3$ fallos consecutivos o excepciones no capturadas.
+     * R4 (Piso de Seguridad Infranqueable): Límite mínimo elevado a 75% PWM.
+   - *Resultados*: Fases 1 a 3 completadas (T001-T013), visibilidad implementada en `/fans`, 537 tests globales PASS sin regresiones. Fase 4 (integración concurrente en monitor y comandos Telegram) en proceso.
+   - *Modelo*: Gemini 3.8 Flash High (Fases 1, 2, 3) + Claude Sonnet 4.6 Thinking (Auditoría y Fase 4/5 Concurrencia).
+
+---
+
 ### 🎯 Objetivos a Futuro, Hitos Pendientes y Valor Aportado
 
 1. **Spec 023 — Fusión de Evidencia de Incidentes**:

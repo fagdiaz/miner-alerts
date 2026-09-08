@@ -3,6 +3,35 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Implementación de Spec 039 Fases 1 a 3 (Vnish Fan Governor: Telemetría de Modo, VnishClient REST y Algoritmo de Lazo Cerrado)
+
+* **Objetivo**: Desarrollar la base pura y segura del Gobernador Térmico y Acústico de Ventiladores (Spec 039), integrando visibilidad de modo (`fan_mode: manual/auto`) en `/fans`, cliente seguro de API REST Vnish (`app/vnish_client.py`) y motor determinista de modulación térmica (`app/fan_governor.py`) con los 4 requisitos de hardening aprobados por Claude Sonnet 4.6 (R1 a R4).
+* **Resultados y Evidencia**:
+  - **Fase 1 (Visibilidad de Modo de Enfriamiento)**:
+    * `app/vnish_telemetry.py`: Extendido para extraer `fan_mode` (`manual`, `auto`, `immers`) tanto desde el payload `STATS` de API 4028 como desde el payload REST `/api/v1/summary`.
+    * `app/fan_health.py`: `CoolingAssessment` extendido con `fan_mode`. `build_fans_table_text()` ahora renderiza indicadores explícitos `(100% [MANUAL])` y `build_miner_fan_detail_text()` expone `• Modo Control: MANUAL`.
+    * `app/miner_monitor.py`: Almacena `state.last_fan_mode` y lo transfiere al evaluador de salud de enfriamiento.
+  - **Fase 2 (Cliente Vnish REST Seguro - `app/vnish_client.py`)**:
+    * Funciones transaccionales seguras: `unlock_miner`, `lock_miner`, `get_cooling_settings`, `set_manual_fan_duty` y wrapper de alto nivel `safe_set_fan_duty` con bloque `try ... finally: lock_miner` garantizado.
+    * Enmascaramiento de secretos (`mask_secret`) previniendo exposición de passwords o Bearer tokens en logs.
+    * Clamping de hardware: duty limitado rígidamente entre [40%, 100%].
+    * Timeouts cortos de 2.5s por solicitud HTTP (cumplimiento R2).
+  - **Fase 3 (Algoritmo Determinista del Gobernador - `app/fan_governor.py`)**:
+    * Motor matemático puro `compute_governor_step()` sin efectos colaterales ni I/O.
+    * R1 (Anti-Hunting): Dwell time adaptativo (90s base, 120s si `consecutive_holds >= 3`) y banda muerta $[81.0, 82.5]^\circ\text{C}$.
+    * R3 (Fail-Safe Explícito a 100%): Salto forzado a 100% ante $\ge 3$ fallos consecutivos de comunicación o error de hardware.
+    * R4 (Piso de Seguridad Infranqueable): Límite mínimo elevado a 75% PWM.
+    * Regla de emergencia térmica inmediata ante $T_{max} \ge 83.0^\circ\text{C}$ con salto inmediato a 100% omitiendo la ventana de asentamiento.
+  - **Higiene de Recursos Gráficos**:
+    * `app/telegram_charts.py`: Envuelto el renderizado de figuras Matplotlib en bloques `try ... finally: plt.close(fig)` para prevenir fugas de memoria OpenBLAS y agotamiento de descriptores GDI en Windows.
+  - **Suite de Pruebas y Certificación**:
+    * `tests/test_fan_health.py`: 15/15 tests PASS.
+    * `tests/test_vnish_client.py`: 11/11 tests PASS.
+    * `tests/test_fan_governor.py`: 11/11 tests PASS.
+    * Suite global de regresión: **537/537 tests PASS** en 6.62s sin regresiones ni fallos.
+
+---
+
 ## [2026-09-07] - Implementación y Cierre de Spec 038 (V3 Core Concurrency, Multi-Threading Race Conditions & Release Stabilization)
 
 * **Objetivo**: Ejecutar la auditoría profunda de concurrencia multihilo, sincronización de cerrojos `state_lock`, prevención de bloqueos mutuos (*deadlocks*), higiene estricta de conexiones SQLite (`?mode=ro`, timeout <= 2.0s y `finally: conn.close()`) y pruebas de estrés deterministas para certificar el **Release Candidate V3.0.0**.

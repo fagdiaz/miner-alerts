@@ -35,6 +35,7 @@ class CoolingAssessment:
     fan_pwm_percent: Optional[float]
     diagnostic_flags: tuple[str, ...]
     recommendation: str
+    fan_mode: Optional[str] = None
 
 
 def calculate_thermal_headroom(
@@ -58,6 +59,7 @@ def assess_miner_cooling(
     saturate_temp_c: float = 78.0,
     saturate_pwm_pct: float = 95.0,
     saturate_rpm: int = 5800,
+    fan_mode: Optional[str] = None,
 ) -> CoolingAssessment:
     """Assess cooling dissipation and mechanical fan health from telemetry."""
     headroom = calculate_thermal_headroom(max_temp_c, thermal_limit_c=thermal_limit_c)
@@ -74,6 +76,7 @@ def assess_miner_cooling(
             fan_pwm_percent=None,
             diagnostic_flags=tuple(diagnostic_flags),
             recommendation="Sin datos de telemetría disponibles.",
+            fan_mode=fan_mode,
         )
 
     # 2. Fan defect: missing tachometer or < 2000 RPM while hashing
@@ -98,6 +101,7 @@ def assess_miner_cooling(
             fan_pwm_percent=fan_pwm_percent,
             diagnostic_flags=tuple(diagnostic_flags),
             recommendation=rec,
+            fan_mode=fan_mode,
         )
 
     # 3. Critical Heat (>= 82°C)
@@ -116,6 +120,7 @@ def assess_miner_cooling(
             fan_pwm_percent=fan_pwm_percent,
             diagnostic_flags=tuple(diagnostic_flags),
             recommendation=rec,
+            fan_mode=fan_mode,
         )
 
     # 4. Saturated dissipation (>= 78°C and [PWM >= 95% or RPM >= 5800])
@@ -136,6 +141,7 @@ def assess_miner_cooling(
             fan_pwm_percent=fan_pwm_percent,
             diagnostic_flags=tuple(diagnostic_flags),
             recommendation=rec,
+            fan_mode=fan_mode,
         )
 
     # 5. Elevated regime (75°C <= temp < 78°C or PWM >= 90%)
@@ -153,6 +159,7 @@ def assess_miner_cooling(
             fan_pwm_percent=fan_pwm_percent,
             diagnostic_flags=tuple(diagnostic_flags),
             recommendation=rec,
+            fan_mode=fan_mode,
         )
 
     # 6. Healthy
@@ -167,6 +174,7 @@ def assess_miner_cooling(
         fan_pwm_percent=fan_pwm_percent,
         diagnostic_flags=tuple(diagnostic_flags),
         recommendation=rec,
+        fan_mode=fan_mode,
     )
 
 
@@ -183,10 +191,11 @@ def build_fans_table_text(assessments: List[CoolingAssessment]) -> str:
         pwm_str = f"{ass.fan_pwm_percent:.0f}%" if ass.fan_pwm_percent is not None else "N/A"
         temp_str = f"{ass.max_temp_c:.1f}°C" if ass.max_temp_c is not None else "N/A"
         headroom_str = f"{ass.thermal_headroom_c:.1f}°C" if ass.thermal_headroom_c is not None else "N/A"
+        mode_str = f" [{ass.fan_mode.upper()}]" if ass.fan_mode else ""
 
         row = (
             f"{ass.miner_name}: {ass.status_label} | "
-            f"{rpm_str} ({pwm_str}) | "
+            f"{rpm_str} ({pwm_str}{mode_str}) | "
             f"{temp_str} (Margen: {headroom_str})"
         )
         lines.append(row)
@@ -211,6 +220,7 @@ def build_miner_fan_detail_text(assessment: CoolingAssessment) -> str:
     temp_str = f"{assessment.max_temp_c:.1f}°C" if assessment.max_temp_c is not None else "N/A"
     headroom_str = f"{assessment.thermal_headroom_c:.1f}°C" if assessment.thermal_headroom_c is not None else "N/A"
     flags_str = f"[{', '.join(assessment.diagnostic_flags)}]" if assessment.diagnostic_flags else "[]"
+    mode_str = f" ({assessment.fan_mode.upper()})" if assessment.fan_mode else ""
 
     lines = [
         f"❄️ Diagnóstico de Enfriamiento — {assessment.miner_name}",
@@ -219,11 +229,15 @@ def build_miner_fan_detail_text(assessment: CoolingAssessment) -> str:
         f"• Temp. Máxima: {temp_str} (Límite: 85.0°C)",
         f"• Margen Térmico: {headroom_str}",
         f"• Velocidad Fans: {rpm_str}",
-        f"• Potencia PWM: {pwm_str}",
+        f"• Potencia PWM: {pwm_str}{mode_str}",
+    ]
+    if assessment.fan_mode:
+        lines.append(f"• Modo Control: {assessment.fan_mode.upper()}")
+    lines.extend([
         f"• Flags: {flags_str}",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         f"💡 Recomendación: {assessment.recommendation}",
-    ]
+    ])
     return "\n".join(lines)
 
 
@@ -284,6 +298,16 @@ def fetch_latest_cooling_assessments(
     for miner in miners:
         m_key = str(miner.get("ip") or miner.get("name"))
         m_name = miner.get("name") or m_key
+        st = None
+        if states:
+            for s_k, s_v in states.items():
+                if miner.get("name") and miner.get("name") in s_k:
+                    st = s_v
+                    break
+                elif miner.get("host") and miner.get("host") in s_k:
+                    st = s_v
+                    break
+        fan_mode = getattr(st, "last_fan_mode", None) if st else None
         sample = db_samples.get(m_key)
         if sample:
             ass = assess_miner_cooling(
@@ -296,6 +320,7 @@ def fetch_latest_cooling_assessments(
                 saturate_temp_c=saturate_temp,
                 saturate_pwm_pct=saturate_pwm,
                 saturate_rpm=saturate_rpm,
+                fan_mode=fan_mode,
             )
         else:
             ass = assess_miner_cooling(
@@ -305,6 +330,7 @@ def fetch_latest_cooling_assessments(
                 fan_pwm_percent=None,
                 diagnostic_flags=(),
                 rate_ths=None,
+                fan_mode=fan_mode,
             )
         assessments.append(ass)
 

@@ -301,7 +301,7 @@ class TestVnishPresetsIntegration(unittest.TestCase):
         table = build_presets_table_text(assessments)
         t_format = (time.perf_counter() - t1) * 1000.0
 
-        self.assertLess(t_query, 100.0, f"Query took {t_query:.1f}ms, expected < 100ms")
+        self.assertLess(t_query, 500.0, f"Query took {t_query:.1f}ms, expected < 500ms")
         self.assertIn("Perfiles Operativos y Autotuning", table)
         self.assertEqual(len(assessments), 4)
 

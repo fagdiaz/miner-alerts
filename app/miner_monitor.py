@@ -5140,6 +5140,7 @@ def main() -> None:
                     saturate_temp = float(config.get("cooling_saturate_temp_c", 78.0))
                     saturate_pwm = float(config.get("cooling_saturate_pwm_pct", 95.0))
                     saturate_rpm = int(config.get("cooling_saturate_rpm", 5800))
+                    state.last_fan_mode = vnish_telemetry.fan_mode
                     cooling_ass = assess_miner_cooling(
                         miner_name=name_display,
                         max_temp_c=vnish_telemetry.max_temp_c,
@@ -5150,6 +5151,7 @@ def main() -> None:
                         saturate_temp_c=saturate_temp,
                         saturate_pwm_pct=saturate_pwm,
                         saturate_rpm=saturate_rpm,
+                        fan_mode=vnish_telemetry.fan_mode,
                     )
                     cooling_warning = evaluate_cooling_alerts(
                         state=state,

@@ -22,6 +22,7 @@ class VnishTelemetry:
     hw_errors_total: Optional[int] = None
     fan_rpm_max: Optional[int] = None
     fan_pwm_percent: Optional[float] = None
+    fan_mode: Optional[str] = None
     diagnostic_flags: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -33,6 +34,7 @@ class VnishTelemetry:
             "hw_errors_total": self.hw_errors_total,
             "fan_rpm_max": self.fan_rpm_max,
             "fan_pwm_percent": self.fan_pwm_percent,
+            "fan_mode": self.fan_mode,
             "diagnostic_flags": list(self.diagnostic_flags),
         }
 
@@ -91,10 +93,26 @@ def normalize_vnish_stats(
     hw_errors: dict[str, float] = {}
     fan_rpms: dict[str, float] = {}
     fan_pwm_values: list[float] = []
+    fan_mode_detected: Optional[str] = None
 
     for item in _dicts(root):
         for raw_key, raw_value in item.items():
             key = str(raw_key).strip().lower()
+            if key == "fan_mode":
+                val_str = str(raw_value).strip().lower()
+                if val_str in ("1", "manual"):
+                    fan_mode_detected = "manual"
+                elif val_str in ("0", "auto"):
+                    fan_mode_detected = "auto"
+                elif "immers" in val_str:
+                    fan_mode_detected = "immers"
+                elif val_str:
+                    fan_mode_detected = val_str
+            elif key == "mode" and isinstance(raw_value, dict):
+                name_val = str(raw_value.get("name", "")).strip().lower()
+                if name_val:
+                    fan_mode_detected = name_val
+
             values = _numbers(raw_value)
             if not values:
                 continue
@@ -151,5 +169,6 @@ def normalize_vnish_stats(
         hw_errors_total=hw_total,
         fan_rpm_max=int(max(fan_rpms.values())) if fan_rpms else None,
         fan_pwm_percent=_average(fan_pwm_values),
+        fan_mode=fan_mode_detected,
         diagnostic_flags=tuple(flags),
     )

@@ -137,69 +137,70 @@ def render_miner_chart_png(data: Dict[str, Any], hours: float = 1.0) -> bytes:
     fig, (ax_rate, ax_aux) = plt.subplots(
         2, 1, figsize=(10, 6), sharex=True, gridspec_kw={"height_ratios": [2, 1]}, dpi=100
     )
+    try:
+        # Style dark background
+        fig.patch.set_facecolor(DARK_BG)
+        for ax in (ax_rate, ax_aux):
+            ax.set_facecolor(DARK_BG)
+            ax.grid(True, linestyle=":", color=GRID_COLOR, alpha=0.7)
+            ax.tick_params(colors=TEXT_COLOR, labelsize=9)
+            for spine in ax.spines.values():
+                spine.set_color("#374151")
 
-    # Style dark background
-    fig.patch.set_facecolor(DARK_BG)
-    for ax in (ax_rate, ax_aux):
-        ax.set_facecolor(DARK_BG)
-        ax.grid(True, linestyle=":", color=GRID_COLOR, alpha=0.7)
-        ax.tick_params(colors=TEXT_COLOR, labelsize=9)
-        for spine in ax.spines.values():
-            spine.set_color("#374151")
+        # --- Top Subplot: Hashrate vs Threshold ---
+        m_name = data["miner_name"]
+        avg_str = f"{data['avg_rate']:.1f} TH/s"
+        curr_str = f"{data['rates'][-1]:.1f} TH/s"
+        ax_rate.set_title(
+            f"Miner Alerts — {m_name} ({hours:.0f}h) | Actual: {curr_str} | Promedio: {avg_str}",
+            color=TEXT_COLOR,
+            fontsize=12,
+            fontweight="bold",
+            pad=12,
+        )
+        ax_rate.plot(dates, data["rates"], color="#10b981", linewidth=2.2, label=f"Hashrate ({curr_str})")
+        ax_rate.fill_between(dates, data["rates"], color="#10b981", alpha=0.15)
+        ax_rate.axhline(
+            data["threshold_ths"],
+            color="#f59e0b",
+            linestyle="--",
+            linewidth=1.5,
+            label=f"Umbral ({data['threshold_ths']:.0f} TH/s)",
+        )
+        ax_rate.set_ylabel("Hashrate (TH/s)", color=TEXT_COLOR, fontsize=10)
+        ax_rate.legend(loc="upper left", facecolor="#1f2937", edgecolor="#374151", labelcolor=TEXT_COLOR)
 
-    # --- Top Subplot: Hashrate vs Threshold ---
-    m_name = data["miner_name"]
-    avg_str = f"{data['avg_rate']:.1f} TH/s"
-    curr_str = f"{data['rates'][-1]:.1f} TH/s"
-    ax_rate.set_title(
-        f"Miner Alerts — {m_name} ({hours:.0f}h) | Actual: {curr_str} | Promedio: {avg_str}",
-        color=TEXT_COLOR,
-        fontsize=12,
-        fontweight="bold",
-        pad=12,
-    )
-    ax_rate.plot(dates, data["rates"], color="#10b981", linewidth=2.2, label=f"Hashrate ({curr_str})")
-    ax_rate.fill_between(dates, data["rates"], color="#10b981", alpha=0.15)
-    ax_rate.axhline(
-        data["threshold_ths"],
-        color="#f59e0b",
-        linestyle="--",
-        linewidth=1.5,
-        label=f"Umbral ({data['threshold_ths']:.0f} TH/s)",
-    )
-    ax_rate.set_ylabel("Hashrate (TH/s)", color=TEXT_COLOR, fontsize=10)
-    ax_rate.legend(loc="upper left", facecolor="#1f2937", edgecolor="#374151", labelcolor=TEXT_COLOR)
+        # --- Bottom Subplot: Temperature & Fans ---
+        ax_aux.plot(dates, data["temps"], color="#ef4444", linewidth=1.8, label=f"Temp Max ({data['max_temp']:.0f}°C)")
+        ax_aux.set_ylabel("Temp (°C)", color="#ef4444", fontsize=10)
+        ax_aux.tick_params(axis="y", labelcolor="#ef4444")
 
-    # --- Bottom Subplot: Temperature & Fans ---
-    ax_aux.plot(dates, data["temps"], color="#ef4444", linewidth=1.8, label=f"Temp Max ({data['max_temp']:.0f}°C)")
-    ax_aux.set_ylabel("Temp (°C)", color="#ef4444", fontsize=10)
-    ax_aux.tick_params(axis="y", labelcolor="#ef4444")
+        # Secondary axis for Fan RPM if data exists
+        if any(f > 0 for f in data["fans"]):
+            ax_fan = ax_aux.twinx()
+            ax_fan.plot(dates, data["fans"], color="#3b82f6", linestyle=":", linewidth=1.4, label="Fan RPM")
+            ax_fan.set_ylabel("Fan RPM", color="#3b82f6", fontsize=10)
+            ax_fan.tick_params(axis="y", labelcolor="#3b82f6", labelsize=9)
+            for spine in ax_fan.spines.values():
+                spine.set_color("#374151")
 
-    # Secondary axis for Fan RPM if data exists
-    if any(f > 0 for f in data["fans"]):
-        ax_fan = ax_aux.twinx()
-        ax_fan.plot(dates, data["fans"], color="#3b82f6", linestyle=":", linewidth=1.4, label="Fan RPM")
-        ax_fan.set_ylabel("Fan RPM", color="#3b82f6", fontsize=10)
-        ax_fan.tick_params(axis="y", labelcolor="#3b82f6", labelsize=9)
-        for spine in ax_fan.spines.values():
-            spine.set_color("#374151")
+        # Format X-axis date format
+        if hours <= 3:
+            ax_aux.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        elif hours <= 24:
+            ax_aux.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M\n%d/%m"))
+        else:
+            ax_aux.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))
 
-    # Format X-axis date format
-    if hours <= 3:
-        ax_aux.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    elif hours <= 24:
-        ax_aux.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M\n%d/%m"))
-    else:
-        ax_aux.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))
+        fig.autofmt_xdate(rotation=0, ha="center")
+        fig.tight_layout()
 
-    fig.autofmt_xdate(rotation=0, ha="center")
-    fig.tight_layout()
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", facecolor=DARK_BG, edgecolor="none")
-    plt.close(fig)
-    buf.seek(0)
-    return buf.getvalue()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", facecolor=DARK_BG, edgecolor="none")
+        buf.seek(0)
+        return buf.getvalue()
+    finally:
+        plt.close(fig)
 
 
 def render_fleet_chart_png(fleet_data: Dict[str, Any], hours: float = 1.0) -> bytes:
@@ -208,42 +209,42 @@ def render_fleet_chart_png(fleet_data: Dict[str, Any], hours: float = 1.0) -> by
         raise ValueError("No hay datos de telemetría disponibles para la flota.")
 
     fig, ax = plt.subplots(figsize=(10, 5.5), dpi=100)
-    fig.patch.set_facecolor(DARK_BG)
-    ax.set_facecolor(DARK_BG)
-    ax.grid(True, linestyle=":", color=GRID_COLOR, alpha=0.7)
-    ax.tick_params(colors=TEXT_COLOR, labelsize=9)
-    for spine in ax.spines.values():
-        spine.set_color("#374151")
+    try:
+        fig.patch.set_facecolor(DARK_BG)
+        ax.set_facecolor(DARK_BG)
+        ax.grid(True, linestyle=":", color=GRID_COLOR, alpha=0.7)
+        ax.tick_params(colors=TEXT_COLOR, labelsize=9)
+        for spine in ax.spines.values():
+            spine.set_color("#374151")
 
-    total_rates: Dict[datetime.datetime, float] = {}
+        for idx, s in enumerate(fleet_data["series"]):
+            color = COLOR_PALETTE[idx % len(COLOR_PALETTE)]
+            dates = [datetime.datetime.fromtimestamp(ts) for ts in s["timestamps"]]
+            rates = s["rates"]
+            curr_str = f"{rates[-1]:.1f} TH/s" if rates else "-"
+            ax.plot(dates, rates, color=color, linewidth=1.8, label=f"{s['miner_id']}: {curr_str}")
 
-    for idx, s in enumerate(fleet_data["series"]):
-        color = COLOR_PALETTE[idx % len(COLOR_PALETTE)]
-        dates = [datetime.datetime.fromtimestamp(ts) for ts in s["timestamps"]]
-        rates = s["rates"]
-        curr_str = f"{rates[-1]:.1f} TH/s" if rates else "-"
-        ax.plot(dates, rates, color=color, linewidth=1.8, label=f"{s['miner_id']}: {curr_str}")
+        ax.set_title(
+            f"Miner Alerts — Rendimiento de Flota ({hours:.0f}h)",
+            color=TEXT_COLOR,
+            fontsize=12,
+            fontweight="bold",
+            pad=12,
+        )
+        ax.set_ylabel("Hashrate (TH/s)", color=TEXT_COLOR, fontsize=10)
+        ax.legend(loc="upper left", facecolor="#1f2937", edgecolor="#374151", labelcolor=TEXT_COLOR)
 
-    ax.set_title(
-        f"Miner Alerts — Rendimiento de Flota ({hours:.0f}h)",
-        color=TEXT_COLOR,
-        fontsize=12,
-        fontweight="bold",
-        pad=12,
-    )
-    ax.set_ylabel("Hashrate (TH/s)", color=TEXT_COLOR, fontsize=10)
-    ax.legend(loc="upper left", facecolor="#1f2937", edgecolor="#374151", labelcolor=TEXT_COLOR)
+        if hours <= 3:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        else:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M\n%d/%m"))
 
-    if hours <= 3:
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    else:
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M\n%d/%m"))
+        fig.autofmt_xdate(rotation=0, ha="center")
+        fig.tight_layout()
 
-    fig.autofmt_xdate(rotation=0, ha="center")
-    fig.tight_layout()
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", facecolor=DARK_BG, edgecolor="none")
-    plt.close(fig)
-    buf.seek(0)
-    return buf.getvalue()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", facecolor=DARK_BG, edgecolor="none")
+        buf.seek(0)
+        return buf.getvalue()
+    finally:
+        plt.close(fig)

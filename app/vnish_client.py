@@ -250,10 +250,11 @@ def set_miner_preset(
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+    clean_preset = str(preset_name).upper().rstrip("W").strip()
     payload = {
         "miner": {
             "overclock": {
-                "preset": str(preset_name)
+                "preset": clean_preset
             }
         }
     }

@@ -225,7 +225,7 @@ class TestVnishClient(unittest.TestCase):
                 "Authorization": "Bearer token_123",
                 "Content-Type": "application/json",
             },
-            json={"miner": {"overclock": {"preset": "2500W"}}},
+            json={"miner": {"overclock": {"preset": "2500"}}},
             timeout=DEFAULT_HTTP_TIMEOUT,
         )
 

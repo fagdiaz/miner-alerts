@@ -84,10 +84,10 @@ class TestFanHealth(unittest.TestCase):
         self.assertIn("filtros", assessment.recommendation.lower())
 
     def test_assess_miner_cooling_critical_heat(self):
-        # Temp >= 82°C
+        # Temp >= critical_temp_c (default 84.5°C)
         assessment = assess_miner_cooling(
             miner_name="S19JPRO-24",
-            max_temp_c=83.5,
+            max_temp_c=84.6,
             fan_rpm_max=6500,
             fan_pwm_percent=100.0,
             diagnostic_flags=(),
@@ -95,7 +95,7 @@ class TestFanHealth(unittest.TestCase):
         )
         self.assertEqual(assessment.status, STATUS_CRITICAL_HEAT)
         self.assertIn("CRÍTICO", assessment.status_label)
-        self.assertAlmostEqual(assessment.thermal_headroom_c, 1.5, places=1)
+        self.assertAlmostEqual(assessment.thermal_headroom_c, 0.4, places=1)
 
     def test_assess_miner_cooling_fan_defect(self):
         # Defect 1: Fan RPM < 2000 while hashing

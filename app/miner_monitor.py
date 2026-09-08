@@ -5837,8 +5837,9 @@ def main() -> None:
                 # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
                 cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
                 if cooling_alert_enabled and not first_tick and responded:
-                    saturate_temp = float(config.get("cooling_saturate_temp_c", 78.0))
-                    saturate_pwm = float(config.get("cooling_saturate_pwm_pct", 95.0))
+                    critical_temp = float(config.get("cooling_critical_temp_c", 84.5))
+                    saturate_temp = float(config.get("cooling_saturate_temp_c", 84.0))
+                    saturate_pwm = float(config.get("cooling_saturate_pwm_pct", 98.0))
                     saturate_rpm = int(config.get("cooling_saturate_rpm", 5800))
                     state.last_fan_mode = vnish_telemetry.fan_mode
                     # Spec 039: Feed live telemetry to governor state for next cycle
@@ -5854,6 +5855,7 @@ def main() -> None:
                         fan_pwm_percent=vnish_telemetry.fan_pwm_percent,
                         diagnostic_flags=vnish_telemetry.diagnostic_flags,
                         rate_ths=rate_ths,
+                        critical_temp_c=critical_temp,
                         saturate_temp_c=saturate_temp,
                         saturate_pwm_pct=saturate_pwm,
                         saturate_rpm=saturate_rpm,

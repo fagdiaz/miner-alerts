@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 ACTION_HOLD_STABLE = "HOLD_STABLE"
 ACTION_STEP_DOWN_RESTARTS = "STEP_DOWN_RESTARTS"
 ACTION_STEP_DOWN_CASCADE = "STEP_DOWN_CASCADE"
+ACTION_STEP_DOWN_THERMAL = "STEP_DOWN_THERMAL"
 ACTION_STEP_UP_OPTIMIZE = "STEP_UP_OPTIMIZE"
 ACTION_LOCKED_MAX = "LOCKED_MAX"
 ACTION_LOCKED_MIN = "LOCKED_MIN"
@@ -142,6 +143,32 @@ def evaluate_balancer_step(
         restarts_count=metrics.restarts_24h,
         reboot_penalty_ths=cfg.reboot_penalty_ths,
     )
+
+    # 0. Thermal Overload Step-Down: if operating at or above 84.0°C (headroom <= 1.0°C)
+    if metrics.thermal_headroom_c <= 1.0:
+        if curr_idx > 0:
+            target_tier = tiers[curr_idx - 1]
+            return BalancerDecision(
+                action=ACTION_STEP_DOWN_THERMAL,
+                miner_name=metrics.miner_name,
+                electrical_group=metrics.electrical_group,
+                current_preset=current_tier.name,
+                target_preset=target_tier.name,
+                reason=f"Saturación térmica (>=84.0°C, margen {metrics.thermal_headroom_c:.1f}°C): desescalando a {target_tier.name}",
+                requires_write=True,
+                estimated_effective_hashrate=eff_current,
+            )
+        else:
+            return BalancerDecision(
+                action=ACTION_LOCKED_MIN,
+                miner_name=metrics.miner_name,
+                electrical_group=metrics.electrical_group,
+                current_preset=current_tier.name,
+                target_preset=current_tier.name,
+                reason=f"Preset mínimo ({current_tier.name}) alcanzado pese a temperatura límite (>=84.0°C)",
+                requires_write=False,
+                estimated_effective_hashrate=eff_current,
+            )
 
     # 1. Check Group Cascade Condition
     # If other miners in the same electrical group had restarts recently,

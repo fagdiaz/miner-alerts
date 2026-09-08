@@ -8,6 +8,7 @@ from app.preset_balancer import (
     ACTION_LOCKED_MIN,
     ACTION_STEP_DOWN_CASCADE,
     ACTION_STEP_DOWN_RESTARTS,
+    ACTION_STEP_DOWN_THERMAL,
     ACTION_STEP_UP_OPTIMIZE,
     ACTION_UNKNOWN,
     BalancerConfig,
@@ -195,6 +196,25 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertEqual(dec.action, ACTION_LOCKED_MAX)
         self.assertEqual(dec.target_preset, "2700W")
         self.assertFalse(dec.requires_write)
+
+    def test_step_down_on_thermal_overload(self):
+        # Temp >= 84.0°C (headroom <= 1.0°C) forces immediate preset step-down
+        metrics = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2700W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=10.0,
+            avg_hashrate_24h_ths=98.0,
+            downtime_minutes_24h=0.0,
+            thermal_headroom_c=0.8,  # 84.2°C
+        )
+        dec = evaluate_balancer_step(metrics, self.cfg)
+        self.assertEqual(dec.action, ACTION_STEP_DOWN_THERMAL)
+        self.assertEqual(dec.target_preset, "2500W")
+        self.assertTrue(dec.requires_write)
+        self.assertIn(">=84.0°C", dec.reason)
 
     def test_infer_preset_name_from_power(self):
         self.assertEqual(infer_preset_name_from_power(2480), "2500W")

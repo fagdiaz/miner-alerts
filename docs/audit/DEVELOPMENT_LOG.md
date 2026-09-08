@@ -3,6 +3,28 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Calibración Operativa Térmica 83°C–84°C, Step-Down por Temperatura y Mitigación de Spam en Telegram
+
+* **Objetivo**: Alinear la estrategia física de operación solicitada por el operador: punto de trabajo sano a 83.0°C, límite máximo estable de 84.0°C con desescalado secuencial de potencia (2700W -> 2500W -> 2300W) si los ventiladores al 100% no son suficientes para contener la temperatura, modulación descendente de ventiladores cuando exista margen térmico, y erradicación definitiva de falsas alertas de saturación y ruido de autotune en Telegram.
+* **Resultados y Evidencia**:
+  - **Desescalado Térmico en Balanceador de Presets (`app/preset_balancer.py`)**:
+    * Implementada regla prioritaria `ACTION_STEP_DOWN_THERMAL`: ante margen térmico crítico $\le 1.0^\circ\text{C}$ (temperatura $\ge 84.0^\circ\text{C}$ frente al corte por hardware de 85.0°C), el balanceador desescala de inmediato el preset de potencia (`2700W -> 2500W -> 2300W`) para proteger el hardware antes de que ocurra un trip de emergencia.
+    * Test unitario agregado: `test_step_down_on_thermal_overload` en `tests/test_preset_balancer.py` (14/14 tests PASS).
+  - **Calibración de Gobernador Térmico (Spec 039)**:
+    * `fan_governor_target_temp_c`: 83.0°C (punto objetivo de máxima eficiencia y salud física).
+    * `fan_governor_deadband_low_c`: 82.0°C. Si temp < 82.0°C, reduce el duty de ventiladores (-2%) para evitar desgaste y ruido innecesarios.
+    * `fan_governor_deadband_high_c`: 83.5°C. Si temp > 83.5°C, incrementa el duty de ventiladores (+3%).
+    * `fan_governor_emergency_temp_c`: 84.0°C. Dispara ventiladores al 100% PWM de inmediato.
+  - **Mitigación de Spam y Falsas Alarmas en Telegram (`app/fan_health.py`, `app/miner_monitor.py`)**:
+    * El umbral hardcoded de 82.0°C para `STATUS_CRITICAL_HEAT` se refactorizó a `critical_temp_c: float = 84.5` (configurable vía `cooling_critical_temp_c`). Esto evita que mineros operando sanamente a 81°C–83.5°C sean catalogados falsamente como calor crítico.
+    * `cooling_saturate_temp_c` elevado de 78.0°C a 84.0°C con `cooling_saturate_pwm_pct`: 98.0%, `cooling_saturate_streak`: 5 ticks y `cooling_cooldown_seconds`: 7200s (2 horas). Erradica los avisos espurios de saturación a 81.0°C reportados por el usuario.
+    * `preset_alert_enabled: false`: Silencia las notificaciones informativas de autotune de Vnish por fluctuaciones normales de 25–35 MHz. El estado de frecuencia permanece totalmente accesible bajo demanda vía `/presets` y `/digest`.
+  - **Suite de Pruebas y Certificación**:
+    * 576/576 tests PASS en 8.66s.
+    * `py_compile` limpio en `app/miner_monitor.py`, `app/fan_health.py` y `app/preset_balancer.py`.
+
+---
+
 ## [2026-09-08] - Implementación y Cierre de Spec 040 (Dynamic Power & Preset Balancer: Fases 1 a 5 Completadas)
 
 * **Objetivo**: Desarrollar e integrar el Balanceador Dinámico de Presets y Potencia para Elevadores de Tensión Sensibles (Spec 040), respondiendo a la necesidad operativa de calibrar el hashrate versus frecuencia de caídas/reinicios, proteger fases eléctricas y evitar apagados en cascada en la granja.

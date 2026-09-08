@@ -56,6 +56,7 @@ def assess_miner_cooling(
     diagnostic_flags: tuple[str, ...] = (),
     rate_ths: Optional[float] = None,
     thermal_limit_c: float = 85.0,
+    critical_temp_c: float = 84.5,
     saturate_temp_c: float = 78.0,
     saturate_pwm_pct: float = 95.0,
     saturate_rpm: int = 5800,
@@ -104,10 +105,10 @@ def assess_miner_cooling(
             fan_mode=fan_mode,
         )
 
-    # 3. Critical Heat (>= 82°C)
-    if max_temp_c is not None and max_temp_c >= 82.0:
+    # 3. Critical Heat (>= critical_temp_c)
+    if max_temp_c is not None and max_temp_c >= critical_temp_c:
         rec = (
-            f"Temperatura crítica ({max_temp_c:.1f}°C) cerca del corte por hardware (85°C). "
+            f"Temperatura crítica ({max_temp_c:.1f}°C) cerca del corte por hardware ({thermal_limit_c:.1f}°C). "
             "Reducir perfil de energía o apagar para mantenimiento urgente."
         )
         return CoolingAssessment(
@@ -251,6 +252,7 @@ def fetch_latest_cooling_assessments(
     db_file = Path(db_path)
     assessments: List[CoolingAssessment] = []
     cfg = config or {}
+    critical_temp = float(cfg.get("cooling_critical_temp_c", 84.5))
     saturate_temp = float(cfg.get("cooling_saturate_temp_c", 78.0))
     saturate_pwm = float(cfg.get("cooling_saturate_pwm_pct", 95.0))
     saturate_rpm = int(cfg.get("cooling_saturate_rpm", 5800))
@@ -317,6 +319,7 @@ def fetch_latest_cooling_assessments(
                 fan_pwm_percent=sample["fan_pwm_percent"],
                 diagnostic_flags=sample["diagnostic_flags"],
                 rate_ths=sample["rate_ths"],
+                critical_temp_c=critical_temp,
                 saturate_temp_c=saturate_temp,
                 saturate_pwm_pct=saturate_pwm,
                 saturate_rpm=saturate_rpm,

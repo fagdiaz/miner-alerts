@@ -59,6 +59,36 @@ try:
         compute_evidence_digest as _compute_evidence_digest,
         render_assessment_telegram as _render_assessment_telegram,
     )
+    from .telegram_callbacks import (
+        CallbackTokenRegistry,
+        build_alert_keyboard,
+        build_confirmation_keyboard,
+        build_settled_keyboard,
+        parse_callback_data,
+    )
+    from .fan_health import (
+        assess_miner_cooling,
+        build_fans_table_text,
+        build_miner_fan_detail_text,
+        evaluate_cooling_alerts,
+        fetch_latest_cooling_assessments,
+    )
+    from .energy_efficiency import (
+        assess_miner_efficiency,
+        build_efficiency_table_text,
+        build_miner_efficiency_detail_text,
+        calculate_efficiency_j_th,
+        evaluate_efficiency_alerts,
+        fetch_latest_efficiency_assessments,
+    )
+    from .vnish_presets import (
+        assess_miner_preset,
+        build_presets_table_text,
+        build_miner_preset_detail_text,
+        evaluate_preset_alerts,
+        fetch_latest_preset_assessments,
+        infer_operating_profile,
+    )
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -97,6 +127,36 @@ except ImportError:
         RULESET_VERSION as _FUSION_RULESET_VERSION,
         compute_evidence_digest as _compute_evidence_digest,
         render_assessment_telegram as _render_assessment_telegram,
+    )
+    from telegram_callbacks import (
+        CallbackTokenRegistry,
+        build_alert_keyboard,
+        build_confirmation_keyboard,
+        build_settled_keyboard,
+        parse_callback_data,
+    )
+    from fan_health import (
+        assess_miner_cooling,
+        build_fans_table_text,
+        build_miner_fan_detail_text,
+        evaluate_cooling_alerts,
+        fetch_latest_cooling_assessments,
+    )
+    from energy_efficiency import (
+        assess_miner_efficiency,
+        build_efficiency_table_text,
+        build_miner_efficiency_detail_text,
+        calculate_efficiency_j_th,
+        evaluate_efficiency_alerts,
+        fetch_latest_efficiency_assessments,
+    )
+    from vnish_presets import (
+        assess_miner_preset,
+        build_presets_table_text,
+        build_miner_preset_detail_text,
+        evaluate_preset_alerts,
+        fetch_latest_preset_assessments,
+        infer_operating_profile,
     )
 
 STATE_OK = "OK"
@@ -143,12 +203,25 @@ CMD_WHITELIST = {
     "health",
     "quality",
     "diagnose",
+    "chart",
+    "fans",
+    "fan",
+    "efficiency",
+    "eff",
+    "presets",
+    "preset",
+    "profile",
     "firmware",
     "selftest",
     "reboot",
     "restart",
     "reboot_no_ok",
     "confirm",
+    "snooze",
+    "unsnooze",
+    "snoozed",
+    "digest",
+    "summary",
 }
 
 
@@ -398,6 +471,102 @@ _COMMANDS = [
         "aliases": [],
     },
     {
+        "name": "chart",
+        "summary": "Genera y envia grafico visual PNG de telemetria.",
+        "usage": "/chart  |  /chart <miner> [horas]  |  /chart fleet [horas]",
+        "detail": [
+            "Detalle: genera curvas de hashrate, umbral y temperaturas desde SQLite.",
+        ],
+        "examples": ["/chart", "/chart 23", "/chart fleet 24h"],
+        "notes": ["Es visual, de solo lectura y se renderiza 100% en memoria."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "fans",
+        "summary": "Monitorea RPM, PWM %, temperatura máxima y margen térmico.",
+        "usage": "/fans  |  /fans all  |  /fans <miner>",
+        "detail": [
+            "Detalle: supervisa salud de ventiladores, saturación de flujo y margen hacia el corte de 85°C.",
+        ],
+        "examples": ["/fans", "/fans 23"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["fan"],
+    },
+    {
+        "name": "efficiency",
+        "summary": "Analiza el consumo y ratio de eficiencia en Joules por Terahash (J/TH).",
+        "usage": "/efficiency  |  /efficiency all  |  /efficiency <miner>",
+        "detail": [
+            "Detalle: calcula J/TH en tiempo real (Watts / TH/s) y detecta degradación eléctrica de cadenas.",
+        ],
+        "examples": ["/efficiency", "/efficiency 23", "/eff"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["eff"],
+    },
+    {
+        "name": "presets",
+        "summary": "Monitorea frecuencias (MHz), tensión (V) y estado de autotuning Vnish.",
+        "usage": "/presets  |  /presets all  |  /presets <miner>",
+        "detail": [
+            "Detalle: supervisa perfiles de consumo/frecuencia inferidos y estado de calibración dinámica del firmware.",
+        ],
+        "examples": ["/presets", "/presets 23", "/preset", "/profile"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["preset", "profile"],
+    },
+    {
+        "name": "snooze",
+        "summary": "Silencia alertas y autorreinicios por mantenimiento.",
+        "usage": "/snooze <miner|all> [minutos]",
+        "detail": [
+            "Detalle: suspende temporalmente alertas y autorreinicios para tareas de mantenimiento.",
+        ],
+        "examples": ["/snooze 23 60", "/snooze all 30"],
+        "notes": ["Por defecto 60 minutos (máx 1440m/24h)."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "unsnooze",
+        "summary": "Reactiva la supervision normal de un minero silenciado.",
+        "usage": "/unsnooze <miner|all>",
+        "detail": [
+            "Detalle: cancela el silenciamiento y reactiva alertas y autorreinicios inmediatamente.",
+        ],
+        "examples": ["/unsnooze 23", "/unsnooze all"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "snoozed",
+        "summary": "Lista los mineros actualmente silenciados y tiempo restante.",
+        "usage": "/snoozed",
+        "detail": [
+            "Detalle: muestra el estado de todos los mineros bajo mantenimiento.",
+        ],
+        "examples": ["/snoozed"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "digest",
+        "summary": "Reporte ejecutivo 24h de salud, métricas y backups.",
+        "usage": "/digest  |  /summary",
+        "detail": [
+            "Detalle: genera el resumen consolidado de las últimas 24 horas (uptime, TH/s, J/TH, shares, eventos, backup).",
+        ],
+        "examples": ["/digest", "/summary"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["summary"],
+    },
+    {
         "name": "selftest",
         "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
         "usage": "/selftest  |  /test",
@@ -476,6 +645,11 @@ def render_help_index() -> str:
         "health",
         "quality",
         "diagnose",
+        "chart",
+        "snooze",
+        "unsnooze",
+        "snoozed",
+        "digest",
         "firmware",
         "selftest",
     ]
@@ -488,6 +662,11 @@ def render_help_index() -> str:
         "health": "/health [miner|all]",
         "quality": "/quality [miner|all]",
         "diagnose": "/diagnose [miner|all]",
+        "chart": "/chart [miner|fleet] [hours]",
+        "snooze": "/snooze <miner|all> [min]",
+        "unsnooze": "/unsnooze <miner|all>",
+        "snoozed": "/snoozed",
+        "digest": "/digest",
         "firmware": "/firmware [miner|all]",
         "reboot": "/reboot",
         "restart": "/restart <id>",
@@ -701,6 +880,13 @@ class MinerState:
     auto_reboot_timestamps: list = field(default_factory=list)
     degraded_mode: bool = False
     last_hourly_status_ts: Optional[float] = None
+    snooze_until_ts: Optional[float] = None
+    cooling_streak: int = 0
+    last_cooling_warning_ts: Optional[float] = None
+    efficiency_streak: int = 0
+    last_efficiency_warning_ts: Optional[float] = None
+    baseline_frequency_mhz: Optional[float] = None
+    last_preset_warning_ts: Optional[float] = None
 
 
 def load_config() -> Dict[str, Any]:
@@ -991,6 +1177,7 @@ def send_telegram(
     is_command: bool = False,
     dbg_update_id: Optional[int] = None,
     dbg_cmd: Optional[str] = None,
+    reply_markup: Optional[Dict[str, Any]] = None,
 ) -> None:
     if not msg_type:
         msg_type = "ERROR"
@@ -1056,6 +1243,7 @@ def send_telegram(
                         batch_id,
                         part_index,
                         len(parts),
+                        reply_markup if part_index == len(parts) else None,
                     )
                 )
             if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or is_command):
@@ -1127,6 +1315,116 @@ def _send_telegram_direct(
     return True
 
 
+# ---------------------------------------------------------------------------
+# T009: Telegram Bot API callback helpers (Spec 031)
+# ---------------------------------------------------------------------------
+
+def answer_callback_query(
+    bot_token: str,
+    callback_query_id: str,
+    text: Optional[str] = None,
+    show_alert: bool = False,
+) -> None:
+    """Acknowledge a Telegram callback_query within the mandatory 1.0s window.
+
+    Must be called from within the polling thread for every callback_query
+    received, regardless of authorization outcome.
+    """
+    url = f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery"
+    payload: Dict[str, Any] = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    if show_alert:
+        payload["show_alert"] = True
+    t0 = time.perf_counter()
+    try:
+        session = _HTTP_SESSION or requests.Session()
+        resp = session.post(url, json=payload, timeout=5.0)
+        ms = int((time.perf_counter() - t0) * 1000)
+        if resp.status_code != 200:
+            body = _redact_telegram_token(resp.text or "", bot_token)[:200]
+            log(
+                f"TG ANSWER_CB err http={resp.status_code} ms={ms} "
+                f"cb_id={callback_query_id} body=\"{body}\""
+            )
+        elif DBG_TELEGRAM:
+            log(f"TG ANSWER_CB ok ms={ms} cb_id={callback_query_id}")
+    except Exception as exc:
+        ms = int((time.perf_counter() - t0) * 1000)
+        log(
+            f"TG ANSWER_CB exc ms={ms} cb_id={callback_query_id} "
+            f"err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}"
+        )
+
+
+def edit_message_reply_markup(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    reply_markup: Dict[str, Any],
+) -> None:
+    """Replace the inline keyboard of an existing message in-place.
+
+    Used to transition from alert keyboard -> confirmation keyboard -> settled.
+    """
+    url = f"https://api.telegram.org/bot{bot_token}/editMessageReplyMarkup"
+    payload: Dict[str, Any] = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "reply_markup": reply_markup,
+    }
+    t0 = time.perf_counter()
+    try:
+        session = _HTTP_SESSION or requests.Session()
+        resp = session.post(url, json=payload, timeout=5.0)
+        ms = int((time.perf_counter() - t0) * 1000)
+        if resp.status_code != 200:
+            body = _redact_telegram_token(resp.text or "", bot_token)[:200]
+            log(
+                f"TG EDIT_MARKUP err http={resp.status_code} ms={ms} "
+                f"chat_id={chat_id} msg_id={message_id} body=\"{body}\""
+            )
+        elif DBG_TELEGRAM:
+            log(f"TG EDIT_MARKUP ok ms={ms} chat_id={chat_id} msg_id={message_id}")
+    except Exception as exc:
+        ms = int((time.perf_counter() - t0) * 1000)
+        log(
+            f"TG EDIT_MARKUP exc ms={ms} chat_id={chat_id} msg_id={message_id} "
+            f"err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}"
+        )
+
+
+def send_telegram_photo(
+    bot_token: str,
+    chat_id: str,
+    photo_bytes: bytes,
+    caption: Optional[str] = None,
+    timeout: float = 15.0,
+) -> bool:
+    """Send a binary PNG image directly to Telegram via sendPhoto."""
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    data: Dict[str, Any] = {"chat_id": str(chat_id)}
+    if caption:
+        data["caption"] = caption
+    files = {"photo": ("chart.png", photo_bytes, "image/png")}
+    t0 = time.perf_counter()
+    try:
+        session = _HTTP_SESSION or requests.Session()
+        resp = session.post(url, data=data, files=files, timeout=timeout)
+        ms = int((time.perf_counter() - t0) * 1000)
+        if resp.status_code != 200:
+            body = _redact_telegram_token(resp.text or "", bot_token)[:200]
+            log(f"TG SEND_PHOTO err http={resp.status_code} ms={ms} body=\"{body}\"")
+            return False
+        if DBG_TELEGRAM:
+            log(f"TG SEND_PHOTO ok ms={ms}")
+        return True
+    except Exception as exc:
+        ms = int((time.perf_counter() - t0) * 1000)
+        log(f"TG SEND_PHOTO exc ms={ms} err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}")
+        return False
+
+
 def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> None:
     global _HTTP_SESSION, _TELEGRAM_SENDER_TS
     if _HTTP_SESSION is None:
@@ -1163,6 +1461,7 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
                 batch_id,
                 part_index,
                 part_count,
+                reply_markup,
             ) = item
             if DBG_TELEGRAM and (time.time() - last_hb) >= 30:
                 log(f"SENDER_HB alive=1 qsize={q.qsize()}")
@@ -1198,6 +1497,8 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
                 "text": message,
                 "disable_web_page_preview": True,
             }
+            if reply_markup is not None:
+                payload["reply_markup"] = reply_markup
             start = time.monotonic()
             resp = session.post(tg_send_url, json=payload, timeout=(2.0, 6.0))
             _TELEGRAM_SENDER_TS = time.time()
@@ -1814,11 +2115,16 @@ def release_mutex() -> None:
     _MUTEX_HANDLE = None
 
 
+_LAST_DAILY_DIGEST_DATE: Optional[str] = None
+
+
 def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
+    global _LAST_DAILY_DIGEST_DATE
     if not state_path.exists():
         return {}, None
     try:
         raw = json.loads(state_path.read_text(encoding="utf-8"))
+        _LAST_DAILY_DIGEST_DATE = raw.get("last_daily_digest_date")
         saved_at = raw.get("saved_at")
         if saved_at:
             saved_dt = datetime.strptime(saved_at, "%Y-%m-%d %H:%M:%S")
@@ -1867,6 +2173,33 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("last_hourly_status_ts") is not None
                     else None
                 ),
+                snooze_until_ts=(
+                    float(data.get("snooze_until_ts"))
+                    if data.get("snooze_until_ts") is not None
+                    else None
+                ),
+                cooling_streak=int(data.get("cooling_streak", 0)),
+                last_cooling_warning_ts=(
+                    float(data.get("last_cooling_warning_ts"))
+                    if data.get("last_cooling_warning_ts") is not None
+                    else None
+                ),
+                efficiency_streak=int(data.get("efficiency_streak", 0)),
+                last_efficiency_warning_ts=(
+                    float(data.get("last_efficiency_warning_ts"))
+                    if data.get("last_efficiency_warning_ts") is not None
+                    else None
+                ),
+                baseline_frequency_mhz=(
+                    float(data.get("baseline_frequency_mhz"))
+                    if data.get("baseline_frequency_mhz") is not None
+                    else None
+                ),
+                last_preset_warning_ts=(
+                    float(data.get("last_preset_warning_ts"))
+                    if data.get("last_preset_warning_ts") is not None
+                    else None
+                ),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -1876,13 +2209,22 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
         return {}, None
 
 
-def save_state(state_path: Path, states: Dict[str, MinerState], last_update_id: Optional[int]) -> None:
+def save_state(
+    state_path: Path,
+    states: Dict[str, MinerState],
+    last_update_id: Optional[int],
+    last_daily_digest_date: Optional[str] = None,
+) -> None:
+    global _LAST_DAILY_DIGEST_DATE
+    if last_daily_digest_date is not None:
+        _LAST_DAILY_DIGEST_DATE = last_daily_digest_date
     payload = {
         "saved_at": now_str(),
         "last_update_id": last_update_id,
+        "last_daily_digest_date": _LAST_DAILY_DIGEST_DATE,
         "states": {},
     }
-    for key, state in states.items():
+    for key, state in list(states.items()):
         payload["states"][key] = {
             "state": state.state,
             "low_streak": state.low_streak,
@@ -1901,6 +2243,13 @@ def save_state(state_path: Path, states: Dict[str, MinerState], last_update_id: 
             "auto_reboot_timestamps": state.auto_reboot_timestamps or [],
             "degraded_mode": state.degraded_mode,
             "last_hourly_status_ts": state.last_hourly_status_ts,
+            "snooze_until_ts": state.snooze_until_ts,
+            "cooling_streak": getattr(state, "cooling_streak", 0),
+            "last_cooling_warning_ts": getattr(state, "last_cooling_warning_ts", None),
+            "efficiency_streak": getattr(state, "efficiency_streak", 0),
+            "last_efficiency_warning_ts": getattr(state, "last_efficiency_warning_ts", None),
+            "baseline_frequency_mhz": getattr(state, "baseline_frequency_mhz", None),
+            "last_preset_warning_ts": getattr(state, "last_preset_warning_ts", None),
         }
     tmp_path = state_path.with_suffix(".tmp")
     try:
@@ -1908,6 +2257,335 @@ def save_state(state_path: Path, states: Dict[str, MinerState], last_update_id: 
         os.replace(tmp_path, state_path)
     except Exception:
         log("[WARN] No se pudo guardar state.json.")
+
+
+# ---------------------------------------------------------------------------
+# T012: Callback query dispatcher (Spec 031)
+# ---------------------------------------------------------------------------
+
+def _handle_callback_query(
+    cb_query: dict,
+    *,
+    config: dict,
+    bot_token: str,
+    chat_id: str,
+    miners: list,
+    states: Dict[str, MinerState],
+    state_lock: threading.Lock,
+    state_path: Path,
+    current_last_update_id: Optional[int],
+    hashcore_cfg: dict,
+    event_store: Optional["EventStore"],
+    qa_mode: bool,
+    qa_allow_actions: bool,
+    token_registry: "CallbackTokenRegistry",
+) -> None:
+    """Handle a single Telegram callback_query from an inline keyboard tap.
+
+    Authentication, parsing, and action dispatch are all performed here.
+    answerCallbackQuery is always called to acknowledge the tap within 1s.
+    """
+    cb_id = cb_query.get("id") or ""
+    from_user = cb_query.get("from") or {}
+    from_id = from_user.get("id")
+    cb_data = cb_query.get("data") or ""
+    msg = cb_query.get("message") or {}
+    message_id = msg.get("message_id")
+    cb_chat_id = (msg.get("chat") or {}).get("id") or chat_id
+
+    # --- Strict authentication: from.id must match the configured chat_id ---
+    try:
+        authorized = from_id is not None and int(from_id) == int(chat_id)
+    except (TypeError, ValueError):
+        authorized = False
+
+    if not authorized:
+        log(
+            f"CB_AUTH_FAIL cb_id={cb_id} from_id={from_id} "
+            f"expected={chat_id}"
+        )
+        answer_callback_query(
+            bot_token,
+            cb_id,
+            text="⛔ Acceso no autorizado",
+            show_alert=True,
+        )
+        return
+
+    # --- Parse callback data ---
+    action = parse_callback_data(cb_data)
+    if action is None:
+        log(f"CB_PARSE_FAIL cb_id={cb_id} data={cb_data[:40]!r}")
+        answer_callback_query(bot_token, cb_id, text="⚠️ Acción desconocida.")
+        return
+
+    log(
+        f"CB_DISPATCH action={action.action_type} miner={action.miner_id} "
+        f"token={action.token or '-'} cb_id={cb_id}"
+    )
+
+    # --- noop: static informational button, just acknowledge ---
+    if action.action_type == "noop":
+        answer_callback_query(bot_token, cb_id)
+        return
+
+    # --- diag:<miner_id>: run diagnostic and send result ---
+    if action.action_type == "diag":
+        answer_callback_query(bot_token, cb_id, text="🩺 Obteniendo diagnóstico...")
+        miner = resolve_miner(action.miner_id, miners)
+        if not miner:
+            send_telegram(
+                bot_token,
+                str(cb_chat_id),
+                f"Diagnóstico: minero '{action.miner_id}' no encontrado.",
+                "DIAGNOSE",
+                "cb_diag_not_found",
+                is_command=True,
+            )
+            return
+        try:
+            diagnosis_stale_seconds = float(config.get("diagnosis_stale_seconds", 900.0))
+        except (TypeError, ValueError):
+            diagnosis_stale_seconds = 900.0
+        try:
+            diagnosis_firmware_window_hours = float(
+                config.get("diagnosis_firmware_window_hours", 24.0)
+            )
+        except (TypeError, ValueError):
+            diagnosis_firmware_window_hours = 24.0
+        try:
+            diagnosis_collector_stale_seconds = float(
+                config.get("diagnosis_collector_stale_seconds", 120.0)
+            )
+        except (TypeError, ValueError):
+            diagnosis_collector_stale_seconds = 120.0
+        diagnosis_text = build_miner_diagnosis_text(
+            event_store,
+            miners,
+            action.miner_id,
+            now_ts=time.time(),
+            stale_after_seconds=diagnosis_stale_seconds,
+            firmware_window_hours=diagnosis_firmware_window_hours,
+            collector_stale_seconds=diagnosis_collector_stale_seconds,
+        )
+        send_telegram(
+            bot_token,
+            str(cb_chat_id),
+            diagnosis_text,
+            "DIAGNOSE",
+            "cb_diag",
+            is_command=True,
+        )
+        return
+
+    # --- chart:<miner_id>: generate and send visual chart ---
+    if action.action_type == "chart":
+        answer_callback_query(bot_token, cb_id, text="📊 Generando gráfico...")
+        miner = resolve_miner(action.miner_id, miners)
+        if not miner:
+            send_telegram(
+                bot_token,
+                str(cb_chat_id),
+                f"Gráfico: minero '{action.miner_id}' no encontrado.",
+                "CHART",
+                "cb_chart_not_found",
+                is_command=True,
+            )
+            return
+        try:
+            from app.telegram_charts import fetch_miner_chart_data, render_miner_chart_png
+            db_path = config.get("db_path", "data/miner_alerts.db")
+            chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=1.0)
+            if chart_data["count"] == 0:
+                send_telegram(
+                    bot_token,
+                    str(cb_chat_id),
+                    f"Gráfico: no hay muestras recientes para {miner['name']}.",
+                    "CHART",
+                    "cb_chart_empty",
+                    is_command=True,
+                )
+                return
+            png_bytes = render_miner_chart_png(chart_data, hours=1.0)
+            caption = f"📊 {chart_data['miner_name']} (1h) | Actual: {chart_data['rates'][-1]:.1f} TH/s | Max Temp: {chart_data['max_temp']:.0f}°C"
+            send_telegram_photo(bot_token, str(cb_chat_id), png_bytes, caption=caption)
+        except Exception as exc:
+            log(f"CB_CHART_ERR miner={action.miner_id} exc={exc}")
+            send_telegram(
+                bot_token,
+                str(cb_chat_id),
+                f"Error al generar gráfico para {action.miner_id}: {exc}",
+                "CHART",
+                "cb_chart_err",
+                is_command=True,
+            )
+        return
+
+    # --- rb_req:<miner_id>: start 2-step reboot confirmation ---
+    if action.action_type == "rb_req":
+        token = token_registry.create_token(action.miner_id)
+        if message_id is not None:
+            edit_message_reply_markup(
+                bot_token,
+                str(cb_chat_id),
+                message_id,
+                build_confirmation_keyboard(action.miner_id, token),
+            )
+        answer_callback_query(
+            bot_token,
+            cb_id,
+            text="⚠️ Confirmación requerida (expira en 60s)",
+        )
+        return
+
+    # --- rb_ccl:<miner_id>: cancel reboot, restore original keyboard ---
+    if action.action_type == "rb_ccl":
+        token_registry.invalidate_miner(action.miner_id)
+        if message_id is not None:
+            edit_message_reply_markup(
+                bot_token,
+                str(cb_chat_id),
+                message_id,
+                build_alert_keyboard(action.miner_id),
+            )
+        answer_callback_query(bot_token, cb_id, text="❌ Reinicio cancelado")
+        return
+
+    # --- rb_cfm:<token>:<miner_id>: consume token and execute reboot ---
+    if action.action_type == "rb_cfm":
+        token_val = action.token or ""
+        valid, _consumed_miner, status = token_registry.consume_token(token_val)
+        if not valid:
+            if status == "token_expired":
+                answer_callback_query(
+                    bot_token,
+                    cb_id,
+                    text="⏱️ El token de confirmación ha expirado.",
+                    show_alert=True,
+                )
+            else:
+                answer_callback_query(
+                    bot_token,
+                    cb_id,
+                    text="⚠️ Confirmación inválida o ya usada.",
+                    show_alert=True,
+                )
+            return
+
+        if qa_mode and not qa_allow_actions:
+            answer_callback_query(
+                bot_token,
+                cb_id,
+                text="🚫 Reinicio bloqueado (modo QA).",
+                show_alert=True,
+            )
+            log("CB_REBOOT_QA_BLOCK miner=%s" % action.miner_id)
+            return
+
+        miner = resolve_miner(action.miner_id, miners)
+        if not miner:
+            answer_callback_query(
+                bot_token,
+                cb_id,
+                text="❌ Minero no encontrado.",
+                show_alert=True,
+            )
+            return
+
+        # Update keyboard to settled state before executing reboot
+        if message_id is not None:
+            edit_message_reply_markup(
+                bot_token,
+                str(cb_chat_id),
+                message_id,
+                build_settled_keyboard("✅ Reinicio Iniciado (Enfriamiento 15m)"),
+            )
+        answer_callback_query(bot_token, cb_id, text="🔄 Iniciando reinicio...")
+
+        now_ts = time.time()
+        ok, msg_result = run_hashcore_cli(
+            hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions
+        )
+        record_action_outcome(
+            event_store,
+            occurred_ts=now_ts,
+            miner=miner,
+            action="reboot",
+            source="manual",
+            ok=ok,
+            message=msg_result,
+        )
+        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        if ok:
+            with state_lock:
+                state = states.get(state_key)
+                if state:
+                    state.last_manual_reboot_ts = now_ts
+                    state.low_since_ts = None
+                save_state(state_path, states, current_last_update_id)
+            log(
+                f"CB_REBOOT_OK miner={display_name(miner['name'])} "
+                f"host={miner['host']}"
+            )
+        else:
+            send_telegram(
+                bot_token,
+                str(cb_chat_id),
+                f"❌ Reinicio FAIL: {display_name(miner['name'])} — {msg_result}",
+                "REBOOT",
+                "cb_reboot_fail",
+                is_command=True,
+            )
+            log(
+                f"CB_REBOOT_FAIL miner={display_name(miner['name'])} "
+                f"msg={msg_result}"
+            )
+        return
+
+    # --- snz:<miner_id>:<minutes>: maintenance snooze ---
+    if action.action_type == "snz":
+        miner = resolve_miner(action.miner_id, miners)
+        if not miner:
+            answer_callback_query(
+                bot_token,
+                cb_id,
+                text="❌ Minero no encontrado.",
+                show_alert=True,
+            )
+            return
+        try:
+            minutes = float(action.param) if action.param else 60.0
+        except ValueError:
+            minutes = 60.0
+        from app.telegram_snooze import MIN_SNOOZE_MINUTES, MAX_SNOOZE_MINUTES
+        minutes = max(MIN_SNOOZE_MINUTES, min(MAX_SNOOZE_MINUTES, minutes))
+        now_ts = time.time()
+        snooze_until = now_ts + (minutes * 60.0)
+        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        with state_lock:
+            st = states.get(state_key)
+            if st:
+                st.snooze_until_ts = snooze_until
+            save_state(state_path, states, current_last_update_id)
+        disp_name = display_name(miner["name"])
+        answer_callback_query(
+            bot_token,
+            cb_id,
+            text=f"🔕 {disp_name} silenciado por {int(minutes)}m",
+        )
+        if message_id is not None:
+            edit_message_reply_markup(
+                bot_token,
+                str(cb_chat_id),
+                message_id,
+                build_settled_keyboard(f"🔕 Silenciado ({int(minutes)}m)"),
+            )
+        log(f"CB_SNOOZE miner={disp_name} minutes={minutes} until={snooze_until}")
+        return
+
+    # Unknown action type (forward-compat: just ack)
+    log(f"CB_UNHANDLED action_type={action.action_type} cb_id={cb_id}")
+    answer_callback_query(bot_token, cb_id)
 
 
 def telegram_polling_worker(
@@ -1933,6 +2611,8 @@ def telegram_polling_worker(
     last_info_ts = 0.0
     last_selftest_ts = 0.0
     backoff = 0.2
+    # T012 (Spec 031): Per-worker confirmation token registry (60s TTL, max 10 tokens).
+    _cb_token_registry = CallbackTokenRegistry()
     while True:
         _TELEGRAM_POLLER_TS = time.time()
         offset = None
@@ -2017,6 +2697,35 @@ def telegram_polling_worker(
                         log_pid(f"[TEL] last_update_id set to {current_last_update_id}")
                 with state_lock:
                     save_state(state_path, states, current_last_update_id)
+
+                # T011 (Spec 031): Route callback_query objects to the callback handler.
+                # These are produced by inline keyboard button taps, not by text messages.
+                cb_query = item.get("callback_query")
+                if cb_query is not None:
+                    if DBG_TELEGRAM:
+                        cb_data = (cb_query.get("data") or "")[:40]
+                        log(
+                            f"CB_QUERY update_id={update_id} "
+                            f"from_id={cb_query.get('from', {}).get('id')} "
+                            f"data={cb_data}"
+                        )
+                    _handle_callback_query(
+                        cb_query,
+                        config=config,
+                        bot_token=bot_token,
+                        chat_id=chat_id,
+                        miners=miners,
+                        states=states,
+                        state_lock=state_lock,
+                        state_path=state_path,
+                        current_last_update_id=current_last_update_id,
+                        hashcore_cfg=hashcore_cfg,
+                        event_store=event_store,
+                        qa_mode=qa_mode,
+                        qa_allow_actions=qa_allow_actions,
+                        token_registry=_cb_token_registry,
+                    )
+                    continue
 
                 message, raw_text, cmd_name, args, msg_key, cmd_meta = _parse_message_command(item)
                 if DBG_TELEGRAM and not DBG_TELEGRAM_COMMANDS_ONLY:
@@ -2360,6 +3069,421 @@ def telegram_polling_worker(
                             dbg_update_id=update_id,
                             dbg_cmd="diagnose",
                         )
+                elif cmd_name == "chart":
+                    handled = True
+                    target = cmd_arg.strip() if cmd_arg else ""
+                    parts = target.split()
+                    sub_target = parts[0].lower() if parts else "fleet"
+                    hours = 1.0
+                    if len(parts) >= 2:
+                        try:
+                            val = parts[1].lower().replace("h", "")
+                            hours = max(0.25, min(72.0, float(val)))
+                        except ValueError:
+                            hours = 1.0
+                    elif sub_target.endswith("h") and sub_target[:-1].isdigit():
+                        try:
+                            hours = max(0.25, min(72.0, float(sub_target[:-1])))
+                            sub_target = "fleet"
+                        except ValueError:
+                            hours = 1.0
+
+                    try:
+                        from app.telegram_charts import (
+                            fetch_miner_chart_data,
+                            fetch_fleet_chart_data,
+                            render_miner_chart_png,
+                            render_fleet_chart_png,
+                        )
+                        db_path = config.get("db_path", "data/miner_alerts.db")
+                        if sub_target in ("fleet", "all", ""):
+                            fleet_data = fetch_fleet_chart_data(db_path, miners, hours=hours)
+                            if fleet_data["count"] == 0:
+                                send_telegram(
+                                    bot_token,
+                                    str(msg_chat_id),
+                                    f"Gráfico: no hay muestras disponibles para la flota en las últimas {hours:.0f}h.",
+                                    "CHART",
+                                    "chart_empty",
+                                    is_command=True,
+                                    dbg_update_id=update_id,
+                                    dbg_cmd="chart",
+                                )
+                            else:
+                                png_bytes = render_fleet_chart_png(fleet_data, hours=hours)
+                                caption = f"📊 Flota completa ({hours:.0f}h) — {fleet_data['count']} mineros activos"
+                                send_telegram_photo(bot_token, str(msg_chat_id), png_bytes, caption=caption)
+                        else:
+                            miner = resolve_miner(sub_target, miners)
+                            if not miner:
+                                avail = ", ".join(display_name(m["name"]) for m in miners)
+                                send_telegram(
+                                    bot_token,
+                                    str(msg_chat_id),
+                                    f"Gráfico: minero '{sub_target}' no encontrado.\nMineros disponibles: {avail}",
+                                    "CHART",
+                                    "chart_miner_not_found",
+                                    is_command=True,
+                                    dbg_update_id=update_id,
+                                    dbg_cmd="chart",
+                                )
+                            else:
+                                chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=hours)
+                                if chart_data["count"] == 0:
+                                    send_telegram(
+                                        bot_token,
+                                        str(msg_chat_id),
+                                        f"Gráfico: no hay muestras disponibles para {miner['name']} en las últimas {hours:.0f}h.",
+                                        "CHART",
+                                        "chart_empty",
+                                        is_command=True,
+                                        dbg_update_id=update_id,
+                                        dbg_cmd="chart",
+                                    )
+                                else:
+                                    png_bytes = render_miner_chart_png(chart_data, hours=hours)
+                                    caption = f"📊 {chart_data['miner_name']} ({hours:.0f}h) | Actual: {chart_data['rates'][-1]:.1f} TH/s | Max Temp: {chart_data['max_temp']:.0f}°C"
+                                    send_telegram_photo(bot_token, str(msg_chat_id), png_bytes, caption=caption)
+                    except Exception as exc:
+                        log(f"CMD_CHART_ERR exc={exc}")
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            f"Error al generar gráfico: {exc}",
+                            "CHART",
+                            "chart_err",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="chart",
+                        )
+                elif cmd_name == "snooze":
+                    handled = True
+                    from app.telegram_snooze import (
+                        parse_snooze_args,
+                        format_snooze_expiry_time,
+                    )
+                    target, minutes = parse_snooze_args(cmd_arg)
+                    if not target:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Uso: /snooze <minero|all> [minutos]\nEjemplo: /snooze 23 60 (por defecto 60 min, máx 1440m/24h)",
+                            "SNOOZE",
+                            "cmd_snooze_usage",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="snooze",
+                        )
+                    elif target.lower() in ("all", "fleet"):
+                        now_ts = time.time()
+                        until_ts = now_ts + (minutes * 60.0)
+                        exp_str = format_snooze_expiry_time(until_ts)
+                        with state_lock:
+                            for m in miners:
+                                key = f"{m['name']}|{m['host']}:{m['port']}"
+                                st = states.get(key)
+                                if st:
+                                    st.snooze_until_ts = until_ts
+                            save_state(state_path, states, current_last_update_id)
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            f"🔕 Toda la flota silenciada durante {int(minutes)}m (hasta las {exp_str}). Alertas y autorreinicios suspendidos.",
+                            "SNOOZE",
+                            "cmd_snooze_all",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="snooze",
+                        )
+                    else:
+                        miner = resolve_miner(target, miners)
+                        if not miner:
+                            avail = ", ".join(display_name(m["name"]) for m in miners)
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                f"Minero '{target}' no encontrado.\nMineros disponibles: {avail}",
+                                "SNOOZE",
+                                "cmd_snooze_not_found",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="snooze",
+                            )
+                        else:
+                            now_ts = time.time()
+                            until_ts = now_ts + (minutes * 60.0)
+                            exp_str = format_snooze_expiry_time(until_ts)
+                            state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                            with state_lock:
+                                st = states.get(state_key)
+                                if st:
+                                    st.snooze_until_ts = until_ts
+                                save_state(state_path, states, current_last_update_id)
+                            d_name = display_name(miner["name"])
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                f"🔕 Minero {miner['name']} ({d_name}) silenciado durante {int(minutes)}m (hasta las {exp_str}). Alertas y autorreinicios suspendidos.",
+                                "SNOOZE",
+                                "cmd_snooze_ok",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="snooze",
+                            )
+                elif cmd_name == "unsnooze":
+                    handled = True
+                    target = (cmd_arg or "").strip()
+                    if not target:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "Uso: /unsnooze <minero|all>\nEjemplo: /unsnooze 23",
+                            "SNOOZE",
+                            "cmd_unsnooze_usage",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="unsnooze",
+                        )
+                    elif target.lower() in ("all", "fleet"):
+                        with state_lock:
+                            for m in miners:
+                                key = f"{m['name']}|{m['host']}:{m['port']}"
+                                st = states.get(key)
+                                if st:
+                                    st.snooze_until_ts = None
+                            save_state(state_path, states, current_last_update_id)
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "🔔 Supervisión reactivada para toda la flota. Alertas y autorreinicios habilitados.",
+                            "SNOOZE",
+                            "cmd_unsnooze_all",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="unsnooze",
+                        )
+                    else:
+                        miner = resolve_miner(target, miners)
+                        if not miner:
+                            avail = ", ".join(display_name(m["name"]) for m in miners)
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                f"Minero '{target}' no encontrado.\nMineros disponibles: {avail}",
+                                "SNOOZE",
+                                "cmd_unsnooze_not_found",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="unsnooze",
+                            )
+                        else:
+                            state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                            with state_lock:
+                                st = states.get(state_key)
+                                if st:
+                                    st.snooze_until_ts = None
+                                save_state(state_path, states, current_last_update_id)
+                            d_name = display_name(miner["name"])
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                f"🔔 Supervisión reactivada para {miner['name']} ({d_name}). Alertas y autorreinicios habilitados.",
+                                "SNOOZE",
+                                "cmd_unsnooze_ok",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="unsnooze",
+                            )
+                elif cmd_name == "snoozed":
+                    handled = True
+                    from app.telegram_snooze import build_snooze_status_text
+                    with state_lock:
+                        snooze_msg = build_snooze_status_text(miners, states, now_ts=time.time())
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        snooze_msg,
+                        "SNOOZE",
+                        "cmd_snoozed",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="snoozed",
+                    )
+                elif cmd_name in ("digest", "summary"):
+                    handled = True
+                    from app.daily_digest import fetch_daily_digest_metrics, format_daily_digest
+                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    b_root = config.get("backup_root", "backups")
+                    with state_lock:
+                        digest_metrics = fetch_daily_digest_metrics(
+                            db_path=db_p,
+                            miners=miners,
+                            now_ts=time.time(),
+                            backup_root=b_root,
+                            states=states,
+                        )
+                    digest_msg = format_daily_digest(digest_metrics)
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        digest_msg,
+                        "DIGEST",
+                        "cmd_digest",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="digest",
+                    )
+                elif cmd_name in ("fans", "fan"):
+                    handled = True
+                    from app.fan_health import (
+                        fetch_latest_cooling_assessments,
+                        build_fans_table_text,
+                        build_miner_fan_detail_text,
+                    )
+                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    with state_lock:
+                        assessments = fetch_latest_cooling_assessments(
+                            db_path=db_p,
+                            miners=miners,
+                            states=states,
+                            config=config,
+                        )
+                    target_arg = args[0].strip().lower() if args else None
+                    if target_arg and target_arg != "all":
+                        matched_ass = None
+                        matched_miner = _match_miner(miners, target_arg)
+                        if matched_miner:
+                            m_name = matched_miner.get("name")
+                            m_ip = matched_miner.get("ip")
+                            for ass in assessments:
+                                if ass.miner_name in (m_name, m_ip) or (m_name and m_name in ass.miner_name):
+                                    matched_ass = ass
+                                    break
+                        if not matched_ass:
+                            for ass in assessments:
+                                if target_arg in ass.miner_name.lower():
+                                    matched_ass = ass
+                                    break
+                        if matched_ass:
+                            fans_msg = build_miner_fan_detail_text(matched_ass)
+                        else:
+                            fans_msg = f"⚠️ Minero '{target_arg}' no encontrado.\nUso: /fans [minero]"
+                    else:
+                        fans_msg = build_fans_table_text(assessments)
+
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        fans_msg,
+                        "FANS",
+                        "cmd_fans",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="fans",
+                    )
+                elif cmd_name in ("efficiency", "eff"):
+                    handled = True
+                    from app.energy_efficiency import (
+                        fetch_latest_efficiency_assessments,
+                        build_efficiency_table_text,
+                        build_miner_efficiency_detail_text,
+                    )
+                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    with state_lock:
+                        assessments = fetch_latest_efficiency_assessments(
+                            db_path=db_p,
+                            miners=miners,
+                            states=states,
+                            config=config,
+                        )
+                    target_arg = args[0].strip().lower() if args else None
+                    if target_arg and target_arg != "all":
+                        matched_ass = None
+                        matched_miner = _match_miner(miners, target_arg)
+                        if matched_miner:
+                            m_name = matched_miner.get("name")
+                            m_ip = matched_miner.get("ip")
+                            for ass in assessments:
+                                if ass.miner_name in (m_name, m_ip) or (m_name and m_name in ass.miner_name):
+                                    matched_ass = ass
+                                    break
+                        if not matched_ass:
+                            for ass in assessments:
+                                if target_arg in ass.miner_name.lower():
+                                    matched_ass = ass
+                                    break
+                        if matched_ass:
+                            eff_msg = build_miner_efficiency_detail_text(matched_ass)
+                        else:
+                            eff_msg = f"⚠️ Minero '{target_arg}' no encontrado.\nUso: /efficiency [minero]"
+                    else:
+                        eff_msg = build_efficiency_table_text(assessments)
+
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        eff_msg,
+                        "EFFICIENCY",
+                        "cmd_efficiency",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="efficiency",
+                    )
+                elif cmd_name in ("presets", "preset", "profile"):
+                    handled = True
+                    try:
+                        from app.vnish_presets import (
+                            fetch_latest_preset_assessments,
+                            build_presets_table_text,
+                            build_miner_preset_detail_text,
+                        )
+                    except ImportError:
+                        from vnish_presets import (
+                            fetch_latest_preset_assessments,
+                            build_presets_table_text,
+                            build_miner_preset_detail_text,
+                        )
+                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    with state_lock:
+                        assessments = fetch_latest_preset_assessments(
+                            db_path=db_p,
+                            miners=miners,
+                            states=states,
+                            config=config,
+                        )
+                    target_arg = args[0].strip().lower() if args else None
+                    if target_arg and target_arg != "all":
+                        matched_ass = None
+                        matched_miner = _match_miner(miners, target_arg)
+                        if matched_miner:
+                            m_name = matched_miner.get("name")
+                            m_ip = matched_miner.get("ip")
+                            for ass in assessments:
+                                if ass.miner_name in (m_name, m_ip) or (m_name and m_name in ass.miner_name):
+                                    matched_ass = ass
+                                    break
+                        if not matched_ass:
+                            for ass in assessments:
+                                if target_arg in ass.miner_name.lower():
+                                    matched_ass = ass
+                                    break
+                        if matched_ass:
+                            preset_msg = build_miner_preset_detail_text(matched_ass)
+                        else:
+                            preset_msg = f"⚠️ Minero '{target_arg}' no encontrado.\nUso: /presets [minero]"
+                    else:
+                        preset_msg = build_presets_table_text(assessments)
+
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        preset_msg,
+                        "PRESETS",
+                        "cmd_presets",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="presets",
+                    )
                 elif cmd_name == "firmware":
                     handled = True
                     firmware_text = build_firmware_events_text(
@@ -4005,6 +5129,111 @@ def main() -> None:
                             },
                         )
 
+                # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
+                cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
+                if cooling_alert_enabled and not first_tick and responded:
+                    saturate_temp = float(config.get("cooling_saturate_temp_c", 78.0))
+                    saturate_pwm = float(config.get("cooling_saturate_pwm_pct", 95.0))
+                    saturate_rpm = int(config.get("cooling_saturate_rpm", 5800))
+                    cooling_ass = assess_miner_cooling(
+                        miner_name=name_display,
+                        max_temp_c=vnish_telemetry.max_temp_c,
+                        fan_rpm_max=vnish_telemetry.fan_rpm_max,
+                        fan_pwm_percent=vnish_telemetry.fan_pwm_percent,
+                        diagnostic_flags=vnish_telemetry.diagnostic_flags,
+                        rate_ths=rate_ths,
+                        saturate_temp_c=saturate_temp,
+                        saturate_pwm_pct=saturate_pwm,
+                        saturate_rpm=saturate_rpm,
+                    )
+                    cooling_warning = evaluate_cooling_alerts(
+                        state=state,
+                        assessment=cooling_ass,
+                        now_ts=now_ts,
+                        config=config,
+                    )
+                    is_currently_snoozed = (
+                        state.snooze_until_ts is not None and now_ts < state.snooze_until_ts
+                    )
+                    if cooling_warning and not is_currently_snoozed and ((not qa_mode) or qa_notify):
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            cooling_warning,
+                            "COOLING_WARNING",
+                            "cooling_warning",
+                        )
+                        log(f"[COOLING_WARNING] miner={name_display} status={cooling_ass.status}")
+
+                # Spec 036: Hashrate Efficiency & Energy Tracking preventative evaluation
+                efficiency_alert_enabled = bool(config.get("efficiency_alert_enabled", True))
+                if efficiency_alert_enabled and not first_tick and responded:
+                    eff_target = float(config.get("efficiency_target_j_th", 30.0))
+                    eff_thresh = float(config.get("efficiency_degraded_threshold_j_th", 35.0))
+                    eff_ass = assess_miner_efficiency(
+                        miner_name=name_display,
+                        power_w=vnish_telemetry.chain_power_w_total,
+                        rate_ths=rate_ths,
+                        target_j_th=eff_target,
+                        degraded_threshold_j_th=eff_thresh,
+                    )
+                    eff_warning = evaluate_efficiency_alerts(
+                        state=state,
+                        assessment=eff_ass,
+                        now_ts=now_ts,
+                        config=config,
+                    )
+                    is_currently_snoozed = (
+                        state.snooze_until_ts is not None and now_ts < state.snooze_until_ts
+                    )
+                    if eff_warning and not is_currently_snoozed and ((not qa_mode) or qa_notify):
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            eff_warning,
+                            "EFFICIENCY_WARNING",
+                            "efficiency_warning",
+                        )
+                        log(f"[EFFICIENCY_WARNING] miner={name_display} status={eff_ass.status} eff={eff_ass.efficiency_j_th}")
+
+                # Spec 037: Vnish Operating Profile & Autotuning preventative evaluation
+                preset_alert_enabled = bool(config.get("preset_alert_enabled", True))
+                if preset_alert_enabled and not first_tick and responded:
+                    freq_drop_thresh = float(config.get("preset_frequency_drop_mhz", 25.0))
+                    chains_trans = (
+                        quality_telemetry.chains_transitioning_count
+                        if quality_telemetry and quality_telemetry.chains_transitioning_count is not None
+                        else 0
+                    )
+                    preset_ass = assess_miner_preset(
+                        miner_name=name_display,
+                        frequency_mhz=vnish_telemetry.frequency_mhz_avg,
+                        voltage_mv=vnish_telemetry.chain_voltage_mv_avg,
+                        power_w=vnish_telemetry.chain_power_w_total,
+                        rate_ths=rate_ths,
+                        chains_transitioning_count=chains_trans,
+                        baseline_frequency_mhz=getattr(state, "baseline_frequency_mhz", None),
+                        frequency_drop_threshold_mhz=freq_drop_thresh,
+                    )
+                    preset_warning = evaluate_preset_alerts(
+                        state=state,
+                        assessment=preset_ass,
+                        now_ts=now_ts,
+                        config=config,
+                    )
+                    is_currently_snoozed = (
+                        state.snooze_until_ts is not None and now_ts < state.snooze_until_ts
+                    )
+                    if preset_warning and not is_currently_snoozed and ((not qa_mode) or qa_notify):
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            preset_warning,
+                            "PROFILE_CHANGE_ALERT",
+                            "preset_warning",
+                        )
+                        log(f"[PROFILE_CHANGE_ALERT] miner={name_display} status={preset_ass.status} freq={preset_ass.frequency_mhz}")
+
                 if (
                     reboot_reason
                     and previous_elapsed is not None
@@ -4451,8 +5680,10 @@ def main() -> None:
                             f"({now_str()})"
                         )
 
+                is_snoozed = state.snooze_until_ts is not None and now_ts < state.snooze_until_ts
                 if (
-                    state.reboot_pending_until
+                    not is_snoozed
+                    and state.reboot_pending_until
                     and new_state in (STATE_LOW, STATE_OFFLINE)
                     and (now_ts - state.last_reboot_ts) >= reboot_cooldown_seconds
                 ):
@@ -4461,6 +5692,8 @@ def main() -> None:
                     state.reboot_pending_until = 0.0
                     state.reboot_pending_reason = ""
                     state.reboot_pending_elapsed = None
+                elif is_snoozed and state.reboot_pending_until:
+                    log(f"AUTO_REBOOT_SNOOZED miner={name} until={state.snooze_until_ts}")
 
                 episode_previous_state = prev_state
                 episode_state = new_state
@@ -4491,21 +5724,26 @@ def main() -> None:
                     restart=restart_observation,
                 )
 
-                miner_lines.append(
-                    format_current_status_line(
-                        name_display=name_display,
-                        host=host,
-                        confirmed_state=new_state,
-                        responded=responded,
-                        rate_ths=rate_ths,
-                        threshold_ths=threshold_ths,
-                        active_boards=active_boards,
-                        expected_boards=expected_boards,
-                        detail_event_id=episode_notifications.detail_event_id(
-                            state_key
-                        ),
-                    )
+                snooze_tag = ""
+                if state.snooze_until_ts is not None and now_ts < state.snooze_until_ts:
+                    from app.telegram_snooze import format_snooze_tag
+                    snooze_tag = format_snooze_tag(state, now_ts)
+                status_text_line = format_current_status_line(
+                    name_display=name_display,
+                    host=host,
+                    confirmed_state=new_state,
+                    responded=responded,
+                    rate_ths=rate_ths,
+                    threshold_ths=threshold_ths,
+                    active_boards=active_boards,
+                    expected_boards=expected_boards,
+                    detail_event_id=episode_notifications.detail_event_id(
+                        state_key
+                    ),
                 )
+                if snooze_tag:
+                    status_text_line += snooze_tag
+                miner_lines.append(status_text_line)
                 if startup_lines is not None:
                     startup_lines.append(
                         format_current_status_line(
@@ -4519,7 +5757,7 @@ def main() -> None:
                             expected_boards=expected_boards,
                         )
                     )
-                if state.degraded_mode:
+                if state.degraded_mode and not (state.snooze_until_ts is not None and now_ts < state.snooze_until_ts):
                     degraded_candidates.append(state)
 
             previous_tick_signals = current_tick_signals.copy()
@@ -4551,17 +5789,31 @@ def main() -> None:
                     episode_notifications.acknowledge_active_initials()
                     notification_sent = True
             elif not episode_batch.empty and ((not qa_mode) or qa_notify):
-                send_telegram(
-                    bot_token,
-                    str(chat_id),
-                    render_episode_notification_batch(
-                        episode_batch,
-                        now_ts=now_ts,
-                    ),
-                    "EPISODE_ALERT",
-                    "irregular_episode",
-                )
-                notification_sent = True
+                from app.telegram_snooze import filter_snoozed_episodes
+                filtered_batch = filter_snoozed_episodes(episode_batch, states, now_ts=now_ts)
+                if not filtered_batch.empty:
+                    # T013 (Spec 031): Attach an inline keyboard when the batch has
+                    # exactly one opened episode, so the user can act directly from
+                    # the alert without typing commands.
+                    _ep_keyboard = None
+                    if len(filtered_batch.opened) == 1 and not filtered_batch.persistent and not filtered_batch.recovered:
+                        _ep_miner_id = filtered_batch.opened[0].name_display
+                        try:
+                            _ep_keyboard = build_alert_keyboard(_ep_miner_id)
+                        except Exception:
+                            _ep_keyboard = None
+                    send_telegram(
+                        bot_token,
+                        str(chat_id),
+                        render_episode_notification_batch(
+                            filtered_batch,
+                            now_ts=now_ts,
+                        ),
+                        "EPISODE_ALERT",
+                        "irregular_episode",
+                        reply_markup=_ep_keyboard,
+                    )
+                    notification_sent = True
 
             if not notification_sent:
                 if notify_degraded_hourly and degraded_candidates:
@@ -4580,6 +5832,40 @@ def main() -> None:
                                 send_telegram(bot_token, str(chat_id), "\n".join(status_lines), "STATUS", "degraded_hourly")
                             for st in degraded_candidates:
                                 st.last_hourly_status_ts = now_ts
+
+            # ---------------------------------------------------------------
+            # Scheduled Daily Executive Digest (Spec 034)
+            # ---------------------------------------------------------------
+            daily_digest_enabled = bool(config.get("daily_digest_enabled", True))
+            daily_digest_time = str(config.get("daily_digest_time", "08:00"))
+            if daily_digest_enabled and not first_tick and ((not qa_mode) or qa_notify):
+                ar_now = argentina_now()
+                from app.daily_digest import is_digest_due, fetch_daily_digest_metrics, format_daily_digest
+                if is_digest_due(ar_now, daily_digest_time, _LAST_DAILY_DIGEST_DATE):
+                    try:
+                        db_p = config.get("db_path", "data/miner_alerts.db")
+                        b_root = config.get("backup_root", "backups")
+                        with state_lock:
+                            digest_metrics = fetch_daily_digest_metrics(
+                                db_path=db_p,
+                                miners=miners,
+                                now_ts=now_ts,
+                                backup_root=b_root,
+                                states=states,
+                            )
+                        today_ar_str = ar_now.strftime("%Y-%m-%d")
+                        digest_msg = format_daily_digest(digest_metrics, date_str=ar_now.strftime("%d/%m/%Y"))
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            digest_msg,
+                            "DIGEST",
+                            "scheduled_daily_digest",
+                        )
+                        _LAST_DAILY_DIGEST_DATE = today_ar_str
+                        log(f"DAILY_DIGEST_SENT date={today_ar_str} time={daily_digest_time}")
+                    except Exception as exc:
+                        log(f"DAILY_DIGEST_ERR exc={exc}")
 
             if (
                 event_store is not None

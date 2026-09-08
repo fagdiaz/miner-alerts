@@ -110,12 +110,22 @@ try:
         BalancerConfig,
         BalancerDecision,
         StabilityMetrics,
+        ElevatorSensitivitySummary,
         evaluate_balancer_step,
         extract_miner_stability_metrics,
         build_balancer_table_text,
         build_miner_balancer_detail_text,
+        analyze_elevator_sensitivity,
+        build_elevator_sensitivity_text,
+        record_elevator_restart_circumstance,
     )
-    from .vnish_client import safe_set_fan_duty, safe_set_miner_preset, mask_secret
+    from .vnish_client import (
+        safe_set_fan_duty,
+        safe_set_miner_preset,
+        safe_get_overclock_settings,
+        get_overclock_settings,
+        mask_secret,
+    )
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -201,12 +211,22 @@ except ImportError:
         BalancerConfig,
         BalancerDecision,
         StabilityMetrics,
+        ElevatorSensitivitySummary,
         evaluate_balancer_step,
         extract_miner_stability_metrics,
         build_balancer_table_text,
         build_miner_balancer_detail_text,
+        analyze_elevator_sensitivity,
+        build_elevator_sensitivity_text,
+        record_elevator_restart_circumstance,
     )
-    from vnish_client import safe_set_fan_duty, safe_set_miner_preset, mask_secret
+    from vnish_client import (
+        safe_set_fan_duty,
+        safe_set_miner_preset,
+        safe_get_overclock_settings,
+        get_overclock_settings,
+        mask_secret,
+    )
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -276,6 +296,10 @@ CMD_WHITELIST = {
     "balancer",
     "bal",
     "power",
+    "elevadores",
+    "elevators",
+    "sensibilidad",
+    "elev",
 }
 
 
@@ -597,6 +621,18 @@ _COMMANDS = [
         "aliases": ["bal", "power"],
     },
     {
+        "name": "elevadores",
+        "summary": "Diagnóstico de carga eléctrica y sensibilidad de elevadores de tensión.",
+        "usage": "/elevadores",
+        "detail": [
+            "Detalle: correlaciona carga combinada (Watts), reinicios y caídas en cascada por elevador para encontrar la configuración óptima.",
+        ],
+        "examples": ["/elevadores", "/sensibilidad"],
+        "notes": ["Es analítico y de solo lectura."],
+        "danger_level": "safe",
+        "aliases": ["elevators", "sensibilidad", "elev"],
+    },
+    {
         "name": "snooze",
         "summary": "Silencia alertas y autorreinicios por mantenimiento.",
         "usage": "/snooze <miner|all> [minutos]",
@@ -729,6 +765,7 @@ def render_help_index() -> str:
         "presets",
         "governor",
         "balancer",
+        "elevadores",
         "snooze",
         "unsnooze",
         "snoozed",
@@ -751,6 +788,7 @@ def render_help_index() -> str:
         "presets": "/presets [miner|all]",
         "governor": "/gov [on|off|set]",
         "balancer": "/balancer [on|off|miner]",
+        "elevadores": "/elevadores",
         "snooze": "/snooze <miner|all> [min]",
         "unsnooze": "/unsnooze <miner|all>",
         "snoozed": "/snoozed",
@@ -988,6 +1026,12 @@ class MinerState:
     balancer_last_change_ts: float = 0.0          # Timestamp of last preset adjustment
     balancer_last_action: str = ""                # Last decision action string
     balancer_last_reason: str = ""                # Last decision reason
+    # Dynamic Vnish Overclock & Autoswitch State Discovery
+    vnish_discovered_target_power_w: Optional[float] = None
+    vnish_discovered_preset: Optional[str] = None
+    vnish_discovered_top_preset: Optional[str] = None
+    vnish_discovered_switcher_enabled: Optional[bool] = None
+    vnish_discovered_ts: float = 0.0
 
 
 def load_config() -> Dict[str, Any]:
@@ -2330,6 +2374,28 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                 balancer_last_change_ts=float(data.get("balancer_last_change_ts", 0.0)),
                 balancer_last_action=str(data.get("balancer_last_action", "")),
                 balancer_last_reason=str(data.get("balancer_last_reason", "")),
+                # Dynamic Vnish Overclock & Autoswitch State Discovery
+                vnish_discovered_target_power_w=(
+                    float(data.get("vnish_discovered_target_power_w"))
+                    if data.get("vnish_discovered_target_power_w") is not None
+                    else None
+                ),
+                vnish_discovered_preset=(
+                    str(data.get("vnish_discovered_preset"))
+                    if data.get("vnish_discovered_preset") is not None
+                    else None
+                ),
+                vnish_discovered_top_preset=(
+                    str(data.get("vnish_discovered_top_preset"))
+                    if data.get("vnish_discovered_top_preset") is not None
+                    else None
+                ),
+                vnish_discovered_switcher_enabled=(
+                    bool(data.get("vnish_discovered_switcher_enabled"))
+                    if data.get("vnish_discovered_switcher_enabled") is not None
+                    else None
+                ),
+                vnish_discovered_ts=float(data.get("vnish_discovered_ts", 0.0)),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2393,6 +2459,12 @@ def save_state(
             "balancer_last_change_ts": getattr(state, "balancer_last_change_ts", 0.0),
             "balancer_last_action": getattr(state, "balancer_last_action", ""),
             "balancer_last_reason": getattr(state, "balancer_last_reason", ""),
+            # Dynamic Vnish Overclock & Autoswitch State Discovery
+            "vnish_discovered_target_power_w": getattr(state, "vnish_discovered_target_power_w", None),
+            "vnish_discovered_preset": getattr(state, "vnish_discovered_preset", None),
+            "vnish_discovered_top_preset": getattr(state, "vnish_discovered_top_preset", None),
+            "vnish_discovered_switcher_enabled": getattr(state, "vnish_discovered_switcher_enabled", None),
+            "vnish_discovered_ts": getattr(state, "vnish_discovered_ts", 0.0),
         }
     tmp_path = state_path.with_suffix(".tmp")
     try:
@@ -2475,7 +2547,9 @@ def execute_governor_cycle(
             seconds_since = now_ts - (state.governor_last_change_ts or 0.0)
 
             # Determine target_power_w for autoswitch recovery cooling
-            target_pwr = miner.get("target_power_w")
+            target_pwr = getattr(state, "vnish_discovered_target_power_w", None)
+            if target_pwr is None:
+                target_pwr = miner.get("target_power_w")
             if target_pwr is None:
                 max_pre = str(miner.get("max_preset", "")).upper().rstrip("W").strip()
                 try:
@@ -2623,6 +2697,84 @@ def execute_governor_cycle(
 
 
 # ---------------------------------------------------------------------------
+# Dynamic Vnish Overclock & Autoswitch State Discovery
+# ---------------------------------------------------------------------------
+_LAST_VNISH_SYNC_TS: float = 0.0
+
+
+def refresh_vnish_overclock_settings(
+    miners: list,
+    states: Dict[str, "MinerState"],
+    state_lock: threading.Lock,
+    vnish_pw: str,
+    timeout: float = 2.5,
+    force: bool = False,
+    now_ts: Optional[float] = None,
+) -> Dict[str, dict]:
+    """
+    Query Vnish REST API for all miners in parallel to discover active overclock
+    preset and preset_switcher configuration (top_preset).
+    Updates state.vnish_discovered_* fields dynamically.
+    Guarantees non-blocking execution with fleet timeout.
+    """
+    global _LAST_VNISH_SYNC_TS
+    current_ts = now_ts or time.time()
+    if not force and (current_ts - _LAST_VNISH_SYNC_TS) < 300.0:
+        return {}
+    _LAST_VNISH_SYNC_TS = current_ts
+
+    import concurrent.futures
+
+    active_miners = [m for m in miners if m.get("host")]
+    if not active_miners:
+        return {}
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(active_miners))) as pool:
+        futures = {
+            pool.submit(safe_get_overclock_settings, m.get("host", ""), vnish_pw, timeout=timeout): m
+            for m in active_miners
+        }
+        try:
+            for future in concurrent.futures.as_completed(futures, timeout=timeout * 2):
+                m = futures[future]
+                m_name = m.get("name") or str(m.get("host"))
+                m_host = m.get("host", "")
+                m_port = m.get("port", 4028)
+                sk = f"{m_name}|{m_host}:{m_port}"
+                try:
+                    ok, data, err = future.result()
+                    if ok and data:
+                        results[sk] = data
+                        with state_lock:
+                            st = states.get(sk)
+                            if st is not None:
+                                old_tgt = st.vnish_discovered_target_power_w
+                                st.vnish_discovered_target_power_w = data.get("target_power_w")
+                                st.vnish_discovered_preset = data.get("preset")
+                                st.vnish_discovered_top_preset = data.get("top_preset")
+                                st.vnish_discovered_switcher_enabled = data.get("switcher_enabled")
+                                st.vnish_discovered_ts = current_ts
+                                if old_tgt != st.vnish_discovered_target_power_w and old_tgt is not None:
+                                    log(
+                                        f"[VNISH_SYNC] miner={m_name} target_power_w adaptado dinamicamente: "
+                                        f"{old_tgt}W -> {st.vnish_discovered_target_power_w}W "
+                                        f"(top_preset={st.vnish_discovered_top_preset}, switcher={st.vnish_discovered_switcher_enabled})"
+                                    )
+                                elif old_tgt is None and st.vnish_discovered_target_power_w is not None:
+                                    log(
+                                        f"[VNISH_SYNC] miner={m_name} overclock descubierto: "
+                                        f"preset={st.vnish_discovered_preset} top_preset={st.vnish_discovered_top_preset} "
+                                        f"target_pwr={st.vnish_discovered_target_power_w}W switcher={st.vnish_discovered_switcher_enabled}"
+                                    )
+                except Exception as exc:
+                    log(f"[WARN] Error procesando overclock de {m_name}: {exc}")
+        except concurrent.futures.TimeoutError:
+            pass
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Spec 040: Dynamic Power & Preset Balancer (Elevator Voltage Sensitivity)
 # ---------------------------------------------------------------------------
 _BALANCER_RUNTIME_ENABLED: Optional[bool] = None
@@ -2677,6 +2829,15 @@ def execute_balancer_cycle(
     )
 
     vnish_pw = str(config.get("vnish_api_password", "admin"))
+    refresh_vnish_overclock_settings(
+        miners=miners,
+        states=states,
+        state_lock=state_lock,
+        vnish_pw=vnish_pw,
+        timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+        force=force,
+        now_ts=now_ts,
+    )
 
     with state_lock:
         metrics_list = extract_miner_stability_metrics(
@@ -4178,6 +4339,18 @@ def telegram_polling_worker(
                             )
                             log(f"[BALANCER] Techo max de {matched_miner.get('name')} fijado a {target_preset_arg}")
 
+                    elif sub in ("elevadores", "elevators", "sensibilidad", "elev"):
+                        with state_lock:
+                            metrics_list = extract_miner_stability_metrics(
+                                db_path=db_p,
+                                miners=miners,
+                                states=states,
+                                config=config,
+                                now_ts=time.time(),
+                            )
+                        summaries = analyze_elevator_sensitivity(metrics_list, db_path=db_p)
+                        bal_msg = build_elevator_sensitivity_text(summaries)
+
                     elif sub and sub not in ("status", "table", "help"):
                         with state_lock:
                             metrics_list = extract_miner_stability_metrics(
@@ -4251,6 +4424,29 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="balancer",
+                    )
+                elif cmd_name in ("elevadores", "elevators", "sensibilidad", "elev"):
+                    handled = True
+                    db_p = str(config.get("event_store_path", "data/miner_alerts.db"))
+                    with state_lock:
+                        metrics_list = extract_miner_stability_metrics(
+                            db_path=db_p,
+                            miners=miners,
+                            states=states,
+                            config=config,
+                            now_ts=time.time(),
+                        )
+                    summaries = analyze_elevator_sensitivity(metrics_list, db_path=db_p)
+                    elev_msg = build_elevator_sensitivity_text(summaries)
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        elev_msg,
+                        "BALANCER",
+                        "cmd_elevadores",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="elevadores",
                     )
                 elif cmd_name == "firmware":
                     handled = True
@@ -6037,6 +6233,26 @@ def main() -> None:
                         attribution_window_seconds=restart_attribution_window_seconds,
                     )
                     incident_id = None
+                    m_group = miner.get("electrical_group", "default")
+                    elev_circumstance = record_elevator_restart_circumstance(
+                        miner_name=name_display,
+                        electrical_group=m_group,
+                        miners=miners,
+                        states=states,
+                        now_ts=now_ts,
+                        cascade_window_s=float(config.get("preset_balancer_group_cascade_window_s", 1800.0)),
+                    )
+                    restart_details = {
+                        "reason": reboot_reason,
+                        "first_tick": first_tick,
+                        "electrical_group": m_group,
+                        "group_total_power_w": elev_circumstance.get("group_total_power_w", 0.0),
+                        "pre_restart_power_w": state.governor_last_power_w,
+                        "pre_restart_temp_c": state.governor_last_temp_c,
+                        "is_elevator_cascade": elev_circumstance.get("is_elevator_cascade", False),
+                        "cascade_peer": elev_circumstance.get("cascade_peer"),
+                        "cascade_delta_s": elev_circumstance.get("cascade_delta_s"),
+                    }
                     if event_store is not None and event_store.available:
                         incident_id = event_store.record_event(
                             occurred_ts=now_ts,
@@ -6057,15 +6273,29 @@ def main() -> None:
                             summary=(
                                 f"Uptime reiniciado: {previous_elapsed}s -> {elapsed}s"
                             ),
-                            details={
-                                "reason": reboot_reason,
-                                "first_tick": first_tick,
-                            },
+                            details=restart_details,
                         )
+                        if elev_circumstance.get("is_elevator_cascade"):
+                            event_store.record_event(
+                                occurred_ts=now_ts,
+                                miner_key=state_key,
+                                miner_name=name_display,
+                                host=host,
+                                event_type="elevator_cascade_restart",
+                                severity="warning",
+                                summary=(
+                                    f"Alerta Elevador [{m_group.upper()}]: Caída correlacionada. "
+                                    f"{name_display} reinició {elev_circumstance['cascade_delta_s']:.0f}s tras {elev_circumstance['cascade_peer']}. "
+                                    f"Carga grupo: {elev_circumstance['group_total_power_w']:.0f}W"
+                                ),
+                                details=restart_details,
+                            )
                     log(
-                        f"[INCIDENT] type=restart_detected miner={name_display} "
+                        f"[INCIDENT] type=restart_detected miner={name_display} group={m_group} "
                         f"classification={restart_classification.classification} "
-                        f"elapsed={previous_elapsed}->{elapsed} event_id={incident_id}"
+                        f"elapsed={previous_elapsed}->{elapsed} event_id={incident_id} "
+                        f"cascade={elev_circumstance.get('is_elevator_cascade')} "
+                        f"group_load={elev_circumstance.get('group_total_power_w', 0.0):.0f}W"
                     )
                     should_notify_restart = (
                         restart_classification.classification == "unexpected"
@@ -6672,6 +6902,19 @@ def main() -> None:
 
             with last_update_lock:
                 current_last_update_id = last_update_id_ref["value"]
+
+            # Dynamic Vnish overclock & autoswitch settings sync (every 300s)
+            try:
+                refresh_vnish_overclock_settings(
+                    miners=valid_miners,
+                    states=states,
+                    state_lock=state_lock,
+                    vnish_pw=str(config.get("vnish_api_password", "admin")),
+                    timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+                    now_ts=now_ts,
+                )
+            except Exception as _sync_exc:
+                log(f"[VNISH_SYNC_ERR] Vnish sync failed: {type(_sync_exc).__name__}: {_sync_exc}")
 
             # Spec 039: Fan Governor cycle — runs after all per-miner telemetry is processed
             try:

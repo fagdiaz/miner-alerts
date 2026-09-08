@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import sqlite3
 import time
@@ -49,6 +50,8 @@ class StabilityMetrics:
     downtime_minutes_24h: float        # Total downtime minutes in 24h
     thermal_headroom_c: float          # Distance to 85.0°C thermal limit
     last_restart_epoch_s: float = 0.0  # Timestamp of most recent restart
+    current_power_w: float = 0.0       # Current observed chain power in Watts
+    current_temp_c: float = 0.0        # Current observed temperature in °C
 
 
 @dataclass(frozen=True)
@@ -96,9 +99,10 @@ def compute_effective_hashrate(
 def find_preset_index(preset_name: str, ladder: Optional[List[PresetTier]] = None) -> int:
     """Find index in ladder by name. Returns -1 if not found."""
     tiers = ladder or list(DEFAULT_PRESET_LADDER)
-    clean = str(preset_name).strip().upper()
+    clean = str(preset_name).strip().upper().rstrip("W").strip()
     for idx, tier in enumerate(tiers):
-        if tier.name.upper() == clean or tier.name.upper() in clean:
+        t_clean = tier.name.upper().rstrip("W").strip()
+        if t_clean == clean or clean in t_clean or t_clean in clean:
             return idx
     return -1
 
@@ -411,10 +415,14 @@ def extract_miner_stability_metrics(
         if not preset_candidate and states:
             for sk, st in states.items():
                 if m_name in sk or (m_host and m_host in sk):
-                    preset_candidate = getattr(st, "balancer_preset", None)
+                    preset_candidate = getattr(st, "vnish_discovered_preset", None) or getattr(st, "balancer_preset", None)
                     break
         if not preset_candidate:
             preset_candidate = infer_preset_name_from_power(power)
+        if preset_candidate:
+            c_idx = find_preset_index(preset_candidate)
+            if c_idx >= 0:
+                preset_candidate = DEFAULT_PRESET_LADDER[c_idx].name
 
         metrics_list.append(
             StabilityMetrics(
@@ -428,6 +436,8 @@ def extract_miner_stability_metrics(
                 downtime_minutes_24h=r_info["24h"] * 10.0,
                 thermal_headroom_c=round(headroom, 1),
                 last_restart_epoch_s=r_info["latest_ts"],
+                current_power_w=float(power or 0.0),
+                current_temp_c=float(max_temp or 0.0),
             )
         )
 
@@ -455,7 +465,11 @@ def build_balancer_table_text(
         groups.setdefault(m.electrical_group, []).append((m, d))
 
     for grp_name, items in groups.items():
-        grp_title = f"🔌 Elevador / Grupo: {grp_name.upper()}"
+        grp_load = sum(m.current_power_w for m, _ in items)
+        grp_restarts = sum(m.restarts_24h for m, _ in items)
+        load_tag = f" | Carga: {grp_load:,.0f}W" if grp_load > 0 else ""
+        restarts_tag = f" | R(24h): {grp_restarts}"
+        grp_title = f"🔌 Elevador / Grupo: {grp_name.upper()}{load_tag}{restarts_tag}"
         lines.append(grp_title)
         for m, d in items:
             action_icon = "🟢" if d.action == ACTION_HOLD_STABLE else ("⬆️" if d.action == ACTION_STEP_UP_OPTIMIZE else "⚠️")
@@ -486,4 +500,205 @@ def build_miner_balancer_detail_text(metrics: StabilityMetrics, decision: Balanc
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
         f"💡 Diagnóstico: {decision.reason}",
     ])
+
+
+@dataclass(frozen=True)
+class ElevatorSensitivitySummary:
+    group_name: str
+    miners: List[str]
+    total_load_w: float
+    total_capacity_w: float
+    restarts_24h: int
+    restarts_72h: int
+    cascade_incidents_7d: int
+    sensitivity_level: str  # "ESTABLE", "SENSIBILIDAD_MODERADA", "ALTA_SENSIBILIDAD"
+    diagnostics: str
+    recommendation: str
+    max_observed_load_w: float = 0.0
+
+
+def record_elevator_restart_circumstance(
+    miner_name: str,
+    electrical_group: str,
+    miners: list,
+    states: Optional[dict] = None,
+    now_ts: Optional[float] = None,
+    cascade_window_s: float = 1800.0,
+) -> Dict[str, Any]:
+    """
+    Evaluate environmental & electrical conditions at the moment a miner restarts.
+    Determines group total load, peer states, and whether a cascade restart occurred.
+    """
+    now = now_ts or time.time()
+    group_miners = [m for m in miners if (m.get("electrical_group") or "default") == electrical_group]
+
+    total_power = 0.0
+    peers_snapshot: List[Dict[str, Any]] = []
+    is_cascade = False
+    cascade_peer: Optional[str] = None
+    cascade_delta_s: Optional[float] = None
+
+    if states:
+        for m in group_miners:
+            m_n = m.get("name") or str(m.get("host"))
+            m_h = m.get("host", "")
+            m_p = m.get("port", 4028)
+            st = states.get(f"{m_n}|{m_h}:{m_p}") or states.get(m_n) or states.get(m_h)
+            if st:
+                pwr = getattr(st, "governor_last_power_w", None) or 0.0
+                tmp = getattr(st, "governor_last_temp_c", None) or 0.0
+                total_power += pwr
+                if m_n != miner_name:
+                    last_reb = getattr(st, "last_reboot_ts", 0.0) or 0.0
+                    if last_reb > 0 and (now - last_reb) <= cascade_window_s:
+                        is_cascade = True
+                        if cascade_peer is None:
+                            cascade_peer = m_n
+                            cascade_delta_s = round(now - last_reb, 1)
+                    peers_snapshot.append({
+                        "name": m_n,
+                        "power_w": pwr,
+                        "temp_c": tmp,
+                        "state": getattr(st, "state", "UNKNOWN"),
+                        "last_reboot_ts": last_reb,
+                    })
+
+    return {
+        "electrical_group": electrical_group,
+        "group_total_power_w": round(total_power, 1),
+        "peer_miners": peers_snapshot,
+        "is_elevator_cascade": is_cascade,
+        "cascade_peer": cascade_peer,
+        "cascade_delta_s": cascade_delta_s,
+    }
+
+
+def analyze_elevator_sensitivity(
+    metrics_list: List[StabilityMetrics],
+    db_path: Path | str = "data/miner_alerts.db",
+    now_ts: Optional[float] = None,
+) -> Dict[str, ElevatorSensitivitySummary]:
+    """
+    Analyzes electrical group (elevator) sensitivity under power load and environmental conditions.
+    Correlates restarts, cascades, and loads to determine stability rating and recommended settings.
+    """
+    now = now_ts or time.time()
+    groups: Dict[str, List[StabilityMetrics]] = {}
+    for m in metrics_list:
+        groups.setdefault(m.electrical_group, []).append(m)
+
+    cascade_counts_by_group: Dict[str, int] = {grp: 0 for grp in groups}
+    db_file = Path(db_path)
+    if not db_file.exists():
+        candidate = Path(__file__).resolve().parent.parent / db_path
+        if candidate.exists():
+            db_file = candidate
+
+    if db_file.exists():
+        uri = f"file:{db_file.resolve().as_posix()}?mode=ro"
+        conn = None
+        try:
+            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            seven_days_ago = now - 604800.0
+            cursor.execute(
+                """
+                SELECT summary, details_json
+                FROM operational_events
+                WHERE event_type IN ('elevator_cascade_restart', 'elevator_cascade_detected')
+                  AND occurred_ts >= ?
+                """,
+                (seven_days_ago,),
+            )
+            for row in cursor.fetchall():
+                det_raw = row["details_json"]
+                grp = None
+                if det_raw:
+                    try:
+                        det = json.loads(det_raw)
+                        grp = det.get("electrical_group")
+                    except Exception:
+                        pass
+                if not grp and row["summary"]:
+                    for candidate_grp in groups:
+                        if candidate_grp.lower() in row["summary"].lower():
+                            grp = candidate_grp
+                            break
+                if grp and grp in cascade_counts_by_group:
+                    cascade_counts_by_group[grp] += 1
+        except Exception:
+            pass
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    summaries: Dict[str, ElevatorSensitivitySummary] = {}
+    for grp_name, group_miners in groups.items():
+        miner_names = [m.miner_name for m in group_miners]
+        total_load = sum(m.current_power_w for m in group_miners)
+        total_capacity = len(group_miners) * 2700.0
+        restarts_24h = sum(m.restarts_24h for m in group_miners)
+        restarts_72h = sum(m.restarts_72h for m in group_miners)
+        cascades_7d = cascade_counts_by_group.get(grp_name, 0)
+
+        if restarts_24h >= 2 or cascades_7d >= 1:
+            level = "ALTA_SENSIBILIDAD"
+            diag = (
+                f"{restarts_24h} reinicios en 24h con {cascades_7d} caídas correlacionadas. "
+                f"El elevador muestra inestabilidad ante carga combinada ({total_load:,.0f}W)."
+            )
+            rec = "Escalar un minero a 2500W para reducir la carga combinada del elevador por debajo de 5200W."
+        elif restarts_24h == 1 or restarts_72h >= 2:
+            level = "SENSIBILIDAD_MODERADA"
+            diag = f"{restarts_24h} reinicio en 24h ({restarts_72h} en 72h). Carga actual: {total_load:,.0f}W."
+            rec = "Monitorear bajo picos de calor o bajadas de tensión en línea. Mantener fans en control estricto."
+        else:
+            level = "ESTABLE"
+            diag = f"0 reinicios en 24h/72h a carga de {total_load:,.0f}W. Tensión y balance estables."
+            rec = f"Apto para operación a potencia máxima ({total_capacity:,.0f}W máx teórico)."
+
+        summaries[grp_name] = ElevatorSensitivitySummary(
+            group_name=grp_name,
+            miners=miner_names,
+            total_load_w=round(total_load, 1),
+            total_capacity_w=total_capacity,
+            restarts_24h=restarts_24h,
+            restarts_72h=restarts_72h,
+            cascade_incidents_7d=cascades_7d,
+            sensitivity_level=level,
+            diagnostics=diag,
+            recommendation=rec,
+        )
+
+    return summaries
+
+
+def build_elevator_sensitivity_text(summaries: Dict[str, ElevatorSensitivitySummary]) -> str:
+    """Format dedicated diagnostic card for elevator voltage sensitivity."""
+    lines = [
+        "⚡ Diagnóstico de Sensibilidad de Elevadores",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+    if not summaries:
+        lines.append("No hay datos de elevadores disponibles.")
+        return "\n".join(lines)
+
+    for grp_name, s in summaries.items():
+        icon = "🟢" if s.sensitivity_level == "ESTABLE" else ("🟡" if s.sensitivity_level == "SENSIBILIDAD_MODERADA" else "🔴")
+        load_pct = (s.total_load_w / s.total_capacity_w * 100.0) if s.total_capacity_w > 0 else 0.0
+        miners_str = ", ".join(s.miners)
+        lines.append(f"🔌 Elevador: {grp_name.upper()} ({miners_str})")
+        lines.append(f"• Carga actual: {s.total_load_w:,.0f}W / {s.total_capacity_w:,.0f}W ({load_pct:.1f}%)")
+        lines.append(f"• Reinicios: {s.restarts_24h} (24h) | {s.restarts_72h} (72h) | Caídas en cascada: {s.cascade_incidents_7d}")
+        lines.append(f"• Diagnóstico {icon}: [{s.sensitivity_level}] {s.diagnostics}")
+        lines.append(f"💡 Recomendación: {s.recommendation}")
+        lines.append("────────────────────────────")
+
+    lines.append("🔍 Los eventos y circunstancias se correlacionan ante caídas de tensión para fijar el límite óptimo.")
+    return "\n".join(lines)
+
 

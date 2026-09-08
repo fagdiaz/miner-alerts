@@ -7,9 +7,11 @@ from app.vnish_client import (
     DEFAULT_HTTP_TIMEOUT,
     get_available_presets,
     get_cooling_settings,
+    get_overclock_settings,
     get_summary_cooling,
     lock_miner,
     mask_secret,
+    safe_get_overclock_settings,
     safe_set_fan_duty,
     safe_set_miner_preset,
     set_manual_fan_duty,
@@ -242,6 +244,77 @@ class TestVnishClient(unittest.TestCase):
         mock_unlock.assert_called_once_with("192.168.100.23", "admin", timeout=DEFAULT_HTTP_TIMEOUT)
         mock_set.assert_called_once_with("192.168.100.23", "token_abc", "2500W", timeout=DEFAULT_HTTP_TIMEOUT)
         mock_lock.assert_called_once_with("192.168.100.23", "token_abc", timeout=DEFAULT_HTTP_TIMEOUT)
+
+    @patch("requests.get")
+    def test_get_overclock_settings_switcher_enabled(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "miner": {
+                "overclock": {
+                    "preset": "2300",
+                    "preset_switcher": {
+                        "enabled": True,
+                        "top_preset": "2700",
+                        "min_preset": "1740",
+                        "rise_temp": 79,
+                        "decrease_temp": 84,
+                        "check_time": 300,
+                    },
+                }
+            }
+        }
+        mock_get.return_value = mock_resp
+
+        ok, data, err = get_overclock_settings("192.168.100.25", "token_123")
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        self.assertEqual(data["preset"], "2300")
+        self.assertTrue(data["switcher_enabled"])
+        self.assertEqual(data["top_preset"], "2700")
+        self.assertEqual(data["target_power_w"], 2700.0)
+        self.assertEqual(data["rise_temp"], 79)
+        self.assertEqual(data["decrease_temp"], 84)
+
+    @patch("requests.get")
+    def test_get_overclock_settings_switcher_disabled(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "miner": {
+                "overclock": {
+                    "preset": "2500",
+                    "preset_switcher": {
+                        "enabled": False,
+                        "top_preset": "2700",
+                    },
+                }
+            }
+        }
+        mock_get.return_value = mock_resp
+
+        ok, data, err = get_overclock_settings("192.168.100.25", "token_123")
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        self.assertEqual(data["preset"], "2500")
+        self.assertFalse(data["switcher_enabled"])
+        self.assertEqual(data["target_power_w"], 2500.0)
+
+    @patch("app.vnish_client.lock_miner")
+    @patch("app.vnish_client.get_overclock_settings")
+    @patch("app.vnish_client.unlock_miner")
+    def test_safe_get_overclock_settings_always_locks(self, mock_unlock, mock_get_oc, mock_lock):
+        mock_unlock.return_value = (True, "tok_xyz", None)
+        mock_get_oc.return_value = (True, {"target_power_w": 2700.0}, None)
+        mock_lock.return_value = True
+
+        ok, data, err = safe_get_overclock_settings("192.168.100.25", "admin")
+        self.assertTrue(ok)
+        self.assertEqual(data["target_power_w"], 2700.0)
+        mock_unlock.assert_called_once_with("192.168.100.25", "admin", timeout=DEFAULT_HTTP_TIMEOUT)
+        mock_get_oc.assert_called_once_with("192.168.100.25", "tok_xyz", timeout=DEFAULT_HTTP_TIMEOUT)
+        mock_lock.assert_called_once_with("192.168.100.25", "tok_xyz", timeout=DEFAULT_HTTP_TIMEOUT)
+
 
 
 if __name__ == "__main__":

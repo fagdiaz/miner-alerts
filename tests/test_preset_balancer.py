@@ -13,15 +13,19 @@ from app.preset_balancer import (
     ACTION_UNKNOWN,
     BalancerConfig,
     DEFAULT_PRESET_LADDER,
+    ElevatorSensitivitySummary,
     PresetTier,
     StabilityMetrics,
+    analyze_elevator_sensitivity,
     build_balancer_table_text,
+    build_elevator_sensitivity_text,
     build_miner_balancer_detail_text,
     compute_effective_hashrate,
     evaluate_balancer_step,
     extract_miner_stability_metrics,
     find_preset_index,
     infer_preset_name_from_power,
+    record_elevator_restart_circumstance,
 )
 
 
@@ -294,7 +298,129 @@ class TestPresetBalancer(unittest.TestCase):
             self.assertIn(m.electrical_group, ("elevator_sensible", "elevator_estable"))
             self.assertGreaterEqual(m.thermal_headroom_c, 0.0)
 
+    def test_record_elevator_restart_circumstance_single(self):
+        class DummyState:
+            governor_last_power_w = 2690.0
+            governor_last_temp_c = 81.5
+            last_reboot_ts = 0.0
+            last_elapsed = 40000
+            state = "OK"
+
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028, "electrical_group": "elevator_1"},
+            {"name": "S19JPRO-24", "host": "192.168.100.24", "port": 4028, "electrical_group": "elevator_1"},
+        ]
+        states = {
+            "S19JPRO-23|192.168.100.23:4028": DummyState(),
+            "S19JPRO-24|192.168.100.24:4028": DummyState(),
+        }
+
+        res = record_elevator_restart_circumstance(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            miners=miners,
+            states=states,
+            now_ts=1700000000.0,
+        )
+        self.assertEqual(res["electrical_group"], "elevator_1")
+        self.assertAlmostEqual(res["group_total_power_w"], 5380.0, places=1)
+        self.assertFalse(res["is_elevator_cascade"])
+        self.assertIsNone(res["cascade_peer"])
+
+    def test_record_elevator_restart_circumstance_cascade(self):
+        class DummyStatePeer:
+            governor_last_power_w = 2490.0
+            governor_last_temp_c = 82.0
+            last_reboot_ts = 1700000000.0 - 120.0  # restarted 2 minutes ago
+            last_elapsed = 120
+            state = "OK"
+
+        class DummyStateSelf:
+            governor_last_power_w = 2690.0
+            governor_last_temp_c = 83.0
+            last_reboot_ts = 0.0
+            last_elapsed = 0
+            state = "LOW"
+
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028, "electrical_group": "elevator_1"},
+            {"name": "S19JPRO-24", "host": "192.168.100.24", "port": 4028, "electrical_group": "elevator_1"},
+        ]
+        states = {
+            "S19JPRO-23|192.168.100.23:4028": DummyStateSelf(),
+            "S19JPRO-24|192.168.100.24:4028": DummyStatePeer(),
+        }
+
+        res = record_elevator_restart_circumstance(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            miners=miners,
+            states=states,
+            now_ts=1700000000.0,
+            cascade_window_s=1800.0,
+        )
+        self.assertTrue(res["is_elevator_cascade"])
+        self.assertEqual(res["cascade_peer"], "S19JPRO-24")
+        self.assertEqual(res["cascade_delta_s"], 120.0)
+
+    def test_analyze_elevator_sensitivity_and_card(self):
+        m1 = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2700W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=98.0,
+            downtime_minutes_24h=0.0,
+            thermal_headroom_c=6.0,
+            current_power_w=2695.0,
+        )
+        m2 = StabilityMetrics(
+            miner_name="S19JPRO-24",
+            electrical_group="elevator_1",
+            current_preset="2700W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=98.0,
+            downtime_minutes_24h=0.0,
+            thermal_headroom_c=5.5,
+            current_power_w=2698.0,
+        )
+        m3 = StabilityMetrics(
+            miner_name="S19JPRO-25",
+            electrical_group="elevator_2",
+            current_preset="2500W",
+            restarts_24h=3,
+            restarts_72h=4,
+            hours_since_last_restart=1.0,
+            avg_hashrate_24h_ths=90.0,
+            downtime_minutes_24h=30.0,
+            thermal_headroom_c=4.0,
+            current_power_w=2480.0,
+        )
+
+        summaries = analyze_elevator_sensitivity([m1, m2, m3], db_path="nonexistent.db")
+        self.assertIn("elevator_1", summaries)
+        self.assertIn("elevator_2", summaries)
+
+        s1 = summaries["elevator_1"]
+        self.assertEqual(s1.sensitivity_level, "ESTABLE")
+        self.assertAlmostEqual(s1.total_load_w, 5393.0, places=1)
+
+        s2 = summaries["elevator_2"]
+        self.assertEqual(s2.sensitivity_level, "ALTA_SENSIBILIDAD")
+        self.assertIn("Escalar un minero a 2500W", s2.recommendation)
+
+        card = build_elevator_sensitivity_text(summaries)
+        self.assertIn("Diagnóstico de Sensibilidad de Elevadores", card)
+        self.assertIn("ELEVATOR_1", card)
+        self.assertIn("ELEVATOR_2", card)
+        self.assertIn("ALTA_SENSIBILIDAD", card)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

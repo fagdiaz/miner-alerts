@@ -1,40 +1,44 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: GOBERNADOR CON RECUPERACIÓN DE AUTOSWITCH VNISH
+ESTADO DEL PROYECTO: AUTODESCUBRIMIENTO VNISH Y SENSIBILIDAD DE ELEVADORES
 =============================================================================
 1. PRODUCCIÓN ACTIVA:
-   - Servicio Windows `MinerAlerts` configurado y operando con control activo de hardware por defecto:
+   - Servicio Windows `MinerAlerts` operando en vivo (PID verificado, NSSM):
      * Spec 039 Fan Governor: `fan_governor_enabled: true`, `fan_governor_dry_run: false`.
-     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: true` (monitoreo y telemetría de elevadores sin interferir con el autoswitch nativo de Vnish).
-   - Control Manual Interactivo en Caliente (Telegram):
-     * Desactivación: `/gov off` (fallback automático a 100% PWM), `/balancer off`.
-     * Reactivación: `/gov on`, `/balancer on`.
-     * Ajustes: `/gov set <temp>` (target térmico), `/balancer setmax <miner> <preset>`.
-     * Consultas: `/gov`, `/balancer`, `/fans`, `/presets`, `/digest`.
+     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: true` (monitoreo y diagnóstico de elevadores sin interferir con autoswitch nativo de Vnish).
+   - Comandos Telegram Interactivos:
+     * Gobernador: `/gov`, `/gov on`, `/gov off`, `/gov set <temp>`.
+     * Balanceador: `/balancer`, `/balancer on`, `/balancer off`, `/balancer setmax <miner> <preset>`.
+     * Elevadores: `/elevadores` (alias `/elevators`, `/sensibilidad`, `/elev`). Diagnóstico de carga y sensibilidad de elevadores de tensión.
 
-2. ESTRATEGIA OPERATIVA INTEGRADA:
-   - Recuperación de Autoswitch Vnish (`ACTION_RECOVERY_MAX_COOLING`):
-     * Si la potencia del minero está por debajo del objetivo (`current_power_w < target_power_w - 120W`):
-       Los ventiladores se fuerzan al 100% de PWM de forma incondicional.
-     * Con 100% de PWM, la temperatura del chip desciende por debajo de `rise_temp` (79°C de Vnish), permitiendo que el autoswitch nativo de Vnish aumente el preset hacia el techo máximo configurado (2700W en 23/24, 2500W en 25/26).
-     * Solo cuando el equipo alcanza su potencia máxima objetivo y la temperatura es <= 81.0°C, el gobernador modula los ventiladores hacia abajo para estabilizar en 82.0°C sana (con margen seguro hacia los 84°C del autoswitch).
-   - Formato REST API Vnish:
-     * Nombres de preset limpios sin sufijo 'W' (ej: '2700', '2500') para evitar HTTP 400.
-   - Razonamiento Individual por Minero:
-     * Cada minero se evalúa con su propio `target_power_w` (2700W para 23/24, 2500W para 25/26), temperatura real y parámetros específicos (`valid_miners` preserva el dict completo).
-     * Si un minero requiere 100% PWM (ej: M24 en recuperación de potencia), los demás mineros en techo y temperatura sana (ej: M26 en 2500W a 76°C) modulan sus ventiladores hacia abajo (`STEP_DOWN`) de forma 100% independiente.
-   - Anti-Spam: Alertas de saturación ajustadas a 84.0°C / 98% PWM / cooldown 2h; notificaciones de autotune suprimidas.
+2. ADAPTACIÓN DINÁMICA A DECISIONES EN VNISH:
+   - Autodescubrimiento en Tiempo Real (`app/vnish_client.py:get_overclock_settings`, `miner_monitor.py:refresh_vnish_overclock_settings`):
+     * Sincroniza concurrentemente con `/api/v1/settings` de cada minero al inicio y cada 300 segundos.
+     * Descubre `top_preset`, `preset`, `rise_temp`, `decrease_temp` y `switcher_enabled`.
+     * Adapta automáticamente el `target_power_w` del Fan Governor a lo que el usuario decida en la web de Vnish (actualmente 2700W para toda la flota: 23, 24, 25 y 26).
+     * Si el usuario sube o baja el techo en Vnish, el gobernador se adapta solo sin necesidad de editar `config.json`.
+   - Recuperación de Autoswitch Individual:
+     * Si un minero está por debajo de su techo autodescubierto (`current_power_w < target_power_w - 120W`), fuerza 100% de coolers (`RECOVERY_MAX_COOLING`) para que los chips bajen a <= 79°C y Vnish aumente el preset.
+     * Al alcanzar el techo de 2700W y temperatura <= 81.0°C, modula hacia abajo para estabilizar a 82.0°C sano.
 
-3. CERTIFICACIÓN GLOBAL DE PRUEBAS:
-   - 581/581 tests PASS en 9.04s (0 fallos, 0 errores, 0 regresiones).
-   - Documentación 100% normalizada (`ROADMAP.md`, `DELIVERY_PLAN.md`, `SPEC_PROGRAM.md`, `DEVELOPMENT_LOG.md`, evidence records).
-   - Commits feature-scoped sincronizados con `origin/codex/022-adaptive-acquisition`.
+3. REGISTRO Y SEGUIMIENTO DE SENSIBILIDAD DE ELEVADORES:
+   - Captura de Circunstancias ante Reinicio (`record_elevator_restart_circumstance`):
+     * Ante cada `restart_detected`, registra: grupo eléctrico (`elevator_1`, `elevator_2`), carga total combinada (Watts) del elevador, potencia y temperatura pre-reinicio del equipo, y estado de los pares.
+     * Detección de caídas en cascada (`is_elevator_cascade`): si otro minero del mismo elevador reinició dentro de los 30 minutos previos (`group_cascade_window_s`), se clasifica como evento de inestabilidad eléctrica y se registra en `operational_events` (`elevator_cascade_restart`).
+   - Diagnóstico y Recomendación de Carga Óptima (`analyze_elevator_sensitivity`):
+     * Clasifica cada elevador en `ESTABLE`, `SENSIBILIDAD_MODERADA` o `ALTA_SENSIBILIDAD` según reinicios en 24h/72h y eventos en cascada.
+     * Provee recomendaciones operativas (e.g. reducir a 2500W un minero si la carga combinada supera la capacidad estable del elevador).
+     * Consulta visual instantánea vía `/elevadores` y en la cabecera de grupo de `/balancer`.
+
+4. CERTIFICACIÓN GLOBAL DE PRUEBAS:
+   - 587/587 tests PASS en 10.93s (0 fallos, 0 errores, 0 regresiones).
+   - Verificado arranque y sincronización en caliente en `logs/out.log`.
 
 =============================================================================
 SIGUIENTES PASOS:
-- Operación autónoma en producción continua.
-- Supervisión pasiva periódica vía Telegram (`/status`, `/gov`, `/balancer`).
+- Operación continua observando la respuesta térmica y eléctrica de los mineros 25 y 26 al escalar hacia los 2700W en el Elevador 2.
+- Monitoreo de sensibilidad del Elevador 2 ante el aumento progresivo de carga (de ~4600W a 5400W).
 =============================================================================
 MODELO SUGERIDO: Gemini 3.8 Flash High (Capacidad óptima para análisis, métricas operativas y siguientes tareas del roadmap)
 =============================================================================

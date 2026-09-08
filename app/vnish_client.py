@@ -297,3 +297,100 @@ def safe_set_miner_preset(
             except Exception:
                 pass
 
+
+def get_overclock_settings(
+    host: str,
+    token: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Retrieve active overclock and preset switcher settings from /api/v1/settings.
+    
+    Returns: (success: bool, settings_dict: Optional[dict], error_message: Optional[str])
+    where settings_dict contains:
+      - 'preset': active preset (e.g. '2300')
+      - 'switcher_enabled': bool
+      - 'top_preset': top preset ceiling (e.g. '2700')
+      - 'min_preset': bottom preset floor (e.g. '1740')
+      - 'rise_temp': temperature threshold to step up
+      - 'decrease_temp': temperature threshold to step down
+      - 'check_time': evaluation interval seconds
+      - 'target_power_w': inferred target power in Watts (from top_preset if switcher enabled, else preset)
+      - 'raw': complete overclock sub-dict
+    """
+    url = f"http://{host}/api/v1/settings"
+    headers = {"Authorization": f"Bearer {token}"}
+    requester = session or requests
+    try:
+        resp = requester.get(url, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            data = resp.json()
+            overclock = data.get("miner", {}).get("overclock", {})
+            preset_switcher = overclock.get("preset_switcher", {})
+            active_preset = overclock.get("preset")
+            switcher_enabled = bool(preset_switcher.get("enabled", False))
+            top_preset = preset_switcher.get("top_preset")
+            min_preset = preset_switcher.get("min_preset")
+            rise_temp = preset_switcher.get("rise_temp")
+            decrease_temp = preset_switcher.get("decrease_temp")
+            check_time = preset_switcher.get("check_time")
+
+            target_power_w = None
+            if switcher_enabled and top_preset:
+                try:
+                    target_power_w = float(str(top_preset).upper().rstrip("W").strip())
+                except (ValueError, TypeError):
+                    pass
+            if target_power_w is None and active_preset:
+                try:
+                    target_power_w = float(str(active_preset).upper().rstrip("W").strip())
+                except (ValueError, TypeError):
+                    pass
+
+            result = {
+                "preset": str(active_preset) if active_preset is not None else None,
+                "switcher_enabled": switcher_enabled,
+                "top_preset": str(top_preset) if top_preset is not None else None,
+                "min_preset": str(min_preset) if min_preset is not None else None,
+                "rise_temp": rise_temp,
+                "decrease_temp": decrease_temp,
+                "check_time": check_time,
+                "target_power_w": target_power_w,
+                "raw": overclock,
+            }
+            return True, result, None
+        return False, None, f"http_status_{resp.status_code}"
+    except requests.exceptions.Timeout:
+        return False, None, "connection_timeout"
+    except Exception as exc:
+        return False, None, f"request_error: {type(exc).__name__}"
+
+
+def safe_get_overclock_settings(
+    host: str,
+    password: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Transactional wrapper for retrieving overclock settings:
+    1. Authenticate (unlock)
+    2. Read overclock settings
+    3. Ensure session is locked in finally block
+    
+    Returns: (success: bool, settings_dict: Optional[dict], error_message: Optional[str])
+    """
+    token = None
+    try:
+        ok, token, err = unlock_miner(host, password, timeout=timeout)
+        if not ok or not token:
+            return False, None, f"unlock_failed: {err}"
+        return get_overclock_settings(host, token, timeout=timeout)
+    finally:
+        if token:
+            try:
+                lock_miner(host, token, timeout=timeout)
+            except Exception:
+                pass
+
+

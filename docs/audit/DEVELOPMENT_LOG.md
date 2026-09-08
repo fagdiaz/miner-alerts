@@ -3,6 +3,30 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Autodescubrimiento Dinámico de Presets Vnish y Diagnóstico de Sensibilidad de Elevadores de Tensión
+
+* **Objetivo**: Implementar la adaptación dinámica automática del sistema ante decisiones del usuario en Vnish (e.g. cambios manuales en `top_preset` o autoswitch como el incremento de los mineros 25 y 26 a 2700W) sin requerir modificaciones estáticas manuales en `config.json`, e incorporar el registro, correlación y diagnóstico integral de la sensibilidad eléctrica de los elevadores de tensión ante reinicios y caídas de carga.
+* **Componentes Implementados**:
+  1. **Autodescubrimiento Dinámico de Presets Vnish (`app/vnish_client.py`, `app/miner_monitor.py`)**:
+     - Implementación de `get_overclock_settings` y `safe_get_overclock_settings` en `app/vnish_client.py`: consulta `/api/v1/settings` bajo sesión autenticada con token Bearer, extrayendo `preset`, `top_preset`, `rise_temp`, `decrease_temp` y `switcher_enabled`, e infiriendo el `target_power_w` objetivo directamente del techo activo fijado por el usuario.
+     - En `MinerState`: nuevos campos persistentes `vnish_discovered_target_power_w`, `vnish_discovered_preset`, `vnish_discovered_top_preset`, `vnish_discovered_switcher_enabled` y `vnish_discovered_ts`, con soporte en `load_state` y `save_state`.
+     - En `execute_governor_cycle()`: `target_power_w` prioriza el valor autodescubierto en vivo desde Vnish (`state.vnish_discovered_target_power_w`), adaptando inmediatamente las metas térmicas y de enfriamiento (`RECOVERY_MAX_COOLING`) en cuanto el usuario altera la configuración web de Vnish.
+     - Ciclo periódico de sincronización concurrente no bloqueante (`refresh_vnish_overclock_settings`) cada 300s y al arranque del servicio.
+     - Normalización de presets en escalera (`find_preset_index` stripping `'W'`) para compatibilidad bidireccional entre `"2700"` (Vnish REST) y `"2700W"` (ladder).
+  2. **Registro y Diagnóstico de Sensibilidad de Elevadores (`app/preset_balancer.py`, `app/miner_monitor.py`)**:
+     - Enriquecimiento de `StabilityMetrics` con `current_power_w` y `current_temp_c`.
+     - `record_elevator_restart_circumstance()`: Ante cada reinicio detectado (`restart_detected`), captura de forma determinista la circunstancia previa del elevador: carga total combinada (Watts), potencia y temperatura pre-reinicio del equipo, estado de los mineros pares del grupo, y detección de caídas en cascada (`is_elevator_cascade`) si otro minero del mismo elevador reinició dentro de la ventana de 30 minutos (`group_cascade_window_s`).
+     - Almacenamiento estructurado en `operational_events` (`details_json`) e inserción del evento especializado `elevator_cascade_restart` ante caídas correlacionadas.
+     - Motor de diagnóstico `analyze_elevator_sensitivity()` y generador de tarjeta de estado `build_elevator_sensitivity_text()`. Clasifica cada elevador en `ESTABLE`, `SENSIBILIDAD_MODERADA` o `ALTA_SENSIBILIDAD` con recomendaciones de carga máxima sugerida.
+     - Comandos de Telegram: soporte de `/elevadores` (alias `/elevators`, `/sensibilidad`, `/elev`) y visualización de carga por elevador en la cabecera de grupo en `/balancer`.
+  3. **Configuración de Producción**:
+     - `app/config.json`: S19JPRO-25 y S19JPRO-26 actualizados a `target_power_w: 2700.0`.
+* **Certificación**:
+  - 587/587 tests PASS en 10.93s.
+  - Servicio `MinerAlerts` reiniciado con éxito bajo PID 71304; logs verifican autodescubrimiento en vivo (`[VNISH_SYNC]`) y metas de 2700W para la flota completa.
+
+---
+
 ## [2026-09-08] - Desacople de Telemetría de Gobernador y Fallback en Memoria para Balanceador de Presets
 
 * **Objetivo**: Auditar y robustecer la resiliencia operativa: desacoplar la ingesta de telemetría del Fan Governor respecto de las alertas preventivas de cooling, evitar que mineros offline operen sobre telemetría fantasma, y agregar fallback de estado en memoria en el Balanceador de Presets para inferir potencias y márgenes térmicos reales aun cuando la base SQLite no haya grabado muestras recientes.

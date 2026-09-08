@@ -113,10 +113,10 @@
     "restart_args_template": ["restart", "{host}-{host}"]
   },
   "miners": [
-    { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028, "electrical_group": "elevator_1" },
-    { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028, "electrical_group": "elevator_1" },
-    { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028, "electrical_group": "elevator_2" },
-    { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028, "electrical_group": "elevator_2" }
+    { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028, "electrical_group": "elevator_1", "target_power_w": 2700 },
+    { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028, "electrical_group": "elevator_1", "target_power_w": 2700 },
+    { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028, "electrical_group": "elevator_2", "target_power_w": 2500 },
+    { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028, "electrical_group": "elevator_2", "target_power_w": 2500 }
   ],
   "metrics_snapshot_enabled": false,
   "metrics_snapshot_path": "diagnostics/metrics/current.json",
@@ -151,8 +151,9 @@
   "fan_governor_request_timeout": 2.5,
   "fan_governor_fleet_timeout": 5.0,
   "fan_governor_max_failures": 3,
+  "fan_governor_power_margin_w": 120.0,
   "preset_balancer_enabled": true,
-  "preset_balancer_dry_run": false,
+  "preset_balancer_dry_run": true,
   "_comment_preset_balancer": "Balanceador dinámico de presets Vnish y protección de elevadores sensibles (Spec 040). Activo por defecto con step-down por reinicios/temperatura. Desactivable con /balancer off.",
   "preset_balancer_interval_seconds": 1800,
   "preset_balancer_restarts_step_down": 2,

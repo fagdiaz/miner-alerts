@@ -8,6 +8,7 @@ ACTION_HOLD_DWELL = "HOLD_DWELL"
 ACTION_HOLD_TARGET = "HOLD_TARGET"
 ACTION_STEP_UP = "STEP_UP"
 ACTION_STEP_DOWN = "STEP_DOWN"
+ACTION_RECOVERY_MAX_COOLING = "RECOVERY_MAX_COOLING"
 ACTION_FAILSAFE_FAULT = "FAILSAFE_FAULT"
 ACTION_UNKNOWN = "UNKNOWN"
 
@@ -30,6 +31,7 @@ class GovernorConfig:
     request_timeout_seconds: float = 2.5     # R2: Timeout individual
     fleet_timeout_seconds: float = 5.0       # R2: Timeout global flota
     max_consecutive_failures: int = 3        # R3: Fallos antes de fallback a 100%
+    power_margin_w: float = 120.0            # Margen bajo target_power_w considerado 'en techo'
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,8 @@ def compute_governor_step(
     consecutive_holds: int = 0,
     consecutive_failures: int = 0,
     config: Optional[GovernorConfig] = None,
+    current_power_w: Optional[float] = None,
+    target_power_w: Optional[float] = None,
 ) -> GovernorDecision:
     """
     Pure mathematical decision engine for Vnish closed-loop fan modulation.
@@ -96,6 +100,26 @@ def compute_governor_step(
             is_emergency=True,
             requires_write=needs_write,
         )
+
+    # 4. Autoswitch Recovery / Power Deficit Protection:
+    # If miner is hashing below its established autoswitch ceiling (e.g. 2300W < 2500W or 2700W),
+    # fans MUST be at 100% to lower chip temp <= 79°C and allow Vnish autoswitch to step up.
+    # We NEVER modulate fans down when the miner is working under its power limit!
+    if target_power_w is not None and current_power_w is not None and target_power_w > 0:
+        if current_power_w < (target_power_w - cfg.power_margin_w):
+            needs_write = curr_duty < cfg.max_fan_duty_percent
+            return GovernorDecision(
+                action=ACTION_RECOVERY_MAX_COOLING,
+                target_duty=cfg.max_fan_duty_percent,
+                current_duty=curr_duty,
+                reason=(
+                    f"Bajo potencia objetivo ({current_power_w:.0f}W < {target_power_w:.0f}W): "
+                    "100% PWM para permitir subida de autoswitch Vnish"
+                ),
+                dwell_effective=0,
+                is_emergency=False,
+                requires_write=needs_write,
+            )
 
     # 4. R1: Adaptive Dwell Time calculation
     dwell_effective = (

@@ -3,6 +3,28 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Integración de Recuperación de Autoswitch Vnish en Fan Governor y Formato REST API
+
+* **Objetivo**: Resolver el desacople entre el autoswitch nativo de Vnish y la modulación del Fan Governor: evitar que un minero quede estancado en potencias subóptimas (ej. 2300W en vez de 2500W/2700W) por modulación descendente de ventiladores a 83°C. Forzar 100% de enfriamiento hasta que el equipo alcance su potencia objetivo, permitiendo que el chip baje a $\le 79^\circ\text{C}$ y el firmware Vnish suba el preset al máximo permitido.
+* **Resultados y Evidencia**:
+  - **Mecanismo de Recuperación de Autoswitch (`app/fan_governor.py`, `app/miner_monitor.py`)**:
+    * Regla `ACTION_RECOVERY_MAX_COOLING`: Si `current_power_w < (target_power_w - margin_w)` (margen 120W), el gobernador fuerza 100% de PWM de forma incondicional, deshabilitando el step-down mientras el minero esté por debajo de su techo de autoswitch.
+    * Con 100% de ventilación, los chips se enfrían por debajo del umbral `rise_temp` (79.0°C de Vnish), habilitando el ascenso automático de preset de Vnish tras el `check_time` (300s).
+    * Únicamente cuando el equipo alcanza su potencia objetivo (2700W en 23/24, 2500W en 25/26) y la temperatura es $\le 82.0^\circ\text{C}$, el gobernador modula los ventiladores hacia abajo para estabilizar la temperatura en 83.0°C.
+    * Telemetría de potencia (`chain_power_w_total`) persistida en `MinerState` (`governor_last_power_w`) y reflejada en el comando `/gov` de Telegram (`T=82.5°C 2698W PWM=96%`).
+  - **Normalización de Formato REST API Vnish (`app/vnish_client.py`)**:
+    * La API REST de Vnish rechaza `"2700W"` con HTTP 400 (`ProfileName invalid: '2700W'`). Se normalizó en `set_miner_preset()` para limpiar sufijos `"W"`, enviando `"2700"`.
+  - **Configuración Operativa (`app/config.json`, `app/config.example.json`)**:
+    * `miners`: S19JPRO-23 y 24 configurados con `target_power_w: 2700.0`; S19JPRO-25 y 26 configurados con `target_power_w: 2500.0`.
+    * `preset_balancer_dry_run: true`: El balanceador corre en modo diagnóstico / monitoreo de cascada eléctrica sin forzar presets que compitan con el autoswitch de Vnish.
+    * `fan_governor_enabled: true`, `fan_governor_dry_run: false`: Gobernador activo en producción.
+  - **Suite de Pruebas**:
+    * Nuevos tests unitarios y de integración: `test_recovery_max_cooling_when_below_target_power`, `test_recovery_max_cooling_already_at_100`, `test_normal_modulation_when_at_target_power`, `test_execute_governor_cycle_recovers_to_100_when_below_target_power`.
+    * 580/580 tests PASS en 8.86s (0 fallos, 0 errores, 0 regresiones).
+    * `py_compile` limpio en todo el proyecto.
+
+---
+
 ## [2026-09-08] - Activación Plena por Defecto de Gobernador Térmico y Balanceador de Presets en Producción
 
 * **Objetivo**: Configurar como activas por defecto (`enabled: true`, `dry_run: false`) las nuevas aplicaciones de control y gobernanza de hardware (Spec 039 Fan Governor y Spec 040 Preset Balancer), manteniendo intacta la capacidad de desconexión y reconexión manual interactiva en caliente vía Telegram (`/gov on`/`/gov off`, `/balancer on`/`/balancer off`). Normalizar y sincronizar toda la documentación del proyecto, reiniciar el servicio en modo activo y certificar la estabilidad absoluta del sistema.

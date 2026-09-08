@@ -1,4 +1,4 @@
-﻿"""tests/test_fan_governor_concurrency.py
+"""tests/test_fan_governor_concurrency.py
 T018: Concurrency and timeout stress tests for Fan Governor (Spec 039).
 
 Tests:
@@ -29,6 +29,7 @@ try:
         ACTION_FAILSAFE_FAULT,
         ACTION_HOLD_DWELL,
         ACTION_HOLD_TARGET,
+        ACTION_RECOVERY_MAX_COOLING,
         ACTION_STEP_DOWN,
         ACTION_STEP_UP,
     )
@@ -42,6 +43,7 @@ except ImportError:
         ACTION_FAILSAFE_FAULT,
         ACTION_HOLD_DWELL,
         ACTION_HOLD_TARGET,
+        ACTION_RECOVERY_MAX_COOLING,
         ACTION_STEP_DOWN,
         ACTION_STEP_UP,
     )
@@ -380,6 +382,32 @@ class TestPWMFloor(unittest.TestCase):
         self.assertEqual(decision.target_duty, 75)
         self.assertFalse(decision.requires_write,
                          "Should not require write if already at floor")
+
+
+# ---------------------------------------------------------------------------
+# Test 9: Autoswitch recovery — under target power forces 100% cooling
+# ---------------------------------------------------------------------------
+class TestAutoswitchRecovery(unittest.TestCase):
+    def test_execute_governor_cycle_recovers_to_100_when_below_target_power(self):
+        """When miner power is below target_power_w, governor cycle must force 100% duty."""
+        miners = [
+            {"name": "M25", "host": "192.168.100.25", "port": 4028, "target_power_w": 2500.0},
+        ]
+        lock = threading.Lock()
+        states = {
+            "M25|192.168.100.25:4028": MinerState(
+                governor_duty=85,
+                governor_last_temp_c=76.0,  # cool, would normally step down!
+                governor_last_power_w=2299.0,  # below 2500W target
+                governor_last_change_ts=0.0,
+            )
+        }
+        cfg = _make_config(fan_governor_dry_run=True)
+        execute_governor_cycle(miners, states, lock, cfg, now_ts=1000.0)
+
+        st = states["M25|192.168.100.25:4028"]
+        self.assertEqual(st.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(st.governor_duty, 100)
 
 
 if __name__ == "__main__":

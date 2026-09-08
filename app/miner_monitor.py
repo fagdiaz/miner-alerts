@@ -102,6 +102,7 @@ try:
         ACTION_FAILSAFE_FAULT,
         ACTION_HOLD_DWELL,
         ACTION_HOLD_TARGET,
+        ACTION_RECOVERY_MAX_COOLING,
         ACTION_STEP_DOWN,
         ACTION_STEP_UP,
     )
@@ -192,6 +193,7 @@ except ImportError:
         ACTION_FAILSAFE_FAULT,
         ACTION_HOLD_DWELL,
         ACTION_HOLD_TARGET,
+        ACTION_RECOVERY_MAX_COOLING,
         ACTION_STEP_DOWN,
         ACTION_STEP_UP,
     )
@@ -980,6 +982,7 @@ class MinerState:
     governor_failures: int = 0                    # Consecutive HTTP failures
     governor_last_action: str = ""                # Last action string for /gov display
     governor_last_temp_c: Optional[float] = None  # Last temp seen by governor
+    governor_last_power_w: Optional[float] = None # Last power (W) seen by governor
     # Spec 040: Dynamic Preset Balancer per-miner persistent state
     balancer_preset: Optional[str] = None          # Last known or applied preset (e.g. "2700W")
     balancer_last_change_ts: float = 0.0          # Timestamp of last preset adjustment
@@ -2313,6 +2316,11 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("governor_last_temp_c") is not None
                     else None
                 ),
+                governor_last_power_w=(
+                    float(data.get("governor_last_power_w"))
+                    if data.get("governor_last_power_w") is not None
+                    else None
+                ),
                 # Spec 040: Dynamic Preset Balancer
                 balancer_preset=(
                     str(data.get("balancer_preset"))
@@ -2379,6 +2387,7 @@ def save_state(
             "governor_failures": getattr(state, "governor_failures", 0),
             "governor_last_action": getattr(state, "governor_last_action", ""),
             "governor_last_temp_c": getattr(state, "governor_last_temp_c", None),
+            "governor_last_power_w": getattr(state, "governor_last_power_w", None),
             # Spec 040: Dynamic Preset Balancer
             "balancer_preset": getattr(state, "balancer_preset", None),
             "balancer_last_change_ts": getattr(state, "balancer_last_change_ts", 0.0),
@@ -2435,10 +2444,10 @@ def execute_governor_cycle(
     gov_cfg = GovernorConfig(
         enabled=True,
         dry_run=dry_run,
-        target_temp_c=float(config.get("fan_governor_target_temp_c", 82.0)),
-        deadband_low_c=float(config.get("fan_governor_deadband_low_c", 81.0)),
-        deadband_high_c=float(config.get("fan_governor_deadband_high_c", 82.5)),
-        emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 83.0)),
+        target_temp_c=float(config.get("fan_governor_target_temp_c", 83.0)),
+        deadband_low_c=float(config.get("fan_governor_deadband_low_c", 82.0)),
+        deadband_high_c=float(config.get("fan_governor_deadband_high_c", 83.5)),
+        emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 84.0)),
         min_fan_duty_percent=int(config.get("fan_governor_min_duty_pct", 75)),
         max_fan_duty_percent=100,
         step_down_percent=int(config.get("fan_governor_step_down_pct", 2)),
@@ -2449,6 +2458,7 @@ def execute_governor_cycle(
         request_timeout_seconds=float(config.get("fan_governor_request_timeout", 2.5)),
         fleet_timeout_seconds=float(config.get("fan_governor_fleet_timeout", 5.0)),
         max_consecutive_failures=int(config.get("fan_governor_max_failures", 3)),
+        power_margin_w=float(config.get("fan_governor_power_margin_w", 120.0)),
     )
 
     # Build (miner, state, decision) triples
@@ -2463,6 +2473,18 @@ def execute_governor_cycle(
             if state is None:
                 continue
             seconds_since = now_ts - (state.governor_last_change_ts or 0.0)
+
+            # Determine target_power_w for autoswitch recovery cooling
+            target_pwr = miner.get("target_power_w")
+            if target_pwr is None:
+                max_pre = str(miner.get("max_preset", "")).upper().rstrip("W").strip()
+                try:
+                    target_pwr = float(max_pre) if max_pre else None
+                except ValueError:
+                    target_pwr = None
+            if target_pwr is None:
+                target_pwr = float(config.get("fan_governor_target_power_w", 2700.0))
+
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
@@ -2470,6 +2492,8 @@ def execute_governor_cycle(
                 consecutive_holds=state.governor_holds,
                 consecutive_failures=state.governor_failures,
                 config=gov_cfg,
+                current_power_w=getattr(state, "governor_last_power_w", None),
+                target_power_w=target_pwr,
             )
             miner_decisions.append((miner, state_key, decision))
 
@@ -2560,10 +2584,12 @@ def execute_governor_cycle(
             dr_tag = " DRY" if dry_run else ""
             duty_tag = f"duty={state.governor_duty}%" if state.governor_duty is not None else "duty=?"
             err_tag = f" err={write_err}" if write_err else ""
+            pwr_val = getattr(state, "governor_last_power_w", None)
+            pwr_tag = f" pwr={pwr_val:.0f}W" if pwr_val is not None else ""
             log(
                 f"[GOV{dr_tag}] miner={name_display} action={action} "
                 f"{duty_tag} target={new_duty}% "
-                f"holds={state.governor_holds} fails={state.governor_failures}{err_tag}"
+                f"holds={state.governor_holds} fails={state.governor_failures}{pwr_tag}{err_tag}"
             )
 
 
@@ -4037,11 +4063,12 @@ def telegram_polling_worker(
                                     continue
                                 duty_str = f"{st.governor_duty}%" if st.governor_duty is not None else "N/D"
                                 temp_str = f"{st.governor_last_temp_c:.1f}°C" if st.governor_last_temp_c is not None else "N/D"
+                                pwr_str = f" {st.governor_last_power_w:.0f}W" if getattr(st, "governor_last_power_w", None) is not None else ""
                                 action_str = st.governor_last_action or "IDLE"
                                 holds_str = f"holds={st.governor_holds}"
                                 fail_str = f" ⚠️fails={st.governor_failures}" if st.governor_failures > 0 else ""
                                 lines.append(
-                                    f"  {m_name}: T={temp_str} PWM={duty_str} [{action_str}] {holds_str}{fail_str}"
+                                    f"  {m_name}: T={temp_str}{pwr_str} PWM={duty_str} [{action_str}] {holds_str}{fail_str}"
                                 )
                         lines.append("")
                         lines.append("Comandos: `/gov on` | `/gov off` | `/gov set <temp>`")
@@ -5845,6 +5872,8 @@ def main() -> None:
                     # Spec 039: Feed live telemetry to governor state for next cycle
                     if vnish_telemetry.max_temp_c is not None:
                         state.governor_last_temp_c = vnish_telemetry.max_temp_c
+                    if vnish_telemetry.chain_power_w_total is not None:
+                        state.governor_last_power_w = vnish_telemetry.chain_power_w_total
                     if state.governor_duty is None and vnish_telemetry.fan_pwm_percent is not None:
                         # Seed initial duty from hardware reading
                         state.governor_duty = int(round(vnish_telemetry.fan_pwm_percent))

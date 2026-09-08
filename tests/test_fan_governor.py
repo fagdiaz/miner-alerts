@@ -5,6 +5,7 @@ from app.fan_governor import (
     ACTION_FAILSAFE_FAULT,
     ACTION_HOLD_DWELL,
     ACTION_HOLD_TARGET,
+    ACTION_RECOVERY_MAX_COOLING,
     ACTION_STEP_DOWN,
     ACTION_STEP_UP,
     ACTION_UNKNOWN,
@@ -156,6 +157,48 @@ class TestFanGovernor(unittest.TestCase):
         )
         self.assertEqual(dec.action, ACTION_STEP_UP)
         self.assertEqual(dec.target_duty, 100)
+        self.assertTrue(dec.requires_write)
+
+    def test_recovery_max_cooling_when_below_target_power(self):
+        # Even if temp is cool (76.0°C), if current_power is below target by > margin,
+        # fans MUST be driven to 100% to let Vnish autoswitch climb up!
+        dec = compute_governor_step(
+            max_temp_c=76.0,
+            current_duty=85,
+            seconds_since_last_change=200.0,
+            config=self.cfg,
+            current_power_w=2299.0,
+            target_power_w=2500.0,
+        )
+        self.assertEqual(dec.action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(dec.target_duty, 100)
+        self.assertTrue(dec.requires_write)
+
+    def test_recovery_max_cooling_already_at_100(self):
+        dec = compute_governor_step(
+            max_temp_c=76.0,
+            current_duty=100,
+            seconds_since_last_change=200.0,
+            config=self.cfg,
+            current_power_w=2299.0,
+            target_power_w=2500.0,
+        )
+        self.assertEqual(dec.action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(dec.target_duty, 100)
+        self.assertFalse(dec.requires_write)
+
+    def test_normal_modulation_when_at_target_power(self):
+        # When power is at target (e.g. 2480W >= 2500 - 120W), normal thermal modulation applies
+        dec = compute_governor_step(
+            max_temp_c=79.5,
+            current_duty=90,
+            seconds_since_last_change=200.0,
+            config=self.cfg,
+            current_power_w=2480.0,
+            target_power_w=2500.0,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_DOWN)
+        self.assertEqual(dec.target_duty, 88)
         self.assertTrue(dec.requires_write)
 
 

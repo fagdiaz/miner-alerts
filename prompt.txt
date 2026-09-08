@@ -1,32 +1,37 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: SPEC 039 Y SPEC 040 COMPLETADAS Y EN PRODUCCIÓN V3.2
+ESTADO DEL PROYECTO: CALIBRACIÓN TÉRMICA 83°C-84°C Y ANTI-SPAM EN PRODUCCIÓN
 =============================================================================
-1. PRODUCCIÓN ACTIVA (V3.2.0 - PID 73268):
-   - Servicio Windows `MinerAlerts` reiniciado y operando bajo PID 73268 (supervisado por NSSM PID 73280).
-   - Consumo de recursos: ~59.8 MB RAM, 203 handles, ticks continuos cada 30s (`tick_sequence >= 3`).
-   - Cero errores en `logs/err.log`.
+1. PRODUCCIÓN ACTIVA (V3.2.0 - PID 3408):
+   - Servicio Windows `MinerAlerts` reiniciado exitosamente y operando bajo PID 3408 (supervisado por NSSM PID 102080).
+   - Ticks regulares autoritativos cada 30s (`tick_sequence >= 1`, `queue_depth: 0`).
+   - Cero errores en ejecución.
    - Modos defensivos seguros activos por defecto (`dry_run: true`).
 
-2. CARACTERÍSTICAS ACTIVAS Y COMANDOS TELEGRAM:
-   - Spec 039 (Vnish Fan Governor):
-     * Comandos: `/gov` (status), `/gov on`, `/gov off` (fallback seguro 100%), `/gov set <temp>`.
-     * Supervisión de coolers: `/fans` (detecta y muestra tags `[MANUAL]` / `[AUTO]`).
-   - Spec 040 (Dynamic Power & Preset Balancer para Elevadores Sensibles):
-     * Comandos: `/balancer` (tabla ejecutiva agrupada por elevador), `/balancer on`, `/balancer off`,
-       `/balancer setmax <miner> <preset>`, `/balancer run` (ciclo forzado) y `/balancer <id>`.
-     * Motor determinista evaluando reinicios 24h/72h, cascadas grupales en elevadores y optimización de $H_{eff}$.
+2. ESTRATEGIA OPERATIVA Y HARDENING APLICADO:
+   - Estrategia Térmica:
+     * Target del Gobernador de Ventiladores (Spec 039): 83.0°C (punto dulce de eficiencia y salud).
+     * Deadband: [82.0°C, 83.5°C]. Si temp < 82°C reduce ventiladores (-2%); si > 83.5°C acelera (+3%).
+     * Emergencia Ventiladores: 84.0°C -> Spike instantáneo a 100% PWM.
+     * Desescalado Térmico en Balanceador (Spec 040): Si temp >= 84.0°C (headroom <= 1.0°C frente a corte 85°C)
+       y ventiladores al 100%, baja secuencialmente el preset (`2700W -> 2500W -> 2300W`).
+   - Mitigación de Spam en Telegram:
+     * Saturación térmica: umbral elevado a 84.0°C con 98% PWM, racha de 5 ticks y cooldown de 7200s (2h).
+     * Autotune Vnish: notificaciones desactivadas (`preset_alert_enabled: false`). Información disponible bajo demanda vía `/presets` y `/digest`.
+   - Protección de Elevadores:
+     * Desescalado grupal en cascada si mineros del mismo elevador reinician en < 30m.
 
 3. CERTIFICACIÓN GLOBAL DE PRUEBAS:
-   - 575/575 tests PASS en 10.08s (0 fallos, 0 errores, 0 regresiones).
-   - Suite de integración y concurrencia: `tests/test_preset_balancer_integration.py` (9/9 PASS).
+   - 576/576 tests PASS en 8.66s (0 fallos, 0 errores, 0 regresiones).
+   - Sintaxis limpia (`py_compile` exitoso en todos los módulos).
+   - Commits registrados y sincronizados con `origin/codex/022-adaptive-acquisition`.
 
 =============================================================================
 SIGUIENTES PASOS:
-- Observación en caliente de logs de producción (`logs/out.log`) durante la operación regular.
-- El operador puede consultar `/balancer` y `/gov` en Telegram para inspeccionar las sugerencias del sistema.
-- Activar control en hardware real cuando el operador lo desee vía `/gov on` o `/balancer on`.
+- Monitoreo en caliente de la telemetría en `logs/out.log`.
+- Los comandos `/balancer`, `/gov`, `/fans` y `/presets` en Telegram están listos para consulta.
+- Si se desea que el sistema empiece a modular coolers o presets en hardware real, alternar con `/gov on` o `/balancer on`.
 =============================================================================
-MODELO SUGERIDO: Gemini 3.8 Flash High (Óptimo para soporte, consultas, análisis de métricas y siguiente especificación del roadmap)
+MODELO SUGERIDO: Gemini 3.8 Flash High (Capacidad óptima para análisis, métricas operativas y siguientes tareas del roadmap)
 =============================================================================

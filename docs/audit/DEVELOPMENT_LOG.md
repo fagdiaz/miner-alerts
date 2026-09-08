@@ -3,6 +3,29 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Implementación de Spec 040 Fases 1 a 3 (Dynamic Power & Preset Balancer: Contratos, API REST Presets y Motor Determinista)
+
+* **Objetivo**: Desarrollar la base pura y segura del Balanceador Dinámico de Presets y Potencia para Elevadores de Tensión Sensibles (Spec 040), respondiendo a la necesidad operativa de calibrar el hashrate versus frecuencia de caídas/reinicios y evitar apagados en cascada en la granja.
+* **Resultados y Evidencia**:
+  - **Fase 1 (Extensión de Cliente REST Vnish Presets - `app/vnish_client.py`)**:
+    * Métodos transaccionales implementados: `get_available_presets()` (consulta de lista en `GET /api/v1/presets`), `set_miner_preset()` (modulación de overclock en `POST /api/v1/settings`) y `safe_set_miner_preset()` con garantía de cierre de sesión (`lock_miner`) en bloque `finally`.
+    * Tests unitarios con mocks HTTP en `tests/test_vnish_client.py` (15/15 tests PASS).
+  - **Fase 2 (Motor Matemático Puro de Balanceo Costo/Beneficio - `app/preset_balancer.py`)**:
+    * Modelos de datos: `PresetTier`, `StabilityMetrics`, `BalancerConfig`, `BalancerDecision`.
+    * Escalera estándar de presets Vnish para S19j Pro: 1600W (68 TH/s), 1740W (72 TH/s), 1900W (78 TH/s), 2100W (83 TH/s), 2300W (88 TH/s), 2500W (93 TH/s), 2700W (98 TH/s) y 2800W (102 TH/s).
+    * Función objetivo $H_{\text{eff}}$ demostrando matemáticamente que operar a 93 TH/s (2500W) sin reinicios genera más hashrate neto acumulado que operar forzado a 98 TH/s (2700W) con reinicios frecuentes (93.00 TH/s vs 89.96 TH/s netos).
+    * Regla de desescalado rápido individual ante $\ge 2$ reinicios en 24h.
+    * Regla de protección de elevador sensible: desescalado en cascada si dos mineros del mismo elevador se reinician en menos de 30 minutos.
+    * Hysteresis conservadora: exige 72 horas continuas de estabilidad total y margen térmico $\ge 4.0^\circ\text{C}$ antes de considerar subir 1 preset.
+  - **Fase 3 (Suite de Pruebas Unitarias Deterministas - `tests/test_preset_balancer.py`)**:
+    * 9 tests unitarios deterministas cubriendo cálculo de $H_{\text{eff}}$, desescalado por reinicios, freno en preset mínimo (1600W), desescalado grupal en cascada, escalado tras soak de 72h, bloqueo por margen térmico estrecho y respeto estricto del techo `max_preset` (9/9 tests PASS en 0.001s).
+  - **Certificación Global de Suite**:
+    * `& ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py"`: **562/562 tests PASS** en 7.81s (0 fallos, 0 errores, 0 regresiones).
+  - **Producción Viva**:
+    * Servicio `MinerAlerts` ejecutando V3.1.0 bajo PID 101508 de forma saludable y sin interrupciones (>15 ticks continuos).
+
+---
+
 ## [2026-09-08] - Implementación y Cierre de Spec 039 (Vnish Thermal & Acoustic Fan Governor — Fases 1 a 5 Completadas)
 
 * **Objetivo**: Desarrollar e integrar el Gobernador Térmico y Acústico de Ventiladores Vnish (Spec 039), incorporando detección de modo en `/fans`, cliente REST seguro (`app/vnish_client.py`), algoritmo determinista de lazo cerrado (`app/fan_governor.py`), integración multihilo protegida en el monitor (`app/miner_monitor.py`), comandos interactivos Telegram (`/gov`, `/gov on`, `/gov off`, `/gov set`) y suite de estrés de concurrencia.

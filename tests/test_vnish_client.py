@@ -5,12 +5,15 @@ import requests
 
 from app.vnish_client import (
     DEFAULT_HTTP_TIMEOUT,
+    get_available_presets,
     get_cooling_settings,
     get_summary_cooling,
     lock_miner,
     mask_secret,
     safe_set_fan_duty,
+    safe_set_miner_preset,
     set_manual_fan_duty,
+    set_miner_preset,
     unlock_miner,
 )
 
@@ -176,6 +179,71 @@ class TestVnishClient(unittest.TestCase):
         self.assertIsNone(err)
         self.assertEqual(cooling["fan_duty"], 100)
 
+    @patch("requests.get")
+    def test_get_available_presets_success(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [
+            {"name": "2300W", "power": 2300},
+            {"name": "2500W", "power": 2500},
+            {"name": "2700W", "power": 2700},
+        ]
+        mock_get.return_value = mock_resp
+
+        ok, presets, err = get_available_presets("192.168.100.23", "token_123")
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        self.assertEqual(len(presets), 3)
+        self.assertEqual(presets[1]["name"], "2500W")
+        mock_get.assert_called_once_with(
+            "http://192.168.100.23/api/v1/presets",
+            headers={"Authorization": "Bearer token_123"},
+            timeout=DEFAULT_HTTP_TIMEOUT,
+        )
+
+    @patch("requests.get")
+    def test_get_available_presets_timeout(self, mock_get):
+        mock_get.side_effect = requests.exceptions.Timeout("Connection timeout")
+
+        ok, presets, err = get_available_presets("192.168.100.23", "token_123")
+        self.assertFalse(ok)
+        self.assertIsNone(presets)
+        self.assertEqual(err, "connection_timeout")
+
+    @patch("requests.post")
+    def test_set_miner_preset_success(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_post.return_value = mock_resp
+
+        ok, err = set_miner_preset("192.168.100.23", "token_123", "2500W")
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        mock_post.assert_called_once_with(
+            "http://192.168.100.23/api/v1/settings",
+            headers={
+                "Authorization": "Bearer token_123",
+                "Content-Type": "application/json",
+            },
+            json={"miner": {"overclock": {"preset": "2500W"}}},
+            timeout=DEFAULT_HTTP_TIMEOUT,
+        )
+
+    @patch("app.vnish_client.lock_miner")
+    @patch("app.vnish_client.set_miner_preset")
+    @patch("app.vnish_client.unlock_miner")
+    def test_safe_set_miner_preset_always_locks(self, mock_unlock, mock_set, mock_lock):
+        mock_unlock.return_value = (True, "token_abc", None)
+        mock_set.return_value = (True, None)
+        mock_lock.return_value = True
+
+        ok, err = safe_set_miner_preset("192.168.100.23", "admin", "2500W")
+        self.assertTrue(ok)
+        mock_unlock.assert_called_once_with("192.168.100.23", "admin", timeout=DEFAULT_HTTP_TIMEOUT)
+        mock_set.assert_called_once_with("192.168.100.23", "token_abc", "2500W", timeout=DEFAULT_HTTP_TIMEOUT)
+        mock_lock.assert_called_once_with("192.168.100.23", "token_abc", timeout=DEFAULT_HTTP_TIMEOUT)
+
 
 if __name__ == "__main__":
     unittest.main()
+

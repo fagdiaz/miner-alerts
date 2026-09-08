@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
@@ -197,3 +197,102 @@ def get_summary_cooling(
         return False, None, "connection_timeout"
     except Exception as exc:
         return False, None, f"request_error: {type(exc).__name__}"
+
+
+# ---------------------------------------------------------------------------
+# Spec 040: Dynamic Power & Preset Balancer API methods
+# ---------------------------------------------------------------------------
+
+def get_available_presets(
+    host: str,
+    token: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[List[Dict[str, Any]]], Optional[str]]:
+    """
+    Retrieve list of available overclocking presets from /api/v1/presets.
+    
+    Returns: (success: bool, presets_list: Optional[list], error_message: Optional[str])
+    """
+    url = f"http://{host}/api/v1/presets"
+    headers = {"Authorization": f"Bearer {token}"}
+    requester = session or requests
+    try:
+        resp = requester.get(url, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list):
+                return True, data, None
+            elif isinstance(data, dict) and "presets" in data:
+                return True, data["presets"], None
+            return True, [], None
+        return False, None, f"http_status_{resp.status_code}"
+    except requests.exceptions.Timeout:
+        return False, None, "connection_timeout"
+    except Exception as exc:
+        return False, None, f"request_error: {type(exc).__name__}"
+
+
+def set_miner_preset(
+    host: str,
+    token: str,
+    preset_name: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Update active overclocking preset on Vnish miner.
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    url = f"http://{host}/api/v1/settings"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "miner": {
+            "overclock": {
+                "preset": str(preset_name)
+            }
+        }
+    }
+    requester = session or requests
+    try:
+        resp = requester.post(url, headers=headers, json=payload, timeout=timeout)
+        if resp.status_code == 200:
+            return True, None
+        return False, f"http_status_{resp.status_code}"
+    except requests.exceptions.Timeout:
+        return False, "connection_timeout"
+    except Exception as exc:
+        return False, f"request_error: {type(exc).__name__}"
+
+
+def safe_set_miner_preset(
+    host: str,
+    password: str,
+    preset_name: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Transactional wrapper for preset change:
+    1. Authenticate (unlock)
+    2. Modulate overclock preset
+    3. Ensure session is locked in finally block
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    token = None
+    try:
+        ok, token, err = unlock_miner(host, password, timeout=timeout)
+        if not ok or not token:
+            return False, f"unlock_failed: {err}"
+        return set_miner_preset(host, token, preset_name, timeout=timeout)
+    finally:
+        if token:
+            try:
+                lock_miner(host, token, timeout=timeout)
+            except Exception:
+                pass
+

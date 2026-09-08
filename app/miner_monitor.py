@@ -4706,7 +4706,7 @@ def main() -> None:
         f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
     )
     qa_mode, qa_mode_source = qa_enabled(config)
-    global _QA_MODE
+    global _QA_MODE, _LAST_DAILY_DIGEST_DATE
     _QA_MODE = qa_mode
     qa_notify = qa_notify_enabled(config)
     qa_verbose = qa_verbose_enabled(config)

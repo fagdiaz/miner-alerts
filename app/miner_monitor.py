@@ -2485,13 +2485,36 @@ def execute_governor_cycle(
             if target_pwr is None:
                 target_pwr = float(config.get("fan_governor_target_power_w", 2700.0))
 
+            # Per-miner configuration overrides (if present in miner config dict)
+            miner_gov_cfg = gov_cfg
+            if any(k in miner for k in ("target_temp_c", "deadband_low_c", "deadband_high_c", "emergency_temp_c", "min_duty_pct", "power_margin_w")):
+                miner_gov_cfg = GovernorConfig(
+                    enabled=gov_cfg.enabled,
+                    dry_run=gov_cfg.dry_run,
+                    target_temp_c=float(miner.get("target_temp_c", gov_cfg.target_temp_c)),
+                    deadband_low_c=float(miner.get("deadband_low_c", gov_cfg.deadband_low_c)),
+                    deadband_high_c=float(miner.get("deadband_high_c", gov_cfg.deadband_high_c)),
+                    emergency_spike_temp_c=float(miner.get("emergency_temp_c", gov_cfg.emergency_spike_temp_c)),
+                    min_fan_duty_percent=int(miner.get("min_duty_pct", gov_cfg.min_fan_duty_percent)),
+                    max_fan_duty_percent=gov_cfg.max_fan_duty_percent,
+                    step_down_percent=gov_cfg.step_down_percent,
+                    step_up_percent=gov_cfg.step_up_percent,
+                    dwell_seconds=gov_cfg.dwell_seconds,
+                    adaptive_dwell_seconds=gov_cfg.adaptive_dwell_seconds,
+                    consecutive_holds_threshold=gov_cfg.consecutive_holds_threshold,
+                    request_timeout_seconds=gov_cfg.request_timeout_seconds,
+                    fleet_timeout_seconds=gov_cfg.fleet_timeout_seconds,
+                    max_consecutive_failures=gov_cfg.max_consecutive_failures,
+                    power_margin_w=float(miner.get("power_margin_w", gov_cfg.power_margin_w)),
+                )
+
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
                 seconds_since_last_change=seconds_since,
                 consecutive_holds=state.governor_holds,
                 consecutive_failures=state.governor_failures,
-                config=gov_cfg,
+                config=miner_gov_cfg,
                 current_power_w=getattr(state, "governor_last_power_w", None),
                 target_power_w=target_pwr,
             )
@@ -2585,7 +2608,13 @@ def execute_governor_cycle(
             duty_tag = f"duty={state.governor_duty}%" if state.governor_duty is not None else "duty=?"
             err_tag = f" err={write_err}" if write_err else ""
             pwr_val = getattr(state, "governor_last_power_w", None)
-            pwr_tag = f" pwr={pwr_val:.0f}W" if pwr_val is not None else ""
+            tgt_pwr = miner.get("target_power_w")
+            if pwr_val is not None and tgt_pwr is not None:
+                pwr_tag = f" pwr={pwr_val:.0f}/{tgt_pwr:.0f}W"
+            elif pwr_val is not None:
+                pwr_tag = f" pwr={pwr_val:.0f}W"
+            else:
+                pwr_tag = ""
             log(
                 f"[GOV{dr_tag}] miner={name_display} action={action} "
                 f"{duty_tag} target={new_duty}% "
@@ -4063,7 +4092,14 @@ def telegram_polling_worker(
                                     continue
                                 duty_str = f"{st.governor_duty}%" if st.governor_duty is not None else "N/D"
                                 temp_str = f"{st.governor_last_temp_c:.1f}°C" if st.governor_last_temp_c is not None else "N/D"
-                                pwr_str = f" {st.governor_last_power_w:.0f}W" if getattr(st, "governor_last_power_w", None) is not None else ""
+                                pwr_val = getattr(st, "governor_last_power_w", None)
+                                tgt_val = m.get("target_power_w")
+                                if pwr_val is not None and tgt_val is not None:
+                                    pwr_str = f" {pwr_val:.0f}/{tgt_val:.0f}W"
+                                elif pwr_val is not None:
+                                    pwr_str = f" {pwr_val:.0f}W"
+                                else:
+                                    pwr_str = ""
                                 action_str = st.governor_last_action or "IDLE"
                                 holds_str = f"holds={st.governor_holds}"
                                 fail_str = f" ⚠️fails={st.governor_failures}" if st.governor_failures > 0 else ""
@@ -5593,7 +5629,11 @@ def main() -> None:
             log(f"[WARN] Minero invalido, se omite: {name} ({host}:{port_raw})")
             continue
 
-        valid_miners.append({"name": name, "host": host, "port": port})
+        valid_miner = dict(miner)
+        valid_miner["name"] = name
+        valid_miner["host"] = host
+        valid_miner["port"] = port
+        valid_miners.append(valid_miner)
 
     if not valid_miners:
         log("ERROR: No hay mineros validos para monitorear.")

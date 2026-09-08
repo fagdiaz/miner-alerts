@@ -3,6 +3,25 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Corrección de Razonamiento Individual por Minero y Preservación de Configuración en `valid_miners`
+
+* **Objetivo**: Garantizar el razonamiento 100% individual y personalizado por minero en el Fan Governor: resolver la causa raíz por la cual mineros operando en su techo configurado (S19JPRO-25 y 26 en 2500W con temperatura sana de 76°C) recibían orden de 100% de coolers (`RECOVERY_MAX_COOLING`) en lugar de modular hacia abajo (`STEP_DOWN`), permitiendo que cada equipo module sus ventiladores de forma estrictamente desacoplada de los demás.
+* **Causa Raíz Identificada**:
+  - En la inicialización del monitor (`miner_monitor.py:5596`), la lista `valid_miners` se instanciaba con un diccionario mínimo `{name, host, port}`, descartando inadvertidamente los campos `target_power_w`, `electrical_group` y cualquier otro atributo individual del minero.
+  - Al no recibir `target_power_w` (devolvía `None`), el gobernador recurría al fallback global `fan_governor_target_power_w = 2700.0W`.
+  - Como resultado, S19JPRO-25 y 26 (consumiendo 2498–2499W) eran evaluados contra 2700W en vez de contra sus 2500W reales, interpretándose falsamente como equipos con déficit de potencia (2499W < 2700 - 120W), disparando coolers al 100% incondicional.
+* **Corrección y Mejoras Implementadas**:
+  - **Preservación Total en `valid_miners`**: `valid_miners.append(dict(miner))` preserva íntegramente `target_power_w`, `electrical_group`, `max_preset` y posibles overrides por equipo.
+  - **Configuración Dinámica por Minero (`miner_gov_cfg`)**: Permite que cada minero sobreescriba individualmente umbrales térmicos (`target_temp_c`, deadbands, piso de PWM, etc.) si se define en su entrada de configuración.
+  - **Claridad Observacional en Logs y Telegram**:
+    * Log del ciclo: `pwr=2499/2500W` o `pwr=2499/2700W` refleja de inmediato la potencia actual respecto a la meta individual.
+    * Comando `/gov`: Muestra la relación `T=76.0°C 2499/2500W PWM=98% [STEP_DOWN]`, evidenciando el razonamiento individual.
+  - **Certificación de Pruebas**:
+    * Nuevo test de integración: `test_individual_miner_reasoning_different_targets_and_temperatures` en `tests/test_fan_governor_concurrency.py`.
+    * 581/581 tests PASS en 9.04s.
+
+---
+
 ## [2026-09-08] - Integración de Recuperación de Autoswitch Vnish en Fan Governor y Formato REST API
 
 * **Objetivo**: Resolver el desacople entre el autoswitch nativo de Vnish y la modulación del Fan Governor: evitar que un minero quede estancado en potencias subóptimas (ej. 2300W en vez de 2500W/2700W) por modulación descendente de ventiladores a 83°C. Forzar 100% de enfriamiento hasta que el equipo alcance su potencia objetivo, permitiendo que el chip baje a $\le 79^\circ\text{C}$ y el firmware Vnish suba el preset al máximo permitido.

@@ -409,6 +409,47 @@ class TestAutoswitchRecovery(unittest.TestCase):
         self.assertEqual(st.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
         self.assertEqual(st.governor_duty, 100)
 
+    def test_individual_miner_reasoning_different_targets_and_temperatures(self):
+        """Miners must evaluate independently: one recovering to 100% does not prevent another from stepping down."""
+        miners = [
+            {"name": "M24", "host": "192.168.100.24", "port": 4028, "target_power_w": 2700.0},
+            {"name": "M26", "host": "192.168.100.26", "port": 4028, "target_power_w": 2500.0},
+        ]
+        lock = threading.Lock()
+        states = {
+            "M24|192.168.100.24:4028": MinerState(
+                governor_duty=100,
+                governor_last_temp_c=81.0,
+                governor_last_power_w=2499.0,  # Below 2700W target -> RECOVERY_MAX_COOLING (keep 100%)
+                governor_last_change_ts=0.0,
+            ),
+            "M26|192.168.100.26:4028": MinerState(
+                governor_duty=100,
+                governor_last_temp_c=76.0,
+                governor_last_power_w=2499.0,  # At 2500W target & cool -> STEP_DOWN to 98%
+                governor_last_change_ts=0.0,
+            ),
+        }
+        cfg = _make_config(
+            fan_governor_dry_run=True,
+            fan_governor_target_temp_c=83.0,
+            fan_governor_deadband_low_c=82.0,
+            fan_governor_step_down_pct=2,
+            fan_governor_dwell_seconds=90,
+        )
+        execute_governor_cycle(miners, states, lock, cfg, now_ts=1000.0)
+
+        st24 = states["M24|192.168.100.24:4028"]
+        st26 = states["M26|192.168.100.26:4028"]
+
+        # M24 is under target power -> stays at 100%
+        self.assertEqual(st24.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(st24.governor_duty, 100)
+
+        # M26 is AT target power and cool (76°C < 82°C) -> steps down to 98%
+        self.assertEqual(st26.governor_last_action, ACTION_STEP_DOWN)
+        self.assertEqual(st26.governor_duty, 98)
+
 
 if __name__ == "__main__":
     unittest.main()

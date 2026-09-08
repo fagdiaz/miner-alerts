@@ -3,9 +3,9 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-09-08] - Implementación de Spec 039 Fases 1 a 3 (Vnish Fan Governor: Telemetría de Modo, VnishClient REST y Algoritmo de Lazo Cerrado)
+## [2026-09-08] - Implementación y Cierre de Spec 039 (Vnish Thermal & Acoustic Fan Governor — Fases 1 a 5 Completadas)
 
-* **Objetivo**: Desarrollar la base pura y segura del Gobernador Térmico y Acústico de Ventiladores (Spec 039), integrando visibilidad de modo (`fan_mode: manual/auto`) en `/fans`, cliente seguro de API REST Vnish (`app/vnish_client.py`) y motor determinista de modulación térmica (`app/fan_governor.py`) con los 4 requisitos de hardening aprobados por Claude Sonnet 4.6 (R1 a R4).
+* **Objetivo**: Desarrollar e integrar el Gobernador Térmico y Acústico de Ventiladores Vnish (Spec 039), incorporando detección de modo en `/fans`, cliente REST seguro (`app/vnish_client.py`), algoritmo determinista de lazo cerrado (`app/fan_governor.py`), integración multihilo protegida en el monitor (`app/miner_monitor.py`), comandos interactivos Telegram (`/gov`, `/gov on`, `/gov off`, `/gov set`) y suite de estrés de concurrencia.
 * **Resultados y Evidencia**:
   - **Fase 1 (Visibilidad de Modo de Enfriamiento)**:
     * `app/vnish_telemetry.py`: Extendido para extraer `fan_mode` (`manual`, `auto`, `immers`) tanto desde el payload `STATS` de API 4028 como desde el payload REST `/api/v1/summary`.
@@ -22,13 +22,18 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
     * R3 (Fail-Safe Explícito a 100%): Salto forzado a 100% ante $\ge 3$ fallos consecutivos de comunicación o error de hardware.
     * R4 (Piso de Seguridad Infranqueable): Límite mínimo elevado a 75% PWM.
     * Regla de emergencia térmica inmediata ante $T_{max} \ge 83.0^\circ\text{C}$ con salto inmediato a 100% omitiendo la ventana de asentamiento.
-  - **Higiene de Recursos Gráficos**:
-    * `app/telegram_charts.py`: Envuelto el renderizado de figuras Matplotlib en bloques `try ... finally: plt.close(fig)` para prevenir fugas de memoria OpenBLAS y agotamiento de descriptores GDI en Windows.
-  - **Suite de Pruebas y Certificación**:
-    * `tests/test_fan_health.py`: 15/15 tests PASS.
-    * `tests/test_vnish_client.py`: 11/11 tests PASS.
-    * `tests/test_fan_governor.py`: 11/11 tests PASS.
-    * Suite global de regresión: **537/537 tests PASS** en 6.62s sin regresiones ni fallos.
+  - **Fase 4 (Integración en Monitor y Comandos Telegram)**:
+    * `app/miner_monitor.py`:
+      - Campos en `MinerState` (`governor_duty`, `governor_holds`, `governor_last_change_ts`, `governor_failures`, `governor_last_action`, `governor_last_temp_c`) con persistencia en `load_state`/`save_state` bajo `state_lock`.
+      - Función `execute_governor_cycle()` ejecutada al final de cada ciclo tras la telemetría, despachando escrituras de hardware en paralelo mediante `ThreadPoolExecutor(max_workers=min(4, len(writers)))` con timeout de flota de 5.0s y `shutdown(wait=False)` (R2).
+      - Comandos interactivos Telegram: `/gov` (alias `/governor`), `/gov on`, `/gov off` (con fallback de seguridad forzado a 100% PWM, R3) y `/gov set <temp>` (validación de rango [75.0°C, 83.0°C]).
+      - Feature flags defensivos por defecto: `fan_governor_enabled: false` y `fan_governor_dry_run: true`.
+    * `app/config.example.json`: Esquema completo documentado con credenciales redactadas (`CHANGE_ME`).
+  - **Fase 5 (Tests de Concurrencia y Certificación Global)**:
+    * `tests/test_fan_governor_concurrency.py`: 12 tests deterministas de concurrencia cubriendo fleet timeout (minero lento de 10s no bloquea el ciclo más de 2s), aislamiento de excepciones, dry-run, concurrencia bajo `state_lock`, fallback a 100% en `/gov off`, emergency spike, dwell adaptativo y piso de 75% PWM.
+    * `app/telegram_charts.py`: Envuelto el renderizado de figuras Matplotlib en bloques `try ... finally: plt.close(fig)` para prevenir fugas de memoria OpenBLAS y descriptores GDI en Windows.
+    * Suite global de regresión: **549/549 tests PASS** en 8.29s (0 fallos, 0 errores, 0 regresiones).
+  - **Colaboración Multi-Modelo**: Gemini 3.8 Flash High (Fases 1, 2, 3, auditoría cruzada de integración y bugfix en `governor_last_temp_c`) + Claude Sonnet 4.6 Thinking (Auditoría arquitectónica pre-implementación R1-R4, esqueleto de Fases 4 y 5).
 
 ---
 

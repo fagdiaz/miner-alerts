@@ -129,5 +129,26 @@
     "weekly_generations": 8,
     "monthly_generations": 12,
     "max_run_seconds": 300
-  }
+  },
+  "vnish_api": {
+    "_comment": "Credenciales Vnish REST para Fan Governor. NUNCA commitar con contraseña real.",
+    "password": "CHANGE_ME"
+  },
+  "fan_governor_enabled": false,
+  "fan_governor_dry_run": true,
+  "_comment_fan_governor": "Gobernador térmico de lazo cerrado (Spec 039). Arrancar siempre con dry_run:true para validar decisiones en logs antes de escribir al hardware.",
+  "fan_governor_target_temp_c": 82.0,
+  "fan_governor_deadband_low_c": 81.0,
+  "fan_governor_deadband_high_c": 82.5,
+  "fan_governor_emergency_temp_c": 83.0,
+  "fan_governor_min_duty_pct": 75,
+  "fan_governor_step_down_pct": 2,
+  "fan_governor_step_up_pct": 3,
+  "fan_governor_dwell_seconds": 90,
+  "fan_governor_adaptive_dwell_seconds": 120,
+  "fan_governor_holds_threshold": 3,
+  "fan_governor_request_timeout": 2.5,
+  "fan_governor_fleet_timeout": 5.0,
+  "fan_governor_max_failures": 3,
+  "vnish_api_password": "CHANGE_ME"
 }

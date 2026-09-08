@@ -94,6 +94,18 @@ try:
         fetch_latest_preset_assessments,
         infer_operating_profile,
     )
+    from .fan_governor import (
+        GovernorConfig,
+        GovernorDecision,
+        compute_governor_step,
+        ACTION_EMERGENCY_SPIKE,
+        ACTION_FAILSAFE_FAULT,
+        ACTION_HOLD_DWELL,
+        ACTION_HOLD_TARGET,
+        ACTION_STEP_DOWN,
+        ACTION_STEP_UP,
+    )
+    from .vnish_client import safe_set_fan_duty, mask_secret
 except ImportError:
     from alert_episodes import (
         IrregularEpisodeCoordinator,
@@ -163,6 +175,18 @@ except ImportError:
         fetch_latest_preset_assessments,
         infer_operating_profile,
     )
+    from fan_governor import (
+        GovernorConfig,
+        GovernorDecision,
+        compute_governor_step,
+        ACTION_EMERGENCY_SPIKE,
+        ACTION_FAILSAFE_FAULT,
+        ACTION_HOLD_DWELL,
+        ACTION_HOLD_TARGET,
+        ACTION_STEP_DOWN,
+        ACTION_STEP_UP,
+    )
+    from vnish_client import safe_set_fan_duty, mask_secret
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -892,6 +916,13 @@ class MinerState:
     last_efficiency_warning_ts: Optional[float] = None
     baseline_frequency_mhz: Optional[float] = None
     last_preset_warning_ts: Optional[float] = None
+    # Spec 039: Fan Governor per-miner persistent state
+    governor_duty: Optional[int] = None          # Last commanded duty %
+    governor_holds: int = 0                       # Consecutive HOLD ticks
+    governor_last_change_ts: float = 0.0          # Timestamp of last duty change
+    governor_failures: int = 0                    # Consecutive HTTP failures
+    governor_last_action: str = ""                # Last action string for /gov display
+    governor_last_temp_c: Optional[float] = None  # Last temp seen by governor
 
 
 def load_config() -> Dict[str, Any]:
@@ -2205,6 +2236,21 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("last_preset_warning_ts") is not None
                     else None
                 ),
+                # Spec 039: Fan Governor
+                governor_duty=(
+                    int(data.get("governor_duty"))
+                    if data.get("governor_duty") is not None
+                    else None
+                ),
+                governor_holds=int(data.get("governor_holds", 0)),
+                governor_last_change_ts=float(data.get("governor_last_change_ts", 0.0)),
+                governor_failures=int(data.get("governor_failures", 0)),
+                governor_last_action=str(data.get("governor_last_action", "")),
+                governor_last_temp_c=(
+                    float(data.get("governor_last_temp_c"))
+                    if data.get("governor_last_temp_c") is not None
+                    else None
+                ),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2255,6 +2301,13 @@ def save_state(
             "last_efficiency_warning_ts": getattr(state, "last_efficiency_warning_ts", None),
             "baseline_frequency_mhz": getattr(state, "baseline_frequency_mhz", None),
             "last_preset_warning_ts": getattr(state, "last_preset_warning_ts", None),
+            # Spec 039: Fan Governor
+            "governor_duty": getattr(state, "governor_duty", None),
+            "governor_holds": getattr(state, "governor_holds", 0),
+            "governor_last_change_ts": getattr(state, "governor_last_change_ts", 0.0),
+            "governor_failures": getattr(state, "governor_failures", 0),
+            "governor_last_action": getattr(state, "governor_last_action", ""),
+            "governor_last_temp_c": getattr(state, "governor_last_temp_c", None),
         }
     tmp_path = state_path.with_suffix(".tmp")
     try:
@@ -2262,6 +2315,180 @@ def save_state(
         os.replace(tmp_path, state_path)
     except Exception:
         log("[WARN] No se pudo guardar state.json.")
+
+
+# ---------------------------------------------------------------------------
+# Spec 039: Fan Governor — runtime override flag (set by /gov on/off commands)
+# ---------------------------------------------------------------------------
+# None = use config value; True/False = user override (persists until restart)
+_GOVERNOR_RUNTIME_ENABLED: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# T014: Fan Governor execution cycle (Spec 039)
+# ---------------------------------------------------------------------------
+
+def execute_governor_cycle(
+    miners: list,
+    states: Dict[str, "MinerState"],
+    state_lock: threading.Lock,
+    config: dict,
+    now_ts: float,
+    qa_mode: bool = False,
+) -> None:
+    """Execute one fan governor tick: evaluate decisions for all miners, dispatch
+    hardware writes in parallel via ThreadPoolExecutor (R2 constraint), and update
+    per-miner state fields under state_lock.
+
+    This function is defensive: any exception in the entire cycle is caught and
+    logged without propagating to the authoritative 4028 tick.
+    """
+    import concurrent.futures
+
+    gov_enabled_cfg = bool(config.get("fan_governor_enabled", False))
+    gov_enabled = (
+        _GOVERNOR_RUNTIME_ENABLED
+        if _GOVERNOR_RUNTIME_ENABLED is not None
+        else gov_enabled_cfg
+    )
+    if not gov_enabled or qa_mode:
+        return
+
+    dry_run = bool(config.get("fan_governor_dry_run", True))
+    vnish_pw = str(config.get("vnish_api_password", "admin"))
+    gov_cfg = GovernorConfig(
+        enabled=True,
+        dry_run=dry_run,
+        target_temp_c=float(config.get("fan_governor_target_temp_c", 82.0)),
+        deadband_low_c=float(config.get("fan_governor_deadband_low_c", 81.0)),
+        deadband_high_c=float(config.get("fan_governor_deadband_high_c", 82.5)),
+        emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 83.0)),
+        min_fan_duty_percent=int(config.get("fan_governor_min_duty_pct", 75)),
+        max_fan_duty_percent=100,
+        step_down_percent=int(config.get("fan_governor_step_down_pct", 2)),
+        step_up_percent=int(config.get("fan_governor_step_up_pct", 3)),
+        dwell_seconds=int(config.get("fan_governor_dwell_seconds", 90)),
+        adaptive_dwell_seconds=int(config.get("fan_governor_adaptive_dwell_seconds", 120)),
+        consecutive_holds_threshold=int(config.get("fan_governor_holds_threshold", 3)),
+        request_timeout_seconds=float(config.get("fan_governor_request_timeout", 2.5)),
+        fleet_timeout_seconds=float(config.get("fan_governor_fleet_timeout", 5.0)),
+        max_consecutive_failures=int(config.get("fan_governor_max_failures", 3)),
+    )
+
+    # Build (miner, state, decision) triples
+    miner_decisions: list = []
+    with state_lock:
+        for miner in miners:
+            name = miner.get("name", "")
+            host = miner.get("host", "")
+            port = miner.get("port", 4028)
+            state_key = f"{name}|{host}:{port}"
+            state = states.get(state_key)
+            if state is None:
+                continue
+            seconds_since = now_ts - (state.governor_last_change_ts or 0.0)
+            decision = compute_governor_step(
+                max_temp_c=state.governor_last_temp_c,
+                current_duty=state.governor_duty,
+                seconds_since_last_change=seconds_since,
+                consecutive_holds=state.governor_holds,
+                consecutive_failures=state.governor_failures,
+                config=gov_cfg,
+            )
+            miner_decisions.append((miner, state_key, decision))
+
+    if not miner_decisions:
+        return
+
+    # Dispatch parallel hardware writes for miners that need action (R2)
+    write_results: Dict[str, tuple] = {}  # state_key -> (success, error)
+    writers = [
+        (miner, sk, dec)
+        for miner, sk, dec in miner_decisions
+        if dec.requires_write and not dry_run
+    ]
+    if writers:
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(4, len(writers))
+        )
+        try:
+            future_to_key = {
+                executor.submit(
+                    safe_set_fan_duty,
+                    miner.get("host", ""),
+                    vnish_pw,
+                    dec.target_duty,
+                    gov_cfg.request_timeout_seconds,
+                ): sk
+                for miner, sk, dec in writers
+            }
+            deadline = time.monotonic() + gov_cfg.fleet_timeout_seconds
+            for future in concurrent.futures.as_completed(
+                future_to_key.keys(),
+                timeout=gov_cfg.fleet_timeout_seconds,
+            ):
+                sk = future_to_key[future]
+                try:
+                    ok, err = future.result(timeout=max(0.1, deadline - time.monotonic()))
+                    write_results[sk] = (ok, err)
+                except Exception as exc:
+                    write_results[sk] = (False, str(exc))
+        except concurrent.futures.TimeoutError:
+            # Fleet timeout expired — record remaining futures as timed out
+            for future, sk in future_to_key.items():
+                if sk not in write_results:
+                    write_results[sk] = (False, "fleet_timeout")
+        finally:
+            # Abandon (don't wait for) any in-flight threads beyond the timeout
+            executor.shutdown(wait=False)
+
+    # Update per-miner state under state_lock
+    with state_lock:
+        for miner, sk, dec in miner_decisions:
+            state = states.get(sk)
+            if state is None:
+                continue
+            name_display = miner.get("name", sk)
+            action = dec.action
+            new_duty = dec.target_duty
+
+            # Determine if write succeeded
+            write_ok = True
+            write_err = None
+            if dec.requires_write and not dry_run:
+                write_ok, write_err = write_results.get(sk, (False, "no_result"))
+
+            # Update failure counter
+            if dec.requires_write and not dry_run:
+                if write_ok:
+                    state.governor_failures = 0
+                else:
+                    state.governor_failures = state.governor_failures + 1
+            else:
+                if write_ok:
+                    state.governor_failures = 0
+
+            # Update duty and holds
+            if action in (ACTION_HOLD_TARGET, ACTION_HOLD_DWELL):
+                state.governor_holds = state.governor_holds + 1
+            else:
+                state.governor_holds = 0
+
+            if dec.requires_write and (dry_run or write_ok):
+                state.governor_duty = new_duty
+                state.governor_last_change_ts = now_ts
+
+            state.governor_last_action = action
+
+            # Structured log
+            dr_tag = " DRY" if dry_run else ""
+            duty_tag = f"duty={state.governor_duty}%" if state.governor_duty is not None else "duty=?"
+            err_tag = f" err={write_err}" if write_err else ""
+            log(
+                f"[GOV{dr_tag}] miner={name_display} action={action} "
+                f"{duty_tag} target={new_duty}% "
+                f"holds={state.governor_holds} fails={state.governor_failures}{err_tag}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -3488,6 +3715,117 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="presets",
+                    )
+                elif cmd_name in ("governor", "gov"):
+                    handled = True
+                    global _GOVERNOR_RUNTIME_ENABLED
+                    sub = args[0].strip().lower() if args else ""
+                    gov_enabled_cfg = bool(config.get("fan_governor_enabled", False))
+                    gov_dry_run = bool(config.get("fan_governor_dry_run", True))
+                    gov_target = float(config.get("fan_governor_target_temp_c", 82.0))
+                    gov_min_duty = int(config.get("fan_governor_min_duty_pct", 75))
+
+                    if sub == "on":
+                        _GOVERNOR_RUNTIME_ENABLED = True
+                        gov_msg = (
+                            "✅ *Fan Governor: ACTIVADO*\n"
+                            f"Target: {gov_target:.1f}°C | Piso: {gov_min_duty}% | "
+                            f"Modo: {'🔇 DRY-RUN' if gov_dry_run else '⚡ ACTIVO (escribe hardware)'}"
+                        )
+                        log("[GOV] Governor habilitado por comando /gov on")
+
+                    elif sub == "off":
+                        _GOVERNOR_RUNTIME_ENABLED = False
+                        # R3: Defensive fallback — set all miners to 100% PWM
+                        vnish_pw = str(config.get("vnish_api_password", "admin"))
+                        fallback_results = []
+                        for m in miners:
+                            m_host = m.get("host", "")
+                            m_name = m.get("name", m_host)
+                            if not gov_dry_run and m_host:
+                                try:
+                                    from app.vnish_client import safe_set_fan_duty as _ssfd
+                                except ImportError:
+                                    from vnish_client import safe_set_fan_duty as _ssfd  # type: ignore
+                                try:
+                                    ok, err = _ssfd(m_host, vnish_pw, 100, timeout=2.5)
+                                    fallback_results.append(f"  {m_name}: {'✅ 100%' if ok else f'⚠️ {err}'}")
+                                except Exception as exc:
+                                    fallback_results.append(f"  {m_name}: ⚠️ {exc}")
+                            else:
+                                fallback_results.append(f"  {m_name}: ⏭️ DRY-RUN (sin acción)")
+                        fallback_str = "\n".join(fallback_results) if fallback_results else "  (sin mineros)"
+                        gov_msg = (
+                            "🛑 *Fan Governor: DESACTIVADO*\n"
+                            "Fallback de seguridad a 100% PWM:\n"
+                            f"{fallback_str}"
+                        )
+                        log("[GOV] Governor deshabilitado por comando /gov off. Fallback a 100% ejecutado.")
+
+                    elif sub == "set" and len(args) >= 2:
+                        try:
+                            new_temp = float(args[1].strip())
+                            if not (75.0 <= new_temp <= 83.0):
+                                gov_msg = (
+                                    f"⚠️ Temperatura fuera de rango: {new_temp:.1f}°C\n"
+                                    "Rango válido: 75.0°C — 83.0°C"
+                                )
+                            else:
+                                # In-memory override via config dict (persists until restart)
+                                config["fan_governor_target_temp_c"] = new_temp
+                                gov_msg = (
+                                    f"✅ Target térmico actualizado: *{new_temp:.1f}°C*\n"
+                                    "(Efectivo en el próximo ciclo del gobernador)"
+                                )
+                                log(f"[GOV] Target térmico ajustado a {new_temp:.1f}°C por /gov set")
+                        except (ValueError, IndexError):
+                            gov_msg = "⚠️ Uso: `/gov set <temp>` (ej: `/gov set 81.5`)"
+
+                    else:
+                        # /gov status
+                        is_enabled = (
+                            _GOVERNOR_RUNTIME_ENABLED
+                            if _GOVERNOR_RUNTIME_ENABLED is not None
+                            else gov_enabled_cfg
+                        )
+                        status_icon = "🟢 ON" if is_enabled else "🔴 OFF"
+                        mode_icon = "🔇 DRY-RUN" if gov_dry_run else "⚡ ACTIVO"
+                        lines = [
+                            f"🌀 *Fan Governor* — {status_icon} | {mode_icon}",
+                            f"Target: {gov_target:.1f}°C | Piso: {gov_min_duty}% | Dwell: {config.get('fan_governor_dwell_seconds', 90)}s",
+                            "",
+                        ]
+                        with state_lock:
+                            for m in miners:
+                                m_name = m.get("name", "")
+                                m_host = m.get("host", "")
+                                m_port = m.get("port", 4028)
+                                sk = f"{m_name}|{m_host}:{m_port}"
+                                st = states.get(sk)
+                                if st is None:
+                                    lines.append(f"  {m_name}: sin datos")
+                                    continue
+                                duty_str = f"{st.governor_duty}%" if st.governor_duty is not None else "N/D"
+                                temp_str = f"{st.governor_last_temp_c:.1f}°C" if st.governor_last_temp_c is not None else "N/D"
+                                action_str = st.governor_last_action or "IDLE"
+                                holds_str = f"holds={st.governor_holds}"
+                                fail_str = f" ⚠️fails={st.governor_failures}" if st.governor_failures > 0 else ""
+                                lines.append(
+                                    f"  {m_name}: T={temp_str} PWM={duty_str} [{action_str}] {holds_str}{fail_str}"
+                                )
+                        lines.append("")
+                        lines.append("Comandos: `/gov on` | `/gov off` | `/gov set <temp>`")
+                        gov_msg = "\n".join(lines)
+
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        gov_msg,
+                        "GOVERNOR",
+                        "cmd_governor",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="gov",
                     )
                 elif cmd_name == "firmware":
                     handled = True
@@ -5141,6 +5479,12 @@ def main() -> None:
                     saturate_pwm = float(config.get("cooling_saturate_pwm_pct", 95.0))
                     saturate_rpm = int(config.get("cooling_saturate_rpm", 5800))
                     state.last_fan_mode = vnish_telemetry.fan_mode
+                    # Spec 039: Feed live telemetry to governor state for next cycle
+                    if vnish_telemetry.max_temp_c is not None:
+                        state.governor_last_temp_c = vnish_telemetry.max_temp_c
+                    if state.governor_duty is None and vnish_telemetry.fan_pwm_percent is not None:
+                        # Seed initial duty from hardware reading
+                        state.governor_duty = int(round(vnish_telemetry.fan_pwm_percent))
                     cooling_ass = assess_miner_cooling(
                         miner_name=name_display,
                         max_temp_c=vnish_telemetry.max_temp_c,
@@ -5889,6 +6233,20 @@ def main() -> None:
 
             with last_update_lock:
                 current_last_update_id = last_update_id_ref["value"]
+
+            # Spec 039: Fan Governor cycle — runs after all per-miner telemetry is processed
+            try:
+                execute_governor_cycle(
+                    miners=valid_miners,
+                    states=states,
+                    state_lock=state_lock,
+                    config=config,
+                    now_ts=now_ts,
+                    qa_mode=qa_mode,
+                )
+            except Exception as _gov_exc:
+                log(f"[GOV_ERR] Governor cycle failed: {type(_gov_exc).__name__}: {_gov_exc}")
+
             with state_lock:
                 save_state(state_path, states, current_last_update_id)
             if heartbeat_enabled:

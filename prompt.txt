@@ -1,70 +1,28 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-OBJETIVO DE LA SESIÓN: IMPLEMENTACIÓN FASES 4 Y 5 — SPEC 039 (FAN GOVERNOR)
+ESTADO DEL PROYECTO: SPEC 039 COMPLETADA AL 100% (FASES 1 A 5 CERTIFICADAS)
 =============================================================================
-Se requiere la intervención de Claude Sonnet 4.6 (Thinking) para implementar
-las Fases 4 y 5 de Spec 039 (Vnish Thermal & Acoustic Fan Governor),
-que implican multi-threading de producción en `app/miner_monitor.py`,
-gestión de timeouts de sockets, cerrojos `state_lock`, comandos Telegram y tests de concurrencia.
+La especificación Spec 039 (Vnish Thermal & Acoustic Fan Governor) se encuentra
+totalmente implementada, auditada, testeada (549/549 tests PASS) y lista.
 
-ESTADO ACTUAL DEL PROYECTO:
-1. Fases 1, 2 y 3 implementadas, probadas (537/537 tests PASS) y commiteadas en `55a8dbe`:
-   - `app/vnish_telemetry.py`: Parseo de `fan_mode` ("manual"/"auto") y `fan_pwm`.
-   - `app/fan_health.py`: `CoolingAssessment` extendido con `fan_mode`, visualización en `/fans`.
-   - `app/vnish_client.py`: Cliente REST seguro con `safe_set_fan_duty()` y enmascaramiento de tokens.
-   - `app/fan_governor.py`: Motor determinista puro `compute_governor_step()` con reglas R1-R4 y spike 83°C.
-2. Monitor en producción PID 88348: Activo, saludable y corriendo V3.0.0 (>1.720 ticks, 197 handles).
-3. Repositorio: Rama `codex/022-adaptive-acquisition`, limpio y sincronizado con origin (`git push` completado).
+RESUMEN DE LOGROS SPEC 039:
+1. Fase 1: Detección y renderizado de fan_mode ("MANUAL" / "AUTO") en /fans y /status.
+2. Fase 2: Cliente REST Vnish seguro (app/vnish_client.py) con lock garantizado en finally.
+3. Fase 3: Motor matemático determinista (app/fan_governor.py) con reglas R1-R4 y spike a 83°C.
+4. Fase 4: Integración en monitor principal (app/miner_monitor.py), ThreadPoolExecutor con timeout
+   global de 5.0s (R2), fallback defensivo a 100% en /gov off (R3), persistencia en state.json
+   y comandos interactivos Telegram (/gov, /gov on, /gov off, /gov set).
+5. Fase 5: 12 tests de concurrencia y estrés (tests/test_fan_governor_concurrency.py),
+   suite global completa: 549/549 tests PASS en 8.3s sin regresiones.
+6. Flags de seguridad por defecto: fan_governor_enabled: false, fan_governor_dry_run: true.
+7. Producción: PID 88348 corriendo saludable e ininterrumpido en V3.0.0.
 
-CONTRATOS Y HARDENING ACORDADOS (AUDITORÍA CLAUDE):
-- R1 (Anti-Hunting): Dwell base 90s, adaptativo 120s si consecutive_holds >= 3, deadband [81.0, 82.5]°C.
-- R2 (HTTP Concurrency): Modulación de hardware de la flota ejecutada en paralelo mediante
-  `ThreadPoolExecutor(max_workers=4)` con timeout individual de 2.5s y timeout global de 5.0s,
-  blindando el ciclo autoritativo de 30s de la API 4028.
-- R3 (Fail-Safe Explícito a 100%): Fallback a 100% ante `/gov off`, >= 3 fallos consecutivos de red o excepciones.
-- R4 (PWM Floor): Piso mínimo de 75% duty cycle.
-- Feature Flags por defecto: `fan_governor_enabled: false`, `fan_governor_dry_run: true`.
-
-TAREAS ESPECÍFICAS A IMPLEMENTAR:
-1. **T014: Integración en `app/miner_monitor.py`**:
-   - Agregar configuración del gobernador en `config`:
-     `fan_governor_enabled` (bool, def: False), `fan_governor_dry_run` (bool, def: True),
-     `fan_governor_target_temp_c` (float, def: 82.0), `vnish_api_password` (str, def: "admin").
-   - Crear función ejecutora `execute_governor_cycle(miners, states, config)`:
-     * Evaluar cada minero con `compute_governor_step()`.
-     * Si `decision.requires_write` y `not config.fan_governor_dry_run`:
-       Despachar escritura usando `ThreadPoolExecutor(max_workers=min(4, len(miners)))`
-       con `safe_set_fan_duty(host, password, duty, timeout=2.5)`.
-       Esperar con `concurrent.futures.wait(..., timeout=5.0)`.
-     * Actualizar métricas del gobernador en `state` bajo `state_lock`.
-     * Registrar en log: `[GOV] miner=23 action=STEP_DOWN duty=98% temp=79.5°C dry_run=False`.
-
-2. **T015: Comandos Telegram**:
-   - `/gov` o `/governor`: Muestra tabla con estado global (ON/OFF, DRY-RUN/ACTIVE), target (82°C) y estado por minero (T_max, Duty actual, Última acción, Holds, Failures).
-   - `/gov on`: Habilita el gobernador en memoria.
-   - `/gov off`: Deshabilita el gobernador y ejecuta fallback de seguridad a 100% PWM en todos los mineros.
-   - `/gov set <temp>`: Ajusta el target térmico (validado entre 75.0°C y 83.0°C).
-
-3. **T016: Persistencia en `app/state.json`**:
-   - Persistir estado del gobernador por minero (`governor_duty`, `governor_holds`, `governor_last_change_ts`, `governor_failures`) respetando `state_lock`.
-
-4. **T017: Esquema y Documentación de Configuración**:
-   - Actualizar `app/config.example.json` con los nuevos campos documentados.
-
-5. **T018 & T019: Tests de Concurrencia y Suite Global**:
-   - Crear `tests/test_fan_governor_concurrency.py`:
-     * Test de timeout global de flota (minero lento que demora 10s no bloquea al executor más de 5.0s).
-     * Test de fallback a 100% en `/gov off`.
-     * Test de aislamiento de excepciones y thread-safety de `state_lock`.
-   - Ejecutar suite global: `$env:OPENBLAS_NUM_THREADS="1"; python -m unittest discover -s tests -p "test_*.py"`.
-
-ARCHIVOS DE REFERENCIA:
-- `specs/039-vnish-fan-governor/contracts/governor-contract.md`
-- `app/fan_governor.py`
-- `app/vnish_client.py`
-- `app/miner_monitor.py` (Líneas 5130-5170 ciclo de enfriamiento, y bloque de dispatch de comandos Telegram)
+PRÓXIMOS PASOS OPERATIVOS:
+- Revisión de diff final y commit/push de Fases 4 y 5.
+- Ensayo opcional en vivo en modo DRY-RUN (/gov on con dry_run:true) para observar
+  en logs las decisiones que tomaría el gobernador sobre la flota real sin tocar hardware.
 
 =============================================================================
-MODELO A SELECCIONAR: Claude Sonnet 4.6 (Thinking)
+MODELO SUGERIDO: Gemini 3.8 Flash High (operaciones estándar / auditoría)
 =============================================================================

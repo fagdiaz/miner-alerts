@@ -14,7 +14,7 @@ import hashlib
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple
 
@@ -1702,7 +1702,7 @@ def now_str() -> str:
 
 
 def argentina_now() -> datetime:
-    return datetime.utcnow().replace(microsecond=0) + timedelta(hours=-3)
+    return datetime.now(timezone.utc).replace(tzinfo=None).replace(microsecond=0) + timedelta(hours=-3)
 
 
 def resolve_miner(input_name: str, miners: list) -> Optional[dict]:

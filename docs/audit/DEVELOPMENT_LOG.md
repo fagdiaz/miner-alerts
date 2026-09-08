@@ -3,6 +3,20 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Calibración Térmica de Fan Governor a 82.0°C para Prevención de Autoswitch Vnish
+
+* **Objetivo**: Reducir el target térmico del gobernador de 83.0°C a 82.0°C para maximizar la estabilidad operativa y evitar que fluctuaciones térmicas normales se acerquen al umbral de corte/desescalado de Vnish (`decrease_temp: 84.0°C`).
+* **Ajustes Operativos (`app/config.json`, `app/config.example.json`, `app/miner_monitor.py`)**:
+  - `fan_governor_target_temp_c`: 82.0°C (objetivo central de trabajo saludable).
+  - `fan_governor_deadband_low_c`: 81.0°C (modula ventiladores -2% si T < 81.0°C).
+  - `fan_governor_deadband_high_c`: 82.5°C (incrementa ventiladores +3% si T > 82.5°C).
+  - `fan_governor_emergency_temp_c`: 83.5°C (salto de emergencia a 100% PWM si T >= 83.5°C, manteniendo 0.5°C de margen estricto antes de los 84.0°C de Vnish).
+* **Certificación**:
+  - 581/581 tests PASS en 8.92s.
+  - Servicio reiniciado en producción bajo PID nuevo y verificada la ejecución en vivo.
+
+---
+
 ## [2026-09-08] - Corrección de Razonamiento Individual por Minero y Preservación de Configuración en `valid_miners`
 
 * **Objetivo**: Garantizar el razonamiento 100% individual y personalizado por minero en el Fan Governor: resolver la causa raíz por la cual mineros operando en su techo configurado (S19JPRO-25 y 26 en 2500W con temperatura sana de 76°C) recibían orden de 100% de coolers (`RECOVERY_MAX_COOLING`) en lugar de modular hacia abajo (`STEP_DOWN`), permitiendo que cada equipo module sus ventiladores de forma estrictamente desacoplada de los demás.

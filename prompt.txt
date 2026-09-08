@@ -18,7 +18,7 @@ ESTADO DEL PROYECTO: GOBERNADOR CON RECUPERACIÓN DE AUTOSWITCH VNISH
      * Si la potencia del minero está por debajo del objetivo (`current_power_w < target_power_w - 120W`):
        Los ventiladores se fuerzan al 100% de PWM de forma incondicional.
      * Con 100% de PWM, la temperatura del chip desciende por debajo de `rise_temp` (79°C de Vnish), permitiendo que el autoswitch nativo de Vnish aumente el preset hacia el techo máximo configurado (2700W en 23/24, 2500W en 25/26).
-     * Solo cuando el equipo alcanza su potencia máxima objetivo y la temperatura es <= 82.0°C, el gobernador modula los ventiladores hacia abajo para estabilizar en 83.0°C sana.
+     * Solo cuando el equipo alcanza su potencia máxima objetivo y la temperatura es <= 81.0°C, el gobernador modula los ventiladores hacia abajo para estabilizar en 82.0°C sana (con margen seguro hacia los 84°C del autoswitch).
    - Formato REST API Vnish:
      * Nombres de preset limpios sin sufijo 'W' (ej: '2700', '2500') para evitar HTTP 400.
    - Razonamiento Individual por Minero:

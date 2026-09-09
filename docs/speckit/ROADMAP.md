@@ -12,175 +12,221 @@
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
-1. [x] **Specs 001 a 019 — Arquitectura Base y Telemetría**: Polling autoritativo API 4028, base SQLite (esquema v1-v6), integración Hashcore Toolkit, captura de logs Vnish, diagnósticos de calidad y perfil de estabilidad.
-2. [x] **Spec 020 — Estabilización de Estados y Autoreinicio**: Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`), interlocks térmicos/de flota y cero reinicios espurios (`e502ab9`).
-3. [x] **Spec 030 — Calidad de Mensajería Telegram**: Cola de entrega por prioridad, división segura de mensajes extensos y protección anti-rate limit (`2afd65e`).
-4. [x] **Spec 021 — Watchdog de Vida y Recuperación SCM**: Supervisión fuera de proceso, heartbeat y prueba SCM aprobada; gate D+1 (86.7k s) y D+3 (278.4k s / 77.3h) superados con éxito continuo; spec cerrada.
-5. [x] **Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**: Producción activa con PID 38816 (2 workers paralelos). Gate D+1 (42.7h) y Gate D+3 (73.45h / 264.4k s, 8.766 ticks, 0 alarmas, watchdog 100% healthy) superados con éxito continuo; spec cerrada.
-6. [x] **Spec 023 — Fusión de Evidencia de Incidentes**: Módulo puro `app/evidence_fusion.py` (T001-T018), rutas de lectura `/diagnose` activadas (T019), tablas aditivas `incident_assessments` e `assessment_fact_refs`, validación determinista y rendimiento verificado (344 tests PASS).
-7. [x] **Spec 024 — Descubrimiento de Telemetría Eléctrica (Bloqueado por Hardware)**: Relevamiento completado (T001-T004). Prohibida la inferencia de AC desde voltajes DC de hashboards; resultado formal `blocked: missing_hardware_dependency` ante ausencia de PDU/UPS de red. Adaptadores pausados sin deuda técnica ni falsas asunciones.
-8. [x] **Spec 026 — Inventario de Capacidades Hashcore**: Herramienta desacoplada `tools/hashcore_inventory.py` (T001-T018), 10 nuevos tests unitarios (381 tests PASS global), metadatos de instalación PE verificados (`1.6.0+167`, wrapper `toolkit_cli.bat` SHA `2c204d87`, exe `hashcore-toolkit.exe` SHA `9db18421`), cero llamadas a subprocess en modo metadata y allowlist vacía con resultado `blocked` sin alterar el monitor en producción.
-9. [x] **Spec 028 — Backups, Retención y Recuperación por Etapas**: Herramienta desacoplada `tools/event_store_backup.py` y script instalador `tools/install_backup_task.ps1` (T001-T014), 10 nuevos tests unitarios (391 tests PASS global), backup online por lotes de 256 páginas, retención determinista UTC 14/8/12, simulacro de restore en staging superado con éxito sobre la BD real de 20.4 MB en 6.2s y runbook de desastre documentado en `docs/speckit/RUNBOOK.md`.
-10. [x] **Spec 025 — Métricas de Prometheus y Paneles Grafana**: Módulo de instantáneas `app/metrics_snapshot.py` (T001-T005), exportador `tools/metrics_exporter.py` (T007), stack Docker Compose aislado `docker-compose.observability.yml` (T008), 3 tableros Grafana (T009), hook atómico en el monitor (T006), 13 tests unitarios (404 tests PASS global).
-11. [x] **Spec 027 — Decisión de Interfaz de Operación**: Scorecard de flujos W01-W06 ejecutado (30 corridas verificadas). Todas las necesidades P1 cubiertas por Telegram (`/status`, `/diagnose`), Grafana (`fleet_overview`, `monitor_liveness`) y Dashboard HTML estático (`tools/operations_dashboard.py`). Decisión formal `no_build` adoptada sin código adicional, preservando la superficie mínima y cero impacto en recursos.
-12. [x] **Spec 029 — Estabilización Final y Candidato de Release V2**: Congelamiento determinista de payload SHA-256 (`58d451f1...`, 43 archivos), validación total de matriz R001-R025 (416 tests PASS), simulacro de restore staging de SQLite superado en 2.5s (23.2 MB), herramienta `tools/release_audit.py`, observación acumulada de 267.2 horas en producción bajo PID 38816 con 0 caídas, y aprobación formal (`APPROVE`) del Release Candidate V2.
+1. **Specs 001 a 019 — Arquitectura Base y Telemetría**:
+   - [x] Polling autoritativo API 4028 y persistencia SQLite (esquema v1-v6).
+   - [x] Integración con Hashcore Toolkit CLI para comandos seguros de reinicio.
+   - [x] Captura programada de logs de firmware Vnish.
+   - [x] Diagnósticos de calidad de minado y perfil de estabilidad.
+
+2. **Spec 020 — Estabilización de Estados y Autoreinicio**:
+   - [x] Máquina de 5 estados estables (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`).
+   - [x] Interlocks térmicos, de flota y de transición de firmware.
+   - [x] Eliminación de falsas alarmas y cero reinicios espurios (`e502ab9`).
+
+3. **Spec 030 — Calidad de Mensajería Telegram**:
+   - [x] Cola de entrega por prioridad y división segura de mensajes extensos.
+   - [x] Protección anti-rate limit y reintento con backoff.
+   - [x] Validación en producción y commit `2afd65e`.
+
+4. **Spec 021 — Watchdog de Vida y Recuperación SCM**:
+   - [x] Supervisión fuera de proceso con heartbeat atómico versionado.
+   - [x] Detección determinista de bloqueos y recuperación SCM aprobada.
+   - [x] Gates de observación continua D+1 (86.7k s) y D+3 (278.4k s / 77.3h) superados con éxito.
+
+5. **Spec 022 — Adquisición Adaptativa y UX Telegram Compacto**:
+   - [x] Ejecutor de adquisición paralelo desacoplado con 2 workers.
+   - [x] Formato UX compacto y normalización de calidades de telemetría.
+   - [x] Producción activa bajo PID 38816 con gates D+1 (42.7h) y D+3 (73.45h / 264.4k s) superados.
+
+6. **Spec 023 — Fusión de Evidencia de Incidentes**:
+   - [x] Módulo puro desacoplado `app/evidence_fusion.py` (T001-T018).
+   - [x] Rutas de lectura `/diagnose` activadas con tablas `incident_assessments` e `assessment_fact_refs`.
+   - [x] Validación determinista SC-001 a SC-004 y rendimiento verificado (344 tests PASS).
+
+7. **Spec 024 — Descubrimiento de Telemetría Eléctrica (Bloqueado por Hardware)**:
+   - [x] Relevamiento técnico exhaustivo de telemetría eléctrica (T001-T004).
+   - [x] Prohibición formal de inferencia de AC desde voltajes DC de hashboards.
+   - [x] Cierre formal con disposición `blocked_external` por ausencia de PDU/UPS de red.
+
+8. **Spec 026 — Inventario de Capacidades Hashcore**:
+   - [x] Herramienta desacoplada `tools/hashcore_inventory.py` (T001-T018).
+   - [x] Metadatos de instalación PE verificados (`1.6.0+167`, wrapper `toolkit_cli.bat`).
+   - [x] Clasificación de operaciones y allowlist vacía con resultado seguro `blocked` sin alterar monitor.
+
+9. **Spec 028 — Backups, Retención y Recuperación por Etapas**:
+   - [x] Herramienta desacoplada `tools/event_store_backup.py` y script `tools/install_backup_task.ps1`.
+   - [x] Respaldo online por lotes de 256 páginas y retención determinista UTC 14/8/12.
+   - [x] Simulacro de restore en staging superado sobre BD real de 20.4 MB en 6.2s.
+
+10. **Spec 025 — Métricas de Prometheus y Paneles Grafana**:
+    - [x] Instantáneas de métricas en `app/metrics_snapshot.py` y exportador `tools/metrics_exporter.py`.
+    - [x] Stack Docker Compose aislado con 3 tableros Grafana (`fleet_overview`, `monitor_liveness`, etc.).
+    - [x] Hook atómico en el monitor con cero impacto en el ciclo de supervisión.
+
+11. **Spec 027 — Decisión de Interfaz de Operación**:
+    - [x] Scorecard de flujos de operador W01-W06 ejecutado (30 corridas verificadas).
+    - [x] Validación de cobertura P1 completa con Telegram, Grafana y dashboard HTML estático.
+    - [x] Decisión formal `no_build` adoptada, preservando la superficie mínima y cero impacto en recursos.
+
+12. **Spec 029 — Estabilización Final y Candidato de Release V2**:
+    - [x] Congelamiento determinista de payload SHA-256 (`58d451f1...`, 43 archivos).
+    - [x] Validación de matriz completa R001-R025 (416 tests PASS).
+    - [x] Período de observación continua de 267.2 horas en producción y aprobación formal del Release Candidate V2 (`v2.0.0`).
 
 ---
 
 ### 🚀 Programa V3: Maximización de Telegram & Capacidades Avanzadas
 
-1. [x] **Spec 031 — Botones Interactivos y Callbacks Telegram (`031-telegram-interactive-callbacks`)**:
-   - *Objetivo*: Inline Keyboards en alertas de episodios para diagnósticos y gráficos en 1 toque.
-   - *Valor y Beneficio*: Flujo interactivo seguro de reinicio en 2 toques (`[ 🔄 Reiniciar ]` -> `[ ✅ Confirmar ]` / `[ ❌ Cancelar ]`) con token de 60s, eliminando tipeo manual sin riesgos de toques accidentales.
-   - *Resultados*: 14 tests PASS en `tests/test_telegram_callbacks.py`, 430 tests globales PASS, cero impacto en estabilidad.
-   - *Modelo*: Gemini 3.8 Flash High (Fases 1, 2, 4, 5) + Claude Sonnet 4.6 Thinking (Fase 3).
+1. **Spec 031 — Botones Interactivos y Callbacks Telegram (`031-telegram-interactive-callbacks`)**:
+   - [x] Inline Keyboards en alertas de episodios para diagnósticos y gráficos en 1 toque.
+   - [x] Flujo interactivo seguro de reinicio en 2 toques (`[ 🔄 Reiniciar ]` -> `[ ✅ Confirmar ]` / `[ ❌ Cancelar ]`) con token de 60s.
+   - [x] 14 tests PASS en `tests/test_telegram_callbacks.py`, 430 tests globales PASS, cero impacto en estabilidad.
 
-2. [x] **Spec 032 — Gráficos Nativos Visuales en Telegram (`032-telegram-visual-charts`)**:
-   - *Objetivo*: Envío directo de imágenes PNG con la curva de hashrate, temperaturas y RPM al chat vía `/chart <id>` y `/chart fleet`.
-   - *Resultados*: 6 tests PASS en `tests/test_telegram_charts.py`, 436 tests globales PASS, renderizado en RAM en 219ms sobre 23.2 MB, cero archivos temporales.
-   - *Modelo*: Gemini 3.8 Flash High.
+2. **Spec 032 — Gráficos Nativos Visuales en Telegram (`032-telegram-visual-charts`)**:
+   - [x] Envío directo de imágenes PNG con la curva de hashrate, temperaturas y RPM al chat vía `/chart <id>` y `/chart fleet`.
+   - [x] Renderizado en RAM en 219ms sobre 23.2 MB sin archivos temporales en disco.
+   - [x] 6 tests PASS en `tests/test_telegram_charts.py`.
 
-3. [x] **Spec 033 — Mantenimiento y Silenciamiento Temporal (`033-miner-maintenance-snooze`)**:
-   - *Objetivo*: Modo `/snooze <miner|all> [minutos]` y botón 1-Tap `[ 🔕 Silenciar 1h ]` para suprimir alertas, recordatorios persistentes y bloquear autorreinicios durante intervenciones físicas programadas con auto-expiración.
-   - *Resultados*: 12 tests PASS en `tests/test_telegram_snooze.py`, 448 tests globales PASS, persistencia en `state.json`, bloqueo de autorreinicio en caliente y cero impacto en producción.
-   - *Modelo*: Gemini 3.8 Flash High.
+3. **Spec 033 — Mantenimiento y Silenciamiento Temporal (`033-miner-maintenance-snooze`)**:
+   - [x] Comandos `/snooze <miner|all> [minutos]` y botón táctil `[ 🔕 Silenciar 1h ]`.
+   - [x] Supresión temporal de alertas, recordatorios y bloqueo de autorreinicios durante intervenciones físicas.
+   - [x] 12 tests PASS en `tests/test_telegram_snooze.py` y persistencia en `state.json`.
 
-4. [x] **Spec 034 — Reporte Ejecutivo Diario (`034-daily-executive-digest`)**:
-   - *Objetivo*: Resumen programado diario matutino (08:00 AM) y on-demand `/digest` con uptime de flota, TH/s promedio, J/TH, shares %, anomalías y verificación de integridad de backups SQLite.
-   - *Resultados*: 10 tests PASS en `tests/test_daily_digest.py`, 458 tests globales PASS, rendimiento real medido de 27.2 ms de consulta y 0.07 ms de render, cero bloqueos de escritura y despacho blindado una sola vez al día.
-   - *Modelo*: Gemini 3.8 Flash High.
+4. **Spec 034 — Reporte Ejecutivo Diario (`034-daily-executive-digest`)**:
+   - [x] Resumen programado diario matutino (08:00 AM) y on-demand `/digest`.
+   - [x] Métricas de flota agregadas: uptime, TH/s promedio, J/TH, shares %, anomalías e integridad de backups SQLite.
+   - [x] 10 tests PASS en `tests/test_daily_digest.py` con rendimiento real medido de 27.2ms.
 
-5. [x] **Spec 035 — Inteligencia Térmica y de Ventiladores (`035-cooling-fan-health`)**:
-   - *Objetivo*: Supervisión analítica de ventiladores (`/fans [miner]`), cálculo de margen térmico hacia el corte (85.0°C), y alertas preventivas de saturación térmica (`COOLING_WARNING`) para anticipar limpieza de filtros antes del disparo de temperatura por hardware.
-   - *Resultados*: 14 tests PASS en `tests/test_fan_health.py`, 472 tests globales PASS en 4.60s, consulta SQLite en < 1ms sobre base de 23.2 MB, cero bloqueos y monitoreo en vivo PID 38816 100% ininterrumpido.
-   - *Modelo*: Gemini 3.8 Flash High.
+5. **Spec 035 — Inteligencia Térmica y de Ventiladores (`035-cooling-fan-health`)**:
+   - [x] Supervisión analítica de ventiladores (`/fans [miner]`).
+   - [x] Cálculo de margen térmico hacia el umbral de corte (85.0°C).
+   - [x] Alertas preventivas de saturación térmica (`COOLING_WARNING`) para anticipar limpieza de filtros.
+   - [x] 14 tests PASS en `tests/test_fan_health.py` y monitoreo en vivo continuo.
 
-6. [x] **Spec 036 — Eficiencia Energética Continua (`036-efficiency-energy-tracking`)**:
-   - *Objetivo*: Seguimiento en tiempo real del ratio Joules por Terahash (J/TH), potencia de cadenas en Watts/kW, y alertas tempranas de degradación energética (`EFFICIENCY_WARNING`) vía `/efficiency` (alias `/eff`).
-   - *Resultados*: 12 tests PASS en `tests/test_energy_efficiency.py`, 484 tests globales PASS en 4.84s, consulta SQLite en < 1ms, cero bloqueos y monitoreo en vivo PID 38816 100% ininterrumpido.
-   - *Modelo*: Gemini 3.8 Flash High.
+6. **Spec 036 — Eficiencia Energética Continua (`036-efficiency-energy-tracking`)**:
+   - [x] Seguimiento en tiempo real del ratio Joules por Terahash (J/TH) y potencia en Watts/kW vía `/efficiency`.
+   - [x] Alertas tempranas de degradación energética (`EFFICIENCY_WARNING`).
+   - [x] 12 tests PASS en `tests/test_energy_efficiency.py`.
 
-7. [x] **Spec 037 — Seguimiento de Presets y Autotuning Dinámico (`037-vnish-presets-autotuning`)**:
-   - *Objetivo*: Monitoreo de frecuencias (MHz), tensión de cadena (V), potencia y calibración autotune del firmware Vnish vía `/presets` (alias `/preset`, `/profile [minero]`) y alerta preventiva `PROFILE_CHANGE_ALERT` ante reducciones de frecuencia ($\ge 25\text{ MHz}$).
-   - *Resultados*: 11 tests PASS en `tests/test_vnish_presets.py`, 495 tests globales PASS en 5.04s, consulta SQLite en 1.77ms sobre BD de 23.2 MB, cero bloqueos y monitor en vivo PID 38816 100% ininterrumpido.
-   - *Modelo*: Gemini 3.8 Flash High.
+7. **Spec 037 — Seguimiento de Presets y Autotuning Dinámico (`037-vnish-presets-autotuning`)**:
+   - [x] Monitoreo de frecuencias (MHz), tensión de cadena (V), potencia y autotune Vnish vía `/presets`.
+   - [x] Alerta preventiva `PROFILE_CHANGE_ALERT` ante reducciones de frecuencia ($\ge 25\text{ MHz}$).
+   - [x] 11 tests PASS en `tests/test_vnish_presets.py`.
 
-8. [x] **Spec 038 — Auditoría de Concurrencia y Estabilización Release V3 (`038-v3-release-stabilization`)**:
-   - *Objetivo*: Auditoría profunda de concurrencia multihilo, cerrojos `state_lock`, prevención de deadlocks en callbacks/colas y suite determinista de tests de estrés (`tests/test_v3_concurrency.py`).
-   - *Resultados*: 19 tests PASS en `tests/test_v3_concurrency.py`, 514 tests globales PASS en 14.61s, resolución de race condition en `CallbackTokenRegistry`, snapshots inmutables en `save_state()`, higiene SQLite `?mode=ro` con `finally: conn.close()`, PID 38816 > 267.3h continuo y Release Candidate V3 (v3.0.0) aprobado.
-   - *Modelo*: Claude Sonnet 4.6 (Thinking) + Gemini 3.8 Flash High (Colaboración Multi-Modelo).
+8. **Spec 038 — Auditoría de Concurrencia y Estabilización Release V3 (`038-v3-release-stabilization`)**:
+   - [x] Auditoría profunda de concurrencia multihilo, cerrojos `state_lock` y sockets SQLite con `?mode=ro`.
+   - [x] Prevención de condiciones de carrera en `CallbackTokenRegistry` y 19 tests de estrés (`tests/test_v3_concurrency.py`).
+   - [x] Certificación formal del Release V3.0.0 (514 tests globales PASS).
 
 ---
 
 ### ⚡ Programa V3.1: Control y Gobernanza de Hardware (Activación Plena en Producción)
 
-9. [x] **Spec 039 — Gobernador Térmico y Acústico de Ventiladores Vnish (`039-vnish-fan-governor`)**:
-   - *Objetivo*: Detección de modo en `/fans` (`manual`/`auto`), cliente REST seguro (`app/vnish_client.py`) y algoritmo de lazo cerrado determinista (`app/fan_governor.py`) modulando coolers hacia la temperatura sana de 82.0°C (banda muerta [81.0, 82.5]°C), reduciendo el estrés acústico y el desgaste mecánico sin comprometer hashrate.
-   - *Calibración y Hardening*:
-     * Target: 82.0°C; Deadband: [81.0, 82.5]°C; Emergencia: 83.5°C (spike inmediato a 100% PWM).
-     * Modulación descendente de ventiladores (-2%) ante temperaturas < 81.0°C y ascendente (+3%) ante > 82.5°C.
-     * Concurrencia HTTP: ThreadPoolExecutor con timeout de 2.5s por minero, 5.0s límite de flota y `shutdown(wait=False)`.
-     * Fail-Safe: Retorno forzado a 100% ante `/gov off`, $\ge 3$ fallos consecutivos o excepciones.
-     * Configurado como **ACTIVO POR DEFECTO** (`fan_governor_enabled: true`, `fan_governor_dry_run: false`), con control manual interactivo en caliente vía Telegram (`/gov on`, `/gov off`, `/gov set`).
-   - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T021), 12 tests de concurrencia y estrés (`tests/test_fan_governor_concurrency.py`), 576 tests globales PASS.
-   - *Modelo*: Gemini 3.8 Flash High + Claude Sonnet 4.6 Thinking.
+9. **Spec 039 — Gobernador Térmico y Acústico de Ventiladores Vnish (`039-vnish-fan-governor`)**:
+   - [x] Detección de modo en `/fans` (`manual`/`auto`) y cliente REST seguro (`app/vnish/client.py`).
+   - [x] Modulación determinista de lazo cerrado hacia target de 82.0°C (banda muerta [81.0, 82.5]°C).
+   - [x] Despacho concurrente desacoplado con `ThreadPoolExecutor` (timeout 2.5s por minero, 5.0s flota).
+   - [x] Protección de emergencia `EMERGENCY_SPIKE` a 83.5°C con forzado inmediato a 100% PWM.
+   - [x] Fail-safe ante caídas de comunicación o excepciones consecutivas.
+   - [x] Control interactivo en caliente vía Telegram (`/gov on`, `/gov off`, `/gov set`).
+   - [x] 12 tests de concurrencia y estrés (`tests/test_fan_governor_concurrency.py`).
 
-10. [x] **Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión (`040-dynamic-voltage-presets`)**:
-    - *Objetivo*: Algoritmo inteligente de optimización de Costo/Beneficio que evalúa la estabilidad eléctrica por elevador de tensión, frecuencia de reinicios y margen térmico, calibrando el preset de potencia Vnish (de 1600W a 2800W) para maximizar el hashrate efectivo continuo y prevenir caídas en cascada.
-    - *Calibración y Hardening*:
-      * Desescalado Térmico (`ACTION_STEP_DOWN_THERMAL`): Si a 2700W con ventiladores al 100% la temperatura es $\ge 84.0^\circ\text{C}$ (margen $\le 1.0^\circ\text{C}$ frente al corte de 85°C), desescala secuencialmente de potencia (`2700W -> 2500W -> 2300W`).
-      * Protección de Elevadores: Desescalado rápido individual ante $\ge 2$ reinicios en 24h y desescalado grupal en cascada si $\ge 2$ mineros del mismo elevador reinician en ventana de 30m.
-      * Subida conservadora: Requiere 72h de soak continuo sin reinicios y margen térmico $\ge 4.0^\circ\text{C}$.
-      * Mitigación de Spam: Alertas de autotune de Vnish suprimidas (`preset_alert_enabled: false`) y saturación térmica ajustada a 84.0°C/98% PWM/cooldown 2h.
-      * Configurado como **ACTIVO POR DEFECTO** (`preset_balancer_enabled: true`, `preset_balancer_dry_run: false`), con control manual interactivo en caliente vía Telegram (`/balancer on`, `/balancer off`, `/balancer setmax`, `/balancer run`).
-    - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T020), 23 tests unitarios e integración (`tests/test_preset_balancer.py`, `tests/test_preset_balancer_integration.py`), **576 tests globales PASS**.
-    - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+10. **Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión (`040-dynamic-voltage-presets`)**:
+    - [x] Algoritmo de optimización de potencia y presets (1600W a 2800W) por grupo eléctrico.
+    - [x] Desescalado térmico progresivo (`ACTION_STEP_DOWN_THERMAL`) ante saturación térmica.
+    - [x] Protección individual y grupal de elevadores ante caídas de tensión y reinicios en ventana.
+    - [x] Subida conservadora tras 72h continuas de soak con margen térmico $\ge 4.0^\circ\text{C}$.
+    - [x] Comandos interactivos en caliente `/balancer on`, `/balancer off`, `/balancer setmax`, `/balancer run`.
+    - [x] 23 tests unitarios e integración (`tests/test_preset_balancer.py`, `tests/test_preset_balancer_integration.py`).
 
 ---
 
 ### 🧹 Programa V3.2: Reorganización Modular y Purga Limpia de Shims
 
-11. [x] **Spec 041 — Arquitectura Modular y Reorganización de Dominios en `app/` (`041-app-modular-architecture`)**:
-    - *Objetivo*: Reorganizar los 22 archivos planos en `app/` en 4 subpaquetes de dominio desacoplados (`app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`), manteniendo `app/miner_monitor.py` como punto de entrada raíz y preservando 100% de retrocompatibilidad mediante shims con module aliasing (`sys.modules[__name__] = _impl`).
-    - *Dominios Reorganizados*:
-      * `app/core/`: red API 4028, SQLite `EventStore`, episodios de alerta, fusión de evidencia, liveness/watchdog, métricas snapshot, calidad de minado y seguridad de reinicios (10 módulos).
-      * `app/vnish/`: cliente REST, autotuning/presets, parser de logs y telemetría (4 módulos).
-      * `app/governance/`: fan governor en lazo cerrado, preset balancer por elevador, salud térmica de fans y eficiencia energética (4 módulos).
-      * `app/telegram/`: callbacks interactivos, gráficos PNG en RAM, digests diarios, split de mensajes y mantenimiento snooze (5 módulos).
-    - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T042), **587 tests globales PASS** en 11.26s, cero quiebres en importaciones externas ni monkey-patching en tests, auditoría de release aprobada (83 archivos).
-    - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+11. **Spec 041 — Arquitectura Modular y Reorganización de Dominios en `app/` (`041-app-modular-architecture`)**:
+    - [x] Reorganización de 22 archivos planos en 4 subpaquetes canónicos: `app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`.
+    - [x] Capa inicial de shims de retrocompatibilidad con module aliasing (`sys.modules[__name__] = _impl`).
+    - [x] 587 tests globales PASS manteniendo retrocompatibilidad total.
 
-12. [x] **Spec 042 — Purga Limpia de Shims y Modernización de Tests en `app/` (`042-purge-shims-test-modernization`)**:
-    - *Objetivo*: Culminación del ordenamiento arquitectónico integral de `app/` para alcanzar la máxima pulcritud posible: eliminación definitiva de los 22 archivos shims/fachadas planos sueltos en la raíz de `app/` tras la modernización directa de toda la suite de tests en `tests/` para importar exclusivamente de los 4 subpaquetes de dominio canónicos (`app.core`, `app.vnish`, `app.governance`, `app.telegram`), dejando en `app/` únicamente el orquestador raíz `miner_monitor.py` y el inicializador de paquete `__init__.py` junto con los archivos locales de runtime.
-    - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T020), 22 archivos shims purgados vía `git rm`, **587/587 tests globales PASS** en 10.68s, auditoría de release aprobada (`tools/release_audit.py --check-only`) con payload optimizado de 60 archivos limpios, cero impacto y servicio de producción 100% continuo.
-    - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+12. **Spec 042 — Purga Limpia de Shims y Modernización de Tests en `app/` (`042-purge-shims-test-modernization`)**:
+    - [x] Modernización canónica directa de todas las importaciones en la suite de pruebas `tests/`.
+    - [x] Purga definitiva mediante `git rm` de los 22 archivos shims de la raíz de `app/`.
+    - [x] Validación de estructura mínima en `app/` (`miner_monitor.py` y `__init__.py`).
+    - [x] 587/587 tests globales PASS y auditoría de release verificada con 60 payload files limpios.
 
 ---
 
 ### 🎮 Programa V3.3: Centro de Comando Táctil y Modo Silencio
 
-13. [x] **Spec 043 — Telegram Interactive Command Center & Rich UI (`043-telegram-interactive-command-center`)**:
-    - *Objetivo*: Dashboard táctil centralizado `/menu` con `InlineKeyboardMarkup`, navegación in-place (`editMessageText`), semáforos, barras de estado y botones contextuales de acción rápida en alertas con confirmación en dos toques para reinicios.
-    - *Resultados*: Fases 1 a 4 completadas al 100% (T001-T015), 17 tests unitarios en `tests/test_command_center.py`, **602/602 tests globales PASS** en 10.99s, release audit PASS (61 payload files), servicio en producción ininterrumpido.
-    - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+13. **Spec 043 — Telegram Interactive Command Center & Rich UI (`043-telegram-interactive-command-center`)**:
+    - [x] Módulo puro desacoplado `app/telegram/command_center.py` con layouts y builders de InlineKeyboardMarkup.
+    - [x] Dashboard táctil `/menu` (alias `/start`, `/panel`) con semáforos, potencia de flota y barras Unicode `[██████░░]`.
+    - [x] Submenús in-place vía `editMessageText`: Métricas, Reinicios guiados, Presets y Alertas.
+    - [x] Confirmación de reinicio en dos toques con token criptográfico efímero de 60 segundos.
+    - [x] Botones de acción rápida de 4 funciones embebidos en alertas de episodios (`diag`, `chart`, `rb_req`, `snz`).
+    - [x] Guardián de seguridad RBAC (`from_id == chat_id`) y ACK inmediato `answerCallbackQuery` (< 500ms).
+    - [x] 17 tests unitarios en `tests/test_command_center.py` y 602 tests globales PASS.
 
-14. [x] **Spec 044 — Modo Silencio Inteligente con Temporizador Persistente y Thermal Guard (`044-silent-mode-thermal-guard`)**:
-    - *Objetivo*: Reducción acústica de ventiladores a 40%-70% PWM con regulación térmica a 82°C, temporizador multiescala persistente (30m a 6h e indefinido) con reversión automática a régimen normal, integración directa táctil al Command Center (`/menu`) y Guardián Térmico de seguridad atómico ante emergencias (83.5°C).
-    - *Cumplimiento Constitucional P0*: Despacho desacoplado en Telegram polling (C1), campos `silent_mode_*` independientes en `MinerState` reconciliados en `first_tick` (C2), límites acústicos dinámicos en Fan Governor (C3), y anulación atómica en `state.json` bajo pico térmico `EMERGENCY_SPIKE` con forzado al 100% PWM y alerta prioritaria (C4).
-    - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T018), 17 tests en `tests/test_silent_mode.py` y 17 tests en `tests/test_command_center.py`, **621/621 tests globales PASS** en 10.95s, release audit PASS (61 payload files, SHA-256 verificado), activo en producción bajo PID 58344.
-    - *Modelo*: Gemini 3.8 Flash High (Implementación integral de código, FSM, tests y layouts táctiles) + Claude Sonnet 4.6 Thinking (Auditoría previa de condiciones C1-C4).
+14. **Spec 044 — Modo Silencio Inteligente con Temporizador Persistente y Thermal Guard (`044-silent-mode-thermal-guard`)**:
+    - [x] Condición C1: Despacho asíncrono no bloqueante en el worker de Telegram polling.
+    - [x] Condición C2: Campos dedicados `silent_mode_*` en `MinerState` y reconciliación en arranque `first_tick`.
+    - [x] Condición C3: Techos acústicos dinámicos (`max_fan_duty_percent`) inyectados en Fan Governor (40%-70% PWM).
+    - [x] Condición C4: Desactivación atómica en `state.json` bajo pico térmico (83.5°C) o falla, ventiladores forzados al 100% y alerta Telegram.
+    - [x] Temporizadores de cuenta regresiva configurables (30m, 1h, 2h, 4h, 6h, indef) con reversión automática a régimen normal.
+    - [x] Selector táctil integrado al Command Center (`cc:nav:silent`, `cc:act:silent:*`) y comando `/silent`.
+    - [x] 17 tests unitarios en `tests/test_silent_mode.py`, 621/621 tests globales PASS y activo en producción bajo PID 58344.
 
 ---
 
 ### 🎯 Resumen de Valor Aportado por Especificación
 
-1. [x] **Spec 023 — Fusión de Evidencia de Incidentes**:
-   - *Objetivo*: Correlacionar datos de telemetría SQLite, decisiones de reinicio y logs Vnish.
-   - *Valor y Beneficio*: Permite identificar la causa raíz exacta de caídas (red, energía o firmware) eliminando falsos diagnósticos y guiando el mantenimiento preventivo de la granja.
+1. **Spec 023 — Fusión de Evidencia de Incidentes**:
+   - [x] *Objetivo*: Correlacionar datos de telemetría SQLite, decisiones de reinicio y logs Vnish.
+   - [x] *Valor y Beneficio*: Permite identificar la causa raíz exacta de caídas (red, energía o firmware) eliminando falsos diagnósticos.
 
-2. [x] **Spec 024 — Descubrimiento de Telemetría Eléctrica**:
-   - *Objetivo*: Integrar telemetría de PDUs / UPS inteligentes o monitoreo de energía AC real.
-   - *Valor y Beneficio*: Evita confundir caídas de tensión de placas con cortes de energía del Data Center, protegiendo los equipos ante fluctuaciones eléctricas externas.
+2. **Spec 024 — Descubrimiento de Telemetría Eléctrica**:
+   - [x] *Objetivo*: Integrar telemetría de PDUs / UPS inteligentes o monitoreo de energía AC real.
+   - [x] *Valor y Beneficio*: Evita confundir caídas de tensión de placas con cortes de energía del Data Center.
 
-3. [x] **Spec 025 — Observabilidad Local (Prometheus y Grafana)**:
-   - *Objetivo*: Exportar métricas locales Prometheus y proveer tableros Grafana de solo lectura.
-   - *Valor y Beneficio*: Otorga visibilidad gráfica en tiempo real del rendimiento de la flota (TH/s totales, temperaturas, rejected shares) sin sobrecargar el monitor.
+3. **Spec 025 — Observabilidad Local (Prometheus y Grafana)**:
+   - [x] *Objetivo*: Exportar métricas locales Prometheus y proveer tableros Grafana de solo lectura.
+   - [x] *Valor y Beneficio*: Otorga visibilidad gráfica en tiempo real del rendimiento de la flota sin sobrecargar el monitor.
 
-4. [x] **Spec 026 — Inventario de Capacidades Hashcore**:
-   - *Objetivo*: Mapear de forma conservadora los comandos del Toolkit Hashcore sin ampliar permisos de escritura.
-   - *Valor y Beneficio*: Permite auditar el alcance operativo de acciones sobre los mineros garantizando que no se ejecuten comandos destructivos o no autorizados.
+4. **Spec 026 — Inventario de Capacidades Hashcore**:
+   - [x] *Objetivo*: Mapear de forma conservadora los comandos del Toolkit Hashcore sin ampliar permisos de escritura.
+   - [x] *Valor y Beneficio*: Permite auditar el alcance operativo garantizando que no se ejecuten comandos destructivos.
 
-5. [x] **Spec 028 — Respaldo y Restauración de Base de Datos**:
-   - *Objetivo*: Programar respaldos en caliente de SQLite y ensayar la restauración en ambiente staging.
-   - *Valor y Beneficio*: Asegura la continuidad operativa y la preservación del historial de eventos ante fallos de disco o corrupción de base de datos.
+5. **Spec 028 — Respaldo y Restauración de Base de Datos**:
+   - [x] *Objetivo*: Programar respaldos en caliente de SQLite y ensayar la restauración en ambiente staging.
+   - [x] *Valor y Beneficio*: Asegura la continuidad operativa y la preservación del historial de eventos ante fallos de disco.
 
-6. [x] **Spec 027 — Evaluación de Interfaz de Operación**:
-   - *Objetivo*: Determinar si Grafana/HTML estático bastan o si requiere una API local mínima en FastAPI.
-   - *Valor y Beneficio*: Minimiza el consumo de recursos e hiper-superficie de ataque al evitar construir paneles web complejos si las herramientas estáticas cumplen la operación.
+6. **Spec 027 — Evaluación de Interfaz de Operación**:
+   - [x] *Objetivo*: Determinar si Grafana/HTML estático bastan o si requiere una API local mínima en FastAPI.
+   - [x] *Valor y Beneficio*: Minimiza el consumo de recursos e hiper-superficie de ataque (decisión `no_build`).
 
-7. [x] **Spec 029 — Estabilización Final y Candidato de Release V2**:
-   - *Objetivo*: Pruebas de regresión cruzadas, auditoría documental y período de observación de 168 horas.
-   - *Valor y Beneficio*: Garantiza la entrega de un producto robusto, libre de deudas técnicas, con documentación 100% verificada y listo para operación autónoma en producción.
+7. **Spec 029 — Estabilización Final y Candidato de Release V2**:
+   - [x] *Objetivo*: Pruebas de regresión cruzadas, auditoría documental y período de observación de 168 horas.
+   - [x] *Valor y Beneficio*: Garantiza la entrega de un producto robusto, libre de deudas técnicas y verificado (`v2.0.0`).
 
-8. [x] **Spec 039 — Gobernador Térmico y Acústico de Ventiladores Vnish**:
-   - *Objetivo*: Lazo cerrado de control térmico a 82°C con fail-safe al 100% PWM.
-   - *Valor y Beneficio*: Prolonga la vida útil de los ventiladores, reduce drásticamente el ruido en la sala y previene disparos térmicos.
+8. **Spec 039 — Gobernador Térmico y Acústico de Ventiladores Vnish**:
+   - [x] *Objetivo*: Lazo cerrado de control térmico a 82°C con fail-safe al 100% PWM.
+   - [x] *Valor y Beneficio*: Prolonga la vida útil de los ventiladores, reduce el ruido y previene disparos térmicos.
 
-9. [x] **Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión**:
-   - *Objetivo*: Balanceo de potencia inteligente por grupo eléctrico y desescalado por inestabilidad.
-   - *Valor y Beneficio*: Evita reinicios en cascada por caídas de tensión y maximiza la producción estable de Terahash/s.
+9. **Spec 040 — Calibración Dinámica de Presets y Elevadores de Tensión**:
+   - [x] *Objetivo*: Balanceo de potencia inteligente por grupo eléctrico y desescalado por inestabilidad.
+   - [x] *Valor y Beneficio*: Evita reinicios en cascada por caídas de tensión y maximiza la producción estable de TH/s.
 
-10. [x] **Specs 041-042 — Arquitectura Modular y Purga Limpia de Shims**:
-    - *Objetivo*: Reorganización de `app/` en subpaquetes de dominio y purga de 22 archivos planos.
-    - *Valor y Beneficio*: Base de código limpia, modular, de alta mantenibilidad y 100% canónica.
+10. **Specs 041-042 — Arquitectura Modular y Purga Limpia de Shims**:
+    - [x] *Objetivo*: Reorganización de `app/` en subpaquetes de dominio y purga de 22 archivos planos.
+    - [x] *Valor y Beneficio*: Base de código limpia, modular, de alta mantenibilidad y 100% canónica.
 
-11. [x] **Spec 043 — Telegram Interactive Command Center & Rich UI**:
-    - *Objetivo*: Centro de mando ejecutivo con menús interactivos táctiles y botones de acción rápida.
-    - *Valor y Beneficio*: Gestión y toma de decisiones remota en 1-2 toques táctiles sin necesidad de tipear comandos manuales.
+11. **Spec 043 — Telegram Interactive Command Center & Rich UI**:
+    - [x] *Objetivo*: Centro de mando ejecutivo con menús interactivos táctiles y botones de acción rápida.
+    - [x] *Valor y Beneficio*: Gestión y toma de decisiones remota en 1-2 toques táctiles sin necesidad de tipear comandos.
 
-12. [x] **Spec 044 — Modo Silencio / Visitas Inteligente con Thermal Guard**:
-    - *Objetivo*: Límite acústico temporal a 40%-70% PWM con temporizadores de cuenta regresiva y protección térmica a 83.5°C.
-    - *Valor y Beneficio*: Permite recibir visitas o trabajar cerca de los equipos silenciando la sala de forma programada y segura, sin riesgo de sobrecalentamiento.
+12. **Spec 044 — Modo Silencio / Visitas Inteligente con Thermal Guard**:
+    - [x] *Objetivo*: Límite acústico temporal a 40%-70% PWM con temporizadores de cuenta regresiva y protección a 83.5°C.
+    - [x] *Valor y Beneficio*: Permite recibir visitas silenciando la sala de forma programada y segura sin riesgo de sobrecalentamiento.
 
 ---
 
@@ -232,31 +278,31 @@ interfaces or integrations.
 
 | Order | Work package | Status | Priority | Risk | Target |
 | --- | --- | --- | --- | --- | --- |
-| Gate | Spec 020 episode-alerts closeout | [x] COMPLETE | P0 | HIGH | Closed 2026-08-13 |
-| Hotfix | Spec 030 Telegram messaging quality | [x] COMPLETE | P0 | MEDIUM | Closed 2026-08-13 |
-| 1 | Spec 021 monitor-liveness-watchdog | [x] COMPLETE | P0 | HIGH | Closed 2026-08-20 |
-| 2 | Spec 022 adaptive-acquisition | [x] COMPLETE | P1 | HIGH | Closed 2026-08-27 (267h+ runtime proven) |
-| 3 | Spec 023 incident-evidence-fusion | [x] COMPLETE | P1 | MEDIUM | Closed 2026-08-28 |
-| 4 | Spec 024 electrical-source-discovery | [x] COMPLETE (`blocked_external`) | P1 | MEDIUM | Closed 2026-08-28 (no external AC hardware) |
-| 5 | Spec 025 prometheus-metrics | [x] COMPLETE | P1 | MEDIUM | Closed 2026-08-29 |
-| 6 | Spec 026 hashcore-capability-inventory | [x] COMPLETE | P2 | MEDIUM | Closed 2026-08-29 |
-| 7 | Spec 028 backup-retention-restore | [x] COMPLETE | P1 | HIGH | Closed 2026-08-30 |
-| 8 | Spec 027 operator-interface-decision | [x] COMPLETE (`no_build`) | P2 | MEDIUM | Closed 2026-08-30 |
-| 9 | Spec 029 v2-release-stabilization | [x] COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v2.0.0` released) |
-| 10 | Spec 031 telegram-interactive-callbacks | [x] COMPLETE | P1 | LOW | Closed 2026-09-07 |
-| 11 | Spec 032 telegram-visual-charts | [x] COMPLETE | P1 | LOW | Closed 2026-09-07 |
-| 12 | Spec 033 miner-maintenance-snooze | [x] COMPLETE | P1 | MEDIUM | Closed 2026-09-07 |
-| 13 | Spec 034 daily-executive-digest | [x] COMPLETE | P2 | LOW | Closed 2026-09-07 |
-| 14 | Spec 035 cooling-fan-health | [x] COMPLETE | P1 | LOW | Closed 2026-09-07 |
-| 15 | Spec 036 efficiency-energy-tracking | [x] COMPLETE | P1 | LOW | Closed 2026-09-07 |
-| 16 | Spec 037 vnish-presets-autotuning | [x] COMPLETE | P2 | LOW | Closed 2026-09-07 |
-| 17 | Spec 038 v3-release-stabilization | [x] COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v3.0.0` released) |
-| 18 | Spec 039 vnish-fan-governor | [x] COMPLETE (`active`) | P1 | MEDIUM | Closed 2026-09-08 (calibrado 82.0°C) |
-| 19 | Spec 040 dynamic-voltage-presets | [x] COMPLETE (`active`) | P1 | HIGH | Closed 2026-09-08 (autodescubrimiento & elevadores) |
-| 20 | Spec 041 modular-architecture | [x] COMPLETE | P2 | MEDIUM | Closed 2026-09-08 (app/ reorganizado) |
-| 21 | Spec 042 purge-shims-test-modernization | [x] COMPLETE | P2 | LOW | Closed 2026-09-08 (22 shims purgados) |
-| 22 | Spec 043 telegram-command-center | [x] COMPLETE | P1 | LOW | Closed 2026-09-08 (Command Center táctil /menu) |
-| 23 | Spec 044 silent-mode-thermal-guard | [x] COMPLETE (`active`) | P0 | HIGH | Closed 2026-09-08 (PID 58344 activo en producción) |
+| Gate | Spec 020 episode-alerts closeout | COMPLETE | P0 | HIGH | Closed 2026-08-13 |
+| Hotfix | Spec 030 Telegram messaging quality | COMPLETE | P0 | MEDIUM | Closed 2026-08-13 |
+| 1 | Spec 021 monitor-liveness-watchdog | COMPLETE | P0 | HIGH | Closed 2026-08-20 |
+| 2 | Spec 022 adaptive-acquisition | COMPLETE | P1 | HIGH | Closed 2026-08-27 (267h+ runtime proven) |
+| 3 | Spec 023 incident-evidence-fusion | COMPLETE | P1 | MEDIUM | Closed 2026-08-28 |
+| 4 | Spec 024 electrical-source-discovery | COMPLETE (`blocked_external`) | P1 | MEDIUM | Closed 2026-08-28 (no external AC hardware) |
+| 5 | Spec 025 prometheus-metrics | COMPLETE | P1 | MEDIUM | Closed 2026-08-29 |
+| 6 | Spec 026 hashcore-capability-inventory | COMPLETE | P2 | MEDIUM | Closed 2026-08-29 |
+| 7 | Spec 028 backup-retention-restore | COMPLETE | P1 | HIGH | Closed 2026-08-30 |
+| 8 | Spec 027 operator-interface-decision | COMPLETE (`no_build`) | P2 | MEDIUM | Closed 2026-08-30 |
+| 9 | Spec 029 v2-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v2.0.0` released) |
+| 10 | Spec 031 telegram-interactive-callbacks | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 11 | Spec 032 telegram-visual-charts | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 12 | Spec 033 miner-maintenance-snooze | COMPLETE | P1 | MEDIUM | Closed 2026-09-07 |
+| 13 | Spec 034 daily-executive-digest | COMPLETE | P2 | LOW | Closed 2026-09-07 |
+| 14 | Spec 035 cooling-fan-health | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 15 | Spec 036 efficiency-energy-tracking | COMPLETE | P1 | LOW | Closed 2026-09-07 |
+| 16 | Spec 037 vnish-presets-autotuning | COMPLETE | P2 | LOW | Closed 2026-09-07 |
+| 17 | Spec 038 v3-release-stabilization | COMPLETE (`approved`) | P0 | HIGH | Closed 2026-09-07 (`v3.0.0` released) |
+| 18 | Spec 039 vnish-fan-governor | COMPLETE (`active`) | P1 | MEDIUM | Closed 2026-09-08 (calibrado 82.0°C) |
+| 19 | Spec 040 dynamic-voltage-presets | COMPLETE (`active`) | P1 | HIGH | Closed 2026-09-08 (autodescubrimiento & elevadores) |
+| 20 | Spec 041 modular-architecture | COMPLETE | P2 | MEDIUM | Closed 2026-09-08 (app/ reorganizado) |
+| 21 | Spec 042 purge-shims-test-modernization | COMPLETE | P2 | LOW | Closed 2026-09-08 (22 shims purgados) |
+| 22 | Spec 043 telegram-command-center | COMPLETE | P1 | LOW | Closed 2026-09-08 (Command Center táctil /menu) |
+| 23 | Spec 044 silent-mode-thermal-guard | COMPLETE (`active`) | P0 | HIGH | Closed 2026-09-08 (PID 58344 activo en producción) |
 
 Dates include implementation plus the separate review/fix gate detailed in
 `DELIVERY_PLAN.md`. Runtime evidence can move dates but cannot compress gates.
@@ -265,7 +311,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ## Work Packages
 
-### R0 - Close Spec 020 Production Activation ([x] COMPLETE, P0)
+### R0 - Close Spec 020 Production Activation (COMPLETE, P0)
 
 **Spec**: `specs/020-episode-alerts`
 **Target**: 2026-08-13 to 2026-08-17
@@ -286,7 +332,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R0.5 - Telegram Messaging Quality ([x] COMPLETE, P0)
+### R0.5 - Telegram Messaging Quality (COMPLETE, P0)
 
 **Spec**: `specs/030-telegram-messaging-quality`
 
@@ -301,7 +347,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R1 - Monitor Liveness And Recovery ([x] COMPLETE, P0)
+### R1 - Monitor Liveness And Recovery (COMPLETE, P0)
 
 **Spec**: `specs/021-monitor-liveness-watchdog`
 
@@ -318,7 +364,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R2 - Acquisition Resilience ([x] COMPLETE, P1)
+### R2 - Acquisition Resilience (COMPLETE, P1)
 
 **Spec**: `specs/022-adaptive-acquisition`
 
@@ -334,7 +380,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R3 - Incident Evidence Fusion ([x] COMPLETE, P1)
+### R3 - Incident Evidence Fusion (COMPLETE, P1)
 
 **Spec**: `specs/023-incident-evidence-fusion`
 
@@ -352,7 +398,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R4 - Electrical Source Discovery ([x] COMPLETE / BLOCKED_EXTERNAL, P1)
+### R4 - Electrical Source Discovery (COMPLETE / BLOCKED_EXTERNAL, P1)
 
 **Spec**: `specs/024-electrical-source-discovery`
 
@@ -365,7 +411,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R5 - Prometheus Metrics And Grafana ([x] COMPLETE, P1)
+### R5 - Prometheus Metrics And Grafana (COMPLETE, P1)
 
 **Spec**: `specs/025-prometheus-metrics`
 
@@ -379,7 +425,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R6 - Hashcore Capability Inventory ([x] COMPLETE, P2)
+### R6 - Hashcore Capability Inventory (COMPLETE, P2)
 
 **Spec**: `specs/026-hashcore-capability-inventory`
 
@@ -394,7 +440,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R7 - Backup, Retention And Restore ([x] COMPLETE, P1)
+### R7 - Backup, Retention And Restore (COMPLETE, P1)
 
 **Spec**: `specs/028-backup-retention-restore`
 
@@ -408,7 +454,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R8 - Operator Interface Decision ([x] COMPLETE / NO_BUILD, P2)
+### R8 - Operator Interface Decision (COMPLETE / NO_BUILD, P2)
 
 **Spec**: `specs/027-operator-interface-decision`
 
@@ -422,7 +468,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R9 - V2 Release Stabilization ([x] COMPLETE / APPROVED, P0)
+### R9 - V2 Release Stabilization (COMPLETE / APPROVED, P0)
 
 **Spec**: `specs/029-v2-release-stabilization`
 
@@ -437,7 +483,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R10 - Telegram Max, Intelligence & Concurrency Release V3 ([x] COMPLETE / APPROVED, P0)
+### R10 - Telegram Max, Intelligence & Concurrency Release V3 (COMPLETE / APPROVED, P0)
 
 **Specs**: `specs/031-telegram-interactive-callbacks` a `specs/038-v3-release-stabilization`
 
@@ -454,7 +500,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R11 - Fan Governor & Dynamic Presets Governance ([x] COMPLETE / ACTIVE, P0)
+### R11 - Fan Governor & Dynamic Presets Governance (COMPLETE / ACTIVE, P0)
 
 **Specs**: `specs/039-vnish-fan-governor` y `specs/040-dynamic-voltage-presets`
 
@@ -468,7 +514,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R12 - Modular Domain Architecture & Shim Purge ([x] COMPLETE, P2)
+### R12 - Modular Domain Architecture & Shim Purge (COMPLETE, P2)
 
 **Specs**: `specs/041-app-modular-architecture` y `specs/042-purge-shims-test-modernization`
 
@@ -481,7 +527,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R13 - Telegram Interactive Command Center ([x] COMPLETE, P1)
+### R13 - Telegram Interactive Command Center (COMPLETE, P1)
 
 **Spec**: `specs/043-telegram-interactive-command-center`
 
@@ -495,7 +541,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ---
 
-### R14 - Modo Silencio Inteligente & Safety Thermal Guard ([x] COMPLETE / ACTIVE, P0)
+### R14 - Modo Silencio Inteligente & Safety Thermal Guard (COMPLETE / ACTIVE, P0)
 
 **Spec**: `specs/044-silent-mode-thermal-guard`
 
@@ -549,9 +595,18 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ## Future Strategic Initiatives (V4 / Next Horizon)
 
-- [ ] **Iniciativa 1 — Integración PDU/UPS Inteligente (Continuación Spec 024)**: Reanudar recolección de telemetría AC real cuando se instalen PDUs de red o medidores Modbus/SNMP.
-- [ ] **Iniciativa 2 — Telemetría Avanzada Externa (Prometheus Pushgateway / OTLP)**: Evaluación de exportación remota segura hacia Grafana Cloud o stack centralizado de monitoreo.
-- [ ] **Iniciativa 3 — Perfiles de Eficiencia Estacional (Verano/Invierno)**: Ajuste programático de bandas térmicas y objetivos de ventilación según la estación climática.
+### Iniciativa 1 — Integración PDU/UPS Inteligente (Continuación Spec 024)
+- [ ] Relevar especificación técnica de fabricantes y protocolos soportados (SNMPv3 / Modbus TCP).
+- [ ] Diseñar adaptador de lectura de tensión AC real sin inferencias desde DC.
+- [ ] Validar con período de sombra de 72 horas antes de incorporar a métricas de flota.
+
+### Iniciativa 2 — Telemetría Avanzada Externa (Prometheus Pushgateway / OTLP)
+- [ ] Evaluar exportador remoto seguro hacia Grafana Cloud o stack centralizado.
+- [ ] Diseñar autenticación mutua TLS y buffer offline ante cortes de Internet.
+
+### Iniciativa 3 — Perfiles de Eficiencia Estacional (Verano/Invierno)
+- [ ] Modelar calibración programática de targets térmicos (80°C verano / 83°C invierno).
+- [ ] Automatizar conmutación estacional según temperatura ambiente exterior.
 
 ---
 

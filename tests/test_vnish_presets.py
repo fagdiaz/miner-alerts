@@ -116,8 +116,9 @@ class TestVnishPresets(unittest.TestCase):
             ),
         ]
         text = build_presets_table_text(assessments)
-        self.assertIn("Perfiles Operativos y Autotuning", text)
+        self.assertIn("Perfiles y Autotuning", text)
         self.assertIn("S19JPRO-23: 🟢 ESTABLE", text)
+
         self.assertIn("516.0 MHz", text)
         self.assertIn("12.8V", text)
         self.assertIn("S19JPRO-24: ⚠️ DOWNCLOCKED", text)
@@ -302,8 +303,9 @@ class TestVnishPresetsIntegration(unittest.TestCase):
         t_format = (time.perf_counter() - t1) * 1000.0
 
         self.assertLess(t_query, 500.0, f"Query took {t_query:.1f}ms, expected < 500ms")
-        self.assertIn("Perfiles Operativos y Autotuning", table)
+        self.assertIn("Perfiles y Autotuning", table)
         self.assertEqual(len(assessments), 4)
+
 
 
 if __name__ == "__main__":

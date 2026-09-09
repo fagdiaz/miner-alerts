@@ -98,20 +98,27 @@ def assess_miner_efficiency(
 
 
 def build_efficiency_table_text(assessments: List[EfficiencyAssessment]) -> str:
-    """Format fleet energy efficiency summary table."""
+    """Format fleet energy efficiency summary in mobile-first vertical cards."""
     lines = [
-        "⚡ Miner Alerts — Eficiencia Energética (J/TH)",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⚡ Eficiencia Energética",
+        "────────────────────────────",
     ]
     total_power_w = 0.0
     total_rate_ths = 0.0
     degraded_miners = []
 
-    for ass in assessments:
+    for idx, ass in enumerate(assessments):
+        if idx > 0:
+            lines.append("")
+
         eff_str = f"{ass.efficiency_j_th:.1f} J/TH" if ass.efficiency_j_th is not None else "N/A"
         p_str = f"{ass.power_w:,.0f} W" if ass.power_w is not None else "N/A"
         r_str = f"{ass.rate_ths:.1f} TH/s" if ass.rate_ths is not None else "N/A"
-        lines.append(f"{ass.miner_name}: {ass.status_label} | {eff_str} | {p_str} | {r_str}")
+
+        lines.append(f"{ass.miner_name}: {ass.status_label}")
+        lines.append(f"• Eficiencia: {eff_str}")
+        lines.append(f"• {r_str}  |  {p_str}")
+
         if ass.power_w is not None and ass.power_w > 0:
             total_power_w += ass.power_w
         if ass.rate_ths is not None and ass.rate_ths > 0:
@@ -119,17 +126,22 @@ def build_efficiency_table_text(assessments: List[EfficiencyAssessment]) -> str:
         if ass.status == STATUS_DEGRADED:
             degraded_miners.append(ass.miner_name)
 
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("────────────────────────────")
     fleet_eff = (total_power_w / total_rate_ths) if total_rate_ths > 0 else 0.0
     kw_str = f"{total_power_w / 1000.0:.1f} kW"
-    lines.append(f"⚡ Promedio Flota: {fleet_eff:.1f} J/TH | Total: {total_power_w:,.0f} W ({kw_str})")
+    lines.append(f"🔋 Promedio Flota: {fleet_eff:.1f} J/TH")
+    lines.append(f"⚡ Carga: {total_power_w:,.0f} W ({kw_str})")
     if degraded_miners:
-        joined = ", ".join(degraded_miners)
-        lines.append(f"⚠️ Atención: {joined} presenta(n) degradación energética.")
+        lines.append("⚠️ Atención:")
+        for m in degraded_miners:
+            lines.append(f"  • {m}")
+        lines.append("Degradación energética.")
     else:
-        lines.append("✅ Flota operando en rangos óptimos de eficiencia.")
-    lines.append("Para detalle individual: /efficiency <minero>")
+        lines.append("✅ Rangos óptimos de eficiencia.")
+    lines.append("• Uso: /efficiency <minero>")
     return "\n".join(lines)
+
+
 
 
 def build_miner_efficiency_detail_text(assessment: EfficiencyAssessment) -> str:

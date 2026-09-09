@@ -3101,7 +3101,106 @@ def _handle_help_callback(
         )
 
 
+def _handle_diagnostic_callback(
+    cb_query: dict,
+    *,
+    config: dict,
+    bot_token: str,
+    cb_chat_id: Any,
+    message_id: Optional[int],
+    cb_id: str,
+    miners: list,
+    states: Dict[str, MinerState],
+    state_lock: threading.Lock,
+) -> None:
+    """Handle diagnostic report refresh callbacks (diag:ref:*) with instant ACK (Spec 046)."""
+    from app.telegram.fleet_cards import (
+        build_diagnostic_keyboard,
+        parse_diagnostic_callback,
+        render_fleet_status_card,
+    )
+    cb_data = cb_query.get("data") or ""
+    action = parse_diagnostic_callback(cb_data)
+    if not action:
+        log(f"DIAG_CB_PARSE_FAIL cb_id={cb_id} data={cb_data[:40]!r}")
+        answer_callback_query(bot_token, cb_id, text="⚠️ Opción no reconocida.")
+        return
+
+    # Acknowledge immediately to clear the UI spinner (< 50ms)
+    answer_callback_query(bot_token, cb_id)
+
+    new_text: Optional[str] = None
+    new_markup: Optional[Dict[str, Any]] = None
+
+    try:
+        if action.report_type == "status":
+            with state_lock:
+                states_snapshot = {k: v for k, v in states.items()}
+            new_text, new_markup = render_fleet_status_card(
+                states_snapshot, config=config, miners=miners, now_ts_str=now_str()
+            )
+        elif action.report_type == "fans":
+            from app.governance.fan_health import (
+                build_fans_table_text,
+                fetch_latest_cooling_assessments,
+            )
+            db_p = resolve_db_path(config)
+            with state_lock:
+                assessments = fetch_latest_cooling_assessments(
+                    db_path=db_p,
+                    miners=miners,
+                    states=states,
+                    config=config,
+                )
+            new_text = build_fans_table_text(assessments)
+            new_markup = build_diagnostic_keyboard("fans")
+        elif action.report_type == "eff":
+            from app.governance.energy_efficiency import (
+                build_efficiency_table_text,
+                fetch_latest_efficiency_assessments,
+            )
+            db_p = resolve_db_path(config)
+            with state_lock:
+                assessments = fetch_latest_efficiency_assessments(
+                    db_path=db_p,
+                    miners=miners,
+                    states=states,
+                    config=config,
+                )
+            new_text = build_efficiency_table_text(assessments)
+            new_markup = build_diagnostic_keyboard("eff")
+        elif action.report_type == "presets":
+            from app.vnish.presets import (
+                build_presets_table_text,
+                fetch_latest_preset_assessments,
+            )
+            db_p = resolve_db_path(config)
+            with state_lock:
+                assessments = fetch_latest_preset_assessments(
+                    db_path=db_p,
+                    miners=miners,
+                    states=states,
+                    config=config,
+                )
+            new_text = build_presets_table_text(assessments)
+            new_markup = build_diagnostic_keyboard("presets")
+    except Exception as exc:
+        log(f"DIAG_CB_ERR cb_id={cb_id} report={action.report_type} exc={exc}")
+        return
+
+    if message_id is not None and new_text and new_markup:
+        edit_message_text(
+            bot_token,
+            str(cb_chat_id),
+            message_id,
+            new_text,
+            reply_markup=new_markup,
+            parse_mode="Markdown",
+        )
+
+
 def _handle_callback_query(
+
     cb_query: dict,
     *,
     config: dict,
@@ -3186,7 +3285,24 @@ def _handle_callback_query(
         )
         return
 
+    # Spec 046: Handle diagnostic report refresh callbacks (diag:ref:*)
+    from app.telegram.fleet_cards import DIAG_PREFIX
+    if cb_data.startswith(DIAG_PREFIX):
+        _handle_diagnostic_callback(
+            cb_query=cb_query,
+            config=config,
+            bot_token=bot_token,
+            cb_chat_id=cb_chat_id,
+            message_id=message_id,
+            cb_id=cb_id,
+            miners=miners,
+            states=states,
+            state_lock=state_lock,
+        )
+        return
+
     # --- Parse callback data ---
+
     action = parse_callback_data(cb_data)
     if action is None:
         log(f"CB_PARSE_FAIL cb_id={cb_id} data={cb_data[:40]!r}")
@@ -4240,6 +4356,7 @@ def telegram_polling_worker(
                             config=config,
                         )
                     target_arg = args[0].strip().lower() if args else None
+                    fans_kb = None
                     if target_arg and target_arg != "all":
                         matched_ass = None
                         matched_miner = _match_miner(miners, target_arg)
@@ -4260,7 +4377,9 @@ def telegram_polling_worker(
                         else:
                             fans_msg = f"⚠️ Minero '{target_arg}' no encontrado.\nUso: /fans [minero]"
                     else:
+                        from app.telegram.fleet_cards import build_diagnostic_keyboard
                         fans_msg = build_fans_table_text(assessments)
+                        fans_kb = build_diagnostic_keyboard("fans")
 
                     send_telegram(
                         bot_token,
@@ -4271,6 +4390,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="fans",
+                        reply_markup=fans_kb,
                     )
                 elif cmd_name in ("efficiency", "eff"):
                     handled = True
@@ -4288,6 +4408,7 @@ def telegram_polling_worker(
                             config=config,
                         )
                     target_arg = args[0].strip().lower() if args else None
+                    eff_kb = None
                     if target_arg and target_arg != "all":
                         matched_ass = None
                         matched_miner = _match_miner(miners, target_arg)
@@ -4308,7 +4429,9 @@ def telegram_polling_worker(
                         else:
                             eff_msg = f"⚠️ Minero '{target_arg}' no encontrado.\nUso: /efficiency [minero]"
                     else:
+                        from app.telegram.fleet_cards import build_diagnostic_keyboard
                         eff_msg = build_efficiency_table_text(assessments)
+                        eff_kb = build_diagnostic_keyboard("eff")
 
                     send_telegram(
                         bot_token,
@@ -4319,6 +4442,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="efficiency",
+                        reply_markup=eff_kb,
                     )
                 elif cmd_name in ("presets", "preset", "profile"):
                     handled = True
@@ -4336,6 +4460,7 @@ def telegram_polling_worker(
                             config=config,
                         )
                     target_arg = args[0].strip().lower() if args else None
+                    preset_kb = None
                     if target_arg and target_arg != "all":
                         matched_ass = None
                         matched_miner = _match_miner(miners, target_arg)
@@ -4356,7 +4481,9 @@ def telegram_polling_worker(
                         else:
                             preset_msg = f"⚠️ Minero '{target_arg}' no encontrado.\nUso: /presets [minero]"
                     else:
+                        from app.telegram.fleet_cards import build_diagnostic_keyboard
                         preset_msg = build_presets_table_text(assessments)
+                        preset_kb = build_diagnostic_keyboard("presets")
 
                     send_telegram(
                         bot_token,
@@ -4367,6 +4494,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="presets",
+                        reply_markup=preset_kb,
                     )
                 elif cmd_name in ("silent", "silencio", "modo_silencio"):
                     handled = True
@@ -4891,42 +5019,26 @@ def telegram_polling_worker(
                     )
                 elif cmd_name == "status":
                     handled = True
-                    lock_start = time.monotonic()
-                    with snapshot_lock:
-                        snapshot = snapshot_ref["value"]
-                    lock_wait = time.monotonic() - lock_start
-                    if qa_mode and lock_wait > 0.01:
-                        log_pid(f"[TEL] snapshot_lock wait={lock_wait:.3f}s")
-                    if snapshot:
-                        cmd_start = time.monotonic()
-                        send_telegram(
-                            bot_token,
-                            str(msg_chat_id),
-                            snapshot,
-                            "STATUS",
-                            "cmd_status",
-                            is_command=True,
-                            dbg_update_id=update_id,
-                            dbg_cmd="status",
-                        )
-                        if qa_mode:
-                            if qa_mode:
-                                log_pid(f"[TEL] command=status duration={time.monotonic() - cmd_start:.3f}s")
-                    else:
-                        cmd_start = time.monotonic()
-                        send_telegram(
-                            bot_token,
-                            str(msg_chat_id),
-                            "Aun no hay lecturas, espere unos segundos y reintente.",
-                            "STATUS",
-                            "cmd_status_empty",
-                            is_command=True,
-                            dbg_update_id=update_id,
-                            dbg_cmd="status",
-                        )
-                        if qa_mode:
-                            if qa_mode:
-                                log_pid(f"[TEL] command=status duration={time.monotonic() - cmd_start:.3f}s")
+                    from app.telegram.fleet_cards import render_fleet_status_card
+                    with state_lock:
+                        states_snapshot = {k: v for k, v in states.items()}
+                    status_text, status_markup = render_fleet_status_card(
+                        states_snapshot, config=config, miners=miners, now_ts_str=now_str()
+                    )
+                    cmd_start = time.monotonic()
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        status_text,
+                        "STATUS",
+                        "cmd_status",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="status",
+                        reply_markup=status_markup,
+                    )
+                    if qa_mode:
+                        log_pid(f"[TEL] command=status duration={time.monotonic() - cmd_start:.3f}s")
                 elif cmd_name == "info":
                     handled = True
                     now_ts = time.time()

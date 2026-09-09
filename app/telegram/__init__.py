@@ -59,6 +59,18 @@ from app.telegram.help_center import (
     strip_markdown,
     visible_line_width,
 )
+from app.telegram.fleet_cards import (
+    DIAG_PREFIX,
+    DIAG_REF_EFF,
+    DIAG_REF_FANS,
+    DIAG_REF_PRESETS,
+    DIAG_REF_STATUS,
+    DiagnosticCallbackAction,
+    build_diagnostic_keyboard,
+    parse_diagnostic_callback,
+    render_fleet_status_card,
+)
+
 from app.telegram.charts import (
     fetch_fleet_chart_data,
     fetch_miner_chart_data,
@@ -112,8 +124,15 @@ __all__ = [
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_SNOOZE_MINUTES",
     "DEFAULT_TOKEN_TTL_SECONDS",
+    "DIAG_PREFIX",
+    "DIAG_REF_EFF",
+    "DIAG_REF_FANS",
+    "DIAG_REF_PRESETS",
+    "DIAG_REF_STATUS",
+    "DiagnosticCallbackAction",
     "HELP_CATEGORIES",
     "HELP_COMMANDS",
+
     "HELP_NAV_HOME",
     "HELP_PREFIX",
     "HelpAction",
@@ -127,8 +146,10 @@ __all__ = [
     "build_alert_keyboard",
     "build_callback_data",
     "build_confirmation_keyboard",
+    "build_diagnostic_keyboard",
     "build_inline_keyboard",
     "build_settled_keyboard",
+
     "build_snooze_status_text",
     "classify_delivery",
     "escape_markdown",
@@ -148,11 +169,14 @@ __all__ = [
     "normalize_telegram_text",
     "parse_callback_data",
     "parse_command_center_callback",
+    "parse_diagnostic_callback",
     "parse_help_callback",
     "parse_snooze_args",
     "render_alerts_view",
     "render_fleet_chart_png",
+    "render_fleet_status_card",
     "render_help_category",
+
     "render_help_command_detail",
     "render_help_home",
     "render_main_dashboard",

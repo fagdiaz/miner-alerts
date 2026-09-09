@@ -131,32 +131,45 @@ def assess_miner_preset(
 
 
 def build_presets_table_text(assessments: List[PresetAssessment]) -> str:
-    """Format fleet operating profile overview table."""
+    """Format fleet operating profile overview in mobile-first vertical cards."""
     lines = [
-        "⚙️ Miner Alerts — Perfiles Operativos y Autotuning",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⚙️ Perfiles y Autotuning",
+        "────────────────────────────",
     ]
     attention_miners = []
 
-    for ass in assessments:
+    for idx, ass in enumerate(assessments):
+        if idx > 0:
+            lines.append("")
+
         freq_str = f"{ass.frequency_mhz:.1f} MHz" if ass.frequency_mhz is not None else "N/A"
         v_str = f"{ass.voltage_v:.1f}V" if ass.voltage_v is not None else "N/A"
         p_str = f"{ass.power_w:,.0f} W" if ass.power_w is not None else "N/A"
         r_str = f"{ass.rate_ths:.1f} TH/s" if ass.rate_ths is not None else "N/A"
-        lines.append(
-            f"{ass.miner_name}: {ass.status_label} | {freq_str} ({v_str}) | {p_str} | {r_str} ({ass.inferred_profile})"
-        )
+
+        lines.append(f"{ass.miner_name}: {ass.status_label}")
+        lines.append(f"• Frec: {freq_str} ({v_str})")
+        lines.append(f"• {r_str}  |  {p_str}")
+
+        if ass.inferred_profile and ass.inferred_profile != "Desconocido":
+            prof = ass.inferred_profile[:22]
+            lines.append(f"• Perfil: {prof}")
+
         if ass.status in (STATUS_AUTOTUNING, STATUS_DOWNCLOCKED):
             attention_miners.append(ass.miner_name)
 
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("────────────────────────────")
     if attention_miners:
-        joined = ", ".join(attention_miners)
-        lines.append(f"⚠️ Atención: {joined} en autotuning o con frecuencia reducida.")
+        lines.append("⚠️ Atención:")
+        for m in attention_miners:
+            lines.append(f"  • {m}")
+        lines.append("En autotuning o frecuencia baja.")
     else:
-        lines.append("✅ Flota operando con frecuencias y perfiles estables.")
-    lines.append("Para detalle individual: /presets <minero>")
+        lines.append("✅ Frecuencias y perfiles estables.")
+    lines.append("• Uso: /presets <minero>")
     return "\n".join(lines)
+
+
 
 
 def build_miner_preset_detail_text(assessment: PresetAssessment) -> str:

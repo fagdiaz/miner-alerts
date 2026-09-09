@@ -2,7 +2,36 @@
 
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
-## [2026-09-09] - Spec 045: Telegram Mobile Help Center & Categorized Navigation (Completado)
+
+## [2026-09-09] - Spec 046: Mobile-First Card Layout & UX Harmonization across Fleet Reports (Completado)
+
+* **Objetivo**: Estandarizar la presentación de reportes diagnósticos y de flota para dispositivos móviles en Telegram, rediseñando los comandos `/status`, `/fans`, `/efficiency` y `/presets` a un formato de tarjeta vertical con viñetas (`•`), ancho estricto `<= 32` columnas visibles por línea, teclado inline de refresco en 1 toque (`[ 🔄 Actualizar ] [ 📱 Menú ]`), edición in-place sin spam y protección contra overflow o fragmentación rota de mensajes (RFC C1-C10).
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Límite Estricto Mobile-First <= 32 Columnas)**: Todas las tarjetas y líneas de datos de `/status`, `/fans`, `/efficiency` y `/presets` verifican `<= 32` caracteres visibles limpios (validado tras filtrar tags Markdown mediante `strip_markdown()`). Los listados de advertencias y alertas por minero se formatean en viñetas verticales para impedir rupturas de línea antiestéticas en pantallas pequeñas.
+  - **C2 (Pureza de Renderizado)**: Renderizadores desacoplados y deterministas (`render_fleet_status_card`, `build_fans_table_text`, `build_efficiency_table_text`, `build_presets_table_text`) libres de dependencias de red, sockets, SQLite o locks compartidos.
+  - **C3 (Callbacks Aislados <= 64 Bytes & ACK < 50ms)**: Parser `parse_diagnostic_callback` con validación estricta `<= 64` bytes UTF-8 (`diag:ref:status`, `diag:ref:fans`, `diag:ref:eff`, `diag:ref:presets`). Despacho inmediato de `answer_callback_query` antes de procesar o editar el mensaje para despejar el spinner táctil en Telegram.
+  - **C4 (Sin Paginación Rota)**: Reportes estructurados con longitud total inferior a 1,500 caracteres, muy por debajo de la ventana de seguridad de Telegram (3,600 caracteres).
+  - **C5 (Sanitización Markdown)**: Uso de `escape_markdown()` para proteger nombres de mineros, estados y métricas operativas.
+  - **C6 (Fallback Equivalente de Entrega)**: Preservación completa de información diagnóstica tanto con botones interactivos como en clientes que no soportan inline markups.
+  - **C7 (Límites Constitucionales y Seguridad)**: Cero alteraciones en la máquina de estados (`MinerState`), políticas de autorreinicio, gobernanza de temperatura (`execute_governor_cycle`), CLI de Hashcore ni loop de monitoreo.
+* **Módulos y Cambios**:
+  - `app/telegram/fleet_cards.py`: Nuevo módulo dedicado con `render_fleet_status_card()`, constructores de teclados `build_diagnostic_keyboard()`, parser `parse_diagnostic_callback()` y constantes `DIAG_PREFIX = "diag:"`.
+  - `app/governance/fan_health.py`: Refactorización de `build_fans_table_text()` reemplazando la tabla tabular de 86 columnas por bloques verticales limpios con viñetas `•`, modo de ventilador explícito (`• Modo: [MANUAL]`), semáforos Unicode y recomendaciones térmicas.
+  - `app/governance/energy_efficiency.py`: Refactorización de `build_efficiency_table_text()` a tarjetas verticales por minero con viñetas `•`, consumo en W/kW, ratio J/TH y resumen global de flota.
+  - `app/vnish/presets.py`: Refactorización de `build_presets_table_text()` a tarjetas verticales por minero con perfil inferido, frecuencia MHz, tensión mV y advertencias en viñetas.
+  - `app/miner_monitor.py`:
+    * Conexión del router `_handle_diagnostic_callback()` en `_handle_callback_query()` con ACK temprano e in-place update mediante `edit_message_text(..., parse_mode="Markdown")`.
+    * Sustitución del texto crudo de snapshot en `/status` por `render_fleet_status_card()` con teclado interactivo de refresco y retorno.
+    * Incorporación de botoneras inline `build_diagnostic_keyboard()` en `/fans`, `/efficiency` y `/presets`.
+  - `app/telegram/__init__.py`: Exportación canónica de `fleet_cards`.
+  - `tests/test_fleet_cards.py`: 9 pruebas unitarias exhaustivas validando ancho `<= 32` columnas, longitud total, tolerancia a datos ausentes/nulos y formato de callbacks.
+  - `tests/test_telegram_callbacks.py`: 6 nuevas pruebas de integración en `TestDiagnosticCallbacksIntegration` cubriendo `diag:ref:status`, `diag:ref:fans`, `diag:ref:eff`, `diag:ref:presets`, rechazo a no autorizados y rechazo de payloads corruptos.
+* **Resultados y Pruebas**:
+  - Compilación sintáctica: 100% OK (`miner_monitor.py` y `miner_diagnostics.py`).
+  - Suite completa del repositorio: **675/675 tests PASS** en 10.69s (0 fallos, 0 errores, +15 tests netos sobre baseline).
+  - Auditoría de liberación: **PASS** (`tools/release_audit.py --check-only`), digest `57cc9185739a9685bb4d5f013298233dcf074aa00bea03c1441492a6710706ea`, 63 payload files.
+
+
 
 * **Objetivo**: Diseñar, implementar e integrar el Centro de Ayuda Mobile-First para Telegram, incorporando navegación interactiva por categorías temáticas en 1-2 toques, tarjetas verticales acotadas a `<= 32` columnas visibles, registro canónico exhaustivo de comandos del dispatcher (incluyendo `/menu` y `/silent` con sus aliases), protocolo de callbacks `help:` acotado a 64 bytes UTF-8 y fallback de entrega segura de markups según las condiciones C1-C10 del RFC `RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md`.
 * **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:

@@ -1,36 +1,30 @@
-GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 045 Completado -> Spec 046: Fleet Diagnostic Card Layouts
+GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 046 Completado -> Producción Activa
 
 ROL Y MOTOR RECOMENDADO
 Motor: Gemini 3.8 Flash High
-Rol: Diseñador e implementador de Spec 046 (armonización y rediseño Mobile-First de reportes de diagnóstico de flota: /status, /fans, /efficiency, /presets).
+Rol: Supervisor de telemetría y diagnósticos, o planificador de futuras iniciativas del backlog.
 
-ESTADO ACTUAL CERTIFICADO (Spec 045)
-- Spec 045 (Telegram Mobile Help Center) COMPLETADA, integrada y certificada:
-  * Módulo puro `app/telegram/help_center.py` con 28 comandos canónicos y 5 categorías temáticas.
-  * Parser `parse_help_callback` con límite estricto de <= 64 bytes UTF-8.
-  * Tarjetas y vistas táctiles respetando <= 32 caracteres visibles por línea (Condición C1).
-  * Conexión bidireccional Command Center (`/menu`) <-> Help Center (`/help`) vía botón en fila 4 (`help:nav:home`).
-  * Router de callbacks en `_handle_callback_query` con ACK temprano (<50ms `answer_callback_query`) y edición in-place.
-  * Soporte enriquecido para `/info <cmd>` y registro de `/menu` y `/silent` en whitelists.
-  * Fallback seguro en `_send_telegram_direct` preservando `reply_markup` (Condición C6).
-  * Suite completa del repositorio: 660/660 tests PASS en 10.56s (0 fallos, 0 regresiones).
-  * Release audit: PASS (digest `4c1d77311f67049c1ece885108210e2e8626e7bd05833d5360ec0bb06bf41851`, 62 payload files).
+ESTADO ACTUAL CERTIFICADO (Spec 046)
+- Spec 046 (Mobile-First Card Layout & UX Harmonization across Fleet Reports) COMPLETADA, integrada y certificada:
+  * Módulo puro `app/telegram/fleet_cards.py` con `render_fleet_status_card()`, constructores `build_diagnostic_keyboard()`, parser `parse_diagnostic_callback()` y constantes `diag:ref:*`.
+  * Tarjetas verticales compactas con viñetas `•` respetando <= 32 caracteres visibles por línea (Condición C1).
+  * Refactorización de reportes de flota a Mobile-First:
+    - `/status`: Tarjetas verticales con semáforo Unicode, IP corta, hash/boards, temp/fans, watts/eficiencia y resumen de flota con teclado `[ 🔄 Actualizar ] [ 📊 Métricas ] [ 📱 Menú ]`.
+    - `/fans`: Tarjetas verticales por minero con viñetas `•`, modo Fan Governor explícito (`• Modo: [MANUAL]`) y teclado de refresco.
+    - `/efficiency`: Tarjetas verticales con TH/s, Watts, J/TH y resumen de flota en kW/J-TH.
+    - `/presets`: Tarjetas verticales con perfil inferido, frecuencia MHz, tensión mV y advertencias.
+  * Router de callbacks `diag:ref:*` en `_handle_callback_query()` con ACK temprano (<50ms `answer_callback_query`) y edición in-place `edit_message_text`.
+  * Suite completa del repositorio: 675/675 tests PASS en 10.69s (0 fallos, 0 regresiones).
+  * Release audit: PASS (digest `57cc9185739a9685bb4d5f013298233dcf074aa00bea03c1441492a6710706ea`, 63 payload files).
+  * Servicio Windows `MinerAlerts` activo y saludable.
 
 ARCHIVOS CLAVE DEL SISTEMA
-1. `docs/speckit/RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md` (especialmente Sección 5.B, 5.C, 5.D y condiciones C1-C10).
-2. `app/telegram/help_center.py` (patrón canónico de formato <= 32 cols, `visible_line_width`, `wrap_mobile_lines`).
-3. `app/telegram/command_center.py` (patrón de inline keyboards y navegación táctil).
-4. `app/governance/fan_health.py` (formato actual de `/fans` a migrar a tarjetas móviles).
-5. `app/governance/energy_efficiency.py` (formato actual de `/efficiency` a migrar).
-6. `app/vnish/presets.py` / `app/governance/preset_balancer.py` (formato actual de `/presets` a migrar).
-7. `app/miner_monitor.py` (renderizador de `/status` de flota a encapsular y formatear en tarjetas verticales).
+1. `docs/speckit/RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md` (Condiciones C1-C10).
+2. `app/telegram/fleet_cards.py` (renderizadores de tarjetas móviles y teclados de refresco).
+3. `app/telegram/help_center.py` (catálogo canónico de ayuda móvil).
+4. `app/telegram/command_center.py` (centro de comando táctil).
+5. `app/miner_monitor.py` (loop principal de monitoreo y dispatcher de comandos/callbacks).
 
-SIGUIENTE PASO: SPEC 046
-1. Crear `specs/046-mobile-card-layouts/` con `spec.md`, `plan.md`, `tasks.md`, `evidence.md`.
-2. Actualizar `.specify/feature.json` a `specs/046-mobile-card-layouts`.
-3. Migrar las salidas diagnósticas de flota a tarjetas verticales acotadas a 32 caracteres visibles:
-   - `/status`: Snapshot de flota con viñetas `•`, potencia, temperatura máxima y botones `[ 🔄 Actualizar ] [ 📊 Gráfico ] [ 📱 Menú ]`.
-   - `/fans`: Tarjetas verticales por minero (Temp, Fans RPM/PWM, Modo Governor).
-   - `/efficiency`: Tarjetas verticales (J/TH, TH/s, Watts).
-   - `/presets`: Perfil actual, target, margen térmico y estado del balancer.
-4. Mantener total desacoplamiento de I/O, pureza en los renderizadores y suites de prueba unitarias.
+SIGUIENTES PASOS DISPONIBLES
+1. Monitoreo en producción de interacción táctil con los nuevos teclados de refresco en Telegram.
+2. Iniciar planificación de la siguiente iniciativa en el roadmap o atender solicitudes operativas del usuario.

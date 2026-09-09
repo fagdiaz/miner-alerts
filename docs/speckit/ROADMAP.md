@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (45 de 45 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 660 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (46 de 46 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 675 tests PASS).
 
 
 ---
@@ -566,6 +566,18 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Conexión de router `help:` en `_handle_callback_query`, ACK temprano, in-place editing y botón en Command Center (`cc:nav:main` <-> `help:nav:home`).
 - [x] 35 tests específicos (29 puros + 5 integración + 1 fallback) y 660/660 tests globales PASS (0 fallos, 0 regresiones).
 
+### Spec 046: Mobile-First Card Layout & UX Harmonization across Fleet Reports (Completado)
+- [x] Cumplimiento de Condición C1: Tarjetas verticales con viñetas `•` y ancho estricto <= 32 columnas visibles para `/status`, `/fans`, `/efficiency` y `/presets`.
+- [x] Cumplimiento de Condición C2: Renderizadores puros desacoplados y deterministas (`render_fleet_status_card`, `build_fans_table_text`, `build_efficiency_table_text`, `build_presets_table_text`) sin I/O ni sockets.
+- [x] Cumplimiento de Condición C3: Callbacks `diag:ref:*` (`status`, `fans`, `eff`, `presets`) con validación <= 64 bytes UTF-8 y ACK inmediato (< 50ms).
+- [x] Cumplimiento de Condición C4: Longitud total acotada (< 1,500 caracteres), previniendo desbordes o particionado roto de Markdown.
+- [x] Cumplimiento de Condición C5: Sanitización Markdown robusta en todos los renderizadores.
+- [x] Cumplimiento de Condición C6: Fallback táctil completo y legibilidad garantizada sin markups.
+- [x] Cumplimiento de Condición C7: Cero modificaciones en FSM, auto-reboot, límites del Fan Governor ni adquisición de telemetría.
+- [x] Teclado inline universal de 1 toque: `[ 🔄 Actualizar ] [ 📱 Menú ]` (con `[ 📊 Métricas ]` en `/status`).
+- [x] Router de callbacks en `miner_monitor.py` con edición in-place y RBAC.
+- [x] 15 tests específicos (9 unitarios en `test_fleet_cards.py` + 6 integración en `test_telegram_callbacks.py`) y 675/675 tests globales PASS (0 fallos, 0 regresiones).
+
 
 ---
 
@@ -604,6 +616,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Centro de Comando táctil interactivo `/menu` con submenús in-place y seguridad RBAC (Spec 043).
 - [x] Modo Silencio / Visitas acotado al 40%-70% PWM con temporizadores y Thermal Guard a 83.5°C (Spec 044).
 - [x] Centro de Ayuda táctil interactivo `/help` con navegación por categorías y tarjetas Mobile-First <= 32 cols (Spec 045).
+- [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /status, /fans, /efficiency, /presets (Spec 046).
 
 
 ---
@@ -627,8 +640,8 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ## Governance
 
-- All 44 specifications in the program are complete, verified with evidence, and closed.
-- Version 3.3.0 is active in production under PID 58344 with 621/621 tests PASS.
+- All 46 specifications in the program are complete, verified with evidence, and closed.
+- Version 3.4.0 is ready for production deployment with 675/675 tests PASS.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI) operate decoupled from the monitor.
 - Any future modifications or V4 scope must adhere to SpecKit discipline and constitutional gates.

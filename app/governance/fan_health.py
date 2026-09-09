@@ -180,38 +180,55 @@ def assess_miner_cooling(
 
 
 def build_fans_table_text(assessments: List[CoolingAssessment]) -> str:
-    """Format fleet cooling and fan health overview table."""
+    """Format fleet cooling and fan health overview in mobile-first vertical cards."""
     lines = [
-        "❄️ Miner Alerts — Estado de Enfriamiento",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "❄️ Estado de Enfriamiento",
+        "────────────────────────────",
     ]
 
     warnings = []
-    for ass in assessments:
+    for idx, ass in enumerate(assessments):
+        if idx > 0:
+            lines.append("")
+
+        lines.append(f"{ass.miner_name}: {ass.status_label}")
+
         rpm_str = f"{ass.fan_rpm_max:,} RPM" if ass.fan_rpm_max is not None else "RPM N/A"
         pwm_str = f"{ass.fan_pwm_percent:.0f}%" if ass.fan_pwm_percent is not None else "N/A"
         temp_str = f"{ass.max_temp_c:.1f}°C" if ass.max_temp_c is not None else "N/A"
         headroom_str = f"{ass.thermal_headroom_c:.1f}°C" if ass.thermal_headroom_c is not None else "N/A"
         mode_str = f" [{ass.fan_mode.upper()}]" if ass.fan_mode else ""
 
-        row = (
-            f"{ass.miner_name}: {ass.status_label} | "
-            f"{rpm_str} ({pwm_str}{mode_str}) | "
-            f"{temp_str} (Margen: {headroom_str})"
-        )
-        lines.append(row)
+        # Line 1: Temp and Headroom (strictly <= 32 cols)
+        temp_line = f"• Temp: {temp_str} (Margen: {headroom_str})"
+        if len(temp_line) > 32:
+            temp_line = f"• Temp: {temp_str} | Mg: {headroom_str}"
+        lines.append(temp_line)
+
+        # Line 2: Fans RPM and PWM (strictly <= 32 cols)
+        lines.append(f"• Fans: {rpm_str} ({pwm_str})")
+
+        # Line 3: Control mode (strictly <= 32 cols)
+        if ass.fan_mode:
+            lines.append(f"• Modo: [{ass.fan_mode.upper()}]")
+
+
         if ass.status in (STATUS_SATURATED, STATUS_CRITICAL_HEAT, STATUS_FAN_DEFECT):
             warnings.append(ass.miner_name)
 
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("────────────────────────────")
     if warnings:
-        joined = ", ".join(warnings)
-        lines.append(f"⚠️ Atención: {joined} requiere(n) inspección de filtros o fans.")
+        lines.append("⚠️ Atención:")
+        for w in warnings:
+            lines.append(f"  • {w}")
+        lines.append("Requiere inspección de filtros.")
     else:
-        lines.append("✅ Flota operando con márgenes térmicos seguros.")
+        lines.append("✅ Márgenes térmicos seguros.")
 
-    lines.append("Para detalle individual: /fans <minero>")
+    lines.append("Para detalle: /fans <minero>")
     return "\n".join(lines)
+
+
 
 
 def build_miner_fan_detail_text(assessment: CoolingAssessment) -> str:

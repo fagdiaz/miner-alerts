@@ -47,9 +47,9 @@
 - [x] T036 Realizar commit atómico de la Fase 5: `refactor(app): modularize core acquisition and storage domain into app/core`.
 
 ## Fase 6: Modernización de Imports y Certificación Final
-- [ ] T037 Actualizar importaciones en `app/miner_monitor.py` y herramientas de `tools/` apuntando a los nuevos subpaquetes.
-- [ ] T038 Ejecutar suite completa de tests unitarios e integrados (587/587 PASS).
-- [ ] T039 Ejecutar auditoría de release: `tools/release_audit.py --check-only`.
-- [ ] T040 Registrar evidencia y telemetría en `specs/041-app-modular-architecture/evidence.md`.
-- [ ] T041 Actualizar `docs/speckit/ROADMAP.md` y agregar entrada en `docs/audit/DEVELOPMENT_LOG.md`.
-- [ ] T042 Realizar commit de cierre y sincronizar con repositorio remoto.
+- [x] T037 Actualizar importaciones en `app/miner_monitor.py` y herramientas de `tools/` apuntando a los nuevos subpaquetes.
+- [x] T038 Ejecutar suite completa de tests unitarios e integrados (587/587 PASS).
+- [x] T039 Ejecutar auditoría de release: `tools/release_audit.py --check-only`.
+- [x] T040 Registrar evidencia y telemetría en `specs/041-app-modular-architecture/evidence.md`.
+- [x] T041 Actualizar `docs/speckit/ROADMAP.md` y agregar entrada en `docs/audit/DEVELOPMENT_LOG.md`.
+- [x] T042 Realizar commit de cierre y sincronizar con repositorio remoto.

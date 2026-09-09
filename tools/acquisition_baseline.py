@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.acquisition import (
+from app.core.acquisition import (
     Api4028Transport,
     MinerEndpoint,
     TransportAdapter,

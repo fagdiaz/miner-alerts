@@ -4,7 +4,7 @@
 - **Spec ID**: `041-app-modular-architecture`
 - **Fecha de Inicio**: 2026-09-08
 - **Línea Base Inicial**: 587/587 tests pasando en 11.58s. Servicio Windows `MinerAlerts` activo bajo PID 71304.
-- **Resultado Global**: En Proceso (Fase 1 completada)
+- **Resultado Global**: COMPLETADO Y CERTIFICADO (Fases 1 a 6 exitosas)
 
 ---
 
@@ -135,4 +135,35 @@ Terminal dispositions: 8/8 verified
   Payload files counted: 83
   Terminal dispositions: 8/8 verified
   ```
+
+### Fase 6: Modernización de Imports y Certificación Final - [COMPLETADA]
+- **Archivos modernizados**:
+  * `app/miner_monitor.py`: importaciones superiores e importaciones dinámicas inline actualizadas para importar directamente desde `app.core`, `app.vnish`, `app.telegram`, `app.governance`.
+  * `tools/acquisition_baseline.py`: migrado a `from app.core.acquisition import ...`.
+  * `tools/metrics_exporter.py`: migrado a `from app.core.metrics_snapshot import ...`.
+  * `tools/metrics_sync.py`: migrado a `from app.core.metrics_snapshot import ...`.
+  * `tools/monitor_watchdog.py`: migrado a `from app.core.liveness import ...`.
+  * `tools/operations_dashboard.py`: migrado a `from app.core.mining_quality import ...` y `from app.core.stability_profile import ...`.
+  * `tools/vnish_log_collector.py`: migrado a `from app.core.event_store import ...` y `from app.vnish.logs import ...`.
+- **Validación sintáctica**:
+  ```powershell
+  & ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py tools\acquisition_baseline.py tools\metrics_exporter.py tools\metrics_sync.py tools\monitor_watchdog.py tools\operations_dashboard.py tools\vnish_log_collector.py
+  # Retorno: 0 (OK)
+  ```
+- **Validación de Suite Completa de Tests**:
+  ```text
+  & ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py"
+  Ran 587 tests in 11.262s
+  OK
+  ```
+- **Auditoría de Release**:
+  ```text
+  & ".\.venv\Scripts\python.exe" tools\release_audit.py --check-only
+  RELEASE AUDIT: PASS. Runtime payload SHA-256: 1d54510535bf6d089af3e84b75835da07b66643388e6d0ea4a2658372672f290
+  Payload files counted: 83
+  Terminal dispositions: 8/8 verified
+  ```
+- **Conclusión de Certificación**:
+  La reorganización de `app/` en 4 dominios modulares (`app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`) junto con sus shims retrocompatibles y la modernización canónica de los imports en el monitor principal y herramientas satélite se completó sin una sola regresión en los 587 tests existentes y con cero interrupción de servicio en producción.
+
 

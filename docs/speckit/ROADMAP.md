@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (40 de 40 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 587 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (41 de 41 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 587 tests PASS).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -98,6 +98,16 @@ El programa completo de expansión V3 (Specs 031 a 038) está cerrado y validado
       * Mitigación de Spam: Alertas de autotune de Vnish suprimidas (`preset_alert_enabled: false`) y saturación térmica ajustada a 84.0°C/98% PWM/cooldown 2h.
       * Configurado como **ACTIVO POR DEFECTO** (`preset_balancer_enabled: true`, `preset_balancer_dry_run: false`), con control manual interactivo en caliente vía Telegram (`/balancer on`, `/balancer off`, `/balancer setmax`, `/balancer run`).
     - *Resultados*: Fases 1 a 5 completadas al 100% (T001-T020), 23 tests unitarios e integración (`tests/test_preset_balancer.py`, `tests/test_preset_balancer_integration.py`), **576 tests globales PASS**.
+    - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+
+11. **[COMPLETADO] Spec 041 — Arquitectura Modular y Reorganización de Dominios en `app/` (`041-app-modular-architecture`)**:
+    - *Objetivo*: Reorganizar los 22 archivos planos en `app/` en 4 subpaquetes de dominio desacoplados (`app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`), manteniendo `app/miner_monitor.py` como punto de entrada raíz y preservando 100% de retrocompatibilidad mediante shims con module aliasing (`sys.modules[__name__] = _impl`).
+    - *Dominios Reorganizados*:
+      * `app/core/`: red API 4028, SQLite `EventStore`, episodios de alerta, fusión de evidencia, liveness/watchdog, métricas snapshot, calidad de minado y seguridad de reinicios (10 módulos).
+      * `app/vnish/`: cliente REST, autotuning/presets, parser de logs y telemetría (4 módulos).
+      * `app/governance/`: fan governor en lazo cerrado, preset balancer por elevador, salud térmica de fans y eficiencia energética (4 módulos).
+      * `app/telegram/`: callbacks interactivos, gráficos PNG en RAM, digests diarios, split de mensajes y mantenimiento snooze (5 módulos).
+    - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T042), **587 tests globales PASS** en 11.26s, cero quiebres en importaciones externas ni monkey-patching en tests, auditoría de release aprobada (83 archivos).
     - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
 
 ---

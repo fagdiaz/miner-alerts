@@ -26,131 +26,121 @@ if _REPO_ROOT not in sys.path:
 import requests
 
 try:
-    from .alert_episodes import (
-        IrregularEpisodeCoordinator,
-        format_current_status_line,
-        render_episode_notification_batch,
-    )
-    from .event_store import (
-        EventStore,
-        render_event_detail,
-        render_event_list,
-        render_reboot_decision,
-    )
-    from .restart_intelligence import classify_restart
-    from .reboot_safety import evaluate_auto_reboot_interlocks
-    from .mining_quality import (
-        analyze_mining_quality,
-        normalize_mining_quality,
-        render_mining_quality,
-    )
-    from .stability_profile import analyze_stability, render_stability_assessment
-    from .vnish_telemetry import VnishTelemetry, normalize_vnish_stats
-    from .vnish_logs import render_firmware_events
-    from .telegram_messages import classify_delivery, split_telegram_message
-    from .liveness import MonitorHeartbeat, write_heartbeat_atomic
-    from .acquisition import (
+    from app.core import (
         AcquisitionConfig,
-        Api4028Transport,
         AcquisitionEpoch,
+        Api4028Transport,
         BoundedAcquirer,
-        MinerEndpoint,
-        dispatch_authoritative,
-    )
-    from .evidence_fusion import (
+        EventStore,
         FusionConfig,
         IncidentAssessment,
+        IrregularEpisodeCoordinator,
+        MinerEndpoint,
+        MonitorHeartbeat,
+        analyze_mining_quality,
+        analyze_stability,
+        classify_restart,
+        dispatch_authoritative,
+        evaluate_auto_reboot_interlocks,
+        format_current_status_line,
+        normalize_mining_quality,
+        render_episode_notification_batch,
+        render_event_detail,
+        render_event_list,
+        render_mining_quality,
+        render_reboot_decision,
+        render_stability_assessment,
+        write_heartbeat_atomic,
+    )
+    from app.core.evidence_fusion import (
         RULESET_VERSION as _FUSION_RULESET_VERSION,
         compute_evidence_digest as _compute_evidence_digest,
         render_assessment_telegram as _render_assessment_telegram,
     )
-    from .telegram_callbacks import (
-        CallbackTokenRegistry,
-        build_alert_keyboard,
-        build_confirmation_keyboard,
-        build_settled_keyboard,
-        parse_callback_data,
-    )
-    from .fan_health import (
-        assess_miner_cooling,
-        build_fans_table_text,
-        build_miner_fan_detail_text,
-        evaluate_cooling_alerts,
-        fetch_latest_cooling_assessments,
-    )
-    from .energy_efficiency import (
-        assess_miner_efficiency,
-        build_efficiency_table_text,
-        build_miner_efficiency_detail_text,
-        calculate_efficiency_j_th,
-        evaluate_efficiency_alerts,
-        fetch_latest_efficiency_assessments,
-    )
-    from .vnish_presets import (
+    from app.vnish import (
+        VnishTelemetry,
         assess_miner_preset,
-        build_presets_table_text,
         build_miner_preset_detail_text,
+        build_presets_table_text,
         evaluate_preset_alerts,
         fetch_latest_preset_assessments,
+        get_overclock_settings,
         infer_operating_profile,
-    )
-    from .fan_governor import (
-        GovernorConfig,
-        GovernorDecision,
-        compute_governor_step,
-        ACTION_EMERGENCY_SPIKE,
-        ACTION_FAILSAFE_FAULT,
-        ACTION_HOLD_DWELL,
-        ACTION_HOLD_TARGET,
-        ACTION_RECOVERY_MAX_COOLING,
-        ACTION_STEP_DOWN,
-        ACTION_STEP_UP,
-    )
-    from .preset_balancer import (
-        BalancerConfig,
-        BalancerDecision,
-        StabilityMetrics,
-        ElevatorSensitivitySummary,
-        evaluate_balancer_step,
-        extract_miner_stability_metrics,
-        build_balancer_table_text,
-        build_miner_balancer_detail_text,
-        analyze_elevator_sensitivity,
-        build_elevator_sensitivity_text,
-        record_elevator_restart_circumstance,
-    )
-    from .vnish_client import (
+        mask_secret,
+        normalize_vnish_stats,
+        render_firmware_events,
+        safe_get_overclock_settings,
         safe_set_fan_duty,
         safe_set_miner_preset,
-        safe_get_overclock_settings,
-        get_overclock_settings,
-        mask_secret,
+    )
+    from app.telegram import (
+        CallbackTokenRegistry,
+        build_alert_keyboard,
+        build_confirmation_keyboard,
+        build_settled_keyboard,
+        classify_delivery,
+        parse_callback_data,
+        split_telegram_message,
+    )
+    from app.governance import (
+        ACTION_EMERGENCY_SPIKE,
+        ACTION_FAILSAFE_FAULT,
+        ACTION_HOLD_DWELL,
+        ACTION_HOLD_TARGET,
+        ACTION_RECOVERY_MAX_COOLING,
+        ACTION_STEP_DOWN,
+        ACTION_STEP_UP,
+        BalancerConfig,
+        BalancerDecision,
+        ElevatorSensitivitySummary,
+        GovernorConfig,
+        GovernorDecision,
+        StabilityMetrics,
+        analyze_elevator_sensitivity,
+        assess_miner_cooling,
+        assess_miner_efficiency,
+        build_balancer_table_text,
+        build_efficiency_table_text,
+        build_elevator_sensitivity_text,
+        build_fans_table_text,
+        build_miner_balancer_detail_text,
+        build_miner_efficiency_detail_text,
+        build_miner_fan_detail_text,
+        calculate_efficiency_j_th,
+        compute_governor_step,
+        evaluate_balancer_step,
+        evaluate_cooling_alerts,
+        evaluate_efficiency_alerts,
+        extract_miner_stability_metrics,
+        fetch_latest_cooling_assessments,
+        fetch_latest_efficiency_assessments,
+        record_elevator_restart_circumstance,
     )
 except ImportError:
-    from alert_episodes import (
+    from app.alert_episodes import (
         IrregularEpisodeCoordinator,
         format_current_status_line,
         render_episode_notification_batch,
     )
-    from event_store import (
+    from app.event_store import (
         EventStore,
         render_event_detail,
         render_event_list,
         render_reboot_decision,
     )
-    from restart_intelligence import classify_restart
-    from reboot_safety import evaluate_auto_reboot_interlocks
-    from mining_quality import (
+    from app.restart_intelligence import classify_restart
+    from app.reboot_safety import evaluate_auto_reboot_interlocks
+    from app.mining_quality import (
         analyze_mining_quality,
         normalize_mining_quality,
         render_mining_quality,
     )
-    from stability_profile import analyze_stability, render_stability_assessment
-    from vnish_telemetry import VnishTelemetry, normalize_vnish_stats
-    from vnish_logs import render_firmware_events
-    from telegram_messages import classify_delivery, split_telegram_message
-    from liveness import MonitorHeartbeat, write_heartbeat_atomic
-    from acquisition import (
+    from app.stability_profile import analyze_stability, render_stability_assessment
+    from app.vnish_telemetry import VnishTelemetry, normalize_vnish_stats
+    from app.vnish_logs import render_firmware_events
+    from app.telegram_messages import classify_delivery, split_telegram_message
+    from app.liveness import MonitorHeartbeat, write_heartbeat_atomic
+    from app.acquisition import (
         AcquisitionConfig,
         Api4028Transport,
         AcquisitionEpoch,
@@ -158,28 +148,28 @@ except ImportError:
         MinerEndpoint,
         dispatch_authoritative,
     )
-    from evidence_fusion import (
+    from app.evidence_fusion import (
         FusionConfig,
         IncidentAssessment,
         RULESET_VERSION as _FUSION_RULESET_VERSION,
         compute_evidence_digest as _compute_evidence_digest,
         render_assessment_telegram as _render_assessment_telegram,
     )
-    from telegram_callbacks import (
+    from app.telegram_callbacks import (
         CallbackTokenRegistry,
         build_alert_keyboard,
         build_confirmation_keyboard,
         build_settled_keyboard,
         parse_callback_data,
     )
-    from fan_health import (
+    from app.fan_health import (
         assess_miner_cooling,
         build_fans_table_text,
         build_miner_fan_detail_text,
         evaluate_cooling_alerts,
         fetch_latest_cooling_assessments,
     )
-    from energy_efficiency import (
+    from app.energy_efficiency import (
         assess_miner_efficiency,
         build_efficiency_table_text,
         build_miner_efficiency_detail_text,
@@ -187,7 +177,7 @@ except ImportError:
         evaluate_efficiency_alerts,
         fetch_latest_efficiency_assessments,
     )
-    from vnish_presets import (
+    from app.vnish_presets import (
         assess_miner_preset,
         build_presets_table_text,
         build_miner_preset_detail_text,
@@ -195,7 +185,7 @@ except ImportError:
         fetch_latest_preset_assessments,
         infer_operating_profile,
     )
-    from fan_governor import (
+    from app.fan_governor import (
         GovernorConfig,
         GovernorDecision,
         compute_governor_step,
@@ -207,7 +197,7 @@ except ImportError:
         ACTION_STEP_DOWN,
         ACTION_STEP_UP,
     )
-    from preset_balancer import (
+    from app.preset_balancer import (
         BalancerConfig,
         BalancerDecision,
         StabilityMetrics,
@@ -220,7 +210,7 @@ except ImportError:
         build_elevator_sensitivity_text,
         record_elevator_restart_circumstance,
     )
-    from vnish_client import (
+    from app.vnish_client import (
         safe_set_fan_duty,
         safe_set_miner_preset,
         safe_get_overclock_settings,
@@ -3071,7 +3061,7 @@ def _handle_callback_query(
             )
             return
         try:
-            from app.telegram_charts import fetch_miner_chart_data, render_miner_chart_png
+            from app.telegram.charts import fetch_miner_chart_data, render_miner_chart_png
             db_path = config.get("db_path", "data/miner_alerts.db")
             chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=1.0)
             if chart_data["count"] == 0:
@@ -3235,7 +3225,7 @@ def _handle_callback_query(
             minutes = float(action.param) if action.param else 60.0
         except ValueError:
             minutes = 60.0
-        from app.telegram_snooze import MIN_SNOOZE_MINUTES, MAX_SNOOZE_MINUTES
+        from app.telegram.snooze import MIN_SNOOZE_MINUTES, MAX_SNOOZE_MINUTES
         minutes = max(MIN_SNOOZE_MINUTES, min(MAX_SNOOZE_MINUTES, minutes))
         now_ts = time.time()
         snooze_until = now_ts + (minutes * 60.0)
@@ -3767,7 +3757,7 @@ def telegram_polling_worker(
                             hours = 1.0
 
                     try:
-                        from app.telegram_charts import (
+                        from app.telegram.charts import (
                             fetch_miner_chart_data,
                             fetch_fleet_chart_data,
                             render_miner_chart_png,
@@ -3836,7 +3826,7 @@ def telegram_polling_worker(
                         )
                 elif cmd_name == "snooze":
                     handled = True
-                    from app.telegram_snooze import (
+                    from app.telegram.snooze import (
                         parse_snooze_args,
                         format_snooze_expiry_time,
                     )
@@ -3974,7 +3964,7 @@ def telegram_polling_worker(
                             )
                 elif cmd_name == "snoozed":
                     handled = True
-                    from app.telegram_snooze import build_snooze_status_text
+                    from app.telegram.snooze import build_snooze_status_text
                     with state_lock:
                         snooze_msg = build_snooze_status_text(miners, states, now_ts=time.time())
                     send_telegram(
@@ -3989,7 +3979,7 @@ def telegram_polling_worker(
                     )
                 elif cmd_name in ("digest", "summary"):
                     handled = True
-                    from app.daily_digest import fetch_daily_digest_metrics, format_daily_digest
+                    from app.telegram.daily_digest import fetch_daily_digest_metrics, format_daily_digest
                     db_p = config.get("db_path", "data/miner_alerts.db")
                     b_root = config.get("backup_root", "backups")
                     with state_lock:
@@ -4013,7 +4003,7 @@ def telegram_polling_worker(
                     )
                 elif cmd_name in ("fans", "fan"):
                     handled = True
-                    from app.fan_health import (
+                    from app.governance.fan_health import (
                         fetch_latest_cooling_assessments,
                         build_fans_table_text,
                         build_miner_fan_detail_text,
@@ -4061,7 +4051,7 @@ def telegram_polling_worker(
                     )
                 elif cmd_name in ("efficiency", "eff"):
                     handled = True
-                    from app.energy_efficiency import (
+                    from app.governance.energy_efficiency import (
                         fetch_latest_efficiency_assessments,
                         build_efficiency_table_text,
                         build_miner_efficiency_detail_text,
@@ -4110,13 +4100,13 @@ def telegram_polling_worker(
                 elif cmd_name in ("presets", "preset", "profile"):
                     handled = True
                     try:
-                        from app.vnish_presets import (
+                        from app.vnish.presets import (
                             fetch_latest_preset_assessments,
                             build_presets_table_text,
                             build_miner_preset_detail_text,
                         )
                     except ImportError:
-                        from vnish_presets import (
+                        from app.vnish_presets import (
                             fetch_latest_preset_assessments,
                             build_presets_table_text,
                             build_miner_preset_detail_text,
@@ -4190,9 +4180,9 @@ def telegram_polling_worker(
                             m_name = m.get("name", m_host)
                             if not gov_dry_run and m_host:
                                 try:
-                                    from app.vnish_client import safe_set_fan_duty as _ssfd
+                                    from app.vnish.client import safe_set_fan_duty as _ssfd
                                 except ImportError:
-                                    from vnish_client import safe_set_fan_duty as _ssfd  # type: ignore
+                                    from app.vnish_client import safe_set_fan_duty as _ssfd  # type: ignore
                                 try:
                                     ok, err = _ssfd(m_host, vnish_pw, 100, timeout=2.5)
                                     fallback_results.append(f"  {m_name}: {'✅ 100%' if ok else f'⚠️ {err}'}")
@@ -6746,7 +6736,7 @@ def main() -> None:
 
                 snooze_tag = ""
                 if state.snooze_until_ts is not None and now_ts < state.snooze_until_ts:
-                    from app.telegram_snooze import format_snooze_tag
+                    from app.telegram.snooze import format_snooze_tag
                     snooze_tag = format_snooze_tag(state, now_ts)
                 status_text_line = format_current_status_line(
                     name_display=name_display,
@@ -6809,7 +6799,7 @@ def main() -> None:
                     episode_notifications.acknowledge_active_initials()
                     notification_sent = True
             elif not episode_batch.empty and ((not qa_mode) or qa_notify):
-                from app.telegram_snooze import filter_snoozed_episodes
+                from app.telegram.snooze import filter_snoozed_episodes
                 filtered_batch = filter_snoozed_episodes(episode_batch, states, now_ts=now_ts)
                 if not filtered_batch.empty:
                     # T013 (Spec 031): Attach an inline keyboard when the batch has
@@ -6860,7 +6850,7 @@ def main() -> None:
             daily_digest_time = str(config.get("daily_digest_time", "08:00"))
             if daily_digest_enabled and not first_tick and ((not qa_mode) or qa_notify):
                 ar_now = argentina_now()
-                from app.daily_digest import is_digest_due, fetch_daily_digest_metrics, format_daily_digest
+                from app.telegram.daily_digest import is_digest_due, fetch_daily_digest_metrics, format_daily_digest
                 if is_digest_due(ar_now, daily_digest_time, _LAST_DAILY_DIGEST_DATE):
                     try:
                         db_p = config.get("db_path", "data/miner_alerts.db")
@@ -6981,7 +6971,7 @@ def main() -> None:
                     heartbeat_error_logged = False
                     if config.get("metrics_snapshot_enabled", False):
                         try:
-                            from app.metrics_snapshot import write_monitor_metrics_snapshot_safe
+                            from app.core.metrics_snapshot import write_monitor_metrics_snapshot_safe
                             snapshot_path = config.get("metrics_snapshot_path", "diagnostics/metrics/current.json")
                             m_list = []
                             for m_cfg in config.get("miners", []):

@@ -3,6 +3,33 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Spec 041: Arquitectura Modular y Reorganización de Dominios en `app/`
+
+* **Objetivo**: Reorganizar los 22 archivos Python planos de `app/` en 4 subpaquetes de dominio desacoplados (`app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`), manteniendo `app/miner_monitor.py` como orquestador raíz y garantizando 100% de retrocompatibilidad y cero regresiones mediante fachadas con module aliasing (`sys.modules[__name__] = _impl`).
+* **Migración por Dominios Realizada**:
+  1. **Dominio Telegram (`app/telegram/`)**:
+     - Subpaquete `app/telegram/` con `callbacks.py`, `charts.py`, `messages.py`, `snooze.py` y `daily_digest.py`.
+     - Shims retrocompatibles en `app/` con re-exportaciones canónicas.
+  2. **Dominio Vnish Firmware (`app/vnish/`)**:
+     - Subpaquete `app/vnish/` con `client.py`, `presets.py`, `logs.py` y `telemetry.py`.
+     - Shims en `app/` con module aliasing para soporte de monkey-patching en tests.
+  3. **Dominio Gobernanza y Salud Térmica (`app/governance/`)**:
+     - Subpaquete `app/governance/` con `fan_governor.py`, `preset_balancer.py`, `fan_health.py` y `energy_efficiency.py`.
+     - Shims en `app/` con preservación de interfaces para herramientas operativas.
+  4. **Dominio Core (`app/core/`)**:
+     - Inicialización formal del paquete raíz `app/__init__.py`.
+     - Subpaquete `app/core/` con 10 módulos: `acquisition.py`, `event_store.py`, `alert_episodes.py`, `evidence_fusion.py`, `liveness.py`, `metrics_snapshot.py`, `mining_quality.py`, `reboot_safety.py`, `restart_intelligence.py` y `stability_profile.py`.
+     - Shims en `app/` con module aliasing.
+  5. **Modernización Canónica de Imports**:
+     - Actualización de importaciones directas en `app/miner_monitor.py` y herramientas satélite (`tools/acquisition_baseline.py`, `tools/metrics_exporter.py`, `tools/metrics_sync.py`, `tools/monitor_watchdog.py`, `tools/operations_dashboard.py`, `tools/vnish_log_collector.py`) apuntando a los nuevos dominios con fallback defensivo a los shims.
+* **Resultados y Certificación**:
+  - Compilación sintáctica: 100% OK (`py_compile` en todos los módulos y herramientas).
+  - Suite de Tests: **587/587 tests PASS** en 11.26s sin una sola regresión ni advertencia.
+  - Auditoría de Release: PASS (`tools/release_audit.py --check-only`), 83 archivos de payload computados bajo SHA-256 `1d54510535bf6d089af3e84b75835da07b66643388e6d0ea4a2658372672f290`.
+  - Servicio Windows `MinerAlerts` en producción: 100% operativo sin caída de servicio.
+
+---
+
 ## [2026-09-08] - Auditoría y Reorganización Documental de Speckit (Archivo de Estrategias y Modernización del Índice)
 
 * **Objetivo**: Limpiar y desfragmentar la estructura de archivos markdown en `docs/speckit/`, separando nítidamente la documentación operativa viva y de referencia activa de aquellas propuestas y estrategias históricas cerradas o concluidas, preservando la trazabilidad completa del proyecto sin saturar el contexto de los operadores y modelos.

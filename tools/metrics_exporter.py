@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 if __name__ == "__main__" and __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.metrics_snapshot import (
+from app.core.metrics_snapshot import (
     DEFAULT_SNAPSHOT_PATH,
     DEFAULT_STALE_SECONDS,
     VALID_ACQ_QUALITIES,

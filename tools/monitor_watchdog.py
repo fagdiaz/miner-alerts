@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.liveness import (  # noqa: E402
+from app.core.liveness import (  # noqa: E402
     MaintenanceLease,
     assess_liveness,
     decide_notification,

@@ -1,61 +1,37 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: AUTODESCUBRIMIENTO VNISH, SENSIBILIDAD ELEVADORES Y DOCS SPECKIT
+ESTADO DEL PROYECTO: ARQUITECTURA MODULAR DE DOMINIOS EN `app/` (SPEC 041 COMPLETA)
 =============================================================================
-1. PRODUCCIÓN ACTIVA:
+1. PRODUCCIÓN ACTIVA & ARQUITECTURA MODULAR:
    - Servicio Windows `MinerAlerts` operando en vivo bajo NSSM (PID 71304):
      * Spec 039 Fan Governor: `fan_governor_enabled: true`, `fan_governor_dry_run: false`.
-     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: true` (monitoreo y diagnóstico de elevadores sin interferir con autoswitch nativo de Vnish).
+     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: true`.
+     * Spec 041 Arquitectura Modular: 22 archivos organizados en 4 subpaquetes de dominio desacoplados (`app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`) con 100% retrocompatibilidad vía shims con module aliasing.
    - Comandos Telegram Interactivos:
      * Gobernador: `/gov`, `/gov on`, `/gov off`, `/gov set <temp>`.
      * Balanceador: `/balancer`, `/balancer on`, `/balancer off`, `/balancer setmax <miner> <preset>`.
-     * Elevadores: `/elevadores` (alias `/elevators`, `/sensibilidad`, `/elev`). Diagnóstico de carga y sensibilidad de elevadores de tensión.
+     * Elevadores: `/elevadores` (alias `/elevators`, `/sensibilidad`, `/elev`).
+     * Monitoreo: `/status`, `/chart`, `/snooze`, `/digest`, `/fans`, `/efficiency`, `/presets`.
 
-2. ADAPTACIÓN DINÁMICA A DECISIONES EN VNISH:
-   - Autodescubrimiento en Tiempo Real (`app/vnish_client.py:get_overclock_settings`, `miner_monitor.py:refresh_vnish_overclock_settings`):
-     * Sincroniza concurrentemente con `/api/v1/settings` de cada minero al inicio y cada 300 segundos.
-     * Descubre `top_preset`, `preset`, `rise_temp`, `decrease_temp` y `switcher_enabled`.
-     * Adapta automáticamente el `target_power_w` del Fan Governor a lo que el usuario decida en la web de Vnish (actualmente 2700W para toda la flota: 23, 24, 25 y 26).
-     * Si el usuario sube o baja el techo en Vnish, el gobernador se adapta solo sin necesidad de editar `config.json`.
-   - Recuperación de Autoswitch Individual:
-     * Si un minero está por debajo de su techo autodescubierto (`current_power_w < target_power_w - 120W`), fuerza 100% de coolers (`RECOVERY_MAX_COOLING`) para que los chips bajen a <= 79°C y Vnish aumente el preset.
-     * Al alcanzar el techo de 2700W y temperatura <= 81.0°C, modula hacia abajo para estabilizar a 82.0°C sano.
+2. DOMINIOS IMPLEMENTADOS (`app/`):
+   - `app/core/`: red API 4028, SQLite `EventStore`, episodios de alerta, evidencia fusionada, liveness, métricas Prometheus, calidad de minado y seguridad de reinicios (10 módulos).
+   - `app/vnish/`: cliente REST autenticado, presets/autotuning, parser de logs y telemetría (4 módulos).
+   - `app/governance/`: fan governor en lazo cerrado, preset balancer por elevador, salud térmica de fans y eficiencia energética J/TH (4 módulos).
+   - `app/telegram/`: callbacks interactivos de alerta, gráficos visuales en RAM, digests matutinos, splitter y snooze (5 módulos).
+   - Fachadas Shims en `app/`: garantizan `sys.modules[__name__] = _impl` para soporte transparente de imports y monkey-patching en tests y scripts existentes.
+   - `app/miner_monitor.py`: modernizado para importar canónicamente desde los subpaquetes con fallback a shims.
 
-3. REGISTRO Y SEGUIMIENTO DE SENSIBILIDAD DE ELEVADORES:
-   - Captura de Circunstancias ante Reinicio (`record_elevator_restart_circumstance`):
-     * Ante cada `restart_detected`, registra: grupo eléctrico (`elevator_1`, `elevator_2`), carga total combinada (Watts) del elevador, potencia y temperatura pre-reinicio del equipo, y estado de los pares.
-     * Detección de caídas en cascada (`is_elevator_cascade`): si otro minero del mismo elevador reinició dentro de los 30 minutos previos (`group_cascade_window_s`), se clasifica como evento de inestabilidad eléctrica y se registra en `operational_events` (`elevator_cascade_restart`).
-   - Diagnóstico y Recomendación de Carga Óptima (`analyze_elevator_sensitivity`):
-     * Clasifica cada elevador en `ESTABLE`, `SENSIBILIDAD_MODERADA` o `ALTA_SENSIBILIDAD` según reinicios en 24h/72h y eventos en cascada.
-     * Provee recomendaciones operativas (e.g. reducir a 2500W un minero si la carga combinada supera la capacidad estable del elevador).
-     * Consulta visual instantánea vía `/elevadores` y en la cabecera de grupo de `/balancer`.
-
-4. ESTRUCTURA DOCUMENTAL OPTIMIZADA EN `docs/speckit/`:
-   - Documentación Operativa Activa:
-     * `docs/speckit/ROADMAP.md`: Backlog maestro, cola de entregas, 40/40 specs completadas (100%).
-     * `docs/speckit/RUNBOOK.md`: Manual operativo, catálogo de comandos Telegram y contingencias.
-     * `docs/speckit/SPEC_PROGRAM.md`: Marco programático y Definition of Done.
-     * `docs/speckit/DELIVERY_PLAN.md`: Calendario de despliegue y estabilización.
-     * `docs/speckit/MINER_DIAGNOSTICS.md`: Manual de herramientas forenses.
-     * `docs/speckit/TECHNOLOGY_STRATEGY.md`: Arquitectura y matriz tecnológica.
-     * `docs/speckit/README.md`: Índice y guía de navegación moderna.
-   - Archivo Histórico (`docs/speckit/archive/`):
-     * `HASHCORE_TOOLKIT_STRATEGY.md`: Inventario Spec 026 (congelado).
-     * `INTERFACE_STRATEGY.md`: Evaluación Spec 027 (formal `no_build`).
-     * `V3_EXPANSION_PLAN.md`: Plan Spec 031-038 (100% certificado en prod).
-     * `archive/README.md`: Índice y trazabilidad de documentos archivados.
-   - Bitácora Central Inmutable:
-     * `docs/audit/DEVELOPMENT_LOG.md`: Historial cronológico inverso con las 40 specs y auditorías.
-
-5. CERTIFICACIÓN GLOBAL DE PRUEBAS:
-   - 587/587 tests PASS en 11.58s (0 fallos, 0 errores, 0 regresiones).
-   - Release Audit PASS (55 payloads verificados, SHA-256 limpio).
+3. CERTIFICACIÓN GLOBAL DE PRUEBAS & RELEASE:
+   - 587/587 tests PASS en 11.26s (0 fallos, 0 errores, 0 regresiones).
+   - Release Audit: PASS (`tools/release_audit.py --check-only`), 83 archivos de payload computados bajo SHA-256 `1d54510535bf6d089af3e84b75835da07b66643388e6d0ea4a2658372672f290`.
+   - Cero quiebres en importaciones ni advertencias sintácticas (`py_compile` limpio).
 
 =============================================================================
 SIGUIENTES PASOS:
 - Operación continua observando la respuesta térmica y eléctrica de los mineros 25 y 26 al escalar hacia los 2700W en el Elevador 2.
 - Monitoreo de sensibilidad del Elevador 2 ante el aumento progresivo de carga (de ~4600W a 5400W).
+- Mantener la higiene modular para cualquier nuevo desarrollo o refactorización futura.
 =============================================================================
 MODELO SUGERIDO: Gemini 3.8 Flash High (Capacidad óptima para análisis, métricas operativas y siguientes tareas del roadmap)
 =============================================================================

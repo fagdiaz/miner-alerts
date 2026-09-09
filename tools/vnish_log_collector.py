@@ -18,8 +18,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.event_store import EventStore
-from app.vnish_logs import ALLOWED_LOG_TABS, VnishLogEvent, parse_vnish_log_text
+from app.core.event_store import EventStore
+from app.vnish.logs import ALLOWED_LOG_TABS, VnishLogEvent, parse_vnish_log_text
 
 
 _SAFE_HOST_RE = re.compile(r"^[A-Za-z0-9.-]{1,253}$")

@@ -4,7 +4,7 @@
 - [x] T001 Crear directorio de especificación `specs/041-app-modular-architecture` y checklist de requisitos.
 - [x] T002 Redactar `spec.md` con objetivos arquitectónicos, tabla de dominios y protocolo de shims retrocompatibles.
 - [x] T003 Redactar `plan.md` con grafo de dependencias, orden de migración y criterios de pase.
-- [ ] T004 Verificar línea base de tests (587 tests pasando) y estado limpio de git.
+- [x] T004 Verificar línea base de tests (587 tests pasando) y estado limpio de git.
 
 ## Fase 2: Dominio Telegram (`app/telegram/`)
 - [x] T005 Crear subpaquete `app/telegram/` con su correspondiente `__init__.py`.
@@ -38,13 +38,13 @@
 - [x] T029 Realizar commit atómico de la Fase 4: `refactor(app): modularize governance and cooling domain into app/governance`.
 
 ## Fase 5: Dominio Core (`app/core/`)
-- [ ] T030 Crear subpaquete `app/core/` con su correspondiente `__init__.py`.
-- [ ] T031 Mover módulos de adquisición (`acquisition.py`), persistencia (`event_store.py`) y episodios (`alert_episodes.py`) a `app/core/` con sus respectivos shims.
-- [ ] T032 Mover módulos de telemetría y diagnósticos (`evidence_fusion.py`, `liveness.py`, `metrics_snapshot.py`, `mining_quality.py`) a `app/core/` con sus shims.
-- [ ] T033 Mover módulos de estabilidad y reinicio (`reboot_safety.py`, `restart_intelligence.py`, `stability_profile.py`) a `app/core/` con sus shims.
-- [ ] T034 Configurar re-exportaciones canónicas en `app/core/__init__.py`.
-- [ ] T035 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
-- [ ] T036 Realizar commit atómico de la Fase 5: `refactor(app): modularize core acquisition and storage domain into app/core`.
+- [x] T030 Crear subpaquete `app/core/` con su correspondiente `__init__.py`.
+- [x] T031 Mover módulos de adquisición (`acquisition.py`), persistencia (`event_store.py`) y episodios (`alert_episodes.py`) a `app/core/` con sus respectivos shims.
+- [x] T032 Mover módulos de telemetría y diagnósticos (`evidence_fusion.py`, `liveness.py`, `metrics_snapshot.py`, `mining_quality.py`) a `app/core/` con sus shims.
+- [x] T033 Mover módulos de estabilidad y reinicio (`reboot_safety.py`, `restart_intelligence.py`, `stability_profile.py`) a `app/core/` con sus shims.
+- [x] T034 Configurar re-exportaciones canónicas en `app/core/__init__.py`.
+- [x] T035 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
+- [x] T036 Realizar commit atómico de la Fase 5: `refactor(app): modularize core acquisition and storage domain into app/core`.
 
 ## Fase 6: Modernización de Imports y Certificación Final
 - [ ] T037 Actualizar importaciones en `app/miner_monitor.py` y herramientas de `tools/` apuntando a los nuevos subpaquetes.

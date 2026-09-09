@@ -7,15 +7,15 @@
 - [ ] T004 Verificar línea base de tests (587 tests pasando) y estado limpio de git.
 
 ## Fase 2: Dominio Telegram (`app/telegram/`)
-- [ ] T005 Crear subpaquete `app/telegram/` con su correspondiente `__init__.py`.
-- [ ] T006 Mover `telegram_callbacks.py` -> `app/telegram/callbacks.py` y crear shim en `app/telegram_callbacks.py`.
-- [ ] T007 Mover `telegram_charts.py` -> `app/telegram/charts.py` y crear shim en `app/telegram_charts.py`.
-- [ ] T008 Mover `telegram_messages.py` -> `app/telegram/messages.py` y crear shim en `app/telegram_messages.py`.
-- [ ] T009 Mover `telegram_snooze.py` -> `app/telegram/snooze.py` y crear shim en `app/telegram_snooze.py`.
-- [ ] T010 Mover `daily_digest.py` -> `app/telegram/daily_digest.py` y crear shim en `app/daily_digest.py`.
-- [ ] T011 Configurar re-exportaciones canónicas en `app/telegram/__init__.py`.
-- [ ] T012 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
-- [ ] T013 Realizar commit atómico de la Fase 2: `refactor(app): modularize telegram domain into app/telegram`.
+- [x] T005 Crear subpaquete `app/telegram/` con su correspondiente `__init__.py`.
+- [x] T006 Mover `telegram_callbacks.py` -> `app/telegram/callbacks.py` y crear shim en `app/telegram_callbacks.py`.
+- [x] T007 Mover `telegram_charts.py` -> `app/telegram/charts.py` y crear shim en `app/telegram_charts.py`.
+- [x] T008 Mover `telegram_messages.py` -> `app/telegram/messages.py` y crear shim en `app/telegram_messages.py`.
+- [x] T009 Mover `telegram_snooze.py` -> `app/telegram/snooze.py` y crear shim en `app/telegram_snooze.py`.
+- [x] T010 Mover `daily_digest.py` -> `app/telegram/daily_digest.py` y crear shim en `app/daily_digest.py`.
+- [x] T011 Configurar re-exportaciones canónicas en `app/telegram/__init__.py`.
+- [x] T012 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
+- [x] T013 Realizar commit atómico de la Fase 2: `refactor(app): modularize telegram domain into app/telegram`.
 
 ## Fase 3: Dominio Vnish (`app/vnish/`)
 - [ ] T014 Crear subpaquete `app/vnish/` con su correspondiente `__init__.py`.

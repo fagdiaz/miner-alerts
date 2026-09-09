@@ -28,14 +28,14 @@
 - [x] T021 Realizar commit atómico de la Fase 3: `refactor(app): modularize vnish integration domain into app/vnish`.
 
 ## Fase 4: Dominio Governance (`app/governance/`)
-- [ ] T022 Crear subpaquete `app/governance/` con su correspondiente `__init__.py`.
-- [ ] T023 Mover `fan_governor.py` -> `app/governance/fan_governor.py` y crear shim en `app/fan_governor.py`.
-- [ ] T024 Mover `preset_balancer.py` -> `app/governance/preset_balancer.py` y crear shim en `app/preset_balancer.py`.
-- [ ] T025 Mover `fan_health.py` -> `app/governance/fan_health.py` y crear shim en `app/fan_health.py`.
-- [ ] T026 Mover `energy_efficiency.py` -> `app/governance/energy_efficiency.py` y crear shim en `app/energy_efficiency.py`.
-- [ ] T027 Configurar re-exportaciones canónicas en `app/governance/__init__.py`.
-- [ ] T028 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
-- [ ] T029 Realizar commit atómico de la Fase 4: `refactor(app): modularize governance and cooling domain into app/governance`.
+- [x] T022 Crear subpaquete `app/governance/` con su correspondiente `__init__.py`.
+- [x] T023 Mover `fan_governor.py` -> `app/governance/fan_governor.py` y crear shim en `app/fan_governor.py`.
+- [x] T024 Mover `preset_balancer.py` -> `app/governance/preset_balancer.py` y crear shim en `app/preset_balancer.py`.
+- [x] T025 Mover `fan_health.py` -> `app/governance/fan_health.py` y crear shim en `app/fan_health.py`.
+- [x] T026 Mover `energy_efficiency.py` -> `app/governance/energy_efficiency.py` y crear shim en `app/energy_efficiency.py`.
+- [x] T027 Configurar re-exportaciones canónicas en `app/governance/__init__.py`.
+- [x] T028 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
+- [x] T029 Realizar commit atómico de la Fase 4: `refactor(app): modularize governance and cooling domain into app/governance`.
 
 ## Fase 5: Dominio Core (`app/core/`)
 - [ ] T030 Crear subpaquete `app/core/` con su correspondiente `__init__.py`.

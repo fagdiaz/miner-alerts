@@ -77,3 +77,28 @@ Terminal dispositions: 8/8 verified
   Payload files counted: 66
   Terminal dispositions: 8/8 verified
   ```
+
+### Fase 4: Dominio Governance (`app/governance/`) - [COMPLETADA]
+- **Archivos migrados**:
+  * `app/fan_governor.py` -> `app/governance/fan_governor.py`
+  * `app/preset_balancer.py` -> `app/governance/preset_balancer.py`
+  * `app/fan_health.py` -> `app/governance/fan_health.py`
+  * `app/energy_efficiency.py` -> `app/governance/energy_efficiency.py`
+- **Subpaquete creado**: `app/governance/__init__.py` con re-exportaciones canónicas de los 4 submódulos.
+- **Shims retrocompatibles con module aliasing (`sys.modules[__name__] = _impl`)**: Preservan 100% la compatibilidad hacia atrás para imports legados y suite de pruebas unitarias.
+- **Validación sintáctica**:
+  ```powershell
+  & ".\.venv\Scripts\python.exe" -m py_compile app\governance\__init__.py app\governance\fan_governor.py app\governance\preset_balancer.py app\governance\fan_health.py app\governance\energy_efficiency.py app\fan_governor.py app\preset_balancer.py app\fan_health.py app\energy_efficiency.py
+  # Retorno: 0 (OK)
+  ```
+- **Validación de Suite de Tests**:
+  ```text
+  Ran 587 tests in 10.423s
+  OK
+  ```
+- **Auditoría de Release**:
+  ```text
+  RELEASE AUDIT: PASS. Runtime payload SHA-256: c2e79b27285b84f1eb040886e83863d19bf19dbdae26f25f67f1bfd5f1ca6437
+  Payload files counted: 71
+  Terminal dispositions: 8/8 verified
+  ```

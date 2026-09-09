@@ -289,11 +289,11 @@ def extract_miner_stability_metrics(
 ) -> List[StabilityMetrics]:
     """Extract 24h/72h restart frequency and thermal metrics from SQLite."""
     now = now_ts or time.time()
-    db_file = Path(db_path)
-    if not db_file.exists():
-        candidate = Path(__file__).resolve().parent.parent / db_path
-        if candidate.exists():
-            db_file = candidate
+    db_file = Path(db_path).expanduser()
+    if not db_file.is_absolute() and not db_file.exists():
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        if (repo_root / db_file).exists():
+            db_file = repo_root / db_file
     metrics_list: List[StabilityMetrics] = []
 
     db_samples: Dict[str, dict] = {}
@@ -588,11 +588,11 @@ def analyze_elevator_sensitivity(
         groups.setdefault(m.electrical_group, []).append(m)
 
     cascade_counts_by_group: Dict[str, int] = {grp: 0 for grp in groups}
-    db_file = Path(db_path)
-    if not db_file.exists():
-        candidate = Path(__file__).resolve().parent.parent / db_path
-        if candidate.exists():
-            db_file = candidate
+    db_file = Path(db_path).expanduser()
+    if not db_file.is_absolute() and not db_file.exists():
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        if (repo_root / db_file).exists():
+            db_file = repo_root / db_file
 
     if db_file.exists():
         uri = f"file:{db_file.resolve().as_posix()}?mode=ro"

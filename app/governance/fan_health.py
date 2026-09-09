@@ -249,7 +249,11 @@ def fetch_latest_cooling_assessments(
     config: Optional[dict] = None,
 ) -> List[CoolingAssessment]:
     """Retrieve the latest telemetry for each miner and assess cooling health."""
-    db_file = Path(db_path)
+    db_file = Path(db_path).expanduser()
+    if not db_file.is_absolute() and not db_file.exists():
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        if (repo_root / db_file).exists():
+            db_file = repo_root / db_file
     assessments: List[CoolingAssessment] = []
     cfg = config or {}
     critical_temp = float(cfg.get("cooling_critical_temp_c", 84.5))
@@ -266,28 +270,51 @@ def fetch_latest_cooling_assessments(
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             for miner in miners:
-                m_key = miner.get("ip") or miner.get("name")
-                cursor.execute(
-                    """
-                    SELECT max_temp_c, fan_rpm_max, fan_pwm_percent, diagnostic_flags_json, rate_ths
-                    FROM telemetry_samples
-                    WHERE miner_key = ?
-                    ORDER BY observed_ts DESC
-                    LIMIT 1
-                    """,
-                    (str(m_key),),
-                )
-                row = cursor.fetchone()
-                if row:
-                    flags_raw = row["diagnostic_flags_json"]
-                    flags = tuple(json.loads(flags_raw)) if flags_raw else ()
-                    db_samples[str(m_key)] = {
-                        "max_temp_c": row["max_temp_c"],
-                        "fan_rpm_max": row["fan_rpm_max"],
-                        "fan_pwm_percent": row["fan_pwm_percent"],
-                        "diagnostic_flags": flags,
-                        "rate_ths": row["rate_ths"],
-                    }
+                m_name = miner.get("name")
+                m_host = miner.get("host") or miner.get("ip")
+                m_port = miner.get("port", 4028)
+                m_ident = str(m_name or m_host or "unknown")
+
+                candidate_keys = []
+                if m_name and m_host:
+                    candidate_keys.append(f"{m_name}|{m_host}:{m_port}")
+                if m_host:
+                    candidate_keys.append(str(m_host))
+                if m_name:
+                    candidate_keys.append(str(m_name))
+
+                placeholders = ",".join("?" for _ in candidate_keys)
+                try:
+                    cursor.execute(
+                        f"""
+                        SELECT max_temp_c, fan_rpm_max, fan_pwm_percent, diagnostic_flags_json, rate_ths
+                        FROM telemetry_samples
+                        WHERE miner_key IN ({placeholders}) OR miner_name = ? OR host = ?
+                        ORDER BY observed_ts DESC
+                        LIMIT 1
+                        """,
+                        (*candidate_keys, str(m_name or ""), str(m_host or "")),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        flags_raw = row["diagnostic_flags_json"]
+                        flags = tuple(json.loads(flags_raw)) if flags_raw else ()
+                        s_data = {
+                            "max_temp_c": row["max_temp_c"],
+                            "fan_rpm_max": row["fan_rpm_max"],
+                            "fan_pwm_percent": row["fan_pwm_percent"],
+                            "diagnostic_flags": flags,
+                            "rate_ths": row["rate_ths"],
+                        }
+                        db_samples[m_ident] = s_data
+                        if m_name:
+                            db_samples[str(m_name)] = s_data
+                        if m_host:
+                            db_samples[str(m_host)] = s_data
+                        if m_name and m_host:
+                            db_samples[f"{m_name}|{m_host}:{m_port}"] = s_data
+                except Exception:
+                    pass
         except Exception:
             pass
         finally:
@@ -298,19 +325,26 @@ def fetch_latest_cooling_assessments(
                     pass
 
     for miner in miners:
-        m_key = str(miner.get("ip") or miner.get("name"))
-        m_name = miner.get("name") or m_key
+        m_name = miner.get("name") or miner.get("host") or miner.get("ip") or "unknown"
+        m_host = miner.get("host") or miner.get("ip")
+        m_port = miner.get("port", 4028)
+        m_ident = str(m_name or m_host or "unknown")
         st = None
         if states:
             for s_k, s_v in states.items():
-                if miner.get("name") and miner.get("name") in s_k:
+                if m_name and str(m_name) in s_k:
                     st = s_v
                     break
-                elif miner.get("host") and miner.get("host") in s_k:
+                elif m_host and str(m_host) in s_k:
                     st = s_v
                     break
         fan_mode = getattr(st, "last_fan_mode", None) if st else None
-        sample = db_samples.get(m_key)
+        sample = (
+            db_samples.get(str(m_name))
+            or db_samples.get(str(m_host))
+            or db_samples.get(f"{m_name}|{m_host}:{m_port}")
+            or db_samples.get(m_ident)
+        )
         if sample:
             ass = assess_miner_cooling(
                 miner_name=m_name,
@@ -333,6 +367,10 @@ def fetch_latest_cooling_assessments(
                 fan_pwm_percent=None,
                 diagnostic_flags=(),
                 rate_ths=None,
+                critical_temp_c=critical_temp,
+                saturate_temp_c=saturate_temp,
+                saturate_pwm_pct=saturate_pwm,
+                saturate_rpm=saturate_rpm,
                 fan_mode=fan_mode,
             )
         assessments.append(ass)

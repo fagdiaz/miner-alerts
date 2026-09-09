@@ -152,7 +152,11 @@ def fetch_daily_digest_metrics(
                 disp_n = m["name"].replace("S19JPRO-", "").replace("s19jpro-", "")
                 res["snoozed_miners"].append(disp_n)
 
-    db_p = Path(db_path)
+    db_p = Path(db_path).expanduser()
+    if not db_p.is_absolute() and not db_p.exists():
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        if (repo_root / db_p).exists():
+            db_p = repo_root / db_p
     if not db_p.exists():
         return res
 

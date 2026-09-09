@@ -25,7 +25,12 @@ COLOR_PALETTE = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#ec4899", "#06b6d4
 
 
 def _connect_ro(db_path: Path | str) -> sqlite3.Connection:
-    resolved = Path(db_path).resolve()
+    p = Path(db_path).expanduser()
+    if not p.is_absolute() and not p.exists():
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        if (repo_root / p).exists():
+            p = repo_root / p
+    resolved = p.resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"Database not found: {resolved}")
     conn = sqlite3.connect(f"file:{resolved.as_posix()}?mode=ro", uri=True, timeout=2.0)

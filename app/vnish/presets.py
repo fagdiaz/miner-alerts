@@ -190,7 +190,11 @@ def fetch_latest_preset_assessments(
     config: Optional[dict] = None,
 ) -> List[PresetAssessment]:
     """Extract latest frequency and tuning data for all configured miners."""
-    db_file = Path(db_path)
+    db_file = Path(db_path).expanduser()
+    if not db_file.is_absolute() and not db_file.exists():
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        if (repo_root / db_file).exists():
+            db_file = repo_root / db_file
     assessments: List[PresetAssessment] = []
     cfg = config or {}
     freq_drop_thresh = float(cfg.get("preset_frequency_drop_mhz", 25.0))

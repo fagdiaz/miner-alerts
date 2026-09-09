@@ -159,7 +159,11 @@ def fetch_latest_efficiency_assessments(
     config: Optional[dict] = None,
 ) -> List[EfficiencyAssessment]:
     """Retrieve latest power and hashrate for each miner and assess efficiency."""
-    db_file = Path(db_path)
+    db_file = Path(db_path).expanduser()
+    if not db_file.is_absolute() and not db_file.exists():
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        if (repo_root / db_file).exists():
+            db_file = repo_root / db_file
     assessments: List[EfficiencyAssessment] = []
     cfg = config or {}
     target_j_th = float(cfg.get("efficiency_target_j_th", 30.0))
@@ -174,23 +178,46 @@ def fetch_latest_efficiency_assessments(
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             for miner in miners:
-                m_key = miner.get("ip") or miner.get("name")
-                cursor.execute(
-                    """
-                    SELECT rate_ths, chain_power_w_total
-                    FROM telemetry_samples
-                    WHERE miner_key = ?
-                    ORDER BY observed_ts DESC
-                    LIMIT 1
-                    """,
-                    (str(m_key),),
-                )
-                row = cursor.fetchone()
-                if row:
-                    db_samples[str(m_key)] = {
-                        "rate_ths": row["rate_ths"],
-                        "power_w": row["chain_power_w_total"],
-                    }
+                m_name = miner.get("name")
+                m_host = miner.get("host") or miner.get("ip")
+                m_port = miner.get("port", 4028)
+                m_ident = str(m_name or m_host or "unknown")
+
+                candidate_keys = []
+                if m_name and m_host:
+                    candidate_keys.append(f"{m_name}|{m_host}:{m_port}")
+                if m_host:
+                    candidate_keys.append(str(m_host))
+                if m_name:
+                    candidate_keys.append(str(m_name))
+
+                placeholders = ",".join("?" for _ in candidate_keys)
+                try:
+                    cursor.execute(
+                        f"""
+                        SELECT rate_ths, chain_power_w_total
+                        FROM telemetry_samples
+                        WHERE miner_key IN ({placeholders}) OR miner_name = ? OR host = ?
+                        ORDER BY observed_ts DESC
+                        LIMIT 1
+                        """,
+                        (*candidate_keys, str(m_name or ""), str(m_host or "")),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        s_data = {
+                            "rate_ths": row["rate_ths"],
+                            "power_w": row["chain_power_w_total"],
+                        }
+                        db_samples[m_ident] = s_data
+                        if m_name:
+                            db_samples[str(m_name)] = s_data
+                        if m_host:
+                            db_samples[str(m_host)] = s_data
+                        if m_name and m_host:
+                            db_samples[f"{m_name}|{m_host}:{m_port}"] = s_data
+                except Exception:
+                    pass
         except Exception:
             pass
         finally:
@@ -201,9 +228,16 @@ def fetch_latest_efficiency_assessments(
                     pass
 
     for miner in miners:
-        m_key = str(miner.get("ip") or miner.get("name"))
-        m_name = miner.get("name") or m_key
-        sample = db_samples.get(m_key)
+        m_name = miner.get("name") or miner.get("host") or miner.get("ip") or "unknown"
+        m_host = miner.get("host") or miner.get("ip")
+        m_port = miner.get("port", 4028)
+        m_ident = str(m_name or m_host or "unknown")
+        sample = (
+            db_samples.get(str(m_name))
+            or db_samples.get(str(m_host))
+            or db_samples.get(f"{m_name}|{m_host}:{m_port}")
+            or db_samples.get(m_ident)
+        )
         if sample:
             ass = assess_miner_efficiency(
                 miner_name=m_name,

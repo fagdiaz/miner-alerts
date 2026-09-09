@@ -359,6 +359,55 @@ class TestFanHealth(unittest.TestCase):
             if db_path.exists():
                 db_path.unlink()
 
+    def test_fetch_latest_cooling_assessments_canonical_keys(self):
+        import sqlite3
+        import tempfile
+        import json
+        from pathlib import Path
+        from app.governance.fan_health import fetch_latest_cooling_assessments, STATUS_HEALTHY
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            db_path = Path(tf.name)
+
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE telemetry_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    observed_ts REAL NOT NULL,
+                    miner_key TEXT NOT NULL,
+                    miner_name TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    rate_ths REAL,
+                    max_temp_c REAL,
+                    fan_rpm_max INTEGER,
+                    fan_pwm_percent REAL,
+                    diagnostic_flags_json TEXT
+                )
+            """)
+            conn.execute(
+                "INSERT INTO telemetry_samples (observed_ts, miner_key, miner_name, host, state, rate_ths, max_temp_c, fan_rpm_max, fan_pwm_percent, diagnostic_flags_json) "
+                "VALUES (100.0, 'S19JPRO-23|192.168.100.23:4028', '23', '192.168.100.23', 'OK', 95.0, 71.5, 5400, 82.0, ?)",
+                (json.dumps([]),)
+            )
+            conn.commit()
+            conn.close()
+
+            miners = [
+                {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028},
+            ]
+
+            assessments = fetch_latest_cooling_assessments(db_path, miners)
+            self.assertEqual(len(assessments), 1)
+            self.assertEqual(assessments[0].miner_name, "S19JPRO-23")
+            self.assertEqual(assessments[0].status, STATUS_HEALTHY)
+            self.assertEqual(assessments[0].max_temp_c, 71.5)
+            self.assertEqual(assessments[0].fan_rpm_max, 5400)
+        finally:
+            if db_path.exists():
+                db_path.unlink()
+
 
 class TestFanHealthIntegration(unittest.TestCase):
     def test_cooling_state_persistence(self):

@@ -256,6 +256,49 @@ class TestEnergyEfficiency(unittest.TestCase):
             if db_path.exists():
                 db_path.unlink()
 
+    def test_fetch_latest_efficiency_assessments_canonical_keys(self):
+        import sqlite3
+        import tempfile
+        from pathlib import Path
+        from app.governance.energy_efficiency import fetch_latest_efficiency_assessments, STATUS_OPTIMAL
+
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+            db_path = Path(tf.name)
+
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE telemetry_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    observed_ts REAL NOT NULL,
+                    miner_key TEXT NOT NULL,
+                    miner_name TEXT NOT NULL,
+                    host TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    rate_ths REAL,
+                    chain_power_w_total REAL
+                )
+            """)
+            conn.execute(
+                "INSERT INTO telemetry_samples (observed_ts, miner_key, miner_name, host, state, rate_ths, chain_power_w_total) "
+                "VALUES (100.0, 'S19JPRO-23|192.168.100.23:4028', '23', '192.168.100.23', 'OK', 100.0, 2700.0)"
+            )
+            conn.commit()
+            conn.close()
+
+            miners = [
+                {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028},
+            ]
+
+            assessments = fetch_latest_efficiency_assessments(db_path, miners)
+            self.assertEqual(len(assessments), 1)
+            self.assertEqual(assessments[0].miner_name, "S19JPRO-23")
+            self.assertEqual(assessments[0].status, STATUS_OPTIMAL)
+            self.assertAlmostEqual(assessments[0].efficiency_j_th, 27.0, places=1)
+        finally:
+            if db_path.exists():
+                db_path.unlink()
+
 
 class TestEnergyEfficiencyIntegration(unittest.TestCase):
     def test_efficiency_state_persistence(self):

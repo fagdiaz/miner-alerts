@@ -7,6 +7,9 @@ import sqlite3
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.telegram.fleet_cards import MOBILE_CARD_SEPARATOR
+from app.telegram.help_center import wrap_mobile_lines
+
 ACTION_HOLD_STABLE = "HOLD_STABLE"
 ACTION_STEP_DOWN_RESTARTS = "STEP_DOWN_RESTARTS"
 ACTION_STEP_DOWN_CASCADE = "STEP_DOWN_CASCADE"
@@ -449,15 +452,18 @@ def build_balancer_table_text(
     is_enabled: bool = False,
     is_dry_run: bool = True,
 ) -> str:
-    """Format fleet preset balance table grouped by electrical elevator."""
-    status_icon = "🟢 ON" if is_enabled else "🔴 OFF"
-    mode_icon = "🔇 DRY-RUN" if is_dry_run else "⚡ ACTIVO"
+    """Format fleet preset balance table grouped by electrical elevator (mobile <= 32 cols)."""
+    status_tag = "🟢 ON" if is_enabled else "🔴 OFF"
+    mode_tag = "🔇 DRY" if is_dry_run else "⚡ REAL"
     lines = [
-        f"⚖️ Balanceador de Presets y Elevadores — {status_icon} | {mode_icon}",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⚖️ *Balanceador de Presets*",
+        f"*y Elevadores* ({status_tag} | {mode_tag})",
+        MOBILE_CARD_SEPARATOR,
     ]
     if not decisions:
-        lines.append("No hay datos de mineros disponibles.")
+        lines.append("No hay datos de mineros")
+        lines.append("disponibles.")
+        lines.append(MOBILE_CARD_SEPARATOR)
         return "\n".join(lines)
 
     groups: Dict[str, List[Tuple[StabilityMetrics, BalancerDecision]]] = {}
@@ -467,39 +473,49 @@ def build_balancer_table_text(
     for grp_name, items in groups.items():
         grp_load = sum(m.current_power_w for m, _ in items)
         grp_restarts = sum(m.restarts_24h for m, _ in items)
-        load_tag = f" | Carga: {grp_load:,.0f}W" if grp_load > 0 else ""
-        restarts_tag = f" | R(24h): {grp_restarts}"
-        grp_title = f"🔌 Elevador / Grupo: {grp_name.upper()}{load_tag}{restarts_tag}"
-        lines.append(grp_title)
+        lines.append(f"🔌 *Elevador*: {grp_name.upper()}")
+        meta_parts = []
+        if grp_load > 0:
+            meta_parts.append(f"Carga: {grp_load:,.0f}W")
+        meta_parts.append(f"R(24h): {grp_restarts}")
+        lines.append(f"  {' | '.join(meta_parts)}")
+
         for m, d in items:
             action_icon = "🟢" if d.action == ACTION_HOLD_STABLE else ("⬆️" if d.action == ACTION_STEP_UP_OPTIMIZE else "⚠️")
             target_str = f" ➔ {d.target_preset}" if d.requires_write else ""
-            lines.append(
-                f"• {m.miner_name}: {m.current_preset}{target_str} | "
-                f"R: {m.restarts_24h} (24h) / {m.restarts_72h} (72h) | Uptime: {m.hours_since_last_restart:.0f}h"
-            )
-            lines.append(f"  {action_icon} [{d.action}] {d.reason}")
-        lines.append("────────────────────────────")
+            lines.append(f"• {m.miner_name}: {m.current_preset}{target_str}")
+            lines.append(f"  R: {m.restarts_24h}(24h)/{m.restarts_72h}(72h) • Up: {m.hours_since_last_restart:.0f}h")
+            lines.append(f"  {action_icon} [{d.action}]")
+            for r_line in wrap_mobile_lines(d.reason, width=28, indent="    "):
+                lines.append(r_line)
+        lines.append(MOBILE_CARD_SEPARATOR)
 
-    lines.append("💡 Comandos: `/balancer on` | `/balancer off` | `/balancer setmax <minero> <preset>`")
+    lines.append("💡 Comandos:")
+    lines.append("• /balancer on | /balancer off")
+    lines.append("• /balancer setmax <m> <preset>")
     return "\n".join(lines)
 
 
 def build_miner_balancer_detail_text(metrics: StabilityMetrics, decision: BalancerDecision) -> str:
-    """Format individual miner balancer diagnostic card."""
+    """Format individual miner balancer diagnostic card (mobile <= 32 cols)."""
     target_str = f" ➔ {decision.target_preset}" if decision.requires_write else ""
-    return "\n".join([
-        f"⚖️ Balanceador de Potencia — {metrics.miner_name}",
-        f"• Elevador / Grupo: {metrics.electrical_group}",
-        f"• Preset Actual: {metrics.current_preset}{target_str}",
+    lines = [
+        "⚖️ *Balanceador de Potencia*",
+        f"• Minero: {metrics.miner_name}",
+        MOBILE_CARD_SEPARATOR,
+        f"• Elevador: {metrics.electrical_group}",
+        f"• Preset: {metrics.current_preset}{target_str}",
         f"• Reinicios en 24h: {metrics.restarts_24h}",
         f"• Reinicios en 72h: {metrics.restarts_72h}",
-        f"• Tiempo Continuo Uptime: {metrics.hours_since_last_restart:.1f} horas",
-        f"• Margen Térmico Libre: {metrics.thermal_headroom_c:.1f}°C",
-        f"• Hashrate Estimado Efectivo: {decision.estimated_effective_hashrate:.1f} TH/s",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"💡 Diagnóstico: {decision.reason}",
-    ])
+        f"• Uptime: {metrics.hours_since_last_restart:.1f} horas",
+        f"• Margen térmico: {metrics.thermal_headroom_c:.1f}°C",
+        f"• Hash estimado: {decision.estimated_effective_hashrate:.1f} TH/s",
+        MOBILE_CARD_SEPARATOR,
+        "💡 *Diagnóstico*:",
+    ]
+    for r_line in wrap_mobile_lines(decision.reason, width=28, indent="  "):
+        lines.append(r_line)
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -678,27 +694,39 @@ def analyze_elevator_sensitivity(
 
 
 def build_elevator_sensitivity_text(summaries: Dict[str, ElevatorSensitivitySummary]) -> str:
-    """Format dedicated diagnostic card for elevator voltage sensitivity."""
+    """Format dedicated diagnostic card for elevator voltage sensitivity (mobile <= 32 cols)."""
     lines = [
-        "⚡ Diagnóstico de Sensibilidad de Elevadores",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "⚡ *Sensibilidad de Elevadores*",
+        MOBILE_CARD_SEPARATOR,
     ]
     if not summaries:
-        lines.append("No hay datos de elevadores disponibles.")
+        lines.append("No hay datos de elevadores")
+        lines.append("disponibles.")
+        lines.append(MOBILE_CARD_SEPARATOR)
         return "\n".join(lines)
 
     for grp_name, s in summaries.items():
         icon = "🟢" if s.sensitivity_level == "ESTABLE" else ("🟡" if s.sensitivity_level == "SENSIBILIDAD_MODERADA" else "🔴")
         load_pct = (s.total_load_w / s.total_capacity_w * 100.0) if s.total_capacity_w > 0 else 0.0
         miners_str = ", ".join(s.miners)
-        lines.append(f"🔌 Elevador: {grp_name.upper()} ({miners_str})")
-        lines.append(f"• Carga actual: {s.total_load_w:,.0f}W / {s.total_capacity_w:,.0f}W ({load_pct:.1f}%)")
-        lines.append(f"• Reinicios: {s.restarts_24h} (24h) | {s.restarts_72h} (72h) | Caídas en cascada: {s.cascade_incidents_7d}")
-        lines.append(f"• Diagnóstico {icon}: [{s.sensitivity_level}] {s.diagnostics}")
-        lines.append(f"💡 Recomendación: {s.recommendation}")
-        lines.append("────────────────────────────")
+        lines.append(f"🔌 *Elevador*: {grp_name.upper()}")
+        for m_line in wrap_mobile_lines(f"Mineros: {miners_str}", width=28, indent="• "):
+            lines.append(m_line)
+        lines.append(f"• Carga: {s.total_load_w:,.0f}W / {s.total_capacity_w:,.0f}W")
+        lines.append(f"  Utilización: {load_pct:.1f}%")
+        lines.append(f"• R: {s.restarts_24h}(24h) | {s.restarts_72h}(72h)")
+        lines.append(f"• Cascadas 7d: {s.cascade_incidents_7d}")
+        lines.append(f"• Diagnóstico {icon}:")
+        lines.append(f"  [{s.sensitivity_level}]")
+        for diag_line in wrap_mobile_lines(s.diagnostics, width=28, indent="  "):
+            lines.append(diag_line)
+        lines.append("💡 *Recomendación*:")
+        for rec_line in wrap_mobile_lines(s.recommendation, width=28, indent="  "):
+            lines.append(rec_line)
+        lines.append(MOBILE_CARD_SEPARATOR)
 
-    lines.append("🔍 Los eventos y circunstancias se correlacionan ante caídas de tensión para fijar el límite óptimo.")
+    for footer_line in wrap_mobile_lines("Eventos y circunstancias correlacionadas ante caídas de tensión.", width=28, indent="🔍 "):
+        lines.append(footer_line)
     return "\n".join(lines)
 
 

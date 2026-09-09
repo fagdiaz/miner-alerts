@@ -125,7 +125,7 @@ class TestTelegramSnooze(unittest.TestCase):
 
         # None snoozed
         text = build_snooze_status_text(miners, states, now_ts=1000.0)
-        self.assertIn("No hay mineros silenciados actualmente", text)
+        self.assertIn("No hay mineros silenciados", text)
 
         # One snoozed
         states["S19JPRO-23|192.168.1.23:4028"].snooze_until_ts = 1000.0 + 3600.0

@@ -3112,8 +3112,9 @@ def _handle_diagnostic_callback(
     miners: list,
     states: Dict[str, MinerState],
     state_lock: threading.Lock,
+    event_store: Optional["EventStore"] = None,
 ) -> None:
-    """Handle diagnostic report refresh callbacks (diag:ref:*) with instant ACK (Spec 046)."""
+    """Handle diagnostic report refresh callbacks (diag:ref:*) with instant ACK (Spec 046 & 047)."""
     from app.telegram.fleet_cards import (
         build_diagnostic_keyboard,
         parse_diagnostic_callback,
@@ -3184,6 +3185,94 @@ def _handle_diagnostic_callback(
                 )
             new_text = build_presets_table_text(assessments)
             new_markup = build_diagnostic_keyboard("presets")
+        elif action.report_type == "balancer":
+            from app.governance.preset_balancer import (
+                BalancerConfig,
+                build_balancer_table_text,
+                evaluate_balancer_step,
+                extract_miner_stability_metrics,
+            )
+            bal_dry_run = bool(config.get("preset_balancer_dry_run", True))
+            bal_enabled_cfg = bool(config.get("preset_balancer_enabled", False))
+            db_p = resolve_db_path(config)
+            with state_lock:
+                metrics_list = extract_miner_stability_metrics(
+                    db_path=db_p,
+                    miners=miners,
+                    states=states,
+                    config=config,
+                    now_ts=time.time(),
+                )
+            decisions_tuples = []
+            bal_cfg = BalancerConfig(
+                enabled=True,
+                dry_run=bal_dry_run,
+                default_max_preset=str(config.get("preset_balancer_default_max_preset", "2700W")),
+            )
+            for m_metrics in metrics_list:
+                m_dict = next((m for m in miners if m.get("name") == m_metrics.miner_name), {})
+                max_ov = m_dict.get("max_preset")
+                dec = evaluate_balancer_step(
+                    m_metrics,
+                    config=bal_cfg,
+                    group_metrics=metrics_list,
+                    max_preset_override=max_ov,
+                )
+                decisions_tuples.append((m_metrics, dec))
+            is_enabled = _BALANCER_RUNTIME_ENABLED if _BALANCER_RUNTIME_ENABLED is not None else bal_enabled_cfg
+            new_text = build_balancer_table_text(
+                decisions_tuples,
+                is_enabled=is_enabled,
+                is_dry_run=bal_dry_run,
+            )
+            new_markup = build_diagnostic_keyboard("balancer")
+        elif action.report_type == "elev":
+            from app.governance.preset_balancer import (
+                analyze_elevator_sensitivity,
+                build_elevator_sensitivity_text,
+                extract_miner_stability_metrics,
+            )
+            db_p = resolve_db_path(config)
+            with state_lock:
+                metrics_list = extract_miner_stability_metrics(
+                    db_path=db_p,
+                    miners=miners,
+                    states=states,
+                    config=config,
+                    now_ts=time.time(),
+                )
+            summaries = analyze_elevator_sensitivity(metrics_list, db_path=db_p)
+            new_text = build_elevator_sensitivity_text(summaries)
+            new_markup = build_diagnostic_keyboard("elev")
+        elif action.report_type == "digest":
+            from app.telegram.daily_digest import (
+                fetch_daily_digest_metrics,
+                format_daily_digest,
+            )
+            db_p = resolve_db_path(config)
+            b_root = config.get("backup_root", "backups")
+            with state_lock:
+                digest_metrics = fetch_daily_digest_metrics(
+                    db_path=db_p,
+                    miners=miners,
+                    now_ts=time.time(),
+                    backup_root=b_root,
+                    states=states,
+                )
+            new_text = format_daily_digest(digest_metrics)
+            new_markup = build_diagnostic_keyboard("digest")
+        elif action.report_type == "events":
+            from app.core.event_store import render_event_list
+            if event_store is not None and event_store.available:
+                recent_events = event_store.list_events(limit=8)
+                new_text = (
+                    "Historial temporalmente no disponible."
+                    if event_store.last_error
+                    else render_event_list(recent_events)
+                )
+            else:
+                new_text = "Historial no disponible."
+            new_markup = build_diagnostic_keyboard("events")
     except Exception as exc:
         log(f"DIAG_CB_ERR cb_id={cb_id} report={action.report_type} exc={exc}")
         return
@@ -3298,6 +3387,7 @@ def _handle_callback_query(
             miners=miners,
             states=states,
             state_lock=state_lock,
+            event_store=event_store,
         )
         return
 
@@ -3837,6 +3927,8 @@ def telegram_polling_worker(
                             if event_store.last_error
                             else render_event_list(recent_events)
                         )
+                    from app.telegram.fleet_cards import build_diagnostic_keyboard
+                    events_kb = build_diagnostic_keyboard("events")
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
@@ -3846,6 +3938,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="events",
+                        reply_markup=events_kb,
                     )
                 elif cmd_name == "event":
                     handled = True
@@ -4330,6 +4423,8 @@ def telegram_polling_worker(
                             states=states,
                         )
                     digest_msg = format_daily_digest(digest_metrics)
+                    from app.telegram.fleet_cards import build_diagnostic_keyboard
+                    digest_kb = build_diagnostic_keyboard("digest")
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
@@ -4339,6 +4434,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="digest",
+                        reply_markup=digest_kb,
                     )
                 elif cmd_name in ("fans", "fan"):
                     handled = True
@@ -4870,6 +4966,8 @@ def telegram_polling_worker(
                             is_dry_run=bal_dry_run,
                         )
 
+                    from app.telegram.fleet_cards import build_diagnostic_keyboard
+                    balancer_kb = build_diagnostic_keyboard("balancer")
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
@@ -4879,6 +4977,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="balancer",
+                        reply_markup=balancer_kb,
                     )
                 elif cmd_name in ("elevadores", "elevators", "sensibilidad", "elev"):
                     handled = True
@@ -4893,6 +4992,8 @@ def telegram_polling_worker(
                         )
                     summaries = analyze_elevator_sensitivity(metrics_list, db_path=db_p)
                     elev_msg = build_elevator_sensitivity_text(summaries)
+                    from app.telegram.fleet_cards import build_diagnostic_keyboard
+                    elev_kb = build_diagnostic_keyboard("elev")
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
@@ -4902,6 +5003,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="elevadores",
+                        reply_markup=elev_kb,
                     )
                 elif cmd_name == "firmware":
                     handled = True

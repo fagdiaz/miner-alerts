@@ -10,6 +10,8 @@ import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.telegram.fleet_cards import MOBILE_CARD_SEPARATOR
+
 DEFAULT_SNOOZE_MINUTES = 60.0
 MIN_SNOOZE_MINUTES = 1.0
 MAX_SNOOZE_MINUTES = 1440.0  # 24 hours max
@@ -105,7 +107,7 @@ def build_snooze_status_text(
     states: Dict[str, Any],
     now_ts: Optional[float] = None,
 ) -> str:
-    """Build the response text for the /snoozed Telegram command."""
+    """Build the response text for the /snoozed Telegram command (mobile <= 32 cols)."""
     curr = now_ts if now_ts is not None else time.time()
     snoozed_items = []
 
@@ -117,15 +119,29 @@ def build_snooze_status_text(
             exp_str = format_snooze_expiry_time(st.snooze_until_ts)
             display_n = m["name"].replace("S19JPRO-", "").replace("s19jpro-", "")
             snoozed_items.append(
-                f"• {m['name']} ({display_n}): resta {format_snooze_remaining(rem)} (hasta las {exp_str})"
+                f"• {m['name']} ({display_n}): resta {format_snooze_remaining(rem)}\n"
+                f"  - Hasta las {exp_str}"
             )
 
     if not snoozed_items:
-        return "🔔 No hay mineros silenciados actualmente. Todos están bajo supervisión activa."
+        lines = [
+            "🔔 *Sin Silencios Activos*",
+            MOBILE_CARD_SEPARATOR,
+            "No hay mineros silenciados",
+            "actualmente.",
+            "Todos bajo supervisión activa.",
+            MOBILE_CARD_SEPARATOR,
+        ]
+        return "\n".join(lines)
 
-    header = "🔕 *Mineros en Mantenimiento (Silenciados)*:\n"
-    footer = "\n_Alertas y autorreinicios suspendidos durante la ventana activa._"
-    return header + "\n".join(snoozed_items) + footer
+    lines = [
+        "🔕 *Mineros en Mantenimiento*",
+        MOBILE_CARD_SEPARATOR,
+    ]
+    lines.extend(snoozed_items)
+    lines.append(MOBILE_CARD_SEPARATOR)
+    lines.append("_Alertas y reinicios en pausa._")
+    return "\n".join(lines)
 
 
 def filter_snoozed_episodes(

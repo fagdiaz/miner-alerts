@@ -1,30 +1,32 @@
-GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 046 Completado -> Producción Activa
+GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 047 Completado -> Producción Activa
 
 ROL Y MOTOR RECOMENDADO
 Motor: Gemini 3.8 Flash High
 Rol: Supervisor de telemetría y diagnósticos, o planificador de futuras iniciativas del backlog.
 
-ESTADO ACTUAL CERTIFICADO (Spec 046)
-- Spec 046 (Mobile-First Card Layout & UX Harmonization across Fleet Reports) COMPLETADA, integrada y certificada:
-  * Módulo puro `app/telegram/fleet_cards.py` con `render_fleet_status_card()`, constructores `build_diagnostic_keyboard()`, parser `parse_diagnostic_callback()` y constantes `diag:ref:*`.
-  * Tarjetas verticales compactas con viñetas `•` respetando <= 32 caracteres visibles por línea (Condición C1).
-  * Refactorización de reportes de flota a Mobile-First:
-    - `/status`: Tarjetas verticales con semáforo Unicode, IP corta, hash/boards, temp/fans, watts/eficiencia y resumen de flota con teclado `[ 🔄 Actualizar ] [ 📊 Métricas ] [ 📱 Menú ]`.
-    - `/fans`: Tarjetas verticales por minero con viñetas `•`, modo Fan Governor explícito (`• Modo: [MANUAL]`) y teclado de refresco.
-    - `/efficiency`: Tarjetas verticales con TH/s, Watts, J/TH y resumen de flota en kW/J-TH.
-    - `/presets`: Tarjetas verticales con perfil inferido, frecuencia MHz, tensión mV y advertencias.
-  * Router de callbacks `diag:ref:*` en `_handle_callback_query()` con ACK temprano (<50ms `answer_callback_query`) y edición in-place `edit_message_text`.
-  * Suite completa del repositorio: 675/675 tests PASS en 10.69s (0 fallos, 0 regresiones).
-  * Release audit: PASS (digest `57cc9185739a9685bb4d5f013298233dcf074aa00bea03c1441492a6710706ea`, 63 payload files).
-  * Servicio Windows `MinerAlerts` activo y saludable.
+ESTADO ACTUAL CERTIFICADO (Spec 047)
+- Spec 047 (Mobile-First Card Layout for Balancer, Digest & Operational Events) COMPLETADA, integrada y certificada:
+  * Renderizadores Mobile-First desacoplados y puros (<= 32 columnas visibles por línea, RFC C1-C10):
+    - `/balancer`: Bloques verticales por elevador con viñetas `•`, carga agregada y wrapping de motivos.
+    - `/elevadores`: Tarjetas verticales de sensibilidad eléctrica con diagnósticos y recomendaciones paginadas.
+    - `/digest` / `/summary`: Reporte diario ejecutivo alineado con métricas de flota, hashrate, eficiencia, shares y backup.
+    - `/snoozed`: Tarjetas de estado de silencio por minero con cuenta regresiva en <= 32 cols.
+    - `/events`, `/event <id>`, `/why`: Listado vertical click-safe `/e<id>` y fichas de incidentes con interlocks de autorreinicio.
+  * Teclados inline de refresco en 1 toque `[ 🔄 Actualizar ] [ 📱 Menú ]` habilitados para `/balancer`, `/elevadores`, `/digest`, `/events`.
+  * Callbacks `diag:ref:balancer`, `diag:ref:elev`, `diag:ref:digest`, `diag:ref:events` en `_handle_diagnostic_callback()` con ACK < 50ms y edición in-place.
+  * Suite global del repositorio: 687/687 tests PASS en 11.281s (0 fallos, 0 regresiones).
+  * Release audit: PASS (SHA-256 `7ba53dcea43ada9ae59d1593a08de897750aba8f9d8ccea17e8fe2c4fefa441d`, 63 payload files).
+  * Servicio Windows `MinerAlerts` activo y saludable bajo PID 29796.
 
 ARCHIVOS CLAVE DEL SISTEMA
 1. `docs/speckit/RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md` (Condiciones C1-C10).
 2. `app/telegram/fleet_cards.py` (renderizadores de tarjetas móviles y teclados de refresco).
-3. `app/telegram/help_center.py` (catálogo canónico de ayuda móvil).
-4. `app/telegram/command_center.py` (centro de comando táctil).
-5. `app/miner_monitor.py` (loop principal de monitoreo y dispatcher de comandos/callbacks).
+3. `app/governance/preset_balancer.py` (balanceador de potencia y sensibilidad de elevadores).
+4. `app/telegram/daily_digest.py` (reporte diario ejecutivo).
+5. `app/telegram/snooze.py` (silenciamiento para mantenimiento).
+6. `app/core/event_store.py` (historial de incidentes y decisiones de reinicio).
+7. `app/miner_monitor.py` (loop principal de monitoreo y dispatcher de comandos/callbacks).
 
 SIGUIENTES PASOS DISPONIBLES
-1. Monitoreo en producción de interacción táctil con los nuevos teclados de refresco en Telegram.
-2. Iniciar planificación de la siguiente iniciativa en el roadmap o atender solicitudes operativas del usuario.
+1. Monitoreo en producción de interacción táctil con los nuevos teclados de refresco y tarjetas mobile-first.
+2. Iniciar planificación de la siguiente iniciativa en el roadmap (`docs/speckit/ROADMAP.md`).

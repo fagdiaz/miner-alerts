@@ -14,6 +14,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.telegram.fleet_cards import MOBILE_CARD_SEPARATOR
+from app.telegram.help_center import visible_line_width, wrap_mobile_lines
+
 ARGENTINA_TZ = datetime.timezone(datetime.timedelta(hours=-3))
 
 
@@ -290,7 +293,7 @@ def fetch_daily_digest_metrics(
 
 
 def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None) -> str:
-    """Format the aggregated metrics into a Telegram executive brief."""
+    """Format the aggregated metrics into a Telegram executive brief (mobile <= 32 cols)."""
     if not date_str:
         dt = datetime.datetime.now(ARGENTINA_TZ)
         date_str = dt.strftime("%d/%m/%Y")
@@ -306,8 +309,7 @@ def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None)
     if eff is not None and eff > 0:
         eff_str = f"{eff:.1f} J/TH"
     else:
-        # Fallback estimation if watt data not reported by hardware
-        eff_str = "N/D (sin telemetría de watts)"
+        eff_str = "N/D (sin watts)"
 
     acc_pct = metrics.get("shares_accepted_pct", 100.0)
     rej_pct = metrics.get("shares_rejected_pct", 0.0)
@@ -319,26 +321,42 @@ def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None)
     if backup.get("verified"):
         b_time = backup.get("time_str", "03:00")
         b_size = backup.get("size_mb", 0.0)
-        backup_str = f"✅ Verificado ({b_size:.1f} MB a las {b_time})"
+        backup_lines = [
+            "• Backup SQLite: ✅ OK",
+            f"  ({b_size:.1f} MB a las {b_time})",
+        ]
     else:
-        backup_str = "⚠️ Sin backups recientes"
+        backup_lines = [
+            "• Backup SQLite:",
+            "  ⚠️ Sin backups recientes",
+        ]
 
     snoozed = metrics.get("snoozed_miners", [])
 
+    header = f"☀️ *Reporte Diario* ({date_str})"
+    if visible_line_width(header) > 32:
+        header = f"☀️ *Reporte Diario*\n  ({date_str})"
+
     lines = [
-        f"☀️ *Miner Alerts — Reporte Diario* ({date_str})",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"• *Uptime Flota*: {uptime_pct:.1f}% ({active_m}/{total_m} mineros OK)",
-        f"• *Hashrate Promedio*: {avg_ths:.1f} TH/s (Nominal: {nom_ths:.1f} TH/s)",
-        f"• *Eficiencia Promedio*: {eff_str}",
-        f"• *Shares*: {acc_pct:.2f}% aceptados ({rej_pct:.2f}% rechazos)",
-        f"• *Eventos en 24h*: {incidents} anomalías, {reboots} reinicios",
-        f"• *Backup SQLite*: {backup_str}",
+        header,
+        MOBILE_CARD_SEPARATOR,
+        f"• Uptime Flota: {uptime_pct:.1f}%",
+        f"  ({active_m}/{total_m} mineros OK)",
+        f"• Hash: {avg_ths:.1f} TH/s",
+        f"  (Nominal: {nom_ths:.1f} TH/s)",
+        f"• Eficiencia: {eff_str}",
+        f"• Shares: {acc_pct:.2f}% OK",
+        f"  ({rej_pct:.2f}% rechazos)",
+        f"• Eventos 24h: {incidents} anomalías",
+        f"  ({reboots} reinicios)",
     ]
+    lines.extend(backup_lines)
 
     if snoozed:
+        lines.append(f"• Mantenimiento: 🔕 {len(snoozed)}")
         names_str = ", ".join(snoozed)
-        lines.append(f"• *Mantenimiento*: 🔕 {len(snoozed)} silenciado(s) ({names_str})")
+        for s_line in wrap_mobile_lines(f"({names_str})", width=28, indent="  "):
+            lines.append(s_line)
 
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append(MOBILE_CARD_SEPARATOR)
     return "\n".join(lines)

@@ -254,7 +254,8 @@ class TestPresetBalancer(unittest.TestCase):
         d2 = evaluate_balancer_step(m2, self.cfg)
 
         text = build_balancer_table_text([(m1, d1), (m2, d2)], is_enabled=True, is_dry_run=True)
-        self.assertIn("Balanceador de Presets y Elevadores", text)
+        self.assertIn("Balanceador de Presets", text)
+        self.assertIn("Elevadores", text)
         self.assertIn("ELEVATOR_SENSIBLE", text)
         self.assertIn("ELEVATOR_ESTABLE", text)
         self.assertIn("S19JPRO-23: 2700W ➔ 2500W", text)
@@ -274,8 +275,9 @@ class TestPresetBalancer(unittest.TestCase):
         )
         d = evaluate_balancer_step(m, self.cfg)
         card = build_miner_balancer_detail_text(m, d)
-        self.assertIn("Balanceador de Potencia — S19JPRO-23", card)
-        self.assertIn("Elevador / Grupo: elevator_sensible", card)
+        self.assertIn("Balanceador de Potencia", card)
+        self.assertIn("S19JPRO-23", card)
+        self.assertIn("Elevador: elevator_sensible", card)
         self.assertIn("Reinicios en 24h: 2", card)
 
     def test_extract_miner_stability_metrics_against_live_db(self):
@@ -414,7 +416,7 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertIn("Escalar un minero a 2500W", s2.recommendation)
 
         card = build_elevator_sensitivity_text(summaries)
-        self.assertIn("Diagnóstico de Sensibilidad de Elevadores", card)
+        self.assertIn("Sensibilidad de Elevadores", card)
         self.assertIn("ELEVATOR_1", card)
         self.assertIn("ELEVATOR_2", card)
         self.assertIn("ALTA_SENSIBILIDAD", card)

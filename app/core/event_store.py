@@ -6,6 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
+from app.telegram.help_center import visible_line_width, wrap_mobile_lines
+
+MOBILE_CARD_SEPARATOR = "─" * 28
+
 
 SCHEMA_VERSION = 6
 
@@ -1192,12 +1196,25 @@ def _event_label(event: Dict[str, Any]) -> str:
 def render_event_list(events: list[Dict[str, Any]]) -> str:
     if not events:
         return "No hay eventos registrados."
-    lines = ["EVENTOS RECIENTES", ""]
+    lines = [
+        "📋 *EVENTOS RECIENTES*",
+        MOBILE_CARD_SEPARATOR,
+    ]
     for event in events:
         occurred = datetime.fromtimestamp(float(event["occurred_ts"])).strftime("%d/%m %H:%M")
         miner_name = str(event.get("miner_name") or "sistema")
-        lines.append(f"/e{event['id']} {occurred} {miner_name} {_event_label(event)}")
-    lines.extend(["", "Manual: /event <id>"])
+        event_id = event["id"]
+        label = _event_label(event)
+        header_line = f"/e{event_id} {occurred} {miner_name}"
+        if visible_line_width(header_line) > 32:
+            lines.append(f"/e{event_id} {occurred}")
+            lines.append(f"  Minero: {miner_name}")
+        else:
+            lines.append(header_line)
+        for lbl_line in wrap_mobile_lines(label, width=28, indent="  • "):
+            lines.append(lbl_line)
+    lines.append(MOBILE_CARD_SEPARATOR)
+    lines.append("💡 Ver detalle: /e<id>")
     return "\n".join(lines)
 
 
@@ -1210,10 +1227,10 @@ def render_event_detail(
         return "Evento no encontrado."
     occurred = datetime.fromtimestamp(float(event["occurred_ts"])).strftime("%d/%m/%Y %H:%M:%S")
     lines = [
-        f"INCIDENTE #{event['id']}",
-        "",
-        f"Miner: {event.get('miner_name') or 'sistema'}",
-        f"Tipo: {_event_label(event).lower()}",
+        f"🚨 *INCIDENTE #{event['id']}*",
+        MOBILE_CARD_SEPARATOR,
+        f"• Minero: {event.get('miner_name') or 'sistema'}",
+        f"• Tipo: {_event_label(event).lower()}",
     ]
     classification = event.get("classification")
     if classification:
@@ -1222,38 +1239,50 @@ def render_event_detail(
             "expected_manual": "esperado manual",
             "expected_auto": "esperado automatico",
         }.get(str(classification), str(classification))
-        lines.append(f"Clasificacion: {classification_label}")
+        lines.append(f"• Clasificacion: {classification_label}")
+
     previous_elapsed = event.get("previous_elapsed")
     current_elapsed = event.get("current_elapsed")
     if previous_elapsed is not None and current_elapsed is not None:
-        lines.append(f"Evidencia uptime: {previous_elapsed}s -> {current_elapsed}s")
+        lines.append(f"• Uptime: {previous_elapsed}s -> {current_elapsed}s")
+
     new_state = event.get("new_state")
     rate_ths = event.get("rate_ths")
     if new_state or rate_ths is not None:
         signal = f"{float(rate_ths):.2f} TH/s" if rate_ths is not None else "N/A"
-        lines.append(f"Estado: {new_state or 'N/A'} | {signal}")
+        lines.append(f"• Estado: {new_state or 'N/A'}")
+        lines.append(f"  Hashrate: {signal}")
+
     action_source = event.get("action_source")
     if action_source:
-        lines.append(f"Accion relacionada: {action_source}")
+        lines.append(f"• Accion: {action_source}")
+
     summary = str(event.get("summary") or "").strip()
     if summary:
-        lines.append(f"Resumen: {summary}")
-    lines.append(f"Fecha: {occurred}")
+        lines.append("• Resumen:")
+        for s_line in wrap_mobile_lines(summary, width=28, indent="  "):
+            lines.append(s_line)
+
+    lines.append(f"• Fecha: {occurred}")
+
     if related_events:
-        lines.extend(["", "EPISODIO RELACIONADO"])
+        lines.append(MOBILE_CARD_SEPARATOR)
+        lines.append("🔗 *EPISODIO RELACIONADO*")
         for related in related_events:
             related_time = datetime.fromtimestamp(
                 float(related["occurred_ts"])
             ).strftime("%H:%M:%S")
             related_miner = str(related.get("miner_name") or "sistema")
-            related_line = (
-                f"- {related_time} {related_miner} {_event_label(related)}"
-            )
-            previous_elapsed = related.get("previous_elapsed")
-            current_elapsed = related.get("current_elapsed")
-            if previous_elapsed is not None and current_elapsed is not None:
-                related_line += f" | uptime {previous_elapsed}s -> {current_elapsed}s"
-            lines.append(related_line)
+            rel_label = _event_label(related)
+            lines.append(f"• {related_miner} {rel_label}")
+            meta = [related_time]
+            r_prev = related.get("previous_elapsed")
+            r_curr = related.get("current_elapsed")
+            if r_prev is not None and r_curr is not None:
+                meta.append(f"{r_prev}s -> {r_curr}s")
+            lines.append(f"  {' | '.join(meta)}")
+
+    lines.append(MOBILE_CARD_SEPARATOR)
     return "\n".join(lines)
 
 
@@ -1266,46 +1295,46 @@ def render_reboot_decision(decision: Optional[Dict[str, Any]]) -> str:
     threshold = decision.get("threshold_ths")
     rate_label = f"{float(rate):.2f} TH/s" if rate is not None else "N/A"
     threshold_label = f"{float(threshold):.2f} TH/s" if threshold is not None else "N/A"
+    miner_label = str(decision.get('miner_name') or decision.get('miner_key') or "sistema")
     lines = [
-        "DIAGNOSTICO AUTO-REBOOT",
-        "",
-        f"Miner: {decision.get('miner_name') or decision.get('miner_key')}",
-        f"Resultado: {result}",
-        f"Estado: {decision.get('state') or 'N/A'} | {rate_label} / umbral {threshold_label}",
+        "🔄 *DIAGNÓSTICO AUTO-REBOOT*",
+        MOBILE_CARD_SEPARATOR,
+        f"• Minero: {miner_label}",
+        f"• Resultado: {result}",
+        f"• Estado: {decision.get('state') or 'N/A'}",
+        f"• Hash: {rate_label}",
+        f"  (umbral {threshold_label})",
     ]
     low_elapsed = decision.get("low_elapsed_seconds")
     if low_elapsed is not None:
-        lines.append(f"LOW sostenido: {float(low_elapsed):.0f}s")
+        lines.append(f"• LOW sostenido: {float(low_elapsed):.0f}s")
     active_boards = decision.get("active_boards")
     expected_boards = decision.get("expected_boards")
     if active_boards is not None or expected_boards is not None:
-        lines.append(f"Boards: {active_boards if active_boards is not None else 'N/A'}/{expected_boards}")
+        lines.append(f"• Boards: {active_boards if active_boards is not None else 'N/A'}/{expected_boards}")
     max_temp = decision.get("max_temp_c")
     frequency = decision.get("frequency_mhz_avg")
     hw_errors = decision.get("hw_errors_total")
     if max_temp is not None or frequency is not None or hw_errors is not None:
-        lines.append(
-            "Vnish: temp={temp} freq={freq} hw={hw}".format(
-                temp=f"{float(max_temp):.1f}C" if max_temp is not None else "N/A",
-                freq=f"{float(frequency):.1f}MHz" if frequency is not None else "N/A",
-                hw=hw_errors if hw_errors is not None else "N/A",
-            )
-        )
+        temp_str = f"{float(max_temp):.1f}C" if max_temp is not None else "N/A"
+        freq_str = f"{float(frequency):.1f}MHz" if frequency is not None else "N/A"
+        hw_str = str(hw_errors) if hw_errors is not None else "N/A"
+        lines.append("• Vnish:")
+        lines.append(f"  T: {temp_str} | F: {freq_str}")
+        lines.append(f"  HW Errs: {hw_str}")
     voltage = decision.get("chain_voltage_mv_avg")
     power = decision.get("chain_power_w_total")
     if voltage is not None or power is not None:
-        lines.append(
-            "Cadena: voltaje={voltage} consumo={power} (no es voltaje AC)".format(
-                voltage=f"{float(voltage):.0f}mV" if voltage is not None else "N/A",
-                power=f"{float(power):.0f}W" if power is not None else "N/A",
-            )
-        )
+        volt_str = f"{float(voltage):.0f}mV" if voltage is not None else "N/A"
+        pow_str = f"{float(power):.0f}W" if power is not None else "N/A"
+        lines.append(f"• Cadena: {volt_str} / {pow_str}")
+        lines.append("  (no es voltaje AC)")
     cooldown = decision.get("cooldown_remaining_seconds")
     if cooldown is not None:
-        lines.append(f"Cooldown restante: {float(cooldown):.0f}s")
+        lines.append(f"• Cooldown restante: {float(cooldown):.0f}s")
     if result == "window":
         lines.append(
-            f"Ventana: {decision.get('window_count', 0)} en {decision.get('window_seconds', 0)}s"
+            f"• Ventana: {decision.get('window_count', 0)} en {decision.get('window_seconds', 0)}s"
         )
     details: Dict[str, Any] = {}
     details_raw = decision.get("details_json")
@@ -1320,23 +1349,33 @@ def render_reboot_decision(decision: Optional[Dict[str, Any]]) -> str:
         affected = details.get("affected_miners")
         affected_labels = ", ".join(str(item) for item in affected) if isinstance(affected, list) else "N/A"
         lines.append(
-            f"Flota afectada: {details.get('affected_count', 'N/A')} "
+            f"• Flota afectada: {details.get('affected_count', 'N/A')} "
             f"(minimo {details.get('fleet_min_affected', 'N/A')})"
         )
-        lines.append(f"Evidencia compartida: {affected_labels}")
+        for aff_line in wrap_mobile_lines(
+            f"Evidencia compartida: {affected_labels}",
+            width=32,
+            indent="  ",
+            first_indent="• ",
+        ):
+            lines.append(aff_line)
         snapshot_age = details.get("fleet_snapshot_age_seconds")
         if snapshot_age is not None:
-            lines.append(f"Antiguedad snapshot: {float(snapshot_age):.0f}s")
+            lines.append(f"• Antiguedad snapshot: {float(snapshot_age):.0f}s")
     elif result == "high_temperature":
         observed_temp = details.get("max_temp_c", max_temp)
         limit_temp = details.get("thermal_limit_c")
         observed_label = f"{float(observed_temp):.1f}C" if observed_temp is not None else "N/A"
         limit_label = f"{float(limit_temp):.1f}C" if limit_temp is not None else "N/A"
-        lines.append(f"Bloqueo termico: {observed_label} / limite {limit_label}")
+        lines.append("• Bloqueo termico:")
+        lines.append(f"  {observed_label} / limite {limit_label}")
     elif result == "firmware_transition":
         lines.append(
-            f"Cadenas en transicion: {details.get('chains_transitioning_count', 'N/A')}"
+            f"• Cadenas en transicion: {details.get('chains_transitioning_count', 'N/A')}"
         )
-        lines.append("Observacion segura: LOW debe sostenerse nuevamente tras la transicion.")
-    lines.append(f"Fecha: {evaluated}")
+        lines.append("• Observacion segura:")
+        lines.append("  LOW debe sostenerse nuevamente")
+        lines.append("  tras la transicion.")
+    lines.append(f"• Fecha: {evaluated}")
+    lines.append(MOBILE_CARD_SEPARATOR)
     return "\n".join(lines)

@@ -26,16 +26,31 @@ DIAG_REF_STATUS = "diag:ref:status"
 DIAG_REF_FANS = "diag:ref:fans"
 DIAG_REF_EFF = "diag:ref:eff"
 DIAG_REF_PRESETS = "diag:ref:presets"
+DIAG_REF_BALANCER = "diag:ref:balancer"
+DIAG_REF_ELEV = "diag:ref:elev"
+DIAG_REF_DIGEST = "diag:ref:digest"
+DIAG_REF_EVENTS = "diag:ref:events"
 
 MOBILE_LINE_WIDTH_LIMIT = 32
 MOBILE_CARD_SEPARATOR = "─" * 28
+
+SUPPORTED_REPORT_TYPES = (
+    "status",
+    "fans",
+    "eff",
+    "presets",
+    "balancer",
+    "elev",
+    "digest",
+    "events",
+)
 
 
 # ── Callback Parser ───────────────────────────────────────────────────
 @dataclass(frozen=True)
 class DiagnosticCallbackAction:
     action: str  # e.g. "ref"
-    report_type: str  # e.g. "status", "fans", "eff", "presets"
+    report_type: str  # e.g. "status", "fans", "eff", "presets", "balancer", etc.
 
 
 def parse_diagnostic_callback(callback_data: str) -> Optional[DiagnosticCallbackAction]:
@@ -52,7 +67,7 @@ def parse_diagnostic_callback(callback_data: str) -> Optional[DiagnosticCallback
     action, report_type = parts[1], parts[2]
     if action != "ref":
         return None
-    if report_type not in ("status", "fans", "eff", "presets"):
+    if report_type not in SUPPORTED_REPORT_TYPES:
         return None
 
     return DiagnosticCallbackAction(action=action, report_type=report_type)

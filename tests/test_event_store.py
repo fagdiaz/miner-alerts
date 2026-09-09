@@ -209,7 +209,8 @@ class EventStoreTests(unittest.TestCase):
         thermal["details_json"] = '{"max_temp_c":86.5,"thermal_limit_c":85.0}'
         thermal_rendered = render_reboot_decision(thermal)
         self.assertIn("Resultado: high_temperature", thermal_rendered)
-        self.assertIn("Bloqueo termico: 86.5C / limite 85.0C", thermal_rendered)
+        self.assertIn("Bloqueo termico", thermal_rendered)
+        self.assertIn("86.5C / limite 85.0C", thermal_rendered)
 
         transition = dict(base)
         transition["result"] = "firmware_transition"

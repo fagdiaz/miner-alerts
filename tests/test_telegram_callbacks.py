@@ -734,6 +734,157 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
 
     @unittest.mock.patch("app.miner_monitor.edit_message_text")
     @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_diag_ref_balancer_dispatch(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_diag_balancer",
+            "from": {"id": 1206728163},
+            "data": "diag:ref:balancer",
+            "message": {"message_id": 107, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(self.bot_token, "cb_diag_balancer")
+        mock_edit_text.assert_called_once()
+        text = mock_edit_text.call_args[0][3]
+        self.assertIn("Balanceador de Presets", text)
+        markup = mock_edit_text.call_args[1]["reply_markup"]
+        cb_buttons = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
+        self.assertIn("diag:ref:balancer", cb_buttons)
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_diag_ref_elev_dispatch(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_diag_elev",
+            "from": {"id": 1206728163},
+            "data": "diag:ref:elev",
+            "message": {"message_id": 108, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(self.bot_token, "cb_diag_elev")
+        mock_edit_text.assert_called_once()
+        text = mock_edit_text.call_args[0][3]
+        self.assertIn("Sensibilidad de Elevadores", text)
+        markup = mock_edit_text.call_args[1]["reply_markup"]
+        cb_buttons = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
+        self.assertIn("diag:ref:elev", cb_buttons)
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_diag_ref_digest_dispatch(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_diag_digest",
+            "from": {"id": 1206728163},
+            "data": "diag:ref:digest",
+            "message": {"message_id": 109, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(self.bot_token, "cb_diag_digest")
+        mock_edit_text.assert_called_once()
+        text = mock_edit_text.call_args[0][3]
+        self.assertIn("Reporte Diario", text)
+        markup = mock_edit_text.call_args[1]["reply_markup"]
+        cb_buttons = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
+        self.assertIn("diag:ref:digest", cb_buttons)
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_diag_ref_events_dispatch(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        mock_event_store = unittest.mock.MagicMock()
+        mock_event_store.available = True
+        mock_event_store.last_error = None
+        mock_event_store.list_events.return_value = [
+            {"id": 1, "occurred_ts": 1757430000.0, "miner_name": "S19JPRO-23", "event_type": "restart_detected"}
+        ]
+
+        cb_query = {
+            "id": "cb_diag_events",
+            "from": {"id": 1206728163},
+            "data": "diag:ref:events",
+            "message": {"message_id": 110, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=mock_event_store,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(self.bot_token, "cb_diag_events")
+        mock_edit_text.assert_called_once()
+        text = mock_edit_text.call_args[0][3]
+        self.assertIn("EVENTOS RECIENTES", text)
+        markup = mock_edit_text.call_args[1]["reply_markup"]
+        cb_buttons = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
+        self.assertIn("diag:ref:events", cb_buttons)
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
     def test_diag_unauthorized_rejection(self, mock_answer_cb, mock_edit_text):
         from app.miner_monitor import _handle_callback_query
         from pathlib import Path

@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (46 de 46 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 675 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (47 de 47 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 687 tests PASS).
 
 
 ---
@@ -578,6 +578,18 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Router de callbacks en `miner_monitor.py` con edición in-place y RBAC.
 - [x] 15 tests específicos (9 unitarios en `test_fleet_cards.py` + 6 integración en `test_telegram_callbacks.py`) y 675/675 tests globales PASS (0 fallos, 0 regresiones).
 
+### Spec 047: Mobile-First Card Layout for Balancer, Digest & Operational Events (Completado)
+- [x] Cumplimiento de Condición C1: Tarjetas verticales con viñetas `•` y ancho estricto <= 32 columnas visibles para `/balancer`, `/elevadores`, `/digest`, `/snoozed`, `/events`, `/event <id>` y `/why`.
+- [x] Cumplimiento de Condición C2: Renderizadores puros desacoplados y deterministas sin I/O ni sockets (`build_balancer_table_text`, `build_miner_balancer_detail_text`, `build_elevator_sensitivity_text`, `format_daily_digest`, `build_snooze_status_text`, `render_event_list`, `render_event_detail`, `render_reboot_decision`).
+- [x] Cumplimiento de Condición C3: Callbacks `diag:ref:*` (`balancer`, `elev`, `digest`, `events`) con validación <= 64 bytes UTF-8 y ACK inmediato (< 50ms).
+- [x] Cumplimiento de Condición C4: Longitud total acotada (< 2,000 caracteres) y wrapping estricto con `wrap_mobile_lines`.
+- [x] Cumplimiento de Condición C5: Sanitización y separación móvil estándar con viñetas `•` y separador `─` * 28.
+- [x] Cumplimiento de Condición C6: Fallback táctil completo y legibilidad garantizada sin markups.
+- [x] Cumplimiento de Condición C7: Cero modificaciones en FSM, auto-reboot, límites del Fan Governor ni adquisición de telemetría.
+- [x] Teclados inline de refresco en 1 toque en dispatcher para `/balancer`, `/elevadores`, `/digest` y `/events`.
+- [x] Router de callbacks en `miner_monitor.py` con edición in-place, RBAC y pase de `event_store`.
+- [x] 12 tests específicos (8 unitarios en `test_mobile_diagnostics.py` + 4 integración en `test_telegram_callbacks.py`) y 687/687 tests globales PASS (0 fallos, 0 regresiones).
+
 
 ---
 
@@ -617,6 +629,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Modo Silencio / Visitas acotado al 40%-70% PWM con temporizadores y Thermal Guard a 83.5°C (Spec 044).
 - [x] Centro de Ayuda táctil interactivo `/help` con navegación por categorías y tarjetas Mobile-First <= 32 cols (Spec 045).
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /status, /fans, /efficiency, /presets (Spec 046).
+- [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /balancer, /elevadores, /digest, /snoozed, /events (Spec 047).
 
 
 ---

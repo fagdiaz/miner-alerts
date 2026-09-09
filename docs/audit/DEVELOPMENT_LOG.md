@@ -3,6 +3,43 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-09] - Spec 047: Mobile-First Card Layout for Balancer, Digest & Operational Events (Completado)
+
+* **Objetivo**: Completar la armonización Mobile-First de la interfaz de Telegram para los módulos de diagnóstico, gobernanza y soporte operativo restantes: Balanceador de presets y elevadores (`/balancer`, `/elevadores`), Reporte diario ejecutivo (`/digest`, `/summary`), Silencios de mantenimiento (`/snoozed`) e Historial de incidentes operacionales (`/events`, `/event <id>`, `/why`), garantizando renderizado determinista `<= 32` columnas visibles por línea, teclado inline de refresco en 1 toque (`[ 🔄 Actualizar ] [ 📱 Menú ]`), edición in-place sin spam y apego a las directivas RFC C1-C10.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Límite Estricto Mobile-First <= 32 Columnas)**: El 100% de las líneas de texto generadas por todos los renderizadores modificados verifican de forma pura e incondicional `visible_line_width(line) <= 32` (verificado con suite unitaria dedicada). Todo texto extenso de diagnósticos, recomendaciones, motivos o evidencias se pagina con `wrap_mobile_lines`.
+  - **C2 (Pureza de Renderizado)**: Renderizadores desacoplados de I/O, sockets o locks compartidos.
+  - **C3 (Callbacks Aislados <= 64 Bytes & ACK < 50ms)**: Soporte completo para `diag:ref:balancer`, `diag:ref:elev`, `diag:ref:digest`, `diag:ref:events` en `parse_diagnostic_callback()` con ACK inmediato en `_handle_diagnostic_callback()`.
+  - **C4 (Sin Paginación Rota)**: Reportes estructurados < 2,000 caracteres, muy inferiores al umbral de fragmentación de 3,600 caracteres.
+  - **C5 (Sanitización Markdown)**: Uso de delimitadores móviles limpios (`•`, `─` * 28) y protección ante Markdown sin romper etiquetas.
+  - **C6 (Fallback Equivalente de Entrega)**: Mensajes 100% legibles y completos tanto con inline markups como en clientes estándar.
+  - **C7 (Límites Constitucionales y Seguridad)**: Cero cambios en la máquina de estados (`MinerState`), algoritmos matemáticos del balanceador, límites de temperatura ni loop de monitoreo.
+* **Módulos y Cambios**:
+  - `app/governance/preset_balancer.py`:
+    * Refactorización de `build_balancer_table_text()` a tarjetas verticales agrupadas por elevador con viñetas `•`, carga agregada y wrapping de motivos.
+    * Refactorización de `build_miner_balancer_detail_text()` a tarjeta diagnóstica vertical por minero.
+    * Refactorización de `build_elevator_sensitivity_text()` a tarjetas de sensibilidad eléctrica verticalizadas con wrapping de recomendaciones.
+  - `app/telegram/daily_digest.py`:
+    * Refactorización de `format_daily_digest()` a bloques verticales alineados con resumen de flota, hashrate, eficiencia, shares y backup.
+  - `app/telegram/snooze.py`:
+    * Refactorización de `build_snooze_status_text()` a fichas por minero silenciado con cálculo de tiempo restante en `<= 32` columnas.
+  - `app/core/event_store.py`:
+    * Refactorización de `render_event_list()` a listado vertical compacto con identificador click-safe `/e<id>`.
+    * Refactorización de `render_event_detail()` a ficha de incidente con wrapping de resumen y eventos relacionados.
+    * Refactorización de `render_reboot_decision()` con bloques verticales para decisiones de auto-reboot, interlocks térmicos, de flota y transiciones de firmware.
+  - `app/telegram/fleet_cards.py`:
+    * Incorporación de constantes `DIAG_REF_BALANCER`, `DIAG_REF_ELEV`, `DIAG_REF_DIGEST`, `DIAG_REF_EVENTS`.
+    * Ampliación de `SUPPORTED_REPORT_TYPES` y soporte en `build_diagnostic_keyboard()`.
+  - `app/miner_monitor.py`:
+    * Integración de `_handle_diagnostic_callback()` para los nuevos reportes diagnósticos (`balancer`, `elev`, `digest`, `events`) con pase de `event_store`.
+    * Inclusión de `reply_markup` con botonera interactiva en los dispatchers de `/balancer`, `/elevadores`, `/digest` y `/events`.
+  - `tests/test_mobile_diagnostics.py`: Suite dedicada de 8 pruebas unitarias validando límite estricto `<= 32` columnas en todas las funciones y casos edge.
+  - `tests/test_telegram_callbacks.py`: 4 nuevas pruebas de integración cubriendo el despacho y edición in-place de los nuevos callbacks.
+* **Resultados y Pruebas**:
+  - Compilación sintáctica: 100% OK (`miner_monitor.py`, `preset_balancer.py`, `daily_digest.py`, `snooze.py`, `event_store.py`).
+  - Suite global completa: **687/687 tests PASS** en 11.281s (0 fallos, 0 errores, +12 tests netos sobre baseline).
+  - Auditoría de liberación: **PASS** (`tools/release_audit.py --check-only`), digest `7ba53dcea43ada9ae59d1593a08de897750aba8f9d8ccea17e8fe2c4fefa441d`, 63 payload files, 8/8 terminal dispositions verificadas.
+
 ## [2026-09-09] - Spec 046: Mobile-First Card Layout & UX Harmonization across Fleet Reports (Completado)
 
 * **Objetivo**: Estandarizar la presentación de reportes diagnósticos y de flota para dispositivos móviles en Telegram, rediseñando los comandos `/status`, `/fans`, `/efficiency` y `/presets` a un formato de tarjeta vertical con viñetas (`•`), ancho estricto `<= 32` columnas visibles por línea, teclado inline de refresco en 1 toque (`[ 🔄 Actualizar ] [ 📱 Menú ]`), edición in-place sin spam y protección contra overflow o fragmentación rota de mensajes (RFC C1-C10).

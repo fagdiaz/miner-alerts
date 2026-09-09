@@ -16,7 +16,7 @@ ESTADO ACTUAL CERTIFICADO (Spec 047)
   * Callbacks `diag:ref:balancer`, `diag:ref:elev`, `diag:ref:digest`, `diag:ref:events` en `_handle_diagnostic_callback()` con ACK < 50ms y edición in-place.
   * Suite global del repositorio: 687/687 tests PASS en 11.281s (0 fallos, 0 regresiones).
   * Release audit: PASS (SHA-256 `7ba53dcea43ada9ae59d1593a08de897750aba8f9d8ccea17e8fe2c4fefa441d`, 63 payload files).
-  * Servicio Windows `MinerAlerts` activo y saludable bajo PID 29796.
+  * Servicio Windows `MinerAlerts` activo y saludable bajo PID 2952.
 
 ARCHIVOS CLAVE DEL SISTEMA
 1. `docs/speckit/RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md` (Condiciones C1-C10).

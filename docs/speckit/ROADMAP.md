@@ -1,12 +1,12 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-08-26
+**Last reviewed**: 2026-09-08
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (42 de 42 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 587 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (44 de 44 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 621 tests PASS).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -114,6 +114,21 @@ El programa completo de expansión V3 (Specs 031 a 038) está cerrado y validado
     - *Objetivo*: Culminación del ordenamiento arquitectónico integral de `app/` para alcanzar la máxima pulcritud posible: eliminación definitiva de los 22 archivos shims/fachadas planos sueltos en la raíz de `app/` tras la modernización directa de toda la suite de tests en `tests/` para importar exclusivamente de los 4 subpaquetes de dominio canónicos (`app.core`, `app.vnish`, `app.governance`, `app.telegram`), dejando en `app/` únicamente el orquestador raíz `miner_monitor.py` y el inicializador de paquete `__init__.py` junto con los archivos locales de runtime.
     - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T020), 22 archivos shims purgados vía `git rm`, **587/587 tests globales PASS** en 10.68s, auditoría de release aprobada (`tools/release_audit.py --check-only`) con payload optimizado de 60 archivos limpios, cero impacto y servicio de producción 100% continuo.
     - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+
+---
+
+### 🎮 Programa V3.2: Centro de Comando Táctil y Modo Silencio (RFC Aprobado)
+
+13. **[COMPLETADO Y CERTIFICADO] Spec 043 — Telegram Interactive Command Center & Rich UI (`043-telegram-interactive-command-center`)**:
+    - *Objetivo*: Dashboard táctil centralizado `/menu` con `InlineKeyboardMarkup`, navegación in-place (`editMessageText`), semáforos, barras de estado y botones contextuales de acción rápida en alertas con confirmación en dos toques para reinicios.
+    - *Resultados*: Fases 1 a 4 completadas al 100% (T001-T015), 15 tests unitarios en `tests/test_command_center.py`, **602/602 tests globales PASS** en 10.99s, release audit PASS (61 payload files), servicio en producción ininterrumpido.
+    - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+
+14. **[COMPLETADO Y CERTIFICADO] Spec 044 — Modo Silencio Inteligente con Temporizador Persistente y Thermal Guard (`044-silent-mode-thermal-guard`)**:
+    - *Objetivo*: Reducción acústica de ventiladores a 40%-70% PWM con regulación térmica a 82°C, temporizador multiescala persistente (30m a 6h e indefinido) con reversión automática a régimen normal, integración directa táctil al Command Center (`/menu`) y Guardián Térmico de seguridad atómico ante emergencias (83.5°C).
+    - *Cumplimiento Constitucional P0*: Despacho desacoplado en Telegram polling (C1), campos `silent_mode_*` independientes en `MinerState` reconciliados en `first_tick` (C2), límites acústicos dinámicos en Fan Governor (C3), y anulación atómica en `state.json` bajo pico térmico `EMERGENCY_SPIKE` con forzado al 100% PWM y alerta prioritaria (C4).
+    - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T018), 17 tests en `tests/test_silent_mode.py` y 17 tests en `tests/test_command_center.py`, **621/621 tests globales PASS** en 10.95s, release audit PASS (61 payload files, SHA-256 verificado).
+    - *Modelo*: Gemini 3.8 Flash High (Implementación integral de código, FSM, tests y layouts táctiles) + Claude Sonnet 4.6 Thinking (Auditoría previa de condiciones C1-C4).
 
 ---
 

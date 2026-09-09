@@ -920,6 +920,13 @@ class MinerState:
     vnish_discovered_top_preset: Optional[str] = None
     vnish_discovered_switcher_enabled: Optional[bool] = None
     vnish_discovered_ts: float = 0.0
+    # Spec 044: Silent Mode / Visitor Mode — hardware FSM, SEPARATE from snooze_until_ts
+    # C2: Never mix with snooze (alert suppressor). These control physical hardware.
+    silent_mode_active: bool = False
+    silent_mode_revert_ts: Optional[float] = None      # Unix ts when mode expires; None = indefinite
+    silent_mode_prev_duty: Optional[int] = None        # Hardware duty before silent mode activation
+    silent_mode_prev_preset: Optional[str] = None      # VNish preset name before activation
+    silent_mode_target_max_duty: int = 70              # Acoustic ceiling (default 70%)
 
 
 def load_config() -> Dict[str, Any]:
@@ -1425,6 +1432,57 @@ def edit_message_reply_markup(
             f"TG EDIT_MARKUP exc ms={ms} chat_id={chat_id} msg_id={message_id} "
             f"err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}"
         )
+
+
+def edit_message_text(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    text: str,
+    reply_markup: Optional[Dict[str, Any]] = None,
+    parse_mode: Optional[str] = "Markdown",
+) -> bool:
+    """Edit both the text and inline keyboard of an existing message in-place.
+
+    Used by the interactive Command Center for seamless in-place menu navigation.
+    Gracefully ignores 'message is not modified' responses from Telegram.
+    """
+    url = f"https://api.telegram.org/bot{bot_token}/editMessageText"
+    payload: Dict[str, Any] = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+    }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    if parse_mode is not None:
+        payload["parse_mode"] = parse_mode
+
+    t0 = time.perf_counter()
+    try:
+        session = _HTTP_SESSION or requests.Session()
+        resp = session.post(url, json=payload, timeout=5.0)
+        ms = int((time.perf_counter() - t0) * 1000)
+        if resp.status_code == 200:
+            if DBG_TELEGRAM:
+                log(f"TG EDIT_TEXT ok ms={ms} chat_id={chat_id} msg_id={message_id}")
+            return True
+        body = (resp.text or "").lower()
+        if "message is not modified" in body:
+            return True
+        redacted_body = _redact_telegram_token(resp.text or "", bot_token)[:200]
+        log(
+            f"TG EDIT_TEXT err http={resp.status_code} ms={ms} "
+            f"chat_id={chat_id} msg_id={message_id} body=\"{redacted_body}\""
+        )
+        return False
+    except Exception as exc:
+        ms = int((time.perf_counter() - t0) * 1000)
+        log(
+            f"TG EDIT_TEXT exc ms={ms} chat_id={chat_id} msg_id={message_id} "
+            f"err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}"
+        )
+        return False
 
 
 def send_telegram_photo(
@@ -2284,6 +2342,24 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     else None
                 ),
                 vnish_discovered_ts=float(data.get("vnish_discovered_ts", 0.0)),
+                # Spec 044: Silent Mode (C2 — hardware FSM, separate from snooze)
+                silent_mode_active=bool(data.get("silent_mode_active", False)),
+                silent_mode_revert_ts=(
+                    float(data.get("silent_mode_revert_ts"))
+                    if data.get("silent_mode_revert_ts") is not None
+                    else None
+                ),
+                silent_mode_prev_duty=(
+                    int(data.get("silent_mode_prev_duty"))
+                    if data.get("silent_mode_prev_duty") is not None
+                    else None
+                ),
+                silent_mode_prev_preset=(
+                    str(data.get("silent_mode_prev_preset"))
+                    if data.get("silent_mode_prev_preset") is not None
+                    else None
+                ),
+                silent_mode_target_max_duty=int(data.get("silent_mode_target_max_duty", 70)),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2353,6 +2429,12 @@ def save_state(
             "vnish_discovered_top_preset": getattr(state, "vnish_discovered_top_preset", None),
             "vnish_discovered_switcher_enabled": getattr(state, "vnish_discovered_switcher_enabled", None),
             "vnish_discovered_ts": getattr(state, "vnish_discovered_ts", 0.0),
+            # Spec 044: Silent Mode (C2 — hardware FSM, separate from snooze)
+            "silent_mode_active": getattr(state, "silent_mode_active", False),
+            "silent_mode_revert_ts": getattr(state, "silent_mode_revert_ts", None),
+            "silent_mode_prev_duty": getattr(state, "silent_mode_prev_duty", None),
+            "silent_mode_prev_preset": getattr(state, "silent_mode_prev_preset", None),
+            "silent_mode_target_max_duty": getattr(state, "silent_mode_target_max_duty", 70),
         }
     tmp_path = state_path.with_suffix(".tmp")
     try:
@@ -2470,6 +2552,32 @@ def execute_governor_cycle(
                     power_margin_w=float(miner.get("power_margin_w", gov_cfg.power_margin_w)),
                 )
 
+            # Spec 044 C3: If silent mode active for this miner, constrain the Governor to
+            # operate within the acoustic ceiling. EMERGENCY_SPIKE overrides max_fan_duty_percent
+            # by its own rule (goes to 100% regardless), so this is safe.
+            if getattr(state, "silent_mode_active", False):
+                _sm_min = int(config.get("silent_mode_min_duty_pct", 40))
+                _sm_max = int(getattr(state, "silent_mode_target_max_duty", 70))
+                miner_gov_cfg = GovernorConfig(
+                    enabled=miner_gov_cfg.enabled,
+                    dry_run=miner_gov_cfg.dry_run,
+                    target_temp_c=miner_gov_cfg.target_temp_c,
+                    deadband_low_c=miner_gov_cfg.deadband_low_c,
+                    deadband_high_c=miner_gov_cfg.deadband_high_c,
+                    emergency_spike_temp_c=miner_gov_cfg.emergency_spike_temp_c,
+                    min_fan_duty_percent=max(_sm_min, miner_gov_cfg.min_fan_duty_percent),
+                    max_fan_duty_percent=_sm_max,  # Acoustic ceiling
+                    step_down_percent=miner_gov_cfg.step_down_percent,
+                    step_up_percent=miner_gov_cfg.step_up_percent,
+                    dwell_seconds=miner_gov_cfg.dwell_seconds,
+                    adaptive_dwell_seconds=miner_gov_cfg.adaptive_dwell_seconds,
+                    consecutive_holds_threshold=miner_gov_cfg.consecutive_holds_threshold,
+                    request_timeout_seconds=miner_gov_cfg.request_timeout_seconds,
+                    fleet_timeout_seconds=miner_gov_cfg.fleet_timeout_seconds,
+                    max_consecutive_failures=miner_gov_cfg.max_consecutive_failures,
+                    power_margin_w=miner_gov_cfg.power_margin_w,
+                )
+
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
@@ -2527,7 +2635,8 @@ def execute_governor_cycle(
             # Abandon (don't wait for) any in-flight threads beyond the timeout
             executor.shutdown(wait=False)
 
-    # Update per-miner state under state_lock
+    # Update per-miner state under state_lock — also handles C4 Thermal Guard
+    thermal_guard_events: list = []  # (miner_name, temp_c, action) for caller to notify Telegram
     with state_lock:
         for miner, sk, dec in miner_decisions:
             state = states.get(sk)
@@ -2565,6 +2674,21 @@ def execute_governor_cycle(
 
             state.governor_last_action = action
 
+            # Spec 044 C4: Thermal Guard — atomically cancel silent_mode on emergency.
+            # EMERGENCY_SPIKE (T >= emergency_spike_temp_c) or FAILSAFE_FAULT (3 HTTP failures)
+            # must override the acoustic ceiling immediately and clear state.json.
+            if action in (ACTION_EMERGENCY_SPIKE, ACTION_FAILSAFE_FAULT):
+                if getattr(state, "silent_mode_active", False):
+                    prev_max = getattr(state, "silent_mode_target_max_duty", 70)
+                    state.silent_mode_active = False
+                    state.silent_mode_revert_ts = None
+                    temp_c = state.governor_last_temp_c
+                    thermal_guard_events.append((name_display, temp_c, action, prev_max))
+                    log(
+                        f"[THERMAL_GUARD] Silent mode CANCELLED for miner={name_display} "
+                        f"action={action} temp={temp_c}°C prev_max={prev_max}%"
+                    )
+
             # Structured log
             dr_tag = " DRY" if dry_run else ""
             duty_tag = f"duty={state.governor_duty}%" if state.governor_duty is not None else "duty=?"
@@ -2582,6 +2706,8 @@ def execute_governor_cycle(
                 f"{duty_tag} target={new_duty}% "
                 f"holds={state.governor_holds} fails={state.governor_failures}{pwr_tag}{err_tag}"
             )
+
+    return thermal_guard_events
 
 
 # ---------------------------------------------------------------------------
@@ -2825,9 +2951,171 @@ def execute_balancer_cycle(
     return decisions
 
 
-# ---------------------------------------------------------------------------
-# T012: Callback query dispatcher (Spec 031)
-# ---------------------------------------------------------------------------
+def _handle_command_center_callback(
+    cb_query: dict,
+    *,
+    config: dict,
+    bot_token: str,
+    chat_id: str,
+    cb_chat_id: Any,
+    message_id: Optional[int],
+    cb_id: str,
+    miners: list,
+    states: Dict[str, MinerState],
+    state_lock: threading.Lock,
+    state_path: Path,
+    current_last_update_id: Optional[int],
+    hashcore_cfg: dict,
+    event_store: Optional["EventStore"],
+    qa_mode: bool,
+    qa_allow_actions: bool,
+    token_registry: "CallbackTokenRegistry",
+) -> None:
+    """Handle Command Center callbacks (cc:*) with instant ACK and in-place navigation."""
+    from app.telegram.command_center import (
+        CC_NAV_MAIN,
+        CC_NAV_SILENT,
+        build_inline_keyboard,
+        parse_command_center_callback,
+        render_alerts_view,
+        render_main_dashboard,
+        render_metrics_view,
+        render_profiles_view,
+        render_reboot_confirmation,
+        render_reboot_menu,
+        render_silent_mode_view,
+    )
+    cb_data = cb_query.get("data") or ""
+    action = parse_command_center_callback(cb_data)
+    if not action:
+        answer_callback_query(bot_token, cb_id, text="⚠️ Opción no reconocida.")
+        return
+
+    # Acknowledge immediately to clear the UI spinner
+    answer_callback_query(bot_token, cb_id)
+
+    with state_lock:
+        states_snapshot = {k: v for k, v in states.items()}
+
+    new_text: Optional[str] = None
+    new_markup: Optional[Dict[str, Any]] = None
+
+    if action.kind == "nav":
+        if action.target == "main":
+            new_text, new_markup = render_main_dashboard(states_snapshot, config, miners)
+        elif action.target == "metrics":
+            new_text, new_markup = render_metrics_view(states_snapshot, miners)
+        elif action.target == "reboot":
+            new_text, new_markup = render_reboot_menu(states_snapshot, miners)
+        elif action.target == "profiles":
+            new_text, new_markup = render_profiles_view(states_snapshot, miners)
+        elif action.target == "alerts":
+            new_text, new_markup = render_alerts_view(states_snapshot, config, miners)
+        elif action.target == "silent":
+            new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+    elif action.kind == "act":
+        if action.target == "refresh":
+            view = action.param or "main"
+            if view == "metrics":
+                new_text, new_markup = render_metrics_view(states_snapshot, miners)
+            elif view == "reboot":
+                new_text, new_markup = render_reboot_menu(states_snapshot, miners)
+            elif view == "profiles":
+                new_text, new_markup = render_profiles_view(states_snapshot, miners)
+            elif view == "alerts":
+                new_text, new_markup = render_alerts_view(states_snapshot, config, miners)
+            elif view == "silent":
+                new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+            else:
+                new_text, new_markup = render_main_dashboard(states_snapshot, config, miners)
+        elif action.target == "silent":
+            sub = (action.param or "").strip().lower()
+            _sm_target_max = int(config.get("silent_mode_target_max_duty", 70))
+            _SM_DURATIONS = {
+                "30m": 30, "1h": 60, "2h": 120, "4h": 240, "6h": 360, "indef": None,
+            }
+            if sub in ("off", "cancelar", "desactivar"):
+                with state_lock:
+                    for m in miners:
+                        sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                        st = states.get(sk)
+                        if st is not None and st.silent_mode_active:
+                            st.silent_mode_active = False
+                            st.silent_mode_revert_ts = None
+                    save_state(state_path, states, current_last_update_id)
+                    states_snapshot = {k: v for k, v in states.items()}
+                log("[SILENT_MODE] Manually cancelled via Command Center button")
+                new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+            elif sub in _SM_DURATIONS:
+                duration_min = _SM_DURATIONS[sub]
+                revert_ts = (time.time() + duration_min * 60.0) if duration_min is not None else None
+                with state_lock:
+                    for m in miners:
+                        sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                        st = states.get(sk)
+                        if st is None:
+                            states[sk] = MinerState()
+                            st = states[sk]
+                        if not st.silent_mode_active:
+                            st.silent_mode_prev_duty = st.governor_duty
+                            st.silent_mode_prev_preset = st.balancer_preset
+                        st.silent_mode_active = True
+                        st.silent_mode_revert_ts = revert_ts
+                        st.silent_mode_target_max_duty = _sm_target_max
+                    save_state(state_path, states, current_last_update_id)
+                    states_snapshot = {k: v for k, v in states.items()}
+                log(f"[SILENT_MODE] Activated via Command Center button: sub={sub} max={_sm_target_max}%")
+                new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+        elif action.target == "rb_req" and action.miner_id:
+            token = token_registry.create_token(action.miner_id, action="reboot")
+            new_text, new_markup = render_reboot_confirmation(action.miner_id, token)
+        elif action.target == "rb_ccl":
+            token_registry.invalidate_miner(action.miner_id or "")
+            new_text, new_markup = render_reboot_menu(states_snapshot, miners)
+        elif action.target == "rb_cfm" and action.token and action.miner_id:
+            valid, m_id, reason = token_registry.consume_token(action.token)
+            if not valid or m_id != action.miner_id:
+                answer_callback_query(bot_token, cb_id, text="⚠️ Token inválido o expirado.", show_alert=True)
+                return
+
+            if qa_mode and not qa_allow_actions:
+                answer_callback_query(bot_token, cb_id, text="🚫 Reinicio bloqueado (modo QA).", show_alert=True)
+                return
+
+            miner = resolve_miner(action.miner_id, miners)
+            if not miner:
+                new_text = f"❌ Minero {action.miner_id} no encontrado."
+                _, new_markup = render_reboot_menu(states_snapshot, miners)
+            else:
+                now_ts = time.time()
+                ok, msg_result = run_hashcore_cli(
+                    hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions
+                )
+                record_action_outcome(
+                    event_store,
+                    occurred_ts=now_ts,
+                    miner=miner,
+                    action="reboot",
+                    source="manual",
+                    ok=ok,
+                    message=msg_result,
+                )
+                state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                if ok:
+                    with state_lock:
+                        state = states.get(state_key)
+                        if state:
+                            state.last_manual_reboot_ts = now_ts
+                            state.low_since_ts = None
+                        save_state(state_path, states, current_last_update_id)
+                    new_text = f"✅ *Reinicio de {display_name(miner['name'])}*: Iniciado correctamente.\n\nEnfriamiento activo por 15m."
+                else:
+                    new_text = f"❌ *Reinicio FAIL*: {display_name(miner['name'])}\nDetalle: {msg_result}"
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+
+    if message_id is not None and new_text and new_markup:
+        edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)
+
 
 def _handle_callback_query(
     cb_query: dict,
@@ -2875,6 +3163,30 @@ def _handle_callback_query(
             cb_id,
             text="⛔ Acceso no autorizado",
             show_alert=True,
+        )
+        return
+
+    # T007 / Spec 043: Handle interactive Command Center callbacks
+    from app.telegram.command_center import CC_PREFIX
+    if cb_data.startswith(CC_PREFIX):
+        _handle_command_center_callback(
+            cb_query=cb_query,
+            config=config,
+            bot_token=bot_token,
+            chat_id=chat_id,
+            cb_chat_id=cb_chat_id,
+            message_id=message_id,
+            cb_id=cb_id,
+            miners=miners,
+            states=states,
+            state_lock=state_lock,
+            state_path=state_path,
+            current_last_update_id=current_last_update_id,
+            hashcore_cfg=hashcore_cfg,
+            event_store=event_store,
+            qa_mode=qa_mode,
+            qa_allow_actions=qa_allow_actions,
+            token_registry=token_registry,
         )
         return
 
@@ -3367,7 +3679,24 @@ def telegram_polling_worker(
                 handled = False
                 if DBG_TELEGRAM and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
                     log(f"DISPATCH update_id={update_id} text_norm={_trunc(raw_text, DBG_TELEGRAM_TRUNC)}")
-                if cmd_name == "events":
+                if cmd_name in ("menu", "start", "panel"):
+                    handled = True
+                    from app.telegram.command_center import render_main_dashboard
+                    with state_lock:
+                        states_snapshot = {k: v for k, v in states.items()}
+                    dash_text, dash_markup = render_main_dashboard(states_snapshot, config, miners)
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        dash_text,
+                        "MENU",
+                        "cmd_menu",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd=cmd_name,
+                        reply_markup=dash_markup,
+                    )
+                elif cmd_name == "events":
                     handled = True
                     if event_store is None or not event_store.available:
                         events_text = "Historial no disponible."
@@ -4042,6 +4371,130 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="presets",
+                    )
+                elif cmd_name in ("silent", "silencio", "modo_silencio"):
+                    handled = True
+                    sub = args[0].strip().lower() if args else ""
+                    _sm_target_max = int(config.get("silent_mode_target_max_duty", 70))
+                    _sm_min = int(config.get("silent_mode_min_duty_pct", 40))
+
+                    # Duration presets in minutes
+                    _SM_DURATIONS = {
+                        "30m": 30, "30min": 30,
+                        "1h": 60, "1hora": 60,
+                        "2h": 120, "2horas": 120,
+                        "4h": 240, "4horas": 240,
+                        "6h": 360, "6horas": 360,
+                        "indef": None, "indefinido": None, "inf": None,
+                    }
+
+                    if sub in ("off", "cancelar", "desactivar"):
+                        # Manual deactivation — set inactive in state under state_lock
+                        cancelled = []
+                        with state_lock:
+                            for m in miners:
+                                m_name = m.get("name", "")
+                                m_host = m.get("host", "")
+                                m_port = m.get("port", 4028)
+                                sk = f"{m_name}|{m_host}:{m_port}"
+                                st = states.get(sk)
+                                if st is not None and st.silent_mode_active:
+                                    st.silent_mode_active = False
+                                    st.silent_mode_revert_ts = None
+                                    cancelled.append(m_name)
+                                    log(f"[SILENT_MODE] Manually cancelled via /silent off: miner={m_name}")
+                        if cancelled:
+                            _silent_msg = (
+                                f"🔊 *Modo Silencio CANCELADO*\n"
+                                f"Mineros: {', '.join(cancelled)}\n"
+                                f"El Fan Governor restaurará el régimen normal en el próximo tick.\n"
+                                f"_(Las órdenes de ventilador se actualizarán gradualmente)_"
+                            )
+                        else:
+                            _silent_msg = "ℹ️ Modo Silencio no estaba activo en ningún minero."
+                        log("[SILENT_MODE] /silent off executed")
+
+                    elif sub in _SM_DURATIONS:
+                        # Activate for all miners (C1: only state mutation, no HTTP in polling thread)
+                        duration_min = _SM_DURATIONS[sub]
+                        revert_ts = (time.time() + duration_min * 60.0) if duration_min is not None else None
+                        activated = []
+                        with state_lock:
+                            for m in miners:
+                                m_name = m.get("name", "")
+                                m_host = m.get("host", "")
+                                m_port = m.get("port", 4028)
+                                sk = f"{m_name}|{m_host}:{m_port}"
+                                st = states.get(sk)
+                                if st is None:
+                                    states[sk] = MinerState()
+                                    st = states[sk]
+                                # Save current duty as previous (for future restore reference)
+                                if not st.silent_mode_active:
+                                    st.silent_mode_prev_duty = st.governor_duty
+                                    st.silent_mode_prev_preset = st.balancer_preset
+                                st.silent_mode_active = True
+                                st.silent_mode_revert_ts = revert_ts
+                                st.silent_mode_target_max_duty = _sm_target_max
+                                activated.append(m_name)
+                                log(f"[SILENT_MODE] Activated miner={m_name} max={_sm_target_max}% revert_at={'indef' if revert_ts is None else revert_ts}")
+
+                        if duration_min is None:
+                            dur_str = "♾️ Sin límite de tiempo"
+                        elif duration_min < 60:
+                            dur_str = f"⏱️ {duration_min} minutos"
+                        else:
+                            dur_str = f"⏱️ {duration_min // 60}h{'%02d' % (duration_min % 60) if duration_min % 60 else ''}"
+                        _silent_msg = (
+                            f"🔇 *Modo Silencio ACTIVADO*\n"
+                            f"Mineros: {', '.join(activated)}\n"
+                            f"Techo acústico: {_sm_min}% – {_sm_target_max}% PWM\n"
+                            f"Duración: {dur_str}\n"
+                            f"_El Fan Governor aplicará los límites desde el próximo tick._\n"
+                            f"\n⚠️ El Guardián Térmico anula el silencio si T ≥ {config.get('fan_governor_emergency_temp_c', 83.5)}°C."
+                        )
+
+                    else:
+                        # Status or help
+                        lines = [
+                            "🔇 *Modo Silencio / Visitas*",
+                            f"Límite acústico: {_sm_min}% – {_sm_target_max}% PWM | Guardián: {config.get('fan_governor_emergency_temp_c', 83.5)}°C",
+                            "",
+                        ]
+                        with state_lock:
+                            for m in miners:
+                                m_name = m.get("name", "")
+                                m_host = m.get("host", "")
+                                m_port = m.get("port", 4028)
+                                sk = f"{m_name}|{m_host}:{m_port}"
+                                st = states.get(sk)
+                                if st is None:
+                                    lines.append(f"  {m_name}: sin datos")
+                                    continue
+                                if st.silent_mode_active:
+                                    if st.silent_mode_revert_ts is not None:
+                                        remaining_s = max(0, st.silent_mode_revert_ts - time.time())
+                                        rem_m = int(remaining_s // 60)
+                                        rem_str = f"{rem_m}m restantes" if rem_m >= 60 else f"{rem_m // 60}h {rem_m % 60}m restantes"
+                                        rem_str = f"{rem_m}m restantes"
+                                    else:
+                                        rem_str = "♾️ indefinido"
+                                    lines.append(f"  🔇 {m_name}: ACTIVO — {rem_str} (techo={st.silent_mode_target_max_duty}%)")
+                                else:
+                                    lines.append(f"  🔊 {m_name}: inactivo")
+                        lines.append("")
+                        lines.append("Comandos: `/silent 30m` | `/silent 1h` | `/silent 2h` | `/silent 4h` | `/silent 6h` | `/silent indef` | `/silent off`")
+                        _silent_msg = "\n".join(lines)
+
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        _silent_msg,
+                        "SILENT_MODE",
+                        "cmd_silent",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="silent",
                     )
                 elif cmd_name in ("governor", "gov"):
                     handled = True
@@ -6686,6 +7139,39 @@ def main() -> None:
                     )
                     episode_notifications.acknowledge_active_initials()
                     notification_sent = True
+
+                # Spec 044 C2: On startup/NSSM restart, reconcile silent_mode state.
+                # If a silent mode was active when the service stopped, it may have expired
+                # during downtime. Purge expired silences immediately so hardware is not left
+                # in a reduced-fan state with full power.
+                _sm_expired_miners = []
+                _sm_still_active_miners = []
+                with state_lock:
+                    for _m in valid_miners:
+                        _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                        _st = states.get(_sk)
+                        if _st is None or not _st.silent_mode_active:
+                            continue
+                        if _st.silent_mode_revert_ts is not None and now_ts >= _st.silent_mode_revert_ts:
+                            # Expired during downtime — cancel silently
+                            _st.silent_mode_active = False
+                            _st.silent_mode_revert_ts = None
+                            _sm_expired_miners.append(_m.get("name", _sk))
+                            log(f"[SILENT_MODE] Expired during downtime, purged on startup: miner={_m.get('name', _sk)}")
+                        else:
+                            _sm_still_active_miners.append(_m.get("name", _sk))
+                if _sm_expired_miners:
+                    _exp_list = ", ".join(_sm_expired_miners)
+                    _sm_exp_msg = (
+                        f"⏰ *Modo Silencio expirado durante reinicio del servicio*\n"
+                        f"Mineros restaurados a supervisión normal: {_exp_list}\n"
+                        "_Los ventiladores se restaurarán en el próximo ciclo del gobernador._"
+                    )
+                    if (not qa_mode) or qa_notify:
+                        send_telegram(bot_token, str(chat_id), _sm_exp_msg, "SILENT_MODE_EXPIRED", "silent_mode_expired_restart")
+                if _sm_still_active_miners:
+                    log(f"[SILENT_MODE] Restored active silence on startup: {', '.join(_sm_still_active_miners)}")
+
             elif not episode_batch.empty and ((not qa_mode) or qa_notify):
                 from app.telegram.snooze import filter_snoozed_episodes
                 filtered_batch = filter_snoozed_episodes(episode_batch, states, now_ts=now_ts)
@@ -6781,6 +7267,35 @@ def main() -> None:
             with last_update_lock:
                 current_last_update_id = last_update_id_ref["value"]
 
+            # Spec 044 T011/T012: Check silent_mode timer expiry every tick.
+            # If revert_ts has passed, cancel the mode and notify.
+            _sm_just_expired = []
+            with state_lock:
+                for _m in valid_miners:
+                    _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                    _st = states.get(_sk)
+                    if (
+                        _st is not None
+                        and _st.silent_mode_active
+                        and _st.silent_mode_revert_ts is not None
+                        and now_ts >= _st.silent_mode_revert_ts
+                    ):
+                        _st.silent_mode_active = False
+                        _st.silent_mode_revert_ts = None
+                        _sm_just_expired.append(_m.get("name", _sk))
+                        log(f"[SILENT_MODE] Timer expired, mode cancelled: miner={_m.get('name', _sk)}")
+            if _sm_just_expired:
+                _exp_names = ", ".join(_sm_just_expired)
+                _sm_rev_msg = (
+                    f"⏰ *Modo Silencio finalizado* — Temporizador expirado\n"
+                    f"Mineros: *{_exp_names}*\n"
+                    f"🔊 Ventiladores restaurados a régimen de producción normal.\n"
+                    f"_El Fan Governor retomará el control en el próximo tick._"
+                )
+                if (not qa_mode) or qa_notify:
+                    send_telegram(bot_token, str(chat_id), _sm_rev_msg, "SILENT_MODE_EXPIRED", "silent_mode_timer_expired")
+
+
             # Dynamic Vnish overclock & autoswitch settings sync (every 300s)
             try:
                 refresh_vnish_overclock_settings(
@@ -6794,9 +7309,9 @@ def main() -> None:
             except Exception as _sync_exc:
                 log(f"[VNISH_SYNC_ERR] Vnish sync failed: {type(_sync_exc).__name__}: {_sync_exc}")
 
-            # Spec 039: Fan Governor cycle — runs after all per-miner telemetry is processed
+            # Spec 039/044: Fan Governor cycle + C4 Thermal Guard
             try:
-                execute_governor_cycle(
+                _gov_thermal_events = execute_governor_cycle(
                     miners=valid_miners,
                     states=states,
                     state_lock=state_lock,
@@ -6804,6 +7319,24 @@ def main() -> None:
                     now_ts=now_ts,
                     qa_mode=qa_mode,
                 )
+                # C4: If any miner had its silent_mode cancelled by thermal guard,
+                # persist state immediately and notify Telegram.
+                if _gov_thermal_events:
+                    with state_lock:
+                        save_state(state_path, states, current_last_update_id)
+                    for _tg_name, _tg_temp, _tg_action, _tg_prev_max in _gov_thermal_events:
+                        _temp_str = f"{_tg_temp:.1f}°C" if _tg_temp is not None else "N/D"
+                        _tg_msg = (
+                            f"🌡️ *⚠️ MODO SILENCIO ANULADO POR GUARDIÁN TÉRMICO*\n"
+                            f"Minero: *{_tg_name}*\n"
+                            f"Temperatura detectada: *{_temp_str}* (Umbral: {config.get('fan_governor_emergency_temp_c', 83.5)}°C)\n"
+                            f"Techo acústico anterior: {_tg_prev_max}% PWM\n"
+                            f"Acción del Gobernador: `{_tg_action}`\n"
+                            f"🔊 *Ventiladores forzados al 100%*. Modo silencio cancelado permanentemente hasta nueva activación."
+                        )
+                        if (not qa_mode) or qa_notify:
+                            send_telegram(bot_token, str(chat_id), _tg_msg, "THERMAL_GUARD", "thermal_guard_silent_cancel")
+                        log(f"[THERMAL_GUARD] Telegram notified for miner={_tg_name} temp={_temp_str}")
             except Exception as _gov_exc:
                 log(f"[GOV_ERR] Governor cycle failed: {type(_gov_exc).__name__}: {_gov_exc}")
 

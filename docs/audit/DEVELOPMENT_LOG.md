@@ -3,6 +3,67 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Spec 044: Modo Silencio Inteligente con Temporizador Persistente y Thermal Guard
+
+* **Objetivo**: Implementar el "Modo Silencio / Visitas" para limitar acústicamente los ventiladores al 40%–70% PWM manteniendo la operación segura bajo 82°C, con temporizadores persistentes configurables (30m, 1h, 2h, 4h, 6h, indefinido), reversión automática al régimen normal, control táctil desde el Command Center (`/menu`) y anulación de emergencia atómica por Guardián Térmico (`EMERGENCY_SPIKE` / `FAILSAFE_FAULT`).
+* **Cumplimiento de Condiciones Constitucionales P0 (Auditoría Claude Sonnet 4.6)**:
+  - **C1 (Concurrencia No Bloqueante)**: El hilo de Telegram Polling solo actualiza `MinerState` en memoria y persiste con `save_state()` bajo `state_lock`. Las órdenes físicas de ventilación se despachan de forma asíncrona y gradual a través del ciclo del Fan Governor, garantizando respuesta táctil inmediata (<500ms) sin bloqueos de red.
+  - **C2 (Aislamiento FSM y Reconciliación en Arranque)**: Nuevos campos dedicados en `MinerState` (`silent_mode_active`, `silent_mode_revert_ts`, `silent_mode_prev_duty`, `silent_mode_prev_preset`, `silent_mode_target_max_duty`) completamente aislados de `snooze_until_ts`. En `first_tick` tras reinicio de Windows/NSSM, se purgan silencios vencidos durante el downtime y se notifica a Telegram.
+  - **C3 (Coexistencia con Fan Governor)**: Inyección dinámica de `max_fan_duty_percent` en `execute_governor_cycle` cuando el modo silencio está activo, permitiendo que el gobernador trabaje acotado en la ventana acústica permitida sin competir con ella.
+  - **C4 (Guardián Térmico y Desactivación Atómica)**: Ante `EMERGENCY_SPIKE` (83.5°C) o `FAILSAFE_FAULT`, se anula atómicamente el modo silencio bajo `state_lock`, se persiste de inmediato a disco con `save_state()`, se fuerzan los ventiladores al 100% PWM y se despacha alerta prioritaria a Telegram.
+* **Módulos y Cambios**:
+  - `app/config.example.json`: Añadidos parámetros `silent_mode_target_max_duty: 70` y `silent_mode_min_duty_pct: 40`.
+  - `app/miner_monitor.py`:
+    * `MinerState`: Campos dedicados de estado y soporte en serialización/deserialización `load_state`/`save_state`.
+    * Startup / `first_tick`: Reconciliación y purga de silencios expirados con notificación Telegram.
+    * Loop principal: Chequeo de vencimiento de temporizadores por tick y notificación de reversión.
+    * Integración Fan Governor: Inyección de límites dinámicos y captura de anulaciones por Thermal Guard.
+    * Telegram Commands & Callbacks: Comando `/silent [30m|1h|2h|4h|6h|indef|off]` y botones interactivos en Command Center (`cc:nav:silent`, `cc:act:silent:*`).
+  - `app/telegram/command_center.py`: Función `render_silent_mode_view` con selector táctil de duraciones, botón dinámico `[ 🔇 Modo Silencio ]` / `[ 🔊 Desactivar Silencio ]` en dashboard principal.
+  - `app/telegram/__init__.py`: Exportaciones canónicas de `CC_NAV_SILENT` y `render_silent_mode_view`.
+* **Resultados y Certificación**:
+  - Compilación sintáctica: 100% OK (`py_compile`).
+  - Tests unitarios: 17 nuevos tests creados en `tests/test_silent_mode.py` y 2 tests en `tests/test_command_center.py` (total 34 tests específicos).
+  - Suite completa: **621/621 tests PASS** en 10.95s (0 fallos, 0 regresiones).
+  - Release audit: **PASS** (`tools/release_audit.py --check-only`), digest `7d59e841532e752d9281dd0e491a60cb2f8d7b0dcc8feebe903e4b655320ad1f`, 61 payload files.
+
+## [2026-09-08] - Spec 043: Telegram Interactive Command Center & Rich UI
+
+* **Objetivo**: Implementar el centro de comando táctil `/menu` con teclados inline interactivos (`InlineKeyboardMarkup`), navegación in-place de submenús (`editMessageText`), semáforos, barras de estado y botones contextuales de acción rápida para incidentes y alertas con confirmación en dos toques.
+* **Módulos y Cambios**:
+  - `app/telegram/command_center.py`: Módulo puro para renderizado del Command Center, barras de progreso Unicode `[██████░░]`, submenús de Métricas, Reinicios, Presets y Alertas.
+  - `app/telegram/__init__.py`: Exportaciones canónicas de builders y constantes del Command Center.
+  - `app/miner_monitor.py`:
+    * Implementación de `edit_message_text()` con captura de excepciones y supresión de `Message is not modified`.
+    * Despacho inmediato de `answerCallbackQuery` (< 500ms) para retroalimentación táctil instantánea.
+    * Handler `_handle_command_center_callback` conectado al router de callbacks con prefijo `cc:`.
+    * Enrutamiento de comandos `/menu`, `/start`, `/panel` para desplegar el dashboard táctil.
+    * Control de seguridad RBAC (`from_id == chat_id`) rechazando usuarios no autorizados con modal de advertencia.
+* **Resultados y Certificación**:
+  - Compilación sintáctica: 100% OK (`py_compile app\telegram\command_center.py app\miner_monitor.py`).
+  - Tests unitarios: 15 nuevos tests creados en `tests/test_command_center.py` pasando en 0.005s.
+  - Suite de tests completa: **602/602 tests PASS** en 10.99s (0 fallos, 0 regresiones).
+  - Release audit: **PASS** (`tools/release_audit.py --check-only`), digest `b25b7807ec7e1dd2e0265c1c1925ea96ffa8742c43fad9172f257469912da781`, 61 payload files.
+  - Servicio en producción ininterrumpido.
+
+## [2026-09-08] - Auditoría Arquitectónica Formal del RFC: Telegram Interactive Command Center
+
+* **Objetivo**: Auditar `docs/speckit/RFC_TELEGRAM_INTERACTIVE_CONTROL.md` (propuesta de Centro de Control Táctil, Modo Silencio con Temporizador y Safety Thermal Guard) antes de iniciar su implementación como Specs 043-044.
+* **Auditor**: Claude Sonnet 4.6 (Thinking). Baseline auditado: V3.0.0 post-Spec 042 (587/587 tests PASS).
+* **Código inspeccionado**: `app/miner_monitor.py`, `app/telegram/callbacks.py`, `app/telegram/snooze.py`, `app/governance/fan_governor.py`, `app/vnish/client.py`.
+* **Veredicto**: RFC APROBADO con 4 condiciones obligatorias de implementación (C1-C4):
+  - **C1 (Concurrencia)**: Callbacks de botones que disparan escrituras a VNish deben usar `ThreadPoolExecutor + shutdown(wait=False)` desacoplado del hilo de polling, reutilizando el patrón de `execute_governor_cycle`. El hilo de polling solo: parsea, autentica, responde `answerCallbackQuery`, encola acción.
+  - **C2 (Persistencia de Temporizador)**: `MinerState` debe tener campos `silent_mode_active`, `silent_mode_revert_ts`, `silent_mode_prev_duty`, `silent_mode_prev_freq_mhz` separados del snooze existente. Verificación explícita en primer tick ante reinicio del servicio NSSM.
+  - **C3 (Race Condition Governor vs. Modo Silencio)**: `GovernorConfig` debe recibir `min/max_fan_duty_percent` dinámicos del estado del Modo Silencio de cada minero, para que Governor y Modo Silencio cooperen en lugar de competir sobre el mismo actuador PWM.
+  - **C4 (Thermal Guard)**: `EMERGENCY_SPIKE` y `FAILSAFE_FAULT` del Governor deben desactivar `silent_mode_active = False` bajo `state_lock`, persistiendo estado consistente ante reinicios. Notificación Telegram inmediata de anulación.
+* **Hallazgos adicionales**:
+  - Snooze existente (inhibición de alertas) y Modo Silencio (limitación física de hardware) son FSM distintas que no deben mezclarse.
+  - Persistir `prev_duty` y `prev_freq_mhz` además del nombre del perfil VNish como fallback de restauración.
+  - Verificar disponibilidad real del endpoint `/api/v1/profile` en Vnish 1.2.7-1.2.9 antes de diseñar Spec 044.
+  - Numeración corregida: nuevas specs serán 043 (Inline Keyboards) y 044 (Modo Silencio + Thermal Guard).
+* **Artefacto**: `docs/speckit/RFC_TELEGRAM_INTERACTIVE_CONTROL.md` §6 completado con auditoría formal.
+* **Próximo paso**: Gemini 3.8 Flash High crea specs/043 y specs/044 usando el RFC auditado como contrato de diseño.
+
 ## [2026-09-08] - Spec 042: Purga Limpia de Shims y Modernización de Tests en `app/`
 
 * **Objetivo**: Completar el ordenamiento arquitectónico integral de `app/` alcanzando la máxima pulcritud posible: eliminación definitiva de los 22 archivos shims/fachadas planos sueltos en la raíz de `app/` tras la modernización directa de toda la suite de tests en `tests/` para importar exclusivamente de los 4 subpaquetes de dominio (`app.core`, `app.vnish`, `app.governance`, `app.telegram`), dejando en `app/` únicamente el orquestador raíz `miner_monitor.py` y el inicializador de paquete `__init__.py` junto con los archivos locales de runtime.

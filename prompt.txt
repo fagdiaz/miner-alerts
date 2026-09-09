@@ -1,39 +1,35 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: PURGA LIMPIA DE SHIMS Y TESTS MODERNIZADOS (SPEC 042 COMPLETA)
+ESTADO DEL PROYECTO: SPECS 043 Y 044 COMPLETADAS Y CERTIFICADAS (621 TESTS PASS)
 =============================================================================
-1. PRODUCCIÓN ACTIVA & MÁXIMA PULCRITUD EN `app/`:
-   - En la raíz de `app/` solo residen:
-     * `app/miner_monitor.py` (orquestador raíz de producción).
-     * `app/__init__.py` (inicializador formal del paquete).
-     * Archivos locales de runtime (`config.json`, `config.example.json`, `state.json`).
-     * 4 subpaquetes de dominio desacoplados: `app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`.
-   - Cero shims planos sueltos en `app/`: los 22 archivos puente fueron eliminados con éxito.
-   - Servicio Windows `MinerAlerts` operando en vivo bajo NSSM (PID 71304):
-     * Spec 039 Fan Governor: `fan_governor_enabled: true`, `fan_governor_dry_run: false`.
-     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: false`.
-   - Comandos Telegram Interactivos:
-     * Gobernador: `/gov`, `/gov on`, `/gov off`, `/gov set <temp>`.
-     * Balanceador: `/balancer`, `/balancer on`, `/balancer off`, `/balancer setmax <miner> <preset>`.
-     * Elevadores: `/elevadores` (alias `/elevators`, `/sensibilidad`, `/elev`).
-     * Monitoreo: `/status`, `/chart`, `/snooze`, `/digest`, `/fans`, `/efficiency`, `/presets`.
 
-2. MODERNIZACIÓN CANÓNICA DE TESTS (`tests/`):
-   - Todos los 44 archivos de test en `tests/` fueron modernizados para importar canónicamente desde `app.core`, `app.vnish`, `app.governance` y `app.telegram`.
-   - Todos los `@patch(...)` de unittest mock fueron actualizados a sus rutas canónicas reales.
-   - 587/587 tests PASS en 10.68s (0 fallos, 0 errores, 0 regresiones).
+1. HITOS ALCANZADOS EN SPEC 043 (TELEGRAM INTERACTIVE COMMAND CENTER):
+   - Módulo `app/telegram/command_center.py` con vistas táctiles puras y menús interactivos:
+     * Dashboard `/menu` interactivo (`InlineKeyboardMarkup`).
+     * Submenús in-place vía `edit_message_text()`: Métricas (con barras de progreso Unicode), Reinicios guiados, Presets y Alertas.
+     * Confirmación segura de reinicio en dos toques con token efímero de 60s.
+     * Alertas accionables de 4 botones (`diag:`, `chart:`, `rb_req:`, `snz:`).
+     * Guardián RBAC (`from_id == chat_id`) con feedback modal y ACK inmediato (< 500ms).
+   - 17 tests unitarios e integración en `tests/test_command_center.py`.
 
-3. CERTIFICACIÓN GLOBAL DE PRUEBAS & RELEASE:
-   - Compilación sintáctica: 100% OK (`py_compile app\miner_monitor.py`).
-   - Release Audit: PASS (`tools/release_audit.py --check-only`), 60 archivos de payload limpios bajo SHA-256 `b11a92084d2f558327290d98c05b7fa691e512ddc7f33d36e7f0e120459249fd`.
-   - Watchdog de producción: 100% `healthy=true suppressed=false reasons=none`.
+2. HITOS ALCANZADOS EN SPEC 044 (MODO SILENCIO / VISITAS & THERMAL GUARD):
+   - Reducción acústica de ventiladores a 40%–70% PWM con regulación térmica bajo 82°C.
+   - Selector táctil interactivo en Command Center y comando de texto `/silent [30m|1h|2h|4h|6h|indef|off]`.
+   - Cumplimiento estricto de las 4 condiciones constitucionales P0 de la auditoría de Claude:
+     * C1 (Concurrencia No Bloqueante): El worker de Telegram no hace I/O síncrono. Solo muta estado en memoria y persiste con `save_state()` bajo `state_lock`. Las órdenes físicas las aplica el Fan Governor en su ciclo normal.
+     * C2 (Aislamiento FSM & Startup Reconciliation): Campos `silent_mode_*` independientes en `MinerState` y `state.json`. Reconciliación en `first_tick` tras reinicio de Windows/NSSM para purgar silencios vencidos y alertar al usuario.
+     * C3 (Coexistencia Fan Governor): Inyección de límites dinámicos de duty ceiling al gobernador mientras el modo silencio está activo.
+     * C4 (Guardián Térmico Atómico): Ante `EMERGENCY_SPIKE` (83.5°C) o `FAILSAFE_FAULT`, anulación atómica de silencio bajo `state_lock`, guardado inmediato en disco, ventiladores forzados al 100% y alerta crítica prioritaria por Telegram.
+   - Loop principal: Chequeo de vencimiento de temporizadores por tick, reversión automática al régimen de producción y notificación de expiración.
+   - 17 tests unitarios e integración en `tests/test_silent_mode.py`.
+
+3. VERIFICACIÓN Y AUDITORÍA:
+   - Compilación de sintaxis: 100% limpia (`py_compile`).
+   - Suite completa: 621/621 tests PASS en 10.95s (0 fallos, 0 regresiones).
+   - Release Audit: PASS (`tools/release_audit.py --check-only`), payload SHA-256: `7d59e841532e752d9281dd0e491a60cb2f8d7b0dcc8feebe903e4b655320ad1f`, 61 payload files.
+   - Estado de repositorio: Limpio y listo para despliegue / soak en producción.
 
 =============================================================================
-SIGUIENTES PASOS:
-- Operación continua observando la respuesta térmica y eléctrica de los mineros 25 y 26 al escalar hacia los 2700W en el Elevador 2.
-- Monitoreo de sensibilidad del Elevador 2 ante el aumento progresivo de carga (de ~4600W a 5400W).
-- Mantener la higiene modular para cualquier nuevo desarrollo o refactorización futura.
-=============================================================================
-MODELO SUGERIDO: Gemini 3.8 Flash High (Capacidad óptima para análisis, métricas operativas y siguientes tareas del roadmap)
+MODELO SUGERIDO: Gemini 3.8 Flash High (Para validación operativa, pruebas o nuevos desarrollos)
 =============================================================================

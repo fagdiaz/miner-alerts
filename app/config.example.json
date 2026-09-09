@@ -162,5 +162,8 @@
   "preset_balancer_group_cascade_window_s": 1800.0,
   "preset_balancer_min_thermal_headroom_c": 4.0,
   "preset_balancer_default_max_preset": "2700W",
-  "vnish_api_password": "CHANGE_ME"
+  "vnish_api_password": "CHANGE_ME",
+  "_comment_silent_mode": "Modo Silencio / Visitas (Spec 044). Limita acústicamente los ventiladores durante visitas o mantenimiento. El Fan Governor opera DENTRO del rango acústico. Guardián Térmico a emergency_temp_c anula el modo automáticamente.",
+  "silent_mode_target_max_duty": 70,
+  "silent_mode_min_duty_pct": 40
 }

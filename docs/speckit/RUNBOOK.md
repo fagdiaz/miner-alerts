@@ -829,6 +829,47 @@ matrix status before tagging or deploying:
      2. Run `/fans <miner>` to verify whether thermal saturation prompted the firmware to downclock.
      3. If autotuning remains in progress (`🟡 AUTOTUNING`), allow the calibration cycle to complete without issuing manual reboots.
 
+## Telegram Interactive Command Center & Rich UI (Spec 043)
+
+### Verification Commands
+
+1. Interactive Telegram Commands:
+   - `/menu` (aliases `/start`, `/panel`): Opens the executive touch dashboard with fleet status banner, total power, max chip temp, fans range, and responsive inline keyboard.
+   - Submenus (in-place navigation via `editMessageText`):
+     * `[ 📊 Métricas Flota ]`: Fleet telemetry with Unicode progress bars `[██████░░]`.
+     * `[ ⚙️ Presets / Perfiles ]`: Active presets and voltage elevator balancer status.
+     * `[ 🔄 Reinicios ]`: Two-tap safe reboot flow with 60s ephemeral token (`[ ✅ Confirmar Reinicio ]` / `[ ❌ Cancelar ]`).
+     * `[ 🔔 Alertas / Umbrales ]`: Active alert suppression and snooze countdowns.
+     * `[ 🔄 Actualizar Panel ]`: Refreshes dashboard in place.
+   - Incident Action Buttons: 4 contextual inline buttons embedded on all episode alerts (`[ 🩺 Diagnóstico ]`, `[ 📊 Ver Gráfico ]`, `[ 🔄 Reiniciar ]`, `[ 🔕 Silenciar 1h ]`).
+
+2. Unit & Integration Tests:
+   ```powershell
+   & ".\.venv\Scripts\python.exe" -m unittest tests/test_command_center.py
+   ```
+
+## Modo Silencio / Visitas & Safety Thermal Guard (Spec 044)
+
+### Verification Commands
+
+1. Interactive Telegram Commands:
+   - `/menu` -> `[ 🔇 Modo Silencio ]`: Opens the interactive duration selector (`30 min`, `1h`, `2h`, `4h`, `6h`, `Indefinido`, `🛑 Desactivar Modo Silencio`).
+   - `/silent`: Displays current silent mode status across all miners with acoustic ceiling and remaining time.
+   - `/silent <30m|1h|2h|4h|6h|indef>`: Directly activates visitor mode for specified duration.
+   - `/silent off` (aliases `cancelar`, `desactivar`): Immediately cancels silent mode and restores normal fan governor production schedule.
+
+2. Unit & Integration Tests:
+   ```powershell
+   & ".\.venv\Scripts\python.exe" -m unittest tests/test_silent_mode.py
+   ```
+
+3. Operational Response to Thermal Guard Events:
+   - `🌡️ [⚠️ MODO SILENCIO ANULADO POR GUARDIÁN TÉRMICO] <miner> — Temperatura detectada ≥ 83.5°C...`:
+     1. Thermal Guard immediately forces fans to 100% PWM and atomically clears `silent_mode_active = False` in `state.json`.
+     2. Send `/fans <miner>` to verify intake/exhaust RPMs.
+     3. Check ambient temperature in mining room or physical obstructions.
+     4. Silent mode remains disabled until manually re-enabled by the operator once chips cool down.
+
 ## Evidence Rules
 
 Every spec should record:

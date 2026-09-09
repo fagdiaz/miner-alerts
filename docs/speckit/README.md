@@ -11,7 +11,7 @@ Permite planificar, validar y auditar cambios seguros en producción: reducción
 
 | Documento | Propósito Principal |
 |---|---|
-| [`ROADMAP.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/ROADMAP.md) | **Backlog maestro de trabajo**, cola de entregas, matriz de riesgos y estado de ejecución de specs (Specs 001 a 040 completadas). |
+| [`ROADMAP.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/ROADMAP.md) | **Backlog maestro de trabajo**, cola de entregas, matriz de riesgos y estado de ejecución de specs (Specs 001 a 044 completadas). |
 | [`RUNBOOK.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/RUNBOOK.md) | **Manual de operaciones y procedimientos**: catálogo completo de comandos Telegram, simulacros de contingencia, hot backup/restore y recuperación de caídas. |
 | [`SPEC_PROGRAM.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/SPEC_PROGRAM.md) | **Marco programático**: secuencia formal de especificaciones, límites arquitectónicos, clases de riesgo y Criterio de Finalización (DoD). |
 | [`DELIVERY_PLAN.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/DELIVERY_PLAN.md) | **Calendario de entrega y estabilización**: ventanas de implementación, periodos de observación (soak) y control de cambios. |

@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/038-v3-release-stabilization/plan.md` (Implementation complete; V3.0.0 released & certified)
+`specs/044-silent-mode-thermal-guard/plan.md` (Implementation complete; Certified & Active in Production)
 
 Active production observation gate:
-`specs/038-v3-release-stabilization/plan.md` (Release Gate APPROVED; >267.3h continuous soak under PID 38816)
+`specs/044-silent-mode-thermal-guard/plan.md` (Release Gate APPROVED; 621 tests PASS, active in production under PID 58344)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

@@ -282,8 +282,10 @@ The program requires three documentation sweeps.
 - Specs 001 through 030 are **Completed, Tagged and Evidenced in Production** (`v2.0.0`).
 - Specs 031 through 038 are **Completed, Hardened and Certified in Production** (`v3.0.0`).
 - Specs 039 and 040 are **Completed, Calibrated for 83°C–84°C Operation, and Active in Production** (`v3.2.0`).
-- All 40 specifications across V1, V2, V3, and V3.1 have satisfied their design, test, concurrency, and evidence gates with 576/576 passing automated tests.
-- Active features in production: Spec 039 (Vnish Fan Governor) and Spec 040 (Dynamic Power & Preset Balancer).
+- Specs 041 and 042 are **Completed, Pure Modular Subpackages & Zero-Shim Cleanliness** (587 tests PASS).
+- Specs 043 and 044 are **Completed, Interactive Command Center, Visitor Silent Mode & Safety Thermal Guard, and Active in Production** (`v3.3.0`, 621 tests PASS).
+- All 44 specifications across V1, V2, V3, and V3.3 have satisfied their design, test, concurrency, and evidence gates with 621/621 passing automated tests.
+- Active features in production under PID 58344: Spec 039 (Fan Governor), Spec 040 (Dynamic Preset Balancer), Spec 043 (Telegram Command Center), Spec 044 (Modo Silencio & Thermal Guard).
 
 ## Planning Hardening Record - 2026-08-13
 

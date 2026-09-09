@@ -50,6 +50,10 @@ safety gates are not compressed to recover an estimate.
 | Spec 038 v3 release | Closed 2026-09-07 (`approved`) | Multi-threading concurrency audit, thread-safety hardening | 19 concurrency tests PASS, 514 total tests PASS, v3.0.0 approved. |
 | Spec 039 fan governor | Closed 2026-09-08 (`approved`) | Vnish fan governor, target 83°C, fail-safe 100%, active in production | 12 concurrency tests PASS, 549 tests PASS. |
 | Spec 040 dynamic presets | Closed 2026-09-08 (`approved`) | Preset balancer, elevator cascade & thermal step-down, active in production | 23 tests PASS (14 unit + 9 integration), 576 tests PASS. |
+| Spec 041 modular architecture | Closed 2026-09-08 (`approved`) | Modular domain split into app/core, app/vnish, app/governance, app/telegram | 587 tests PASS, 83 payload files. |
+| Spec 042 shim purge | Closed 2026-09-08 (`approved`) | Complete purge of 22 shims, direct canonical imports across all tests | 587 tests PASS, 60 payload files. |
+| Spec 043 command center | Closed 2026-09-08 (`approved`) | Telegram interactive command center /menu, inline keyboards, 2-step reboot, rich UI | 17 tests PASS, 602 tests PASS, 61 payload files. |
+| Spec 044 silent mode | Closed 2026-09-08 (`approved`) | Modo silencio (40%-70% PWM), persistent timer, C1-C4 compliance, thermal guard 83.5°C | 17 tests PASS, 621 tests PASS, active in production under PID 58344. |
 
 ## Milestones
 
@@ -68,6 +72,9 @@ safety gates are not compressed to recover an estimate.
 | 2026-09-07 | V2 release decision | Complete matrix, 267.2h soak, docs audit and approve record. |
 | 2026-09-07 | V3 Telegram Max & Intelligence (Specs 031-037) | All 7 modules implemented, tested and verified. |
 | 2026-09-07 | V3 Release Decision (Spec 038) | 514 tests PASS, 267.3h soak, concurrency hardened, v3.0.0 approve record. |
+| 2026-09-08 | V3.1 Governance & Autotuning (Specs 039-040) | Fan Governor and Dynamic Preset Balancer active in production. |
+| 2026-09-08 | V3.2 Domain Reorganization & Shim Purge (Specs 041-042) | 22 shims purged, clean app/ structure, 587 tests PASS. |
+| 2026-09-08 | V3.3 Interactive Control & Silent Mode (Specs 043-044) | RFC approved, 621 tests PASS, release audit verified, active in production under PID 58344. |
 
 ## Review And Bug-Fix Rhythm
 

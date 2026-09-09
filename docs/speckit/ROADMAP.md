@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (47 de 47 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 687 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (48 de 48 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 721 tests PASS).
 
 
 ---
@@ -590,6 +590,17 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Router de callbacks en `miner_monitor.py` con edición in-place, RBAC y pase de `event_store`.
 - [x] 12 tests específicos (8 unitarios en `test_mobile_diagnostics.py` + 4 integración en `test_telegram_callbacks.py`) y 687/687 tests globales PASS (0 fallos, 0 regresiones).
 
+### Spec 048: Safe Fleet Shutdown & Multi-Select Maintenance Mode (Completado)
+- [x] Condición C1 (Límite Estricto Mobile-First <= 32 Columnas): 100% de las tarjetas y líneas cumplen ancho de 32 columnas visibles.
+- [x] Condición C2 (Parada y Reanudación Segura Vnish): Wrappers transaccionales `safe_stop_mining` y `safe_resume_mining` contra `POST /api/v1/mining/stop` y `resume`.
+- [x] Condición C3 (Purga Térmica Activa 45s): Desconexión de carga hash (0W), barrido forzado con coolers por 45s y confirmación "ÁREA ELÉCTRICA SEGURA".
+- [x] Condición C4 (Selector Táctil Multiselección): Matriz interactiva de casillas `⬜`/`☑️` con bitmask compacta (`0000` $\leftrightarrow$ `1010`) en callbacks <= 21 bytes.
+- [x] Condición C5 (Confirmación en 2 Pasos con Token Criptográfico): Ephemeral 60s token en `CallbackTokenRegistry`.
+- [x] Condición C6 (Auto-Snooze de Mantenimiento 4h): Supresión de falsas alarmas y autorreinicios; auto-unsnooze en `/resume`.
+- [x] Condición C7 (Interlocks y Armonización): Bloqueo de reboots manuales y automáticos; omitir mineros detenidos en Fan Governor y Balancer; insignias `⏸️ DETENIDO`; comandos `/shutdown` y `/resume` registrados en `/help`.
+- [x] 34 tests específicos (17 unitarios en `test_fleet_shutdown.py` + 4 en `test_command_center.py` + 13 integración en `test_safe_fleet_shutdown_integration.py`) y 721/721 tests globales PASS (0 fallos, 0 regresiones).
+- [x] Servicio Windows `MinerAlerts` reiniciado y verificado operativo en producción bajo PID 32436.
+
 
 ---
 
@@ -630,6 +641,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Centro de Ayuda táctil interactivo `/help` con navegación por categorías y tarjetas Mobile-First <= 32 cols (Spec 045).
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /status, /fans, /efficiency, /presets (Spec 046).
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /balancer, /elevadores, /digest, /snoozed, /events (Spec 047).
+- [x] Apagado Seguro de Flota y Selector Multiselección de Mantenimiento Eléctrico con Purga Térmica (Spec 048).
 
 
 ---

@@ -3,6 +3,52 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-09] - Spec 048: Safe Fleet Shutdown & Multi-Select Maintenance Mode (Completado)
+
+* **Objetivo**: Implementar un sistema de parada segura (*Apagado Seguro*) y modo de mantenimiento eléctrico desde Telegram, permitiendo desenergizar de forma selectiva (de 1 a 4 mineros o la granja completa) antes de realizar maniobras en la red eléctrica o tableros sin cortar la corriente en caliente ni generar arcos eléctricos o estrés térmico en componentes. Incluye selector táctil interactivo multiselección con casillas (`⬜`/`☑️`), confirmación en 2 pasos mediante token efímero de 60s, purga térmica activa (45s de ventiladores forzados para enfriar chips antes de habilitar el corte AC), auto-snooze de 4 horas para suprimir alarmas/reboots y reanudación limpia con auto-unsnooze.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Límite Estricto Mobile-First <= 32 Columnas)**: El 100% de las tarjetas de confirmación, selector, en progreso, área eléctrica segura y reanudación cumplen `visible_line_width(line) <= 32`.
+  - **C2 (Parada y Reanudación Segura de Hardware Vnish)**: Métodos `stop_mining()` (`POST /api/v1/mining/stop`) y `resume_mining()` (`POST /api/v1/mining/resume`) con transacciones HTTP y timeouts acotados.
+  - **C3 (Purga Térmica Activa de 45 Segundos)**: Ventilación forzada de 45s tras el corte de carga hash (0W) para eliminar calor remanente antes del corte eléctrico, finalizando con la alerta "ÁREA ELÉCTRICA SEGURA".
+  - **C4 (Selector Táctil Multiselección Determinista)**: Matriz de casillas con máscara compacta (`0000` $\leftrightarrow$ `1010`) en callbacks `<= 21` bytes (`cc:act:sd_tog:<id>:<mask >`), permitiendo marcar cualquier combinación en una sola pantalla sin chat spam.
+  - **C5 (Confirmación en 2 Pasos con Token Criptográfico Efímero de 60s)**: Generación y consumo atómico en `CallbackTokenRegistry` para impedir ejecuciones accidentales.
+  - **C6 (Auto-Snooze de Mantenimiento de 4 Horas)**: Supresión total de falsas alarmas `OFFLINE`/`LOW` y bloqueo estricto de autorreinicios durante la ventana de trabajo; auto-unsnooze automático en `/resume`.
+  - **C7 (Interlocks de Protección & Armonización de Comandos)**: `/reboot` manual y auto-reboot bloquean reinicios sobre mineros detenidos; Fan Governor y Preset Balancer omiten mineros en parada; `/snoozed` y `/status` reflejan el estado con insignia `⏸️ DETENIDO (Mantenimiento)`; registro de `/shutdown` y `/resume` en el catálogo de `/help`.
+* **Módulos y Cambios**:
+  - `app/vnish/client.py` y `app/vnish/__init__.py`:
+    * Implementación de `stop_mining()`, `resume_mining()`, `safe_stop_mining()` y `safe_resume_mining()`.
+  - `app/governance/fleet_shutdown.py`:
+    * Nuevo orquestador de parada con helpers de máscara de bits (`make_empty_bitmask`, `make_full_bitmask`, `toggle_selection_bitmask`, `resolve_selected_miners`).
+    * Despachadores paralelos con `ThreadPoolExecutor` (`execute_parallel_shutdown`, `execute_parallel_resume`).
+    * Renderizadores de tarjetas móviles (`render_shutdown_in_progress`, `render_safe_area_card`, `render_resume_success_card`, `render_shutdown_error_card`).
+  - `app/governance/__init__.py`:
+    * Exportación de todos los tipos y funciones de `fleet_shutdown`.
+  - `app/telegram/command_center.py`:
+    * Constantes `CC_NAV_SHUTDOWN`, `CC_NAV_RESUME`.
+    * Parser de callbacks para `sd_tog`, `sd_req`, `sd_cfm`, `sd_ccl`, `sd_all`, `sd_clr`, `resume`.
+    * Renderizadores `render_shutdown_menu()`, `render_shutdown_confirmation()`, `render_resume_menu()`.
+    * Incorporación del botón táctil `[ 🛑 Parada Segura ]` en el dashboard principal.
+  - `app/miner_monitor.py`:
+    * Inclusión de `is_shutdown_maintenance: bool` y `shutdown_maintenance_ts: float` en `MinerState`, `load_state()` y `save_state()`.
+    * Routing de callbacks de parada, confirmación, purga asíncrona en hilo daemon y reanudación.
+    * Comandos de texto `/shutdown [args]`, `/stop`, `/apagar`, `/resume [args]`, `/reanudar`.
+    * Guardas de seguridad en `/reboot` (single y bulk), `fan_governor` y `preset_balancer`.
+  - `app/telegram/fleet_cards.py`:
+    * Insignia `⏸️` para mineros en parada en `_miner_state_badge()`.
+    * Líneas `Estado: ⏸️ DETENIDO` y `Modo: ⏸️ Parada Segura` en `render_fleet_status_card()`.
+  - `app/telegram/snooze.py`:
+    * Etiqueta `[⏸️ DETENIDO]` en `build_snooze_status_text()` para `/snoozed`.
+  - `app/telegram/help_center.py`:
+    * Registro canónico de `/shutdown` y `/resume` bajo la categoría `ctrl`.
+  - Tests:
+    * `tests/test_fleet_shutdown.py` (17 tests).
+    * `tests/test_command_center.py` (22 tests).
+    * `tests/test_safe_fleet_shutdown_integration.py` (13 tests).
+* **Resultados y Pruebas**:
+  - Compilación sintáctica: 100% OK (`miner_monitor.py`, `fleet_shutdown.py`, `command_center.py`, `fleet_cards.py`, `snooze.py`, `help_center.py`).
+  - Suite global completa: **721/721 tests PASS** en 11.124s (0 fallos, 0 errores, +34 tests netos sobre baseline).
+  - Servicio Windows `MinerAlerts` reiniciado y verificado operativo bajo PID `32436`.
+
 ## [2026-09-09] - Spec 047: Mobile-First Card Layout for Balancer, Digest & Operational Events (Completado)
 
 * **Objetivo**: Completar la armonización Mobile-First de la interfaz de Telegram para los módulos de diagnóstico, gobernanza y soporte operativo restantes: Balanceador de presets y elevadores (`/balancer`, `/elevadores`), Reporte diario ejecutivo (`/digest`, `/summary`), Silencios de mantenimiento (`/snoozed`) e Historial de incidentes operacionales (`/events`, `/event <id>`, `/why`), garantizando renderizado determinista `<= 32` columnas visibles por línea, teclado inline de refresco en 1 toque (`[ 🔄 Actualizar ] [ 📱 Menú ]`), edición in-place sin spam y apego a las directivas RFC C1-C10.

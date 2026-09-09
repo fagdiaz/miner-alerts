@@ -291,6 +291,32 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
         examples=["/snoozed"],
         danger_level="safe",
     ),
+    "shutdown": CommandDefinition(
+        name="shutdown",
+        summary="Parada segura y purga térmica.",
+        usage="/shutdown [id1 id2... | all]",
+        category="ctrl",
+        detail=[
+            "Detiene hashboards (0W) e inicia purga térmica activa de 45s.",
+            "Aplica 4h de mantenimiento eléctrico sin falsas alarmas.",
+        ],
+        examples=["/shutdown", "/shutdown 23 25", "/shutdown all"],
+        aliases=["stop", "apagar", "parada"],
+        danger_level="danger",
+    ),
+    "resume": CommandDefinition(
+        name="resume",
+        summary="Reanudar minado tras parada.",
+        usage="/resume [id1 id2... | all]",
+        category="ctrl",
+        detail=[
+            "Reconecta tensión DC a hashboards e inicializa minado.",
+            "Remueve automáticamente el estado de mantenimiento.",
+        ],
+        examples=["/resume", "/resume 23 25", "/resume all"],
+        aliases=["reanudar"],
+        danger_level="safe",
+    ),
 
     # ── Diagnóstico & Eventos (diag) ──
     "events": CommandDefinition(
@@ -433,6 +459,8 @@ HELP_CATEGORIES: Dict[str, HelpCategory] = {
             "snooze",
             "unsnooze",
             "snoozed",
+            "shutdown",
+            "resume",
         ],
     ),
     "diag": HelpCategory(

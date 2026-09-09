@@ -394,3 +394,138 @@ def safe_get_overclock_settings(
                 pass
 
 
+# ---------------------------------------------------------------------------
+# Spec 048: Safe Fleet Shutdown & Mining Control API methods
+# ---------------------------------------------------------------------------
+
+def stop_mining(
+    host: str,
+    token: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Halt mining hashboards via POST /api/v1/mining/stop.
+    This drops DC hashboard power to 0V while keeping the control board
+    and fans powered for safe thermal evacuation.
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    url = f"http://{host}/api/v1/mining/stop"
+    headers = {"Authorization": f"Bearer {token}"}
+    requester = session or requests
+    try:
+        resp = requester.post(url, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            return True, None
+        return False, f"http_status_{resp.status_code}"
+    except requests.exceptions.Timeout:
+        return False, "connection_timeout"
+    except Exception as exc:
+        return False, f"request_error: {type(exc).__name__}"
+
+
+def resume_mining(
+    host: str,
+    token: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Resume mining operations via POST /api/v1/mining/resume (or /mining/start fallback).
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    requester = session or requests
+    for endpoint in ("mining/resume", "mining/start"):
+        url = f"http://{host}/api/v1/{endpoint}"
+        try:
+            resp = requester.post(url, headers=headers, timeout=timeout)
+            if resp.status_code == 200:
+                return True, None
+        except requests.exceptions.Timeout:
+            return False, "connection_timeout"
+        except Exception as exc:
+            return False, f"request_error: {type(exc).__name__}"
+    return False, "http_status_resume_failed"
+
+
+def safe_stop_mining(
+    host: str,
+    password: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Transactional wrapper to stop mining:
+    1. Authenticate (unlock)
+    2. Dispatch mining stop
+    3. Ensure session is locked in finally block
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    token = None
+    try:
+        ok, token, err = unlock_miner(host, password, timeout=timeout)
+        if not ok or not token:
+            return False, f"unlock_failed: {err}"
+        return stop_mining(host, token, timeout=timeout)
+    finally:
+        if token:
+            try:
+                lock_miner(host, token, timeout=timeout)
+            except Exception:
+                pass
+
+
+def safe_resume_mining(
+    host: str,
+    password: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Transactional wrapper to resume mining:
+    1. Authenticate (unlock)
+    2. Dispatch mining resume
+    3. Ensure session is locked in finally block
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    token = None
+    try:
+        ok, token, err = unlock_miner(host, password, timeout=timeout)
+        if not ok or not token:
+            return False, f"unlock_failed: {err}"
+        return resume_mining(host, token, timeout=timeout)
+    finally:
+        if token:
+            try:
+                lock_miner(host, token, timeout=timeout)
+            except Exception:
+                pass
+
+
+def get_miner_status(
+    host: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Read unauthenticated status from /api/v1/status.
+    Returns: (success: bool, status_dict: Optional[dict], error_message: Optional[str])
+    where status_dict contains 'miner_state' ('mining', 'stopped', 'paused', etc.)
+    """
+    url = f"http://{host}/api/v1/status"
+    requester = session or requests
+    try:
+        resp = requester.get(url, timeout=timeout)
+        if resp.status_code == 200:
+            return True, resp.json(), None
+        return False, None, f"http_status_{resp.status_code}"
+    except requests.exceptions.Timeout:
+        return False, None, "connection_timeout"
+    except Exception as exc:
+        return False, None, f"request_error: {type(exc).__name__}"
+
+
+

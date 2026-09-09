@@ -106,6 +106,8 @@ def _short_host(host: str) -> str:
 
 def _miner_state_badge(state_obj: Any) -> str:
     """Derive Unicode semaphore badge from MinerState or state string."""
+    if state_obj is not None and getattr(state_obj, "is_shutdown_maintenance", False):
+        return "⏸️"
     st = getattr(state_obj, "state", state_obj)
     if isinstance(st, str):
         st_upper = st.upper()
@@ -223,7 +225,9 @@ def render_fleet_status_card(
             total_power += power
 
         # Line 1: Hashrate & Boards
-        if st_state == "OFFLINE":
+        if getattr(st, "is_shutdown_maintenance", False):
+            lines.append("  • Estado: ⏸️ DETENIDO")
+        elif st_state == "OFFLINE":
             lines.append("  • Estado: OFFLINE (0.0 TH/s)")
         elif rate is not None:
             boards_str = f" ({active_b}/{exp_b})" if active_b is not None else ""
@@ -245,7 +249,9 @@ def render_fleet_status_card(
             lines.append(f"  • Eficiencia: {efficiency:.1f} J/TH")
 
         # Optional Line 4: Silent or Snooze status
-        if silent:
+        if getattr(st, "is_shutdown_maintenance", False):
+            lines.append("  • Modo: ⏸️ Parada Segura")
+        elif silent:
             lines.append("  • Modo: 🔇 Silencio")
         elif snooze_until is not None:
             lines.append("  • Estado: 🔕 Silenciado")

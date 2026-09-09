@@ -22,13 +22,15 @@ CC_NAV_REBOOT = "cc:nav:reboot"
 CC_NAV_PROFILES = "cc:nav:profiles"
 CC_NAV_ALERTS = "cc:nav:alerts"
 CC_NAV_SILENT = "cc:nav:silent"
+CC_NAV_SHUTDOWN = "cc:nav:shutdown"
+CC_NAV_RESUME = "cc:nav:resume"
 CC_ACT_REFRESH = "cc:act:refresh"
 
 
 @dataclass(frozen=True)
 class CommandCenterAction:
     kind: str  # "nav" or "act"
-    target: str  # "main", "metrics", "reboot", "rb_req", "rb_cfm", "silent", etc.
+    target: str  # "main", "metrics", "reboot", "rb_req", "rb_cfm", "silent", "shutdown", etc.
     miner_id: Optional[str] = None
     token: Optional[str] = None
     param: Optional[str] = None
@@ -38,13 +40,20 @@ def parse_command_center_callback(raw_data: str) -> Optional[CommandCenterAction
     """Parse callback_data starting with 'cc:' into a structured CommandCenterAction.
     
     Supported grammars:
-    - cc:nav:<target>                  (e.g., cc:nav:main, cc:nav:metrics, cc:nav:reboot, cc:nav:silent)
+    - cc:nav:<target>                  (e.g., cc:nav:main, cc:nav:metrics, cc:nav:reboot, cc:nav:silent, cc:nav:shutdown)
     - cc:act:refresh                   (refresh current dashboard)
     - cc:act:refresh:<view>            (refresh specific view)
     - cc:act:silent:<duration_key>     (activate or deactivate silent mode: 30m, 1h, 2h, 4h, 6h, indef, off)
     - cc:act:rb_req:<miner_id>         (request reboot confirmation)
     - cc:act:rb_cfm:<token>:<miner_id> (confirm reboot with token)
     - cc:act:rb_ccl:<miner_id>         (cancel reboot, return to reboot list)
+    - cc:act:sd_tog:<miner_id>:<bitmask> (toggle miner selection in shutdown menu)
+    - cc:act:sd_req:<bitmask>          (request shutdown confirmation for selected bitmask)
+    - cc:act:sd_cfm:<token>:<bitmask>  (confirm shutdown with token)
+    - cc:act:sd_ccl:<bitmask>          (cancel shutdown, return to shutdown menu)
+    - cc:act:sd_all                    (mark all miners in shutdown menu)
+    - cc:act:sd_clr                    (clear all marks in shutdown menu)
+    - cc:act:resume:<target>           (resume mining on specific miner or 'all')
     """
     if not raw_data or not raw_data.startswith(CC_PREFIX):
         return None
@@ -54,7 +63,7 @@ def parse_command_center_callback(raw_data: str) -> Optional[CommandCenterAction
         return None
 
     kind = parts[1]  # "nav" or "act"
-    action = parts[2]  # "main", "metrics", "reboot", "refresh", "rb_req", "silent", etc.
+    action = parts[2]  # "main", "metrics", "reboot", "refresh", "rb_req", "silent", "sd_*", etc.
 
     if kind == "nav":
         return CommandCenterAction(kind="nav", target=action)
@@ -76,6 +85,20 @@ def parse_command_center_callback(raw_data: str) -> Optional[CommandCenterAction
                 token=parts[3],
                 miner_id=parts[4],
             )
+        elif action == "sd_tog" and len(parts) >= 5:
+            return CommandCenterAction(kind="act", target="sd_tog", miner_id=parts[3], param=parts[4])
+        elif action == "sd_req" and len(parts) >= 4:
+            return CommandCenterAction(kind="act", target="sd_req", param=parts[3])
+        elif action == "sd_cfm" and len(parts) >= 5:
+            return CommandCenterAction(kind="act", target="sd_cfm", token=parts[3], param=parts[4])
+        elif action == "sd_ccl" and len(parts) >= 4:
+            return CommandCenterAction(kind="act", target="sd_ccl", param=parts[3])
+        elif action == "sd_all":
+            return CommandCenterAction(kind="act", target="sd_all")
+        elif action == "sd_clr":
+            return CommandCenterAction(kind="act", target="sd_clr")
+        elif action == "resume" and len(parts) >= 4:
+            return CommandCenterAction(kind="act", target="resume", param=parts[3])
 
     return None
 
@@ -214,6 +237,7 @@ def render_main_dashboard(
             {"text": "🔄 Actualizar Panel", "callback_data": CC_ACT_REFRESH},
         ],
         [
+            {"text": "🛑 Parada Segura", "callback_data": CC_NAV_SHUTDOWN},
             {"text": "📖 Centro de Ayuda", "callback_data": HELP_NAV_HOME},
         ],
     ])
@@ -492,3 +516,177 @@ def build_alert_action_buttons(miner_id: str) -> Dict[str, Any]:
             {"text": "🔕 Silenciar 1h", "callback_data": f"snz:{miner_id}:60"},
         ],
     ])
+
+
+# ---------------------------------------------------------------------------
+# Spec 048: Safe Fleet Shutdown & Multi-Select UI Views
+# ---------------------------------------------------------------------------
+
+def render_shutdown_menu(
+    states: Dict[str, Any],
+    miners: Optional[List[Dict[str, Any]]] = None,
+    selected_mask: Optional[str] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """Render interactive multi-select shutdown menu with checkbox matrix."""
+    from app.governance.fleet_shutdown import (
+        extract_miner_identifier,
+        toggle_selection_bitmask,
+    )
+
+    miners_list = miners or []
+    if not miners_list and states:
+        miners_list = [{"name": k} for k in states.keys()]
+
+    total = len(miners_list)
+    mask = selected_mask if (selected_mask and len(selected_mask) == total) else "0" * total
+
+    lines = [
+        "🔌 *PARADA SEGURA: SELECCIÓN*",
+        "─" * 32,
+        "Marcá los mineros a apagar",
+        "con purga térmica preventiva.",
+        "",
+    ]
+
+    selected_names = []
+    for idx, miner in enumerate(miners_list):
+        m_id = extract_miner_identifier(miner)
+        st = _resolve_miner_state(states, miner) or states.get(m_id)
+        p = getattr(st, "governor_last_power_w", None) if st else None
+        p_str = f"[{p:.0f}W]" if p is not None else "[--W]"
+        st_val = getattr(st, "state", "OK") if st else "OK"
+        icon = "🟢" if st_val == "OK" else ("⏸️" if getattr(st, "is_shutdown_maintenance", False) else "🟡")
+        is_selected = (mask[idx] == "1") if idx < len(mask) else False
+        if is_selected:
+            selected_names.append(m_id)
+        lines.append(f"• S19JPRO-{m_id}: {p_str} {icon}")
+
+    lines.append("")
+    if selected_names:
+        lines.append(f"• *Marcados*: {', '.join(selected_names)}")
+    else:
+        lines.append("• *Marcados*: (ninguno)")
+    lines.append("─" * 32)
+
+    # Build checkbox grid (2 buttons per row)
+    rows: List[List[Dict[str, str]]] = []
+    curr_row: List[Dict[str, str]] = []
+    for idx, miner in enumerate(miners_list):
+        m_id = extract_miner_identifier(miner)
+        is_on = (mask[idx] == "1") if idx < len(mask) else False
+        tag = f"☑️ S19-{m_id}" if is_on else f"⬜ S19-{m_id}"
+        new_mask = toggle_selection_bitmask(mask, idx)
+        btn = {"text": tag, "callback_data": f"{CC_ACT_PREFIX}sd_tog:{m_id}:{new_mask}"}
+        curr_row.append(btn)
+        if len(curr_row) == 2:
+            rows.append(curr_row)
+            curr_row = []
+    if curr_row:
+        rows.append(curr_row)
+
+    # Action button
+    count = mask.count("1")
+    if count == 0:
+        action_btn_text = "🛑 Apagar Seleccionados (0)"
+    elif count == total:
+        action_btn_text = f"⚡ APAGAR GRANJA ({total}) ⚡"
+    else:
+        action_btn_text = f"🛑 APAGAR SELECCIONADOS ({count}) 🛑"
+
+    rows.append([{"text": action_btn_text, "callback_data": f"{CC_ACT_PREFIX}sd_req:{mask}"}])
+    rows.append([
+        {"text": "✅ Marcar Todos", "callback_data": f"{CC_ACT_PREFIX}sd_all"},
+        {"text": "🔄 Desmarcar", "callback_data": f"{CC_ACT_PREFIX}sd_clr"},
+    ])
+    rows.append([
+        {"text": "▶️ Reanudar Minado", "callback_data": CC_NAV_RESUME},
+        {"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN},
+    ])
+
+    keyboard = build_inline_keyboard(rows)
+    return "\n".join(lines), keyboard
+
+
+def render_shutdown_confirmation(
+    selected_ids: List[str],
+    token: str,
+    bitmask: str,
+) -> Tuple[str, Dict[str, Any]]:
+    """Render safe 2-step confirmation dialog with ephemeral token for shutdown."""
+    target_str = ", ".join(f"S19JPRO-{x}" for x in selected_ids)
+    lines = [
+        "⚠️ *CONFIRMAR PARADA SEGURA*",
+        "─" * 32,
+        "¿Detener los siguientes equipos?",
+        f"• {target_str}",
+        "",
+        "*Secuencia de seguridad*:",
+        "1. Desconexión carga hash (0W)",
+        "2. Purga térmica (45s coolers)",
+        "3. Snooze de mantenimiento (4h)",
+        "",
+        "⏱️ _Confirmación expira en 60s._",
+        "─" * 32,
+    ]
+    keyboard = build_inline_keyboard([
+        [
+            {
+                "text": f"✅ Sí, Confirmar Parada ({len(selected_ids)})",
+                "callback_data": f"{CC_ACT_PREFIX}sd_cfm:{token}:{bitmask}",
+            }
+        ],
+        [
+            {
+                "text": "❌ Cancelar",
+                "callback_data": f"{CC_ACT_PREFIX}sd_ccl:{bitmask}",
+            }
+        ],
+    ])
+    return "\n".join(lines), keyboard
+
+
+def render_resume_menu(
+    states: Dict[str, Any],
+    miners: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """Render resume selection menu to restart stopped miners."""
+    from app.governance.fleet_shutdown import extract_miner_identifier
+
+    miners_list = miners or []
+    if not miners_list and states:
+        miners_list = [{"name": k} for k in states.keys()]
+
+    lines = [
+        "▶️ *REANUDAR MINADO*",
+        "─" * 32,
+        "Seleccioná qué mineros reactivar",
+        "tras el mantenimiento eléctrico:",
+        "",
+    ]
+
+    for miner in miners_list:
+        m_id = extract_miner_identifier(miner)
+        lines.append(f"• S19JPRO-{m_id}")
+    lines.append("─" * 32)
+
+    rows: List[List[Dict[str, str]]] = []
+    curr_row: List[Dict[str, str]] = []
+    for miner in miners_list:
+        m_id = extract_miner_identifier(miner)
+        btn = {"text": f"▶️ Reanudar {m_id}", "callback_data": f"{CC_ACT_PREFIX}resume:{m_id}"}
+        curr_row.append(btn)
+        if len(curr_row) == 2:
+            rows.append(curr_row)
+            curr_row = []
+    if curr_row:
+        rows.append(curr_row)
+
+    rows.append([{"text": "🟢 REANUDAR GRANJA COMPLETA 🟢", "callback_data": f"{CC_ACT_PREFIX}resume:all"}])
+    rows.append([
+        {"text": "🛑 Parada Segura", "callback_data": CC_NAV_SHUTDOWN},
+        {"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN},
+    ])
+
+    keyboard = build_inline_keyboard(rows)
+    return "\n".join(lines), keyboard
+

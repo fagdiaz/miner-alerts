@@ -118,8 +118,10 @@ def build_snooze_status_text(
             rem = get_snooze_remaining_seconds(st, curr)
             exp_str = format_snooze_expiry_time(st.snooze_until_ts)
             display_n = m["name"].replace("S19JPRO-", "").replace("s19jpro-", "")
+            is_maint = getattr(st, "is_shutdown_maintenance", False)
+            extra_tag = " [⏸️ DETENIDO]" if is_maint else ""
             snoozed_items.append(
-                f"• {m['name']} ({display_n}): resta {format_snooze_remaining(rem)}\n"
+                f"• {m['name']} ({display_n}){extra_tag}: resta {format_snooze_remaining(rem)}\n"
                 f"  - Hasta las {exp_str}"
             )
 

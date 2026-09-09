@@ -194,6 +194,12 @@ CMD_WHITELIST = {
     "silent",
     "silencio",
     "modo_silencio",
+    "shutdown",
+    "stop",
+    "apagar",
+    "parada",
+    "resume",
+    "reanudar",
 }
 
 
@@ -851,6 +857,9 @@ class MinerState:
     silent_mode_prev_duty: Optional[int] = None        # Hardware duty before silent mode activation
     silent_mode_prev_preset: Optional[str] = None      # VNish preset name before activation
     silent_mode_target_max_duty: int = 70              # Acoustic ceiling (default 70%)
+    # Spec 048: Safe Fleet Shutdown & Maintenance Mode
+    is_shutdown_maintenance: bool = False
+    shutdown_maintenance_ts: float = 0.0
 
 
 def load_config() -> Dict[str, Any]:
@@ -2298,6 +2307,9 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     else None
                 ),
                 silent_mode_target_max_duty=int(data.get("silent_mode_target_max_duty", 70)),
+                # Spec 048: Safe Fleet Shutdown & Maintenance Mode
+                is_shutdown_maintenance=bool(data.get("is_shutdown_maintenance", False)),
+                shutdown_maintenance_ts=float(data.get("shutdown_maintenance_ts", 0.0)),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2373,6 +2385,9 @@ def save_state(
             "silent_mode_prev_duty": getattr(state, "silent_mode_prev_duty", None),
             "silent_mode_prev_preset": getattr(state, "silent_mode_prev_preset", None),
             "silent_mode_target_max_duty": getattr(state, "silent_mode_target_max_duty", 70),
+            # Spec 048: Safe Fleet Shutdown & Maintenance Mode
+            "is_shutdown_maintenance": getattr(state, "is_shutdown_maintenance", False),
+            "shutdown_maintenance_ts": getattr(state, "shutdown_maintenance_ts", 0.0),
         }
     tmp_path = state_path.with_suffix(".tmp")
     try:
@@ -2451,6 +2466,8 @@ def execute_governor_cycle(
             state_key = f"{name}|{host}:{port}"
             state = states.get(state_key)
             if state is None:
+                continue
+            if getattr(state, "is_shutdown_maintenance", False):
                 continue
             seconds_since = now_ts - (state.governor_last_change_ts or 0.0)
 
@@ -2805,6 +2822,14 @@ def execute_balancer_cycle(
 
     for m_metrics in metrics_list:
         m_dict = miner_map.get(m_metrics.miner_name, {})
+        st = None
+        with state_lock:
+            for sk, s in states.items():
+                if m_metrics.miner_name in sk or (m_dict.get("host") and m_dict["host"] in sk):
+                    st = s
+                    break
+        if st and getattr(st, "is_shutdown_maintenance", False):
+            continue
         max_override = m_dict.get("max_preset")
         decision = evaluate_balancer_step(
             metrics=m_metrics,
@@ -2913,6 +2938,8 @@ def _handle_command_center_callback(
     from app.telegram.command_center import (
         CC_NAV_MAIN,
         CC_NAV_SILENT,
+        CC_NAV_SHUTDOWN,
+        CC_NAV_RESUME,
         build_inline_keyboard,
         parse_command_center_callback,
         render_alerts_view,
@@ -2922,6 +2949,22 @@ def _handle_command_center_callback(
         render_reboot_confirmation,
         render_reboot_menu,
         render_silent_mode_view,
+        render_shutdown_menu,
+        render_shutdown_confirmation,
+        render_resume_menu,
+    )
+    from app.governance.fleet_shutdown import (
+        DEFAULT_MAINTENANCE_SNOOZE_HOURS,
+        DEFAULT_PURGE_SECONDS,
+        execute_parallel_resume,
+        execute_parallel_shutdown,
+        extract_miner_identifier,
+        render_resume_success_card,
+        render_safe_area_card,
+        render_shutdown_error_card,
+        render_shutdown_in_progress,
+        resolve_selected_miners,
+        toggle_selection_bitmask,
     )
     cb_data = cb_query.get("data") or ""
     action = parse_command_center_callback(cb_data)
@@ -2951,6 +2994,10 @@ def _handle_command_center_callback(
             new_text, new_markup = render_alerts_view(states_snapshot, config, miners)
         elif action.target == "silent":
             new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+        elif action.target == "shutdown":
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+        elif action.target == "resume":
+            new_text, new_markup = render_resume_menu(states_snapshot, miners)
     elif action.kind == "act":
         if action.target == "refresh":
             view = action.param or "main"
@@ -2964,6 +3011,10 @@ def _handle_command_center_callback(
                 new_text, new_markup = render_alerts_view(states_snapshot, config, miners)
             elif view == "silent":
                 new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+            elif view == "shutdown":
+                new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+            elif view == "resume":
+                new_text, new_markup = render_resume_menu(states_snapshot, miners)
             else:
                 new_text, new_markup = render_main_dashboard(states_snapshot, config, miners)
         elif action.target == "silent":
@@ -3004,7 +3055,146 @@ def _handle_command_center_callback(
                     states_snapshot = {k: v for k, v in states.items()}
                 log(f"[SILENT_MODE] Activated via Command Center button: sub={sub} max={_sm_target_max}%")
                 new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+        elif action.target == "sd_tog":
+            new_mask = action.param or ("0" * len(miners))
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask=new_mask)
+        elif action.target == "sd_all":
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="1" * len(miners))
+        elif action.target == "sd_clr":
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+        elif action.target == "sd_req":
+            mask = action.param or ("0" * len(miners))
+            if mask.count("1") == 0:
+                answer_callback_query(bot_token, cb_id, text="⚠️ Marcá al menos un minero con las casillas ⬜.", show_alert=True)
+                return
+            selected_miners = resolve_selected_miners(mask, miners)
+            selected_ids = [extract_miner_identifier(m) for m in selected_miners]
+            token = token_registry.create_token(mask, action="shutdown")
+            new_text, new_markup = render_shutdown_confirmation(selected_ids, token, mask)
+        elif action.target == "sd_ccl":
+            token_registry.invalidate_miner(action.param or "")
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask=action.param or ("0" * len(miners)))
+        elif action.target == "sd_cfm":
+            valid, stored_mask, reason = token_registry.consume_token(action.token or "")
+            if not valid or stored_mask != action.param:
+                answer_callback_query(bot_token, cb_id, text="⚠️ Token inválido o expirado.", show_alert=True)
+                return
+            if qa_mode and not qa_allow_actions:
+                answer_callback_query(bot_token, cb_id, text="🚫 Parada bloqueada (modo QA).", show_alert=True)
+                return
+            mask = action.param or ("0" * len(miners))
+            selected_miners = resolve_selected_miners(mask, miners)
+            target_ids = [extract_miner_identifier(m) for m in selected_miners]
+            vnish_pw = str(config.get("vnish_api_password", "admin"))
+            results = execute_parallel_shutdown(selected_miners, vnish_pw)
+            now_ts = time.time()
+            with state_lock:
+                for m in selected_miners:
+                    m_id = extract_miner_identifier(m)
+                    res = results.get(m_id)
+                    if res and res.success:
+                        sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                        st = states.get(sk)
+                        if st is None:
+                            states[sk] = MinerState()
+                            st = states[sk]
+                        st.is_shutdown_maintenance = True
+                        st.shutdown_maintenance_ts = now_ts
+                        st.snooze_until_ts = now_ts + (DEFAULT_MAINTENANCE_SNOOZE_HOURS * 3600.0)
+                        log(f"[SHUTDOWN] Miner {m_id} safe stop OK: maintenance snooze 4h active")
+                save_state(state_path, states, current_last_update_id)
+
+            for m in selected_miners:
+                m_id = extract_miner_identifier(m)
+                res = results.get(m_id)
+                record_action_outcome(
+                    event_store,
+                    occurred_ts=now_ts,
+                    miner=m,
+                    action="stop_mining",
+                    source="manual_shutdown",
+                    ok=(res.success if res else False),
+                    message=("Parada segura exitosa" if res and res.success else (res.error if res else "Error")),
+                )
+
+            errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
+            success_ids = [r.miner_id for r in results.values() if r.success]
+            if errors and not success_ids:
+                new_text = render_shutdown_error_card(errors)
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+            else:
+                new_text = render_shutdown_in_progress(success_ids, purge_seconds=DEFAULT_PURGE_SECONDS)
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+                if success_ids:
+                    def _purge_and_notify(targets=list(success_ids), chat=cb_chat_id):
+                        time.sleep(DEFAULT_PURGE_SECONDS)
+                        safe_card = render_safe_area_card(targets, snooze_hours=DEFAULT_MAINTENANCE_SNOOZE_HOURS)
+                        send_telegram(
+                            bot_token,
+                            str(chat),
+                            safe_card,
+                            "SHUTDOWN_SAFE",
+                            "shutdown_safe_purge",
+                            is_command=True,
+                        )
+                    t = threading.Thread(target=_purge_and_notify, daemon=True, name="ShutdownPurgeNotify")
+                    t.start()
+        elif action.target == "resume":
+            target_id = action.miner_id or "all"
+            if target_id == "all":
+                target_miners = list(miners)
+            else:
+                m_obj = resolve_miner(target_id, miners)
+                target_miners = [m_obj] if m_obj else []
+
+            if not target_miners:
+                new_text = f"❌ Minero {target_id} no encontrado."
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+            else:
+                vnish_pw = str(config.get("vnish_api_password", "admin"))
+                now_ts = time.time()
+                results = execute_parallel_resume(target_miners, vnish_pw)
+                with state_lock:
+                    for m in target_miners:
+                        m_id = extract_miner_identifier(m)
+                        res = results.get(m_id)
+                        if res and res.success:
+                            sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                            st = states.get(sk)
+                            if st:
+                                st.is_shutdown_maintenance = False
+                                st.snooze_until_ts = None
+                            log(f"[RESUME] Miner {m_id} mining resumed: maintenance snooze cleared")
+                    save_state(state_path, states, current_last_update_id)
+
+                for m in target_miners:
+                    m_id = extract_miner_identifier(m)
+                    res = results.get(m_id)
+                    record_action_outcome(
+                        event_store,
+                        occurred_ts=now_ts,
+                        miner=m,
+                        action="resume_mining",
+                        source="manual_resume",
+                        ok=(res.success if res else False),
+                        message=("Reanudación exitosa" if res and res.success else (res.error if res else "Error")),
+                    )
+
+                errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
+                success_ids = [r.miner_id for r in results.values() if r.success]
+                if errors and not success_ids:
+                    new_text = render_shutdown_error_card(errors)
+                else:
+                    new_text = render_resume_success_card(success_ids)
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
         elif action.target == "rb_req" and action.miner_id:
+            miner = resolve_miner(action.miner_id, miners)
+            if miner:
+                sk = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                st = states_snapshot.get(sk)
+                if st and getattr(st, "is_shutdown_maintenance", False):
+                    answer_callback_query(bot_token, cb_id, text="⚠️ Minero en Parada Segura (Mantenimiento). Usá /resume primero.", show_alert=True)
+                    return
             token = token_registry.create_token(action.miner_id, action="reboot")
             new_text, new_markup = render_reboot_confirmation(action.miner_id, token)
         elif action.target == "rb_ccl":
@@ -3025,6 +3215,11 @@ def _handle_command_center_callback(
                 new_text = f"❌ Minero {action.miner_id} no encontrado."
                 _, new_markup = render_reboot_menu(states_snapshot, miners)
             else:
+                sk = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                st = states_snapshot.get(sk)
+                if st and getattr(st, "is_shutdown_maintenance", False):
+                    answer_callback_query(bot_token, cb_id, text="⚠️ Minero en Parada Segura (Mantenimiento). Usá /resume primero.", show_alert=True)
+                    return
                 now_ts = time.time()
                 ok, msg_result = run_hashcore_cli(
                     hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions
@@ -4716,6 +4911,173 @@ def telegram_polling_worker(
                         dbg_update_id=update_id,
                         dbg_cmd="silent",
                     )
+                elif cmd_name in ("shutdown", "stop", "apagar", "parada"):
+                    handled = True
+                    from app.telegram.command_center import (
+                        render_shutdown_menu,
+                        render_shutdown_confirmation,
+                    )
+                    from app.governance.fleet_shutdown import (
+                        extract_miner_identifier,
+                        resolve_selected_miners,
+                    )
+                    with state_lock:
+                        states_snapshot = {k: v for k, v in states.items()}
+
+                    if not args:
+                        sd_text, sd_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            sd_text,
+                            "SHUTDOWN",
+                            "cmd_shutdown_menu",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="shutdown",
+                            reply_markup=sd_markup,
+                        )
+                    else:
+                        arg_str = " ".join(args).strip().lower()
+                        if any(x in arg_str for x in ("all", "granja", "todos")):
+                            mask = "1" * len(miners)
+                        else:
+                            bit_list = ["0"] * len(miners)
+                            for idx, m in enumerate(miners):
+                                m_id = extract_miner_identifier(m)
+                                m_name = str(m.get("name", "")).lower()
+                                m_host = str(m.get("host", "")).lower()
+                                for a in args:
+                                    a_clean = a.strip().lower().replace("s19jpro-", "").replace("s19-", "")
+                                    if a_clean == m_id.lower() or a_clean in m_name or a_clean in m_host:
+                                        bit_list[idx] = "1"
+                            mask = "".join(bit_list)
+
+                        if mask.count("1") == 0:
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                "⚠️ No se identificaron mineros válidos.\nUsá `/shutdown` para abrir el selector táctil.",
+                                "SHUTDOWN",
+                                "cmd_shutdown_not_found",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="shutdown",
+                            )
+                        else:
+                            selected_miners = resolve_selected_miners(mask, miners)
+                            selected_ids = [extract_miner_identifier(m) for m in selected_miners]
+                            token = token_registry.create_token(mask, action="shutdown")
+                            sd_text, sd_markup = render_shutdown_confirmation(selected_ids, token, mask)
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                sd_text,
+                                "SHUTDOWN",
+                                "cmd_shutdown_confirm",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="shutdown",
+                                reply_markup=sd_markup,
+                            )
+                elif cmd_name in ("resume", "reanudar"):
+                    handled = True
+                    from app.telegram.command_center import render_resume_menu
+                    from app.governance.fleet_shutdown import (
+                        execute_parallel_resume,
+                        extract_miner_identifier,
+                        render_resume_success_card,
+                        render_shutdown_error_card,
+                    )
+                    with state_lock:
+                        states_snapshot = {k: v for k, v in states.items()}
+
+                    if not args:
+                        res_text, res_markup = render_resume_menu(states_snapshot, miners)
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            res_text,
+                            "RESUME",
+                            "cmd_resume_menu",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd="resume",
+                            reply_markup=res_markup,
+                        )
+                    else:
+                        arg_str = " ".join(args).strip().lower()
+                        if any(x in arg_str for x in ("all", "granja", "todos")):
+                            target_miners = list(miners)
+                        else:
+                            target_miners = []
+                            for m in miners:
+                                m_id = extract_miner_identifier(m)
+                                m_name = str(m.get("name", "")).lower()
+                                m_host = str(m.get("host", "")).lower()
+                                for a in args:
+                                    a_clean = a.strip().lower().replace("s19jpro-", "").replace("s19-", "")
+                                    if a_clean == m_id.lower() or a_clean in m_name or a_clean in m_host:
+                                        target_miners.append(m)
+                                        break
+
+                        if not target_miners:
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                "⚠️ No se identificaron mineros válidos.\nUsá `/resume` para ver la lista.",
+                                "RESUME",
+                                "cmd_resume_not_found",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="resume",
+                            )
+                        else:
+                            vnish_pw = str(config.get("vnish_api_password", "admin"))
+                            now_ts = time.time()
+                            results = execute_parallel_resume(target_miners, vnish_pw)
+                            with state_lock:
+                                for m in target_miners:
+                                    m_id = extract_miner_identifier(m)
+                                    res = results.get(m_id)
+                                    if res and res.success:
+                                        sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                                        st = states.get(sk)
+                                        if st:
+                                            st.is_shutdown_maintenance = False
+                                            st.snooze_until_ts = None
+                                        log(f"[RESUME] Miner {m_id} mining resumed via text command")
+                                save_state(state_path, states, current_last_update_id)
+
+                            for m in target_miners:
+                                m_id = extract_miner_identifier(m)
+                                res = results.get(m_id)
+                                record_action_outcome(
+                                    event_store,
+                                    occurred_ts=now_ts,
+                                    miner=m,
+                                    action="resume_mining",
+                                    source="manual_resume",
+                                    ok=(res.success if res else False),
+                                    message=("Reanudación exitosa" if res and res.success else (res.error if res else "Error")),
+                                )
+
+                            errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
+                            success_ids = [r.miner_id for r in results.values() if r.success]
+                            if errors and not success_ids:
+                                res_msg = render_shutdown_error_card(errors)
+                            else:
+                                res_msg = render_resume_success_card(success_ids)
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                res_msg,
+                                "RESUME",
+                                "cmd_resume",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd="resume",
+                            )
                 elif cmd_name in ("governor", "gov"):
                     handled = True
                     global _GOVERNOR_RUNTIME_ENABLED
@@ -5716,6 +6078,11 @@ def telegram_polling_worker(
                         with state_lock:
                             state = states.get(state_key)
                             last_manual = state.last_manual_reboot_ts if state else None
+                            is_stopped = getattr(state, "is_shutdown_maintenance", False)
+                        if is_stopped:
+                            results.append(f"{display_name(miner['name'])}  SKIP (parada_segura)")
+                            log(f"SAFETY maintenance_block cmd=reboot miner={display_name(miner['name'])}")
+                            continue
                         if last_manual and (now_ts - last_manual) < 600:
                             results.append(f"{display_name(miner['name'])}  SKIP (cooldown)")
                             log(f"SAFETY cooldown_block cmd=reboot remaining={int(600 - (now_ts - last_manual))}")
@@ -5894,6 +6261,20 @@ def telegram_polling_worker(
                     with state_lock:
                         state = states.get(state_key)
                         last_manual = state.last_manual_reboot_ts if state else None
+                        is_stopped = getattr(state, "is_shutdown_maintenance", False)
+                    if is_stopped:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            f"⚠️ Minero {display_name(miner['name'])} en Parada Segura (Mantenimiento).\nUsá /resume para reactivarlo antes de reiniciar.",
+                            "REBOOT" if action == "reboot" else "RESTART",
+                            "maintenance_block",
+                            perf_ctx=perf_ctx,
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=f"{action}_single",
+                        )
+                        continue
                     if last_manual and (now_ts - last_manual) < 600:
                         send_telegram(
                             bot_token,
@@ -7243,7 +7624,7 @@ def main() -> None:
                             f"({now_str()})"
                         )
 
-                is_snoozed = state.snooze_until_ts is not None and now_ts < state.snooze_until_ts
+                is_snoozed = (state.snooze_until_ts is not None and now_ts < state.snooze_until_ts) or getattr(state, "is_shutdown_maintenance", False)
                 if (
                     not is_snoozed
                     and state.reboot_pending_until
@@ -7288,7 +7669,9 @@ def main() -> None:
                 )
 
                 snooze_tag = ""
-                if state.snooze_until_ts is not None and now_ts < state.snooze_until_ts:
+                if getattr(state, "is_shutdown_maintenance", False):
+                    snooze_tag = " [⏸️ DETENIDO]"
+                elif state.snooze_until_ts is not None and now_ts < state.snooze_until_ts:
                     from app.telegram.snooze import format_snooze_tag
                     snooze_tag = format_snooze_tag(state, now_ts)
                 status_text_line = format_current_status_line(
@@ -7320,7 +7703,7 @@ def main() -> None:
                             expected_boards=expected_boards,
                         )
                     )
-                if state.degraded_mode and not (state.snooze_until_ts is not None and now_ts < state.snooze_until_ts):
+                if state.degraded_mode and not ((state.snooze_until_ts is not None and now_ts < state.snooze_until_ts) or getattr(state, "is_shutdown_maintenance", False)):
                     degraded_candidates.append(state)
 
             previous_tick_signals = current_tick_signals.copy()

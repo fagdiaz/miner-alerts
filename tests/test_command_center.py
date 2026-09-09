@@ -563,6 +563,117 @@ class TestCommandCenterDispatch(unittest.TestCase):
             show_alert=True,
         )
 
+    def test_parse_shutdown_callbacks(self):
+        from app.telegram.command_center import parse_command_center_callback
+
+        # Navigation
+        act = parse_command_center_callback("cc:nav:shutdown")
+        self.assertIsNotNone(act)
+        self.assertEqual(act.kind, "nav")
+        self.assertEqual(act.target, "shutdown")
+
+        act = parse_command_center_callback("cc:nav:resume")
+        self.assertIsNotNone(act)
+        self.assertEqual(act.kind, "nav")
+        self.assertEqual(act.target, "resume")
+
+        # Toggles and actions
+        act = parse_command_center_callback("cc:act:sd_tog:23:1010")
+        self.assertEqual(act.kind, "act")
+        self.assertEqual(act.target, "sd_tog")
+        self.assertEqual(act.miner_id, "23")
+        self.assertEqual(act.param, "1010")
+
+        act = parse_command_center_callback("cc:act:sd_req:1010")
+        self.assertEqual(act.target, "sd_req")
+        self.assertEqual(act.param, "1010")
+
+        act = parse_command_center_callback("cc:act:sd_cfm:token123:1010")
+        self.assertEqual(act.target, "sd_cfm")
+        self.assertEqual(act.token, "token123")
+        self.assertEqual(act.param, "1010")
+
+        act = parse_command_center_callback("cc:act:sd_ccl:1010")
+        self.assertEqual(act.target, "sd_ccl")
+        self.assertEqual(act.param, "1010")
+
+        act = parse_command_center_callback("cc:act:sd_all")
+        self.assertEqual(act.target, "sd_all")
+
+        act = parse_command_center_callback("cc:act:sd_clr")
+        self.assertEqual(act.target, "sd_clr")
+
+        act = parse_command_center_callback("cc:act:resume:23")
+        self.assertEqual(act.target, "resume")
+        self.assertEqual(act.param, "23")
+
+        act = parse_command_center_callback("cc:act:resume:all")
+        self.assertEqual(act.target, "resume")
+        self.assertEqual(act.param, "all")
+
+    def test_render_shutdown_menu_mobile_width_and_toggles(self):
+        from app.telegram.command_center import render_shutdown_menu
+        from app.telegram.help_center import visible_line_width
+
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23"},
+            {"name": "S19JPRO-24", "host": "192.168.100.24"},
+            {"name": "S19JPRO-25", "host": "192.168.100.25"},
+            {"name": "S19JPRO-26", "host": "192.168.100.26"},
+        ]
+
+        for mask in ("0000", "1010", "1111"):
+            text, kb = render_shutdown_menu({}, miners=miners, selected_mask=mask)
+            for line in text.split("\n"):
+                w = visible_line_width(line)
+                self.assertLessEqual(w, 32, f"Line exceeds 32 cols in mask={mask}: '{line}'")
+
+            # Check buttons structure
+            inline_rows = kb.get("inline_keyboard", [])
+            self.assertGreaterEqual(len(inline_rows), 4)
+
+        # Check checkbox icons
+        _, kb_none = render_shutdown_menu({}, miners=miners, selected_mask="0000")
+        self.assertIn("⬜ S19-23", str(kb_none))
+        self.assertIn("🛑 Apagar Seleccionados (0)", str(kb_none))
+
+        _, kb_two = render_shutdown_menu({}, miners=miners, selected_mask="1010")
+        self.assertIn("☑️ S19-23", str(kb_two))
+        self.assertIn("⬜ S19-24", str(kb_two))
+        self.assertIn("☑️ S19-25", str(kb_two))
+        self.assertIn("🛑 APAGAR SELECCIONADOS (2) 🛑", str(kb_two))
+
+        _, kb_all = render_shutdown_menu({}, miners=miners, selected_mask="1111")
+        self.assertIn("⚡ APAGAR GRANJA (4) ⚡", str(kb_all))
+
+    def test_render_shutdown_confirmation_mobile_width(self):
+        from app.telegram.command_center import render_shutdown_confirmation
+        from app.telegram.help_center import visible_line_width
+
+        text, kb = render_shutdown_confirmation(["23", "25"], token="tok123", bitmask="1010")
+        for line in text.split("\n"):
+            w = visible_line_width(line)
+            self.assertLessEqual(w, 32, f"Line exceeds 32 cols: '{line}'")
+        self.assertIn("CONFIRMAR PARADA SEGURA", text)
+        self.assertIn("tok123", str(kb))
+
+    def test_render_resume_menu_mobile_width(self):
+        from app.telegram.command_center import render_resume_menu
+        from app.telegram.help_center import visible_line_width
+
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23"},
+            {"name": "S19JPRO-24", "host": "192.168.100.24"},
+            {"name": "S19JPRO-25", "host": "192.168.100.25"},
+            {"name": "S19JPRO-26", "host": "192.168.100.26"},
+        ]
+        text, kb = render_resume_menu({}, miners=miners)
+        for line in text.split("\n"):
+            w = visible_line_width(line)
+            self.assertLessEqual(w, 32, f"Line exceeds 32 cols: '{line}'")
+        self.assertIn("REANUDAR MINADO", text)
+        self.assertIn("REANUDAR GRANJA COMPLETA", str(kb))
+
 
 if __name__ == "__main__":
     unittest.main()

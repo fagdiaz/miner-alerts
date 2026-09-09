@@ -1,32 +1,30 @@
-GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 047 Completado -> Producción Activa
+GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 048: Safe Fleet Shutdown & Maintenance Mode (CERTIFICADO Y ACTIVO)
 
 ROL Y MOTOR RECOMENDADO
 Motor: Gemini 3.8 Flash High
-Rol: Supervisor de telemetría y diagnósticos, o planificador de futuras iniciativas del backlog.
+Rol: Monitoreo operativo, validación de telemetría y extensiones de gobernanza.
 
-ESTADO ACTUAL CERTIFICADO (Spec 047)
-- Spec 047 (Mobile-First Card Layout for Balancer, Digest & Operational Events) COMPLETADA, integrada y certificada:
-  * Renderizadores Mobile-First desacoplados y puros (<= 32 columnas visibles por línea, RFC C1-C10):
-    - `/balancer`: Bloques verticales por elevador con viñetas `•`, carga agregada y wrapping de motivos.
-    - `/elevadores`: Tarjetas verticales de sensibilidad eléctrica con diagnósticos y recomendaciones paginadas.
-    - `/digest` / `/summary`: Reporte diario ejecutivo alineado con métricas de flota, hashrate, eficiencia, shares y backup.
-    - `/snoozed`: Tarjetas de estado de silencio por minero con cuenta regresiva en <= 32 cols.
-    - `/events`, `/event <id>`, `/why`: Listado vertical click-safe `/e<id>` y fichas de incidentes con interlocks de autorreinicio.
-  * Teclados inline de refresco en 1 toque `[ 🔄 Actualizar ] [ 📱 Menú ]` habilitados para `/balancer`, `/elevadores`, `/digest`, `/events`.
-  * Callbacks `diag:ref:balancer`, `diag:ref:elev`, `diag:ref:digest`, `diag:ref:events` en `_handle_diagnostic_callback()` con ACK < 50ms y edición in-place.
-  * Suite global del repositorio: 687/687 tests PASS en 11.281s (0 fallos, 0 regresiones).
-  * Release audit: PASS (SHA-256 `7ba53dcea43ada9ae59d1593a08de897750aba8f9d8ccea17e8fe2c4fefa441d`, 63 payload files).
-  * Servicio Windows `MinerAlerts` activo y saludable bajo PID 2952.
+ESTADO DEL SISTEMA TRAS SPEC 048:
+1. Funcionalidad Implementada y Verificada:
+   - Apagado seguro selectivo con selector interactivo táctil multi-select (⬜/☑️) en /menu y comando /shutdown [id1 id2... | all].
+   - Confirmación en 2 pasos con token criptográfico efímero de 60s en CallbackTokenRegistry.
+   - Purga térmica activa de 45s con coolers forzados para barrer calor residual de los chips antes del corte de corriente física.
+   - Notificación de alerta "ÁREA ELÉCTRICA SEGURA" tras completar los 45s de purga.
+   - Auto-snooze de mantenimiento de 4 horas (suprime falsas alarmas OFFLINE/0 TH/s y bloquea autorreinicios).
+   - Reanudación limpia vía botón táctil o /resume [id1 id2... | all] con auto-unsnooze automático.
+   - Interlocks de seguridad: /reboot (manual y bulk) bloqueado en mineros detenidos; Fan Governor y Preset Balancer omiten mineros en mantenimiento.
+   - Armonización visual en /status (⏸️ DETENIDO) y /snoozed ([⏸️ DETENIDO]); /help actualizado con /shutdown y /resume en categoría ctrl.
 
-ARCHIVOS CLAVE DEL SISTEMA
-1. `docs/speckit/RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md` (Condiciones C1-C10).
-2. `app/telegram/fleet_cards.py` (renderizadores de tarjetas móviles y teclados de refresco).
-3. `app/governance/preset_balancer.py` (balanceador de potencia y sensibilidad de elevadores).
-4. `app/telegram/daily_digest.py` (reporte diario ejecutivo).
-5. `app/telegram/snooze.py` (silenciamiento para mantenimiento).
-6. `app/core/event_store.py` (historial de incidentes y decisiones de reinicio).
-7. `app/miner_monitor.py` (loop principal de monitoreo y dispatcher de comandos/callbacks).
+2. Pruebas y Certificación:
+   - 721/721 tests PASS en 11.124s (0 fallos, 0 errores, +34 tests netos de Spec 048).
+   - Servicio Windows MinerAlerts activo en producción bajo PID 32436.
+   - Telemetría en vivo respondiendo normalmente sin spam ni excepciones.
 
-SIGUIENTES PASOS DISPONIBLES
-1. Monitoreo en producción de interacción táctil con los nuevos teclados de refresco y tarjetas mobile-first.
-2. Iniciar planificación de la siguiente iniciativa en el roadmap (`docs/speckit/ROADMAP.md`).
+ARCHIVOS CLAVE MODIFICADOS:
+- app/vnish/client.py & app/vnish/__init__.py: stop_mining, resume_mining, safe_* wrappers.
+- app/governance/fleet_shutdown.py: Bitmask helpers, dispatchers concurrentes y tarjetas móviles <= 32 cols.
+- app/telegram/command_center.py: render_shutdown_menu, render_shutdown_confirmation, render_resume_menu.
+- app/miner_monitor.py: MinerState persistente, callback routing, text commands, interlocks de seguridad.
+- app/telegram/help_center.py: Registro canónico de /shutdown y /resume en categoría ctrl.
+- app/telegram/fleet_cards.py & app/telegram/snooze.py: Insignia ⏸️ y etiquetas de mantenimiento.
+- tests/test_fleet_shutdown.py, test_command_center.py, test_safe_fleet_shutdown_integration.py.

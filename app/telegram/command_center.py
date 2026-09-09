@@ -95,6 +95,34 @@ def make_progress_bar(val: float, max_val: float, width: int = 8) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def _resolve_miner_state(states: Dict[str, Any], miner: Dict[str, Any]) -> Optional[Any]:
+    """Resolve state object for a miner supporting canonical keys, name, or host/ip."""
+    if not states:
+        return None
+    m_name = miner.get("name")
+    m_host = miner.get("host") or miner.get("ip")
+    m_port = miner.get("port", 4028)
+
+    candidates = []
+    if m_name and m_host:
+        candidates.append(f"{m_name}|{m_host}:{m_port}")
+    if m_name:
+        candidates.append(str(m_name))
+    if m_host:
+        candidates.append(str(m_host))
+
+    for c in candidates:
+        if c in states:
+            return states[c]
+
+    for k, v in states.items():
+        if m_name and str(m_name) in k:
+            return v
+        if m_host and str(m_host) in k:
+            return v
+    return None
+
+
 def render_main_dashboard(
     states: Dict[str, Any],
     config: Optional[Dict[str, Any]] = None,
@@ -115,7 +143,7 @@ def render_main_dashboard(
 
     for miner in miners_list:
         m_id = str(miner.get("name") or miner.get("ip") or "")
-        st = states.get(m_id)
+        st = _resolve_miner_state(states, miner) or states.get(m_id)
         if not st:
             continue
 
@@ -167,6 +195,8 @@ def render_main_dashboard(
     ]
     text = "\n".join(lines)
 
+    from app.telegram.help_center import HELP_NAV_HOME
+
     any_silent = any(getattr(st, "silent_mode_active", False) for st in states.values())
     silent_btn_text = "🔊 Desactivar Silencio" if any_silent else "🔇 Modo Silencio"
 
@@ -182,6 +212,9 @@ def render_main_dashboard(
         [
             {"text": "🔔 Alertas / Umbrales", "callback_data": CC_NAV_ALERTS},
             {"text": "🔄 Actualizar Panel", "callback_data": CC_ACT_REFRESH},
+        ],
+        [
+            {"text": "📖 Centro de Ayuda", "callback_data": HELP_NAV_HOME},
         ],
     ])
 
@@ -204,7 +237,7 @@ def render_metrics_view(
 
     for miner in miners_list:
         m_id = str(miner.get("name") or miner.get("ip") or "")
-        st = states.get(m_id)
+        st = _resolve_miner_state(states, miner) or states.get(m_id)
         if not st:
             continue
 
@@ -316,7 +349,7 @@ def render_profiles_view(
 
     for miner in miners_list:
         m_id = str(miner.get("name") or miner.get("ip") or "")
-        st = states.get(m_id)
+        st = _resolve_miner_state(states, miner) or states.get(m_id)
         preset = getattr(st, "balancer_preset", None) or "Stock / Normal"
         reason = getattr(st, "balancer_last_reason", "") or "Estable"
         lines.append(f"⛏️ *{m_id}*: Preset `{preset}`")
@@ -352,7 +385,7 @@ def render_alerts_view(
     now = time.time()
     for miner in miners_list:
         m_id = str(miner.get("name") or miner.get("ip") or "")
-        st = states.get(m_id)
+        st = _resolve_miner_state(states, miner) or states.get(m_id)
         snooze_until = getattr(st, "snooze_until_ts", None)
         if snooze_until and snooze_until > now:
             remaining_mins = int((snooze_until - now) / 60)
@@ -393,7 +426,7 @@ def render_silent_mode_view(
 
     for miner in miners_list:
         m_id = str(miner.get("name") or miner.get("ip") or "")
-        st = states.get(m_id)
+        st = _resolve_miner_state(states, miner) or states.get(m_id)
         if st and getattr(st, "silent_mode_active", False):
             active_count += 1
             revert_ts = getattr(st, "silent_mode_revert_ts", None)

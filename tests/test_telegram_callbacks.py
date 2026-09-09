@@ -366,5 +366,187 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
         self.assertIn("Reinicio Iniciado", markup["inline_keyboard"][0][0]["text"])
 
 
+class TestHelpCenterCallbacksIntegration(unittest.TestCase):
+    def setUp(self):
+        self.bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        self.chat_id = "1206728163"
+        self.config = {"chat_id": self.chat_id}
+        self.miners = []
+        self.states = {}
+        self.state_lock = unittest.mock.MagicMock()
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_help_nav_home_dispatch(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_help_1",
+            "from": {"id": 1206728163},
+            "data": "help:nav:home",
+            "message": {"message_id": 99, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(self.bot_token, "cb_help_1")
+        mock_edit_text.assert_called_once()
+        args = mock_edit_text.call_args
+        self.assertEqual(args[0][0], self.bot_token)
+        self.assertEqual(args[0][1], "1206728163")
+        self.assertEqual(args[0][2], 99)
+        self.assertIn("CENTRO DE AYUDA", args[0][3])
+        self.assertIn("reply_markup", args[1])
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_help_cat_thm_dispatch(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_help_2",
+            "from": {"id": 1206728163},
+            "data": "help:cat:thm",
+            "message": {"message_id": 99, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(self.bot_token, "cb_help_2")
+        mock_edit_text.assert_called_once()
+        text = mock_edit_text.call_args[0][3]
+        self.assertIn("TÉRMICO", text)
+        self.assertIn("/fans", text)
+        self.assertIn("/silent", text)
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_help_cmd_silent_dispatch(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_help_3",
+            "from": {"id": 1206728163},
+            "data": "help:cmd:silent",
+            "message": {"message_id": 99, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(self.bot_token, "cb_help_3")
+        mock_edit_text.assert_called_once()
+        text = mock_edit_text.call_args[0][3]
+        self.assertIn("/SILENT", text)
+        self.assertIn("silencio", text.lower())
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_help_unauthorized_rejection(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_help_unauth",
+            "from": {"id": 999999},  # Unauthorized user
+            "data": "help:nav:home",
+            "message": {"message_id": 99, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(
+            self.bot_token, "cb_help_unauth", text="⛔ Acceso no autorizado", show_alert=True
+        )
+        mock_edit_text.assert_not_called()
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_text")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    def test_help_malformed_callback(self, mock_answer_cb, mock_edit_text):
+        from app.miner_monitor import _handle_callback_query
+        from pathlib import Path
+
+        cb_query = {
+            "id": "cb_help_bad",
+            "from": {"id": 1206728163},
+            "data": "help:invalid:target",
+            "message": {"message_id": 99, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_query,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=Path("app/state.json"),
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=unittest.mock.MagicMock(),
+        )
+        mock_answer_cb.assert_called_once_with(
+            self.bot_token, "cb_help_bad", text="⚠️ Opción no reconocida."
+        )
+        mock_edit_text.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

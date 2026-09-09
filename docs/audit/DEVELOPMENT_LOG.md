@@ -2,6 +2,39 @@
 
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
+## [2026-09-09] - Spec 045: Telegram Mobile Help Center & Categorized Navigation (Completado)
+
+* **Objetivo**: Diseñar, implementar e integrar el Centro de Ayuda Mobile-First para Telegram, incorporando navegación interactiva por categorías temáticas en 1-2 toques, tarjetas verticales acotadas a `<= 32` columnas visibles, registro canónico exhaustivo de comandos del dispatcher (incluyendo `/menu` y `/silent` con sus aliases), protocolo de callbacks `help:` acotado a 64 bytes UTF-8 y fallback de entrega segura de markups según las condiciones C1-C10 del RFC `RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md`.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Contrato Mobile-First)**: Todas las tarjetas y vistas (`render_help_home`, `render_help_category`, `render_help_command_detail`) garantizan líneas de datos `<= 32` caracteres visibles, verificadas tras despojar etiquetas Markdown con `strip_markdown`.
+  - **C2 (Registro Canónico Único)**: Centralización en `HELP_COMMANDS` y `HELP_CATEGORIES` dentro de `app/telegram/help_center.py` cubriendo los 28 comandos reales del sistema e incorporando `/menu` (aliases `start`, `panel`) y `/silent` (aliases `silencio`, `modo_silencio`).
+  - **C3 (Callbacks Aislados <= 64 Bytes & ACK Temprano)**: Parser `parse_help_callback` con gramática cerrada (`help:nav:home`, `help:cat:<id>`, `help:cmd:<name>`) y validación estricta de longitud UTF-8 `<= 64` bytes. `_handle_help_callback()` despacha `answer_callback_query` inmediato (<50ms) antes de generar la vista o editar el mensaje.
+  - **C4 (Paginación sin Particionado Roto)**: Vistas interactivas completas < 1,500 caracteres, muy por debajo del límite de 3,600 caracteres, evitando el paso por `split_telegram_message()` para proteger tags Markdown.
+  - **C5 (Sanitización Markdown)**: Funciones `escape_markdown` y `strip_markdown` para blindaje ante caracteres hostiles (`*`, `_`, `` ` ``, `[`).
+  - **C6 (Fallback Equivalente de Entrega)**: `_send_telegram_direct()` y `send_telegram()` preservan `reply_markup` en el último fragmento cuando la cola no está disponible (`_TELEGRAM_QUEUE is None`) o ante bypass de cola.
+  - **C7 (Límites de Seguridad)**: Cero modificaciones a la máquina de estados, bucle de monitoreo, auto-reboot o workers concurrentes.
+* **Módulos y Cambios**:
+  - `app/telegram/help_center.py`: Módulo puro determinista con catálogo de 28 comandos, 5 categorías operativas (`mon`, `thm`, `pwr`, `ctrl`, `diag`), renderizadores visuales (`render_help_home`, `render_help_category`, `render_help_command_detail`), utilidades de ajuste móvil (`wrap_mobile_lines`) y fallbacks legacy (`render_legacy_help_index`, `render_legacy_help_detail`).
+  - `app/telegram/command_center.py`: Cableado de botón `[ 📖 Centro de Ayuda ]` (`help:nav:home`) en fila 4 de `render_main_dashboard()`, habilitando navegación bidireccional Command Center <-> Help Center.
+  - `app/miner_monitor.py`:
+    * Handler `_handle_help_callback()` con ACK temprano e in-place update mediante `edit_message_text(..., parse_mode="Markdown")`.
+    * Router de callbacks en `_handle_callback_query()` enrutando `help:` con RBAC estricto.
+    * Dispatcher `/help` conectando a `render_help_home()` y `render_help_command_detail()`.
+    * Enriquecimiento de `/info <cmd>` para desplegar detalle táctil interactivo en lugar de buscar minero inexistente.
+    * Registro de `/menu` y `/silent` en `_COMMANDS` y `CMD_WHITELIST`.
+    * Preservación de `reply_markup` en `_send_telegram_direct()`.
+  - `app/telegram/__init__.py`: Exportación canónica de constantes, modelos y funciones del Help Center.
+  - `specs/045-telegram-mobile-help-center/`: Especificación completa con `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/help-center-api.md`, `quickstart.md`, `tasks.md`, `checklists/requirements.md` y `evidence.md`.
+* **Resultados y Pruebas**:
+  - Compilación sintáctica: 100% OK (`py_compile`).
+  - Tests unitarios y de integración:
+    * 29 tests en `tests/test_help_center.py` (0.006s).
+    * 5 tests de integración de callbacks en `tests/test_telegram_callbacks.py`.
+    * 1 test de fallback de `reply_markup` en `tests/test_telegram_messaging.py`.
+    * 18 tests en `tests/test_command_center.py`.
+  - Suite completa del repositorio: **660/660 tests PASS** en 10.56s (0 fallos, 0 regresiones).
+  - Release audit: **PASS** (`tools/release_audit.py --check-only`), digest `4c1d77311f67049c1ece885108210e2e8626e7bd05833d5360ec0bb06bf41851`, 62 payload files.
+
 
 ## [2026-09-08] - Spec 044: Modo Silencio Inteligente con Temporizador Persistente y Thermal Guard
 

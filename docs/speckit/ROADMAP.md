@@ -1,12 +1,13 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-09-08
+**Last reviewed**: 2026-09-09
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (44 de 44 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 621 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (45 de 45 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 660 tests PASS).
+
 
 ---
 
@@ -554,6 +555,18 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] 17 tests unitarios en `tests/test_silent_mode.py` y 17 tests en `tests/test_command_center.py`.
 - [x] 621/621 tests globales PASS, release audit verificado y activo en producción bajo PID 58344.
 
+### Spec 045: Telegram Mobile Help Center & Categorized Navigation (Completado)
+- [x] Cumplimiento de Condición C1: Tarjetas y vistas interactivas con líneas de datos <= 32 caracteres visibles sin tags Markdown.
+- [x] Cumplimiento de Condición C2: Catálogo canónico único `HELP_COMMANDS` y `HELP_CATEGORIES` en `app/telegram/help_center.py` con 28 comandos e inclusión de `/menu` y `/silent` con todos sus aliases reales.
+- [x] Cumplimiento de Condición C3: Parser `parse_help_callback` con gramática cerrada (`help:nav:home`, `help:cat:<id>`, `help:cmd:<name>`) y validación estricta de longitud <= 64 bytes UTF-8. ACK temprano (<50ms) en `_handle_help_callback`.
+- [x] Cumplimiento de Condición C4: Vistas interactivas < 1,500 caracteres (muy por debajo de 3,600 caracteres) evitando particionado con pérdida de tags Markdown.
+- [x] Cumplimiento de Condición C5: Sanitización con `escape_markdown` y medición con `strip_markdown`.
+- [x] Cumplimiento de Condición C6: Fallback directo de entrega preserva `reply_markup` ante `queue=None` o saturación de cola.
+- [x] Cumplimiento de Condición C7: Cero alteraciones en la máquina de estados, bucle de monitoreo, auto-reboot ni workers concurrentes.
+- [x] Conexión de router `help:` en `_handle_callback_query`, ACK temprano, in-place editing y botón en Command Center (`cc:nav:main` <-> `help:nav:home`).
+- [x] 35 tests específicos (29 puros + 5 integración + 1 fallback) y 660/660 tests globales PASS (0 fallos, 0 regresiones).
+
+
 ---
 
 ## Deferred Technology
@@ -590,6 +603,8 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Purga definitiva de shims y modernización canónica de tests (Spec 042).
 - [x] Centro de Comando táctil interactivo `/menu` con submenús in-place y seguridad RBAC (Spec 043).
 - [x] Modo Silencio / Visitas acotado al 40%-70% PWM con temporizadores y Thermal Guard a 83.5°C (Spec 044).
+- [x] Centro de Ayuda táctil interactivo `/help` con navegación por categorías y tarjetas Mobile-First <= 32 cols (Spec 045).
+
 
 ---
 

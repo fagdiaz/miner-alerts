@@ -151,7 +151,7 @@ class TestCommandCenterUI(unittest.TestCase):
         self.assertIn("81.2°C", text)  # max temp
 
         kb = markup.get("inline_keyboard", [])
-        self.assertEqual(len(kb), 3)
+        self.assertEqual(len(kb), 4)
         # Check callback data in buttons
         row0_cbs = [b["callback_data"] for b in kb[0]]
         self.assertIn(CC_NAV_METRICS, row0_cbs)
@@ -164,6 +164,20 @@ class TestCommandCenterUI(unittest.TestCase):
         row2_cbs = [b["callback_data"] for b in kb[2]]
         self.assertIn(CC_NAV_ALERTS, row2_cbs)
         self.assertIn(f"{CC_ACT_PREFIX}refresh", row2_cbs)
+
+        row3_cbs = [b["callback_data"] for b in kb[3]]
+        self.assertIn("help:nav:home", row3_cbs)
+
+    def test_render_main_dashboard_canonical_keys(self):
+        canonical_states = {
+            f"{m['name']}|{m['host']}:{m['port']}": self.states[m["name"]]
+            for m in self.miners
+        }
+        text, markup = render_main_dashboard(canonical_states, self.config, self.miners)
+        self.assertIn("COMMAND CENTER", text)
+        self.assertIn("ADVERTENCIA", text)  # st24 is LOW
+        self.assertIn("7,500 W", text)
+        self.assertIn("81.2°C", text)
 
     def test_render_metrics_view(self):
         text, markup = render_metrics_view(self.states, self.miners)

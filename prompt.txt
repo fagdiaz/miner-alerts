@@ -1,35 +1,36 @@
-CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
+GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 045 Completado -> Spec 046: Fleet Diagnostic Card Layouts
 
-=============================================================================
-ESTADO DEL PROYECTO: SPECS 043 Y 044 COMPLETADAS Y CERTIFICADAS (621 TESTS PASS)
-=============================================================================
+ROL Y MOTOR RECOMENDADO
+Motor: Gemini 3.8 Flash High
+Rol: Diseñador e implementador de Spec 046 (armonización y rediseño Mobile-First de reportes de diagnóstico de flota: /status, /fans, /efficiency, /presets).
 
-1. HITOS ALCANZADOS EN SPEC 043 (TELEGRAM INTERACTIVE COMMAND CENTER):
-   - Módulo `app/telegram/command_center.py` con vistas táctiles puras y menús interactivos:
-     * Dashboard `/menu` interactivo (`InlineKeyboardMarkup`).
-     * Submenús in-place vía `edit_message_text()`: Métricas (con barras de progreso Unicode), Reinicios guiados, Presets y Alertas.
-     * Confirmación segura de reinicio en dos toques con token efímero de 60s.
-     * Alertas accionables de 4 botones (`diag:`, `chart:`, `rb_req:`, `snz:`).
-     * Guardián RBAC (`from_id == chat_id`) con feedback modal y ACK inmediato (< 500ms).
-   - 17 tests unitarios e integración en `tests/test_command_center.py`.
+ESTADO ACTUAL CERTIFICADO (Spec 045)
+- Spec 045 (Telegram Mobile Help Center) COMPLETADA, integrada y certificada:
+  * Módulo puro `app/telegram/help_center.py` con 28 comandos canónicos y 5 categorías temáticas.
+  * Parser `parse_help_callback` con límite estricto de <= 64 bytes UTF-8.
+  * Tarjetas y vistas táctiles respetando <= 32 caracteres visibles por línea (Condición C1).
+  * Conexión bidireccional Command Center (`/menu`) <-> Help Center (`/help`) vía botón en fila 4 (`help:nav:home`).
+  * Router de callbacks en `_handle_callback_query` con ACK temprano (<50ms `answer_callback_query`) y edición in-place.
+  * Soporte enriquecido para `/info <cmd>` y registro de `/menu` y `/silent` en whitelists.
+  * Fallback seguro en `_send_telegram_direct` preservando `reply_markup` (Condición C6).
+  * Suite completa del repositorio: 660/660 tests PASS en 10.56s (0 fallos, 0 regresiones).
+  * Release audit: PASS (digest `4c1d77311f67049c1ece885108210e2e8626e7bd05833d5360ec0bb06bf41851`, 62 payload files).
 
-2. HITOS ALCANZADOS EN SPEC 044 (MODO SILENCIO / VISITAS & THERMAL GUARD):
-   - Reducción acústica de ventiladores a 40%–70% PWM con regulación térmica bajo 82°C.
-   - Selector táctil interactivo en Command Center y comando de texto `/silent [30m|1h|2h|4h|6h|indef|off]`.
-   - Cumplimiento estricto de las 4 condiciones constitucionales P0 de la auditoría de Claude:
-     * C1 (Concurrencia No Bloqueante): El worker de Telegram no hace I/O síncrono. Solo muta estado en memoria y persiste con `save_state()` bajo `state_lock`. Las órdenes físicas las aplica el Fan Governor en su ciclo normal.
-     * C2 (Aislamiento FSM & Startup Reconciliation): Campos `silent_mode_*` independientes en `MinerState` y `state.json`. Reconciliación en `first_tick` tras reinicio de Windows/NSSM para purgar silencios vencidos y alertar al usuario.
-     * C3 (Coexistencia Fan Governor): Inyección de límites dinámicos de duty ceiling al gobernador mientras el modo silencio está activo.
-     * C4 (Guardián Térmico Atómico): Ante `EMERGENCY_SPIKE` (83.5°C) o `FAILSAFE_FAULT`, anulación atómica de silencio bajo `state_lock`, guardado inmediato en disco, ventiladores forzados al 100% y alerta crítica prioritaria por Telegram.
-   - Loop principal: Chequeo de vencimiento de temporizadores por tick, reversión automática al régimen de producción y notificación de expiración.
-   - 17 tests unitarios e integración en `tests/test_silent_mode.py`.
+ARCHIVOS CLAVE DEL SISTEMA
+1. `docs/speckit/RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md` (especialmente Sección 5.B, 5.C, 5.D y condiciones C1-C10).
+2. `app/telegram/help_center.py` (patrón canónico de formato <= 32 cols, `visible_line_width`, `wrap_mobile_lines`).
+3. `app/telegram/command_center.py` (patrón de inline keyboards y navegación táctil).
+4. `app/governance/fan_health.py` (formato actual de `/fans` a migrar a tarjetas móviles).
+5. `app/governance/energy_efficiency.py` (formato actual de `/efficiency` a migrar).
+6. `app/vnish/presets.py` / `app/governance/preset_balancer.py` (formato actual de `/presets` a migrar).
+7. `app/miner_monitor.py` (renderizador de `/status` de flota a encapsular y formatear en tarjetas verticales).
 
-3. VERIFICACIÓN Y AUDITORÍA:
-   - Compilación de sintaxis: 100% limpia (`py_compile`).
-   - Suite completa: 621/621 tests PASS en 10.95s (0 fallos, 0 regresiones).
-   - Release Audit: PASS (`tools/release_audit.py --check-only`), payload SHA-256: `7d59e841532e752d9281dd0e491a60cb2f8d7b0dcc8feebe903e4b655320ad1f`, 61 payload files.
-   - Estado de repositorio: Limpio y listo para despliegue / soak en producción.
-
-=============================================================================
-MODELO SUGERIDO: Gemini 3.8 Flash High (Para validación operativa, pruebas o nuevos desarrollos)
-=============================================================================
+SIGUIENTE PASO: SPEC 046
+1. Crear `specs/046-mobile-card-layouts/` con `spec.md`, `plan.md`, `tasks.md`, `evidence.md`.
+2. Actualizar `.specify/feature.json` a `specs/046-mobile-card-layouts`.
+3. Migrar las salidas diagnósticas de flota a tarjetas verticales acotadas a 32 caracteres visibles:
+   - `/status`: Snapshot de flota con viñetas `•`, potencia, temperatura máxima y botones `[ 🔄 Actualizar ] [ 📊 Gráfico ] [ 📱 Menú ]`.
+   - `/fans`: Tarjetas verticales por minero (Temp, Fans RPM/PWM, Modo Governor).
+   - `/efficiency`: Tarjetas verticales (J/TH, TH/s, Watts).
+   - `/presets`: Perfil actual, target, margen térmico y estado del balancer.
+4. Mantener total desacoplamiento de I/O, pureza en los renderizadores y suites de prueba unitarias.

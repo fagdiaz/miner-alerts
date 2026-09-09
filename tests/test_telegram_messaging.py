@@ -89,6 +89,29 @@ class TelegramQueueAdmissionTests(unittest.TestCase):
         self.assertEqual((1.5, 4.0), session.post.call_args.kwargs["timeout"])
         self.assertEqual(1, outbound.qsize())
 
+    def test_command_direct_send_preserves_reply_markup_on_fallback(self) -> None:
+        response = Mock(status_code=200, text="ok")
+        session = Mock()
+        session.post.return_value = response
+        miner_monitor._TELEGRAM_QUEUE = None
+        miner_monitor._HTTP_SESSION = session
+
+        markup = {"inline_keyboard": [[{"text": "Btn", "callback_data": "help:nav:home"}]]}
+        miner_monitor.send_telegram(
+            "token",
+            "chat",
+            "texto con botones",
+            "HELP",
+            is_command=True,
+            dbg_update_id=99,
+            dbg_cmd="help",
+            reply_markup=markup,
+        )
+
+        session.post.assert_called_once()
+        payload = session.post.call_args.kwargs["json"]
+        self.assertEqual(payload.get("reply_markup"), markup)
+
     def test_normal_queue_preserves_ordered_message_parts(self) -> None:
         outbound = queue.Queue(maxsize=4)
         miner_monitor._TELEGRAM_QUEUE = outbound

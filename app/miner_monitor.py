@@ -188,6 +188,12 @@ CMD_WHITELIST = {
     "elevators",
     "sensibilidad",
     "elev",
+    "menu",
+    "start",
+    "panel",
+    "silent",
+    "silencio",
+    "modo_silencio",
 }
 
 
@@ -632,123 +638,41 @@ _COMMANDS = [
         "aliases": [],
         "official_aliases": ["/c<code>"],
     },
+    {
+        "name": "menu",
+        "summary": "Command Center interactivo con botones.",
+        "usage": "/menu  |  /start  |  /panel",
+        "detail": [
+            "Detalle: abre el panel de control táctil con métricas agregadas y accesos rápidos.",
+        ],
+        "examples": ["/menu", "/start"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": ["start", "panel"],
+    },
+    {
+        "name": "silent",
+        "summary": "Modo silencio para coolers (40-70% PWM).",
+        "usage": "/silent <duración|off>",
+        "detail": [
+            "Detalle: limita ventiladores al 40%-70% con guarda térmica de reversión ante >80°C.",
+        ],
+        "examples": ["/silent 2h", "/silent off"],
+        "notes": ["Duraciones: 30m, 1h, 2h, 4h, 6h, indef, off."],
+        "danger_level": "safe",
+        "aliases": ["silencio", "modo_silencio"],
+    },
 ]
 
 
 def render_help_index() -> str:
-    lines = ["MINER ALERTS - AYUDA", "", "MONITOREO"]
-    by_name = {str(cmd.get("name", "")).lower(): cmd for cmd in _COMMANDS}
-    read_only = [
-        "status",
-        "info",
-        "events",
-        "event",
-        "why",
-        "health",
-        "quality",
-        "diagnose",
-        "chart",
-        "fans",
-        "efficiency",
-        "presets",
-        "governor",
-        "balancer",
-        "elevadores",
-        "snooze",
-        "unsnooze",
-        "snoozed",
-        "digest",
-        "firmware",
-        "selftest",
-    ]
-    actions = ["reboot", "reboot_no_ok", "restart", "confirm"]
-    index_usage = {
-        "info": "/info [id|all]",
-        "events": "/events [miner]",
-        "event": "/event <id>",
-        "why": "/why [miner]",
-        "health": "/health [miner|all]",
-        "quality": "/quality [miner|all]",
-        "diagnose": "/diagnose [miner|all]",
-        "chart": "/chart [miner|fleet] [hours]",
-        "fans": "/fans [miner|all]",
-        "efficiency": "/efficiency [miner|all]",
-        "presets": "/presets [miner|all]",
-        "governor": "/gov [on|off|set]",
-        "balancer": "/balancer [on|off|miner]",
-        "elevadores": "/elevadores",
-        "snooze": "/snooze <miner|all> [min]",
-        "unsnooze": "/unsnooze <miner|all>",
-        "snoozed": "/snoozed",
-        "digest": "/digest",
-        "firmware": "/firmware [miner|all]",
-        "reboot": "/reboot",
-        "restart": "/restart <id>",
-        "confirm": "/confirm ...",
-    }
-
-    for name in read_only:
-        cmd = by_name.get(name)
-        if cmd:
-            usage = index_usage.get(name, f"/{cmd['name']}")
-            lines.append(f"{usage} - {cmd['summary']}")
-
-    lines.extend(["", "ACCIONES - REQUIEREN CONFIRMACION"])
-    for name in actions:
-        cmd = by_name.get(name)
-        if not cmd:
-            continue
-        usage = index_usage.get(name, str(cmd.get("usage", f"/{name}")))
-        lines.append(f"{usage} - {cmd['summary']}")
-        for alias in cmd.get("official_aliases", []):
-            lines.append(f"  Atajo: {alias}")
-
-    lines.extend(
-        [
-            "",
-            "SISTEMA",
-            "/help - Muestra este indice",
-            "/info <comando> - Explica uso, ejemplos y precauciones",
-        ]
-    )
-    return "\n".join(lines)
+    from app.telegram.help_center import render_legacy_help_index
+    return render_legacy_help_index()
 
 
 def render_help_detail(cmd_name: str) -> str:
-    needle = (cmd_name or "").strip().lstrip("/").lower()
-    for cmd in _COMMANDS:
-        name = str(cmd.get("name", "")).lower()
-        aliases = [str(alias).lower() for alias in cmd.get("aliases", [])]
-        if needle != name and needle not in aliases:
-            continue
-        lines = [f"/{cmd['name']}", "", "Descripcion:", str(cmd["summary"])]
-        details = [
-            str(item).removeprefix("Detalle:").strip()
-            for item in cmd.get("detail", [])
-            if str(item).strip()
-        ]
-        if details:
-            lines.extend(["", "Que hace:", *details[:3]])
-        lines.extend(["", "Uso:", str(cmd["usage"])])
-        examples = cmd.get("examples", [])
-        if examples:
-            lines.extend(["", "Ejemplos:", *examples[:3]])
-        official_aliases = cmd.get("official_aliases", [])
-        if official_aliases:
-            lines.extend(["", "Atajos oficiales:", *official_aliases])
-        notes = cmd.get("notes", [])
-        if notes:
-            lines.extend(["", "Notas:", *notes[:3]])
-        if cmd.get("danger_level", "safe") != "safe":
-            lines.extend(
-                [
-                    "",
-                    "Precaucion:",
-                    "La confirmacion expira en 60s y se pierde si reinicia el servicio.",
-                ]
-            )
-        return "\n".join(lines)
-    return f"Comando desconocido: {cmd_name}\nUsa /help para ver la lista."
+    from app.telegram.help_center import render_legacy_help_detail
+    return render_legacy_help_detail(cmd_name)
 
 
 def _normalize_cmd_token(cmd_token: str) -> str:
@@ -981,6 +905,15 @@ def load_config() -> Dict[str, Any]:
         )
         log(f"ERROR: No se pudo leer {config_path} ({exc}).")
         sys.exit(1)
+
+
+def resolve_db_path(config: Mapping[str, Any]) -> str:
+    """Resolve the SQLite database path anchored to repo root if relative."""
+    raw = str(config.get("event_store_path") or config.get("db_path") or "data/miner_alerts.db")
+    p = Path(raw).expanduser()
+    if not p.is_absolute():
+        p = Path(_REPO_ROOT) / p
+    return str(p)
 
 
 def _read_command(host: str, port: int, payload: bytes, timeout: float = 5.0) -> Optional[dict]:
@@ -1235,6 +1168,7 @@ def send_telegram(
                 parts,
                 dbg_update_id=dbg_update_id,
                 dbg_cmd=dbg_cmd,
+                reply_markup=reply_markup,
             )
         return
     direct_send = False
@@ -1303,6 +1237,7 @@ def send_telegram(
             parts,
             dbg_update_id=dbg_update_id,
             dbg_cmd=dbg_cmd,
+            reply_markup=reply_markup,
         )
 
 
@@ -1313,6 +1248,7 @@ def _send_telegram_direct(
     *,
     dbg_update_id: Optional[int],
     dbg_cmd: Optional[str],
+    reply_markup: Optional[Dict[str, Any]] = None,
 ) -> bool:
     tg_send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     if not tg_send_url.startswith("https://api.telegram.org/bot"):
@@ -1320,11 +1256,13 @@ def _send_telegram_direct(
         return False
     session = _HTTP_SESSION or requests.Session()
     for part_index, part in enumerate(parts, start=1):
-        payload = {
+        payload: Dict[str, Any] = {
             "chat_id": chat_id,
             "text": part,
             "disable_web_page_preview": True,
         }
+        if reply_markup is not None and part_index == len(parts):
+            payload["reply_markup"] = reply_markup
         t0 = time.perf_counter()
         try:
             resp = session.post(tg_send_url, json=payload, timeout=(1.5, 4.0))
@@ -3117,6 +3055,52 @@ def _handle_command_center_callback(
         edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)
 
 
+def _handle_help_callback(
+    cb_query: dict,
+    *,
+    bot_token: str,
+    cb_chat_id: Any,
+    message_id: Optional[int],
+    cb_id: str,
+) -> None:
+    """Handle Help Center callbacks (help:*) with instant ACK and in-place navigation (Spec 045)."""
+    from app.telegram.help_center import (
+        parse_help_callback,
+        render_help_category,
+        render_help_command_detail,
+        render_help_home,
+    )
+    cb_data = cb_query.get("data") or ""
+    action = parse_help_callback(cb_data)
+    if not action:
+        log(f"HELP_CB_PARSE_FAIL cb_id={cb_id} data={cb_data[:40]!r}")
+        answer_callback_query(bot_token, cb_id, text="⚠️ Opción no reconocida.")
+        return
+
+    # Acknowledge immediately to clear the UI spinner (< 50ms)
+    answer_callback_query(bot_token, cb_id)
+
+    new_text: Optional[str] = None
+    new_markup: Optional[Dict[str, Any]] = None
+
+    if action.kind == "nav" and action.target == "home":
+        new_text, new_markup = render_help_home()
+    elif action.kind == "cat":
+        new_text, new_markup = render_help_category(action.target)
+    elif action.kind == "cmd":
+        new_text, new_markup = render_help_command_detail(action.target)
+
+    if message_id is not None and new_text and new_markup:
+        edit_message_text(
+            bot_token,
+            str(cb_chat_id),
+            message_id,
+            new_text,
+            reply_markup=new_markup,
+            parse_mode="Markdown",
+        )
+
+
 def _handle_callback_query(
     cb_query: dict,
     *,
@@ -3187,6 +3171,18 @@ def _handle_callback_query(
             qa_mode=qa_mode,
             qa_allow_actions=qa_allow_actions,
             token_registry=token_registry,
+        )
+        return
+
+    # Spec 045: Handle interactive Help Center callbacks (help:*)
+    from app.telegram.help_center import HELP_PREFIX
+    if cb_data.startswith(HELP_PREFIX):
+        _handle_help_callback(
+            cb_query=cb_query,
+            bot_token=bot_token,
+            cb_chat_id=cb_chat_id,
+            message_id=message_id,
+            cb_id=cb_id,
         )
         return
 
@@ -3272,7 +3268,7 @@ def _handle_callback_query(
             return
         try:
             from app.telegram.charts import fetch_miner_chart_data, render_miner_chart_png
-            db_path = config.get("db_path", "data/miner_alerts.db")
+            db_path = resolve_db_path(config)
             chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=1.0)
             if chart_data["count"] == 0:
                 send_telegram(
@@ -3990,7 +3986,7 @@ def telegram_polling_worker(
                             render_miner_chart_png,
                             render_fleet_chart_png,
                         )
-                        db_path = config.get("db_path", "data/miner_alerts.db")
+                        db_path = resolve_db_path(config)
                         if sub_target in ("fleet", "all", ""):
                             fleet_data = fetch_fleet_chart_data(db_path, miners, hours=hours)
                             if fleet_data["count"] == 0:
@@ -4207,7 +4203,7 @@ def telegram_polling_worker(
                 elif cmd_name in ("digest", "summary"):
                     handled = True
                     from app.telegram.daily_digest import fetch_daily_digest_metrics, format_daily_digest
-                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    db_p = resolve_db_path(config)
                     b_root = config.get("backup_root", "backups")
                     with state_lock:
                         digest_metrics = fetch_daily_digest_metrics(
@@ -4235,7 +4231,7 @@ def telegram_polling_worker(
                         build_fans_table_text,
                         build_miner_fan_detail_text,
                     )
-                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    db_p = resolve_db_path(config)
                     with state_lock:
                         assessments = fetch_latest_cooling_assessments(
                             db_path=db_p,
@@ -4283,7 +4279,7 @@ def telegram_polling_worker(
                         build_efficiency_table_text,
                         build_miner_efficiency_detail_text,
                     )
-                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    db_p = resolve_db_path(config)
                     with state_lock:
                         assessments = fetch_latest_efficiency_assessments(
                             db_path=db_p,
@@ -4331,7 +4327,7 @@ def telegram_polling_worker(
                         build_presets_table_text,
                         build_miner_preset_detail_text,
                     )
-                    db_p = config.get("db_path", "data/miner_alerts.db")
+                    db_p = resolve_db_path(config)
                     with state_lock:
                         assessments = fetch_latest_preset_assessments(
                             db_path=db_p,
@@ -4618,7 +4614,7 @@ def telegram_polling_worker(
                     sub = args[0].strip().lower() if args else ""
                     bal_enabled_cfg = bool(config.get("preset_balancer_enabled", False))
                     bal_dry_run = bool(config.get("preset_balancer_dry_run", True))
-                    db_p = str(config.get("event_store_path", "data/miner_alerts.db"))
+                    db_p = resolve_db_path(config)
 
                     if sub == "on":
                         _BALANCER_RUNTIME_ENABLED = True
@@ -4758,7 +4754,7 @@ def telegram_polling_worker(
                     )
                 elif cmd_name in ("elevadores", "elevators", "sensibilidad", "elev"):
                     handled = True
-                    db_p = str(config.get("event_store_path", "data/miner_alerts.db"))
+                    db_p = resolve_db_path(config)
                     with state_lock:
                         metrics_list = extract_miner_stability_metrics(
                             db_path=db_p,
@@ -5035,23 +5031,20 @@ def telegram_polling_worker(
                         if miner_token:
                             token_norm = miner_token.strip().lstrip("/").lower()
                             if not token_norm.isdigit():
-                                match = False
-                                for cmd in _COMMANDS:
-                                    name = str(cmd.get("name", "")).lower()
-                                    aliases = [a.lower() for a in cmd.get("aliases", [])]
-                                    if token_norm == name or token_norm in aliases:
-                                        match = True
-                                        break
-                                if match:
+                                from app.telegram.help_center import lookup_command, render_help_command_detail
+                                cmd_match = lookup_command(miner_token)
+                                if cmd_match:
+                                    msg, kb = render_help_command_detail(cmd_match.name)
                                     send_telegram(
                                         bot_token,
                                         str(msg_chat_id),
-                                        render_help_detail(miner_token),
+                                        msg,
                                         "HELP",
                                         "cmd_info_help",
                                         is_command=True,
                                         dbg_update_id=update_id,
                                         dbg_cmd="info_help",
+                                        reply_markup=kb,
                                     )
                                     if qa_mode:
                                         log_pid(f"[TEL] command=info_help duration={time.monotonic() - cmd_start:.3f}s")
@@ -5205,7 +5198,11 @@ def telegram_polling_worker(
                 elif cmd_name == "help":
                     handled = True
                     cmd_start = time.monotonic()
-                    msg = render_help_detail(args[0]) if args else render_help_index()
+                    from app.telegram.help_center import render_help_command_detail, render_help_home
+                    if args:
+                        msg, kb = render_help_command_detail(args[0])
+                    else:
+                        msg, kb = render_help_home()
                     send_telegram(
                         bot_token,
                         str(msg_chat_id),
@@ -5215,6 +5212,7 @@ def telegram_polling_worker(
                         is_command=True,
                         dbg_update_id=update_id,
                         dbg_cmd="help",
+                        reply_markup=kb,
                     )
                     if qa_mode:
                         log_pid(f"[TEL] command=help duration={time.monotonic() - cmd_start:.3f}s")
@@ -7227,7 +7225,7 @@ def main() -> None:
                 from app.telegram.daily_digest import is_digest_due, fetch_daily_digest_metrics, format_daily_digest
                 if is_digest_due(ar_now, daily_digest_time, _LAST_DAILY_DIGEST_DATE):
                     try:
-                        db_p = config.get("db_path", "data/miner_alerts.db")
+                        db_p = resolve_db_path(config)
                         b_root = config.get("backup_root", "backups")
                         with state_lock:
                             digest_metrics = fetch_daily_digest_metrics(
@@ -7349,7 +7347,7 @@ def main() -> None:
                     config=config,
                     now_ts=now_ts,
                     qa_mode=qa_mode,
-                    db_path=str(config.get("event_store_path", "data/miner_alerts.db")),
+                    db_path=resolve_db_path(config),
                 )
             except Exception as _bal_exc:
                 log(f"[BALANCER_ERR] Balancer cycle failed: {type(_bal_exc).__name__}: {_bal_exc}")

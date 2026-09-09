@@ -18,14 +18,14 @@
 - [x] T013 Realizar commit atómico de la Fase 2: `refactor(app): modularize telegram domain into app/telegram`.
 
 ## Fase 3: Dominio Vnish (`app/vnish/`)
-- [ ] T014 Crear subpaquete `app/vnish/` con su correspondiente `__init__.py`.
-- [ ] T015 Mover `vnish_client.py` -> `app/vnish/client.py` y crear shim en `app/vnish_client.py`.
-- [ ] T016 Mover `vnish_presets.py` -> `app/vnish/presets.py` y crear shim en `app/vnish_presets.py`.
-- [ ] T017 Mover `vnish_logs.py` -> `app/vnish/logs.py` y crear shim en `app/vnish_logs.py`.
-- [ ] T018 Mover `vnish_telemetry.py` -> `app/vnish/telemetry.py` y crear shim en `app/vnish_telemetry.py`.
-- [ ] T019 Configurar re-exportaciones canónicas en `app/vnish/__init__.py`.
-- [ ] T020 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
-- [ ] T021 Realizar commit atómico de la Fase 3: `refactor(app): modularize vnish integration domain into app/vnish`.
+- [x] T014 Crear subpaquete `app/vnish/` con su correspondiente `__init__.py`.
+- [x] T015 Mover `vnish_client.py` -> `app/vnish/client.py` y crear shim en `app/vnish_client.py`.
+- [x] T016 Mover `vnish_presets.py` -> `app/vnish/presets.py` y crear shim en `app/vnish_presets.py`.
+- [x] T017 Mover `vnish_logs.py` -> `app/vnish/logs.py` y crear shim en `app/vnish_logs.py`.
+- [x] T018 Mover `vnish_telemetry.py` -> `app/vnish/telemetry.py` y crear shim en `app/vnish_telemetry.py`.
+- [x] T019 Configurar re-exportaciones canónicas en `app/vnish/__init__.py`.
+- [x] T020 Validar compilación (`py_compile`) y verificar que 587/587 tests pasen.
+- [x] T021 Realizar commit atómico de la Fase 3: `refactor(app): modularize vnish integration domain into app/vnish`.
 
 ## Fase 4: Dominio Governance (`app/governance/`)
 - [ ] T022 Crear subpaquete `app/governance/` con su correspondiente `__init__.py`.

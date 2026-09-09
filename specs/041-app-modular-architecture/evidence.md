@@ -52,3 +52,28 @@ Terminal dispositions: 8/8 verified
   Payload files counted: 61
   Terminal dispositions: 8/8 verified
   ```
+
+### Fase 3: Dominio Vnish (`app/vnish/`) - [COMPLETADA]
+- **Archivos migrados**:
+  * `app/vnish_client.py` -> `app/vnish/client.py`
+  * `app/vnish_presets.py` -> `app/vnish/presets.py`
+  * `app/vnish_logs.py` -> `app/vnish/logs.py`
+  * `app/vnish_telemetry.py` -> `app/vnish/telemetry.py`
+- **Subpaquete creado**: `app/vnish/__init__.py` con re-exportaciones canónicas de los 4 submódulos.
+- **Shims retrocompatibles con module aliasing (`sys.modules[__name__] = _impl`)**: Garantizan compatibilidad completa tanto para imports tradicionales como para monkey-patching dinámico (`unittest.mock.patch("app.vnish_client.unlock_miner")`).
+- **Validación sintáctica**:
+  ```powershell
+  & ".\.venv\Scripts\python.exe" -m py_compile app\vnish\__init__.py app\vnish\client.py app\vnish\presets.py app\vnish\logs.py app\vnish\telemetry.py app\vnish_client.py app\vnish_presets.py app\vnish_logs.py app\vnish_telemetry.py
+  # Retorno: 0 (OK)
+  ```
+- **Validación de Suite de Tests**:
+  ```text
+  Ran 587 tests in 10.856s
+  OK
+  ```
+- **Auditoría de Release**:
+  ```text
+  RELEASE AUDIT: PASS. Runtime payload SHA-256: 3476c415a6195dcb3249a4149ea9dafdb29633d3ad3096ca870dca9b1dd8e9ee
+  Payload files counted: 66
+  Terminal dispositions: 8/8 verified
+  ```

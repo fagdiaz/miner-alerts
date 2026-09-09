@@ -1,6 +1,6 @@
 import unittest
 
-from app.restart_intelligence import classify_restart
+from app.core.restart_intelligence import classify_restart
 
 
 class RestartIntelligenceTests(unittest.TestCase):

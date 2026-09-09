@@ -1,4 +1,4 @@
-﻿"""Tests for T014 — Spec 023: /diagnose fusion adapter.
+"""Tests for T014 — Spec 023: /diagnose fusion adapter.
 
 Validates:
   a) incident_fusion_enabled=False  → /diagnose falls back to build_miner_diagnosis_text
@@ -56,7 +56,7 @@ def _run_diagnose_adapter(config, event_store, miners, raise_in_fusion=False):
 
     Returns (send_calls, build_calls) where each is a list of invocations.
     """
-    from app.evidence_fusion import (
+    from app.core.evidence_fusion import (
         FusionConfig,
         IncidentAssessment,
         RULESET_VERSION as _FUSION_RULESET_VERSION,
@@ -276,7 +276,7 @@ class TestDiagnoseAdapterFallbackOnException(unittest.TestCase):
 class TestAssessmentActionInvariant(unittest.TestCase):
 
     def test_incident_assessment_has_no_action_fields(self):
-        from app.evidence_fusion import IncidentAssessment, RULESET_VERSION, compute_evidence_digest
+        from app.core.evidence_fusion import IncidentAssessment, RULESET_VERSION, compute_evidence_digest
         forbidden = {
             "allow_reboot", "trigger_reboot", "external_cli_command",
             "auto_action", "reboot_eligible",

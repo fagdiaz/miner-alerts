@@ -4,7 +4,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from app.event_store import (
+from app.core.event_store import (
     EventStore,
     render_event_detail,
     render_event_list,
@@ -666,7 +666,7 @@ class AcquisitionQualityPersistenceTests(unittest.TestCase):
 
     def test_schema_v6_columns_exist(self):
         """Schema v6 must create acquisition_authority and acquisition_reason_code."""
-        from app.event_store import SCHEMA_VERSION
+        from app.core.event_store import SCHEMA_VERSION
         self.assertEqual(SCHEMA_VERSION, 6)
         conn = sqlite3.connect(str(self.db_path))
         cols = {row[1] for row in conn.execute(
@@ -766,7 +766,7 @@ class AcquisitionQualityPersistenceTests(unittest.TestCase):
 class Spec023MigrationRedContractTests(unittest.TestCase):
     """Red contract tests (T006): verify the planned additive schema for
     incident_assessments and assessment_fact_refs. These tests import
-    save/load methods from app.event_store that do NOT exist yet and
+    save/load methods from app.core.event_store that do NOT exist yet and
     must fail with AttributeError until Phase 2 (T012) implements them."""
 
     def setUp(self) -> None:

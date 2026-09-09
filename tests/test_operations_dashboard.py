@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.event_store import EventStore
+from app.core.event_store import EventStore
 from tools.operations_dashboard import (
     build_dashboard_data,
     generate_dashboard,
@@ -276,7 +276,7 @@ class IncidentAssessmentsDashboardTests(unittest.TestCase):
 
     def _save_assessment(self, subject_ref: str, status: str = "complete",
                          assessment_ts: float = 19_500.0) -> int:
-        from app.evidence_fusion import RULESET_VERSION, compute_evidence_digest
+        from app.core.evidence_fusion import RULESET_VERSION, compute_evidence_digest
         import json
         digest = compute_evidence_digest([], RULESET_VERSION)
         return self.store.save_assessment(
@@ -388,7 +388,7 @@ class IncidentAssessmentsDashboardTests(unittest.TestCase):
 
     def test_html_assessment_row_shows_stored_fields(self) -> None:
         """When an assessment exists, HTML must show subject_ref, status, and ruleset_version."""
-        from app.evidence_fusion import RULESET_VERSION
+        from app.core.evidence_fusion import RULESET_VERSION
         self._save_assessment("miner1|h1:4028", status="complete", assessment_ts=19_500.0)
         self.store.close()
 

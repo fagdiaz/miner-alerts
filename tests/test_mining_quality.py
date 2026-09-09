@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 
 import app.miner_monitor as monitor
-from app.event_store import EventStore
-from app.mining_quality import (
+from app.core.event_store import EventStore
+from app.core.mining_quality import (
     STATUS_CRITICAL,
     STATUS_LEARNING,
     STATUS_STABLE,

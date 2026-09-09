@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from app import miner_monitor
-from app.telegram_messages import (
+from app.telegram.messages import (
     TELEGRAM_TEXT_LIMIT,
     classify_delivery,
     normalize_telegram_text,

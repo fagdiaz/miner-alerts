@@ -20,34 +20,19 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-try:
-    from app.fan_governor import (
-        GovernorConfig,
-        GovernorDecision,
-        compute_governor_step,
-        ACTION_EMERGENCY_SPIKE,
-        ACTION_FAILSAFE_FAULT,
-        ACTION_HOLD_DWELL,
-        ACTION_HOLD_TARGET,
-        ACTION_RECOVERY_MAX_COOLING,
-        ACTION_STEP_DOWN,
-        ACTION_STEP_UP,
-    )
-    from app.miner_monitor import MinerState, execute_governor_cycle
-except ImportError:
-    from fan_governor import (
-        GovernorConfig,
-        GovernorDecision,
-        compute_governor_step,
-        ACTION_EMERGENCY_SPIKE,
-        ACTION_FAILSAFE_FAULT,
-        ACTION_HOLD_DWELL,
-        ACTION_HOLD_TARGET,
-        ACTION_RECOVERY_MAX_COOLING,
-        ACTION_STEP_DOWN,
-        ACTION_STEP_UP,
-    )
-    from miner_monitor import MinerState, execute_governor_cycle  # type: ignore
+from app.governance.fan_governor import (
+    GovernorConfig,
+    GovernorDecision,
+    compute_governor_step,
+    ACTION_EMERGENCY_SPIKE,
+    ACTION_FAILSAFE_FAULT,
+    ACTION_HOLD_DWELL,
+    ACTION_HOLD_TARGET,
+    ACTION_RECOVERY_MAX_COOLING,
+    ACTION_STEP_DOWN,
+    ACTION_STEP_UP,
+)
+from app.miner_monitor import MinerState, execute_governor_cycle
 
 
 def _make_config(**overrides) -> dict:

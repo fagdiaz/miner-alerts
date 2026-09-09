@@ -1,4 +1,4 @@
-﻿"""T018 Performance, Bounded Queries, Database Growth and Action Invariance.
+"""T018 Performance, Bounded Queries, Database Growth and Action Invariance.
 
 Validates:
   SC-005: Bounded query count and 24-hour latency under 2.0 seconds at scale.
@@ -16,7 +16,7 @@ import time
 import unittest
 from pathlib import Path
 
-from app.event_store import EventStore
+from app.core.event_store import EventStore
 from tools.operations_dashboard import build_dashboard_data
 
 
@@ -227,7 +227,7 @@ class TestSC006ActionInvariance(unittest.TestCase):
 
     def test_fusion_presence_does_not_alter_action_invariants(self) -> None:
         """Verifies that fusion modules and assessments have zero authority over actions."""
-        from app.evidence_fusion import IncidentAssessment
+        from app.core.evidence_fusion import IncidentAssessment
         import dataclasses
 
         field_names = {f.name for f in dataclasses.fields(IncidentAssessment)}
@@ -237,13 +237,13 @@ class TestSC006ActionInvariance(unittest.TestCase):
         }
         self.assertFalse(field_names & forbidden)
 
-        from app.evidence_fusion import FusionConfig
+        from app.core.evidence_fusion import FusionConfig
         cfg_disabled, _ = FusionConfig.from_mapping({})
         self.assertFalse(cfg_disabled.enabled)
 
-        import app.evidence_fusion
+        import app.core.evidence_fusion
         import inspect
-        source = inspect.getsource(app.evidence_fusion)
+        source = inspect.getsource(app.core.evidence_fusion)
         self.assertNotIn("reboot_safety", source)
         self.assertNotIn("hashcore", source)
         self.assertNotIn("miner_monitor", source)

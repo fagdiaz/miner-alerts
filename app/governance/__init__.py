@@ -42,6 +42,7 @@ from app.governance.fan_health import (
     build_miner_fan_detail_text,
     calculate_thermal_headroom,
     evaluate_cooling_alerts,
+    fetch_latest_cooling_assessments,
 )
 from app.governance.preset_balancer import (
     ACTION_HOLD_STABLE,
@@ -122,6 +123,7 @@ __all__ = [
     "evaluate_cooling_alerts",
     "evaluate_efficiency_alerts",
     "extract_miner_stability_metrics",
+    "fetch_latest_cooling_assessments",
     "fetch_latest_efficiency_assessments",
     "find_preset_index",
     "infer_preset_name_from_power",

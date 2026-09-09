@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from app.daily_digest import (
+from app.telegram.daily_digest import (
     is_digest_due,
     inspect_latest_backup,
     fetch_daily_digest_metrics,

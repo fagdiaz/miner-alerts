@@ -4,7 +4,7 @@ T002: Configuration, disabled-fallback and validation contracts (FR-013).
 T003: Normalization, freshness, clock quality, ordering, digest and
       unknown-code fail-closed contracts (FR-001, FR-002, FR-010, FR-012, FR-015).
 
-These tests define the expected behaviour of ``app.evidence_fusion`` before
+These tests define the expected behaviour of ``app.core.evidence_fusion`` before
 the module exists.  They MUST fail with ``ModuleNotFoundError`` until the
 implementation phase (T008-T011) creates the module.  Existing production
 code is never imported or modified by this file.
@@ -26,7 +26,7 @@ class TestFusionConfigParsing(unittest.TestCase):
     keys documented in ``contracts/config.md``."""
 
     def _parse(self, overrides: dict | None = None):
-        from app.evidence_fusion import FusionConfig  # noqa: F811
+        from app.core.evidence_fusion import FusionConfig  # noqa: F811
         base: dict = {}
         if overrides:
             base.update(overrides)
@@ -128,7 +128,7 @@ class TestEvidenceFactNormalization(unittest.TestCase):
     ``data-model.md``."""
 
     def _make_fact(self, **overrides):
-        from app.evidence_fusion import EvidenceFact  # noqa: F811
+        from app.core.evidence_fusion import EvidenceFact  # noqa: F811
         defaults = {
             "fact_id": "telemetry_samples:1:signal.current_low",
             "subject_type": "miner",
@@ -171,7 +171,7 @@ class TestFreshnessClassification(unittest.TestCase):
     ``contracts/evidence-rules.md``."""
 
     def _classify(self, effective_ts, assessment_now_ts, stale_seconds=900):
-        from app.evidence_fusion import classify_freshness
+        from app.core.evidence_fusion import classify_freshness
         return classify_freshness(effective_ts, assessment_now_ts, stale_seconds)
 
     def test_fresh_within_threshold(self):
@@ -205,7 +205,7 @@ class TestClockQualityMapping(unittest.TestCase):
     """Verify clock quality mapping per ``contracts/evidence-rules.md``."""
 
     def _map(self, source_table, source_clock=None):
-        from app.evidence_fusion import map_clock_quality
+        from app.core.evidence_fusion import map_clock_quality
         return map_clock_quality(source_table, source_clock)
 
     def test_telemetry_samples_is_system(self):
@@ -241,7 +241,7 @@ class TestUnknownCodeFailClosed(unittest.TestCase):
     """Unknown fact or cause codes must fail closed (FR-015)."""
 
     def _validate_code(self, code):
-        from app.evidence_fusion import validate_fact_code
+        from app.core.evidence_fusion import validate_fact_code
         return validate_fact_code(code)
 
     def test_recognized_code_is_valid(self):
@@ -265,11 +265,11 @@ class TestCanonicalOrdering(unittest.TestCase):
     per FR-012 for deterministic digest."""
 
     def _sort_facts(self, facts):
-        from app.evidence_fusion import sort_facts_canonical
+        from app.core.evidence_fusion import sort_facts_canonical
         return sort_facts_canonical(facts)
 
     def _make_fact(self, effective_ts, source, source_row_id, code):
-        from app.evidence_fusion import EvidenceFact
+        from app.core.evidence_fusion import EvidenceFact
         return EvidenceFact(
             fact_id=f"{source}:{source_row_id}:{code}",
             subject_type="miner",
@@ -337,11 +337,11 @@ class TestEvidenceDigest(unittest.TestCase):
     and creation timestamps (FR-012)."""
 
     def _compute_digest(self, facts, ruleset_version="1.0.0"):
-        from app.evidence_fusion import compute_evidence_digest
+        from app.core.evidence_fusion import compute_evidence_digest
         return compute_evidence_digest(facts, ruleset_version)
 
     def _make_fact(self, effective_ts, source, source_row_id, code):
-        from app.evidence_fusion import EvidenceFact
+        from app.core.evidence_fusion import EvidenceFact
         return EvidenceFact(
             fact_id=f"{source}:{source_row_id}:{code}",
             subject_type="miner",
@@ -414,7 +414,7 @@ class TestConfidenceCeilings(unittest.TestCase):
     ``contracts/evidence-rules.md``."""
 
     def _ceiling(self, conditions: list[str]) -> str:
-        from app.evidence_fusion import compute_confidence_ceiling
+        from app.core.evidence_fusion import compute_confidence_ceiling
         return compute_confidence_ceiling(conditions)
 
     def test_stale_evidence_caps_at_observed(self):
@@ -464,7 +464,7 @@ class TestNonCausality(unittest.TestCase):
 
     def _assess_cause(self, cause_code: str, evidence_conditions: list[str]) -> str:
         """Returns max achievable level: 'observed', 'suspected', or 'confirmed'."""
-        from app.evidence_fusion import max_cause_level
+        from app.core.evidence_fusion import max_cause_level
         return max_cause_level(cause_code, evidence_conditions)
 
     def test_offline_alone_cannot_confirm_network_cause(self):
@@ -507,7 +507,7 @@ class TestContradictionsAndMissingEvidence(unittest.TestCase):
 
     def _eval_hypothesis(self, supporting: list[str], contradicting: list[str],
                           missing: list[str]) -> dict:
-        from app.evidence_fusion import evaluate_hypothesis
+        from app.core.evidence_fusion import evaluate_hypothesis
         return evaluate_hypothesis(supporting, contradicting, missing)
 
     def test_no_contradiction_produces_no_contradicting_list(self):
@@ -557,7 +557,7 @@ class TestIsolatedVsFleetFixtures(unittest.TestCase):
 
     def _build_fact(self, miner_key: str, effective_ts: float, code: str,
                      freshness: str = "fresh") -> object:
-        from app.evidence_fusion import EvidenceFact
+        from app.core.evidence_fusion import EvidenceFact
         return EvidenceFact(
             fact_id=f"telemetry_samples:1:{code}",
             subject_type="miner",
@@ -578,7 +578,7 @@ class TestIsolatedVsFleetFixtures(unittest.TestCase):
         )
 
     def _detect_fleet_pattern(self, facts: list, fleet_window_seconds: float = 60.0):
-        from app.evidence_fusion import detect_fleet_pattern
+        from app.core.evidence_fusion import detect_fleet_pattern
         return detect_fleet_pattern(facts, fleet_window_seconds)
 
     def test_single_miner_offline_is_isolated(self):
@@ -608,7 +608,7 @@ class TestIsolatedVsFleetFixtures(unittest.TestCase):
 
     def test_fleet_pattern_does_not_produce_confirmed_electrical_cause(self):
         """Fleet pattern alone cannot produce a confirmed electrical cause."""
-        from app.evidence_fusion import max_cause_level
+        from app.core.evidence_fusion import max_cause_level
         level = max_cause_level(
             "power.electrical_fault",
             ["fleet.concurrent_degradation"],
@@ -621,7 +621,7 @@ class TestAttributedActionFixture(unittest.TestCase):
 
     def _check_attribution(self, action_ts: float, restart_ts: float,
                              window_seconds: float = 900.0) -> bool:
-        from app.evidence_fusion import is_within_attribution_window
+        from app.core.evidence_fusion import is_within_attribution_window
         return is_within_attribution_window(action_ts, restart_ts, window_seconds)
 
     def test_restart_within_window_is_attributed(self):
@@ -645,7 +645,7 @@ class TestFirmwareClockFixtures(unittest.TestCase):
     """FR-002, FR-010: firmware events with parsed vs unparsed clocks."""
 
     def _map(self, source_table: str, source_clock: str | None = None) -> str:
-        from app.evidence_fusion import map_clock_quality
+        from app.core.evidence_fusion import map_clock_quality
         return map_clock_quality(source_table, source_clock)
 
     def test_firmware_parsed_local_clock(self):
@@ -664,7 +664,7 @@ class TestFirmwareClockFixtures(unittest.TestCase):
         self.assertEqual(quality, "unparsed")
 
     def test_firmware_unparsed_ceiling_is_observed(self):
-        from app.evidence_fusion import compute_confidence_ceiling
+        from app.core.evidence_fusion import compute_confidence_ceiling
         ceiling = compute_confidence_ceiling(["unparsed_clock"])
         self.assertEqual(ceiling, "observed")
 
@@ -677,16 +677,16 @@ class TestActionInvariants(unittest.TestCase):
     """FR-008, SC-006: evidence fusion is read-only and cannot alter monitor state."""
 
     def test_evidence_fusion_module_has_no_hashcore_import(self):
-        """app.evidence_fusion must not import any Hashcore module."""
+        """app.core.evidence_fusion must not import any Hashcore module."""
         import importlib
         import importlib.util
         import sys
         # If the module doesn't exist yet, the test is vacuously green
         # (the import guard handles it gracefully)
-        spec = importlib.util.find_spec("app.evidence_fusion")
+        spec = importlib.util.find_spec("app.core.evidence_fusion")
         if spec is None:
-            self.skipTest("app.evidence_fusion not yet implemented")
-        mod = importlib.import_module("app.evidence_fusion")
+            self.skipTest("app.core.evidence_fusion not yet implemented")
+        mod = importlib.import_module("app.core.evidence_fusion")
         # Check module source does not import reboot_safety or hashcore
         import inspect
         source = inspect.getsource(mod)
@@ -696,20 +696,20 @@ class TestActionInvariants(unittest.TestCase):
                          "evidence_fusion must not import reboot_safety")
 
     def test_evidence_fusion_module_has_no_miner_monitor_import(self):
-        """app.evidence_fusion must not import miner_monitor (action authority)."""
+        """app.core.evidence_fusion must not import miner_monitor (action authority)."""
         import importlib.util
-        spec = importlib.util.find_spec("app.evidence_fusion")
+        spec = importlib.util.find_spec("app.core.evidence_fusion")
         if spec is None:
-            self.skipTest("app.evidence_fusion not yet implemented")
+            self.skipTest("app.core.evidence_fusion not yet implemented")
         import importlib, inspect
-        mod = importlib.import_module("app.evidence_fusion")
+        mod = importlib.import_module("app.core.evidence_fusion")
         source = inspect.getsource(mod)
         self.assertNotIn("miner_monitor", source,
                          "evidence_fusion must not import miner_monitor")
 
     def test_assessment_output_has_no_action_fields(self):
         """IncidentAssessment must not expose fields that could be action inputs."""
-        from app.evidence_fusion import IncidentAssessment  # noqa: F811
+        from app.core.evidence_fusion import IncidentAssessment  # noqa: F811
         import dataclasses
         field_names = {f.name for f in dataclasses.fields(IncidentAssessment)}
         forbidden = {"allow_reboot", "trigger_reboot", "hashcore_command",
@@ -722,7 +722,7 @@ class TestActionInvariants(unittest.TestCase):
 
     def test_compute_evidence_digest_does_not_mutate_input(self):
         """compute_evidence_digest must not mutate the passed fact list."""
-        from app.evidence_fusion import EvidenceFact, compute_evidence_digest
+        from app.core.evidence_fusion import EvidenceFact, compute_evidence_digest
         fact = EvidenceFact(
             fact_id="telemetry_samples:1:signal.current_low",
             subject_type="miner",
@@ -755,7 +755,7 @@ class TestSharedSemanticRenderer(unittest.TestCase):
     """Verify render_assessment_text and render_assessment_telegram."""
 
     def _build_sample_assessment(self):
-        from app.evidence_fusion import (
+        from app.core.evidence_fusion import (
             CauseHypothesis,
             EvidenceFact,
             IncidentAssessment,
@@ -804,7 +804,7 @@ class TestSharedSemanticRenderer(unittest.TestCase):
         )
 
     def test_render_assessment_text_sections_and_footer(self):
-        from app.evidence_fusion import render_assessment_text
+        from app.core.evidence_fusion import render_assessment_text
         assessment = self._build_sample_assessment()
         rendered = render_assessment_text(assessment)
 
@@ -821,7 +821,7 @@ class TestSharedSemanticRenderer(unittest.TestCase):
         self.assertIn("[LECTURA / SIN ACCION AUTOMATICA]", rendered)
 
     def test_render_assessment_telegram_splitting(self):
-        from app.evidence_fusion import render_assessment_telegram
+        from app.core.evidence_fusion import render_assessment_telegram
         assessment = self._build_sample_assessment()
 
         # Unsplit when max_chars is large

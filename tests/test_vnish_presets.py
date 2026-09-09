@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from app.vnish_presets import (
+from app.vnish.presets import (
     infer_operating_profile,
     assess_miner_preset,
     build_presets_table_text,
@@ -285,7 +285,7 @@ class TestVnishPresetsIntegration(unittest.TestCase):
         if not real_db.exists():
             return
         import time
-        from app.vnish_presets import fetch_latest_preset_assessments, build_presets_table_text
+        from app.vnish.presets import fetch_latest_preset_assessments, build_presets_table_text
 
         miners = [
             {"name": "S19JPRO-23", "ip": "192.168.100.23"},

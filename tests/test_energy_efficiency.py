@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from app.energy_efficiency import (
+from app.governance.energy_efficiency import (
     calculate_efficiency_j_th,
     assess_miner_efficiency,
     build_efficiency_table_text,
@@ -286,7 +286,7 @@ class TestEnergyEfficiencyIntegration(unittest.TestCase):
         if not real_db.exists():
             return
         import time
-        from app.energy_efficiency import fetch_latest_efficiency_assessments, build_efficiency_table_text
+        from app.governance.energy_efficiency import fetch_latest_efficiency_assessments, build_efficiency_table_text
 
         miners = [
             {"name": "S19JPRO-23", "ip": "192.168.100.23"},

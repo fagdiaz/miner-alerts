@@ -5,7 +5,7 @@ import time
 import unittest
 from pathlib import Path
 
-from app.metrics_snapshot import write_metrics_snapshot_atomic
+from app.core.metrics_snapshot import write_metrics_snapshot_atomic
 from tests.test_metrics_snapshot import _make_sample_payload
 from tools.metrics_exporter import METRIC_FAMILIES_DEF, render_prometheus_text
 

@@ -9,8 +9,8 @@ import time
 import unittest
 from pathlib import Path
 
-from app.event_store import EventStore
-from app.telegram_charts import (
+from app.core.event_store import EventStore
+from app.telegram.charts import (
     fetch_miner_chart_data,
     fetch_fleet_chart_data,
     render_miner_chart_png,
@@ -113,7 +113,7 @@ class TestTelegramCharts(unittest.TestCase):
 from unittest.mock import MagicMock, patch
 import threading
 from app.miner_monitor import send_telegram_photo, _handle_callback_query, MinerState
-from app.telegram_callbacks import CallbackTokenRegistry
+from app.telegram.callbacks import CallbackTokenRegistry
 
 
 class TestTelegramPhotoAndCallback(unittest.TestCase):

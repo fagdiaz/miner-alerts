@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app.miner_monitor as monitor
-from app.event_store import EventStore
-from app.vnish_logs import parse_vnish_log_text, render_firmware_events
+from app.core.event_store import EventStore
+from app.vnish.logs import parse_vnish_log_text, render_firmware_events
 from tools import vnish_log_collector as collector
 from tools.vnish_log_collector import CollectionResult, collect_vnish_tab
 

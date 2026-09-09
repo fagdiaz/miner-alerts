@@ -7,7 +7,7 @@ from collections import Counter
 from pathlib import Path
 from unittest import mock
 
-from app.acquisition import (
+from app.core.acquisition import (
     AcquisitionConfig,
     AcquisitionEpoch,
     Api4028Transport,
@@ -162,7 +162,7 @@ class Api4028TransportTests(unittest.TestCase):
                 fake_socket = self.FakeSocket(chunks or [])
                 side_effect = error if error is not None else None
                 with mock.patch(
-                    "app.acquisition.socket.create_connection",
+                    "app.core.acquisition.socket.create_connection",
                     side_effect=side_effect,
                     return_value=fake_socket,
                 ):
@@ -173,7 +173,7 @@ class Api4028TransportTests(unittest.TestCase):
     def test_only_scheduled_commands_are_accepted_before_socket_io(self) -> None:
         endpoint = MinerEndpoint("miner-a", "example.invalid", 4028)
         transport = Api4028Transport()
-        with mock.patch("app.acquisition.socket.create_connection") as connect:
+        with mock.patch("app.core.acquisition.socket.create_connection") as connect:
             with self.assertRaises(ValueError):
                 transport(endpoint, "reboot", 5.0)
         connect.assert_not_called()

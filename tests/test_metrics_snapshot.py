@@ -7,7 +7,7 @@ import time
 import unittest
 from pathlib import Path
 
-from app.metrics_snapshot import (
+from app.core.metrics_snapshot import (
     SNAPSHOT_SCHEMA_VERSION,
     VALID_ACQ_QUALITIES,
     VALID_COLLECTOR_STATUSES,

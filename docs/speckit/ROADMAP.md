@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (41 de 41 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 587 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (42 de 42 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 587 tests PASS).
 
 ### 🏆 Avances Principales Desde el Inicio (Spec 001 a Spec 030)
 
@@ -108,6 +108,11 @@ El programa completo de expansión V3 (Specs 031 a 038) está cerrado y validado
       * `app/governance/`: fan governor en lazo cerrado, preset balancer por elevador, salud térmica de fans y eficiencia energética (4 módulos).
       * `app/telegram/`: callbacks interactivos, gráficos PNG en RAM, digests diarios, split de mensajes y mantenimiento snooze (5 módulos).
     - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T042), **587 tests globales PASS** en 11.26s, cero quiebres en importaciones externas ni monkey-patching en tests, auditoría de release aprobada (83 archivos).
+    - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
+
+12. **[COMPLETADO] Spec 042 — Purga Limpia de Shims y Modernización de Tests en `app/` (`042-purge-shims-test-modernization`)**:
+    - *Objetivo*: Culminación del ordenamiento arquitectónico integral de `app/` para alcanzar la máxima pulcritud posible: eliminación definitiva de los 22 archivos shims/fachadas planos sueltos en la raíz de `app/` tras la modernización directa de toda la suite de tests en `tests/` para importar exclusivamente de los 4 subpaquetes de dominio canónicos (`app.core`, `app.vnish`, `app.governance`, `app.telegram`), dejando en `app/` únicamente el orquestador raíz `miner_monitor.py` y el inicializador de paquete `__init__.py` junto con los archivos locales de runtime.
+    - *Resultados*: Fases 1 a 6 completadas al 100% (T001-T020), 22 archivos shims purgados vía `git rm`, **587/587 tests globales PASS** en 10.68s, auditoría de release aprobada (`tools/release_audit.py --check-only`) con payload optimizado de 60 archivos limpios, cero impacto y servicio de producción 100% continuo.
     - *Modelo*: Gemini 3.8 Flash High (100% autónomo).
 
 ---

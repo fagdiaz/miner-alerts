@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
-from app.telegram_snooze import (
+from app.telegram.snooze import (
     parse_snooze_args,
     is_miner_snoozed,
     get_snooze_remaining_seconds,
@@ -135,8 +135,8 @@ class TestTelegramSnooze(unittest.TestCase):
         self.assertNotIn("S19JPRO-24", text)
 
     def test_filter_snoozed_episodes(self):
-        from app.telegram_snooze import filter_snoozed_episodes
-        from app.alert_episodes import EpisodeNotificationBatch
+        from app.telegram.snooze import filter_snoozed_episodes
+        from app.core.alert_episodes import EpisodeNotificationBatch
 
         ep23 = MagicMock(miner_key="S19JPRO-23|192.168.1.23:4028", name_display="23")
         ep24 = MagicMock(miner_key="S19JPRO-24|192.168.1.24:4028", name_display="24")
@@ -179,7 +179,7 @@ class TestTelegramSnooze(unittest.TestCase):
 
 class TestTelegramSnoozeIntegration(unittest.TestCase):
     def setUp(self):
-        from app.telegram_callbacks import CallbackTokenRegistry
+        from app.telegram.callbacks import CallbackTokenRegistry
         from app.miner_monitor import MinerState
 
         self.bot_token = "TEST_BOT_TOKEN"

@@ -3,6 +3,34 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-08] - Spec 042: Purga Limpia de Shims y Modernización de Tests en `app/`
+
+* **Objetivo**: Completar el ordenamiento arquitectónico integral de `app/` alcanzando la máxima pulcritud posible: eliminación definitiva de los 22 archivos shims/fachadas planos sueltos en la raíz de `app/` tras la modernización directa de toda la suite de tests en `tests/` para importar exclusivamente de los 4 subpaquetes de dominio (`app.core`, `app.vnish`, `app.governance`, `app.telegram`), dejando en `app/` únicamente el orquestador raíz `miner_monitor.py` y el inicializador de paquete `__init__.py` junto con los archivos locales de runtime.
+* **Acciones Ejecutadas por Fases**:
+  1. **Fase 2 - Dominio Telegram**:
+     - Modernización de imports y fixtures en `test_telegram_callbacks.py`, `test_telegram_charts.py`, `test_telegram_messaging.py`, `test_telegram_snooze.py`, `test_daily_digest.py`, `test_controlled_telegram_simulation.py`, `test_v3_concurrency.py`.
+     - Purga vía `git rm` de 5 shims: `app/daily_digest.py`, `app/telegram_callbacks.py`, `app/telegram_charts.py`, `app/telegram_messages.py`, `app/telegram_snooze.py`.
+  2. **Fase 3 - Dominio Vnish**:
+     - Modernización de imports y 12 targets de `@patch` en `test_vnish_client.py`, `test_vnish_presets.py`, `test_vnish_logs.py`, `test_vnish_telemetry.py`, `test_reboot_decision_audit.py`.
+     - Purga vía `git rm` de 4 shims: `app/vnish_client.py`, `app/vnish_logs.py`, `app/vnish_presets.py`, `app/vnish_telemetry.py`.
+  3. **Fase 4 - Dominio Governance**:
+     - Modernización de imports en `test_fan_governor.py`, `test_fan_governor_concurrency.py`, `test_preset_balancer.py`, `test_preset_balancer_integration.py`, `test_fan_health.py`, `test_energy_efficiency.py`.
+     - Adición formal de export `fetch_latest_cooling_assessments` a `app/governance/__init__.py`.
+     - Purga vía `git rm` de 4 shims: `app/fan_governor.py`, `app/preset_balancer.py`, `app/fan_health.py`, `app/energy_efficiency.py`.
+  4. **Fase 5 - Dominio Core**:
+     - Modernización de imports y module inspections en `test_acquisition.py`, `test_acquisition_baseline.py`, `test_t009_t011_invariants.py`, `test_t012_shadow_and_rollback.py`, `test_alert_episodes.py`, `test_compact_format.py`, `test_compact_ux.py`, `test_notification_stability.py`, `test_event_store.py`, `test_incident_report.py`, `test_operations_dashboard.py`, `test_mining_quality.py`, `test_stability_profile.py`, `test_monitor_liveness.py`, `test_metrics_exporter.py`, `test_metrics_snapshot.py`, `test_reboot_safety.py`, `test_restart_intelligence.py`, `test_evidence_fusion.py`, `test_evidence_fusion_fixtures.py`, `test_t014_diagnose_adapter.py`, `test_t017_deterministic_validation.py`, `test_t018_performance_and_growth.py`.
+     - Purga vía `git rm` de 9 shims: `app/acquisition.py`, `app/alert_episodes.py`, `app/event_store.py`, `app/evidence_fusion.py`, `app/liveness.py`, `app/metrics_snapshot.py`, `app/mining_quality.py`, `app/reboot_safety.py`, `app/restart_intelligence.py`, `app/stability_profile.py`.
+  5. **Fase 6 - Limpieza Profunda de Imports Internos y Certificación**:
+     - Eliminación de imports de respaldo innecesarios en `app/miner_monitor.py` y `app/telegram/daily_digest.py`.
+     - Verificación de cero módulos planos sueltos en `app/` (únicamente `miner_monitor.py` e `__init__.py`).
+* **Resultados y Certificación**:
+  - Compilación sintáctica: 100% OK (`py_compile app\miner_monitor.py`).
+  - Suite de tests completa: **587/587 tests PASS** en 10.68s.
+  - Release audit: **PASS** (`tools/release_audit.py --check-only`), digest `b11a92084d2f558327290d98c05b7fa691e512ddc7f33d36e7f0e120459249fd`, reducción de runtime payload de 83 a 60 archivos limpios.
+  - Producción: Servicio Windows `MinerAlerts` ininterrumpido y 100% estable.
+
+---
+
 ## [2026-09-08] - Spec 041: Arquitectura Modular y Reorganización de Dominios en `app/`
 
 * **Objetivo**: Reorganizar los 22 archivos Python planos de `app/` en 4 subpaquetes de dominio desacoplados (`app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`), manteniendo `app/miner_monitor.py` como orquestador raíz y garantizando 100% de retrocompatibilidad y cero regresiones mediante fachadas con module aliasing (`sys.modules[__name__] = _impl`).

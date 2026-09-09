@@ -25,198 +25,96 @@ if _REPO_ROOT not in sys.path:
 
 import requests
 
-try:
-    from app.core import (
-        AcquisitionConfig,
-        AcquisitionEpoch,
-        Api4028Transport,
-        BoundedAcquirer,
-        EventStore,
-        FusionConfig,
-        IncidentAssessment,
-        IrregularEpisodeCoordinator,
-        MinerEndpoint,
-        MonitorHeartbeat,
-        analyze_mining_quality,
-        analyze_stability,
-        classify_restart,
-        dispatch_authoritative,
-        evaluate_auto_reboot_interlocks,
-        format_current_status_line,
-        normalize_mining_quality,
-        render_episode_notification_batch,
-        render_event_detail,
-        render_event_list,
-        render_mining_quality,
-        render_reboot_decision,
-        render_stability_assessment,
-        write_heartbeat_atomic,
-    )
-    from app.core.evidence_fusion import (
-        RULESET_VERSION as _FUSION_RULESET_VERSION,
-        compute_evidence_digest as _compute_evidence_digest,
-        render_assessment_telegram as _render_assessment_telegram,
-    )
-    from app.vnish import (
-        VnishTelemetry,
-        assess_miner_preset,
-        build_miner_preset_detail_text,
-        build_presets_table_text,
-        evaluate_preset_alerts,
-        fetch_latest_preset_assessments,
-        get_overclock_settings,
-        infer_operating_profile,
-        mask_secret,
-        normalize_vnish_stats,
-        render_firmware_events,
-        safe_get_overclock_settings,
-        safe_set_fan_duty,
-        safe_set_miner_preset,
-    )
-    from app.telegram import (
-        CallbackTokenRegistry,
-        build_alert_keyboard,
-        build_confirmation_keyboard,
-        build_settled_keyboard,
-        classify_delivery,
-        parse_callback_data,
-        split_telegram_message,
-    )
-    from app.governance import (
-        ACTION_EMERGENCY_SPIKE,
-        ACTION_FAILSAFE_FAULT,
-        ACTION_HOLD_DWELL,
-        ACTION_HOLD_TARGET,
-        ACTION_RECOVERY_MAX_COOLING,
-        ACTION_STEP_DOWN,
-        ACTION_STEP_UP,
-        BalancerConfig,
-        BalancerDecision,
-        ElevatorSensitivitySummary,
-        GovernorConfig,
-        GovernorDecision,
-        StabilityMetrics,
-        analyze_elevator_sensitivity,
-        assess_miner_cooling,
-        assess_miner_efficiency,
-        build_balancer_table_text,
-        build_efficiency_table_text,
-        build_elevator_sensitivity_text,
-        build_fans_table_text,
-        build_miner_balancer_detail_text,
-        build_miner_efficiency_detail_text,
-        build_miner_fan_detail_text,
-        calculate_efficiency_j_th,
-        compute_governor_step,
-        evaluate_balancer_step,
-        evaluate_cooling_alerts,
-        evaluate_efficiency_alerts,
-        extract_miner_stability_metrics,
-        fetch_latest_cooling_assessments,
-        fetch_latest_efficiency_assessments,
-        record_elevator_restart_circumstance,
-    )
-except ImportError:
-    from app.alert_episodes import (
-        IrregularEpisodeCoordinator,
-        format_current_status_line,
-        render_episode_notification_batch,
-    )
-    from app.event_store import (
-        EventStore,
-        render_event_detail,
-        render_event_list,
-        render_reboot_decision,
-    )
-    from app.restart_intelligence import classify_restart
-    from app.reboot_safety import evaluate_auto_reboot_interlocks
-    from app.mining_quality import (
-        analyze_mining_quality,
-        normalize_mining_quality,
-        render_mining_quality,
-    )
-    from app.stability_profile import analyze_stability, render_stability_assessment
-    from app.vnish_telemetry import VnishTelemetry, normalize_vnish_stats
-    from app.vnish_logs import render_firmware_events
-    from app.telegram_messages import classify_delivery, split_telegram_message
-    from app.liveness import MonitorHeartbeat, write_heartbeat_atomic
-    from app.acquisition import (
-        AcquisitionConfig,
-        Api4028Transport,
-        AcquisitionEpoch,
-        BoundedAcquirer,
-        MinerEndpoint,
-        dispatch_authoritative,
-    )
-    from app.evidence_fusion import (
-        FusionConfig,
-        IncidentAssessment,
-        RULESET_VERSION as _FUSION_RULESET_VERSION,
-        compute_evidence_digest as _compute_evidence_digest,
-        render_assessment_telegram as _render_assessment_telegram,
-    )
-    from app.telegram_callbacks import (
-        CallbackTokenRegistry,
-        build_alert_keyboard,
-        build_confirmation_keyboard,
-        build_settled_keyboard,
-        parse_callback_data,
-    )
-    from app.fan_health import (
-        assess_miner_cooling,
-        build_fans_table_text,
-        build_miner_fan_detail_text,
-        evaluate_cooling_alerts,
-        fetch_latest_cooling_assessments,
-    )
-    from app.energy_efficiency import (
-        assess_miner_efficiency,
-        build_efficiency_table_text,
-        build_miner_efficiency_detail_text,
-        calculate_efficiency_j_th,
-        evaluate_efficiency_alerts,
-        fetch_latest_efficiency_assessments,
-    )
-    from app.vnish_presets import (
-        assess_miner_preset,
-        build_presets_table_text,
-        build_miner_preset_detail_text,
-        evaluate_preset_alerts,
-        fetch_latest_preset_assessments,
-        infer_operating_profile,
-    )
-    from app.fan_governor import (
-        GovernorConfig,
-        GovernorDecision,
-        compute_governor_step,
-        ACTION_EMERGENCY_SPIKE,
-        ACTION_FAILSAFE_FAULT,
-        ACTION_HOLD_DWELL,
-        ACTION_HOLD_TARGET,
-        ACTION_RECOVERY_MAX_COOLING,
-        ACTION_STEP_DOWN,
-        ACTION_STEP_UP,
-    )
-    from app.preset_balancer import (
-        BalancerConfig,
-        BalancerDecision,
-        StabilityMetrics,
-        ElevatorSensitivitySummary,
-        evaluate_balancer_step,
-        extract_miner_stability_metrics,
-        build_balancer_table_text,
-        build_miner_balancer_detail_text,
-        analyze_elevator_sensitivity,
-        build_elevator_sensitivity_text,
-        record_elevator_restart_circumstance,
-    )
-    from app.vnish_client import (
-        safe_set_fan_duty,
-        safe_set_miner_preset,
-        safe_get_overclock_settings,
-        get_overclock_settings,
-        mask_secret,
-    )
+from app.core import (
+    AcquisitionConfig,
+    AcquisitionEpoch,
+    Api4028Transport,
+    BoundedAcquirer,
+    EventStore,
+    FusionConfig,
+    IncidentAssessment,
+    IrregularEpisodeCoordinator,
+    MinerEndpoint,
+    MonitorHeartbeat,
+    analyze_mining_quality,
+    analyze_stability,
+    classify_restart,
+    dispatch_authoritative,
+    evaluate_auto_reboot_interlocks,
+    format_current_status_line,
+    normalize_mining_quality,
+    render_episode_notification_batch,
+    render_event_detail,
+    render_event_list,
+    render_mining_quality,
+    render_reboot_decision,
+    render_stability_assessment,
+    write_heartbeat_atomic,
+)
+from app.core.evidence_fusion import (
+    RULESET_VERSION as _FUSION_RULESET_VERSION,
+    compute_evidence_digest as _compute_evidence_digest,
+    render_assessment_telegram as _render_assessment_telegram,
+)
+from app.vnish import (
+    VnishTelemetry,
+    assess_miner_preset,
+    build_miner_preset_detail_text,
+    build_presets_table_text,
+    evaluate_preset_alerts,
+    fetch_latest_preset_assessments,
+    get_overclock_settings,
+    infer_operating_profile,
+    mask_secret,
+    normalize_vnish_stats,
+    render_firmware_events,
+    safe_get_overclock_settings,
+    safe_set_fan_duty,
+    safe_set_miner_preset,
+)
+from app.telegram import (
+    CallbackTokenRegistry,
+    build_alert_keyboard,
+    build_confirmation_keyboard,
+    build_settled_keyboard,
+    classify_delivery,
+    parse_callback_data,
+    split_telegram_message,
+)
+from app.governance import (
+    ACTION_EMERGENCY_SPIKE,
+    ACTION_FAILSAFE_FAULT,
+    ACTION_HOLD_DWELL,
+    ACTION_HOLD_TARGET,
+    ACTION_RECOVERY_MAX_COOLING,
+    ACTION_STEP_DOWN,
+    ACTION_STEP_UP,
+    BalancerConfig,
+    BalancerDecision,
+    ElevatorSensitivitySummary,
+    GovernorConfig,
+    GovernorDecision,
+    StabilityMetrics,
+    analyze_elevator_sensitivity,
+    assess_miner_cooling,
+    assess_miner_efficiency,
+    build_balancer_table_text,
+    build_efficiency_table_text,
+    build_elevator_sensitivity_text,
+    build_fans_table_text,
+    build_miner_balancer_detail_text,
+    build_miner_efficiency_detail_text,
+    build_miner_fan_detail_text,
+    calculate_efficiency_j_th,
+    compute_governor_step,
+    evaluate_balancer_step,
+    evaluate_cooling_alerts,
+    evaluate_efficiency_alerts,
+    extract_miner_stability_metrics,
+    fetch_latest_cooling_assessments,
+    fetch_latest_efficiency_assessments,
+    record_elevator_restart_circumstance,
+)
 
 STATE_OK = "OK"
 STATE_LOW = "LOW"
@@ -4099,18 +3997,11 @@ def telegram_polling_worker(
                     )
                 elif cmd_name in ("presets", "preset", "profile"):
                     handled = True
-                    try:
-                        from app.vnish.presets import (
-                            fetch_latest_preset_assessments,
-                            build_presets_table_text,
-                            build_miner_preset_detail_text,
-                        )
-                    except ImportError:
-                        from app.vnish_presets import (
-                            fetch_latest_preset_assessments,
-                            build_presets_table_text,
-                            build_miner_preset_detail_text,
-                        )
+                    from app.vnish.presets import (
+                        fetch_latest_preset_assessments,
+                        build_presets_table_text,
+                        build_miner_preset_detail_text,
+                    )
                     db_p = config.get("db_path", "data/miner_alerts.db")
                     with state_lock:
                         assessments = fetch_latest_preset_assessments(
@@ -4179,10 +4070,7 @@ def telegram_polling_worker(
                             m_host = m.get("host", "")
                             m_name = m.get("name", m_host)
                             if not gov_dry_run and m_host:
-                                try:
-                                    from app.vnish.client import safe_set_fan_duty as _ssfd
-                                except ImportError:
-                                    from app.vnish_client import safe_set_fan_duty as _ssfd  # type: ignore
+                                from app.vnish.client import safe_set_fan_duty as _ssfd
                                 try:
                                     ok, err = _ssfd(m_host, vnish_pw, 100, timeout=2.5)
                                     fallback_results.append(f"  {m_name}: {'✅ 100%' if ok else f'⚠️ {err}'}")

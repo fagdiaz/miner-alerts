@@ -30,7 +30,7 @@ from app.miner_monitor import (
     save_state,
     _is_command_like,
 )
-from app.preset_balancer import (
+from app.governance.preset_balancer import (
     ACTION_HOLD_STABLE,
     ACTION_STEP_DOWN_CASCADE,
     ACTION_STEP_DOWN_RESTARTS,

@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from app.fan_health import (
+from app.governance.fan_health import (
     calculate_thermal_headroom,
     assess_miner_cooling,
     build_fans_table_text,
@@ -298,7 +298,7 @@ class TestFanHealth(unittest.TestCase):
         import tempfile
         import json
         from pathlib import Path
-        from app.fan_health import fetch_latest_cooling_assessments
+        from app.governance.fan_health import fetch_latest_cooling_assessments
 
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
             db_path = Path(tf.name)
@@ -389,7 +389,7 @@ class TestFanHealthIntegration(unittest.TestCase):
         if not real_db.exists():
             return
         import time
-        from app.fan_health import fetch_latest_cooling_assessments, build_fans_table_text
+        from app.governance.fan_health import fetch_latest_cooling_assessments, build_fans_table_text
 
         miners = [
             {"name": "S19JPRO-23", "ip": "192.168.100.23"},

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 import time
-from app.telegram_callbacks import (
+from app.telegram.callbacks import (
     CallbackAction,
     CallbackTokenRegistry,
     parse_callback_data,

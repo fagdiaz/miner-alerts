@@ -1,4 +1,4 @@
-﻿"""Tests for Spec 022 T009 & T011.
+"""Tests for Spec 022 T009 & T011.
 
 T009 — Diagnostic data read-only context exposure:
     Formally proves that DiagnosticProbeResult / EpisodeDiagnosticEnvelope
@@ -22,7 +22,7 @@ import types
 import unittest
 from typing import Any, Optional
 
-from app.acquisition import (
+from app.core.acquisition import (
     AcquisitionConfig,
     Authority,
     BoundedAcquirer,
@@ -372,7 +372,7 @@ class TestActionInvariant(unittest.TestCase):
 
     def test_acquisition_module_has_no_hashcore_calls(self) -> None:
         """acquisition.py must not import or call Hashcore CLI or reboot functions."""
-        import app.acquisition as acq_module
+        import app.core.acquisition as acq_module
         source = inspect.getsource(acq_module)
 
         self.assertNotIn("hashcore", source.lower(),
@@ -384,7 +384,7 @@ class TestActionInvariant(unittest.TestCase):
 
     def test_acquisition_module_has_no_miner_state_mutation(self) -> None:
         """acquisition.py must not write to miner_states, streaks or reboot counters."""
-        import app.acquisition as acq_module
+        import app.core.acquisition as acq_module
         source = inspect.getsource(acq_module)
 
         forbidden = [
@@ -419,7 +419,7 @@ class TestTelegramOffsetInvariant(unittest.TestCase):
 
     def test_acquisition_module_does_not_import_telegram_functions(self) -> None:
         """acquisition.py must not import or call any Telegram API functions."""
-        import app.acquisition as acq_module
+        import app.core.acquisition as acq_module
         source = inspect.getsource(acq_module)
 
         telegram_markers = [

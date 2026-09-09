@@ -1,6 +1,6 @@
 """Advanced deterministic replay fixtures and edge-case unit tests for Spec 023.
 
-Tests pure domain invariants of ``app.evidence_fusion`` without IO or database access.
+Tests pure domain invariants of ``app.core.evidence_fusion`` without IO or database access.
 Target: CHK-GEM-01 (Spec 023 Fixtures & Determinism).
 """
 
@@ -10,7 +10,7 @@ import dataclasses
 import random
 import unittest
 
-from app.evidence_fusion import (
+from app.core.evidence_fusion import (
     EvidenceFact,
     compute_evidence_digest,
     sort_facts_canonical,

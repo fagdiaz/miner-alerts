@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.preset_balancer import (
+from app.governance.preset_balancer import (
     ACTION_HOLD_STABLE,
     ACTION_LOCKED_MAX,
     ACTION_LOCKED_MIN,

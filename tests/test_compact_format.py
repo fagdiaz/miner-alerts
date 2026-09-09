@@ -6,7 +6,7 @@ They should FAIL before the renderer is updated and PASS after.
 
 import unittest
 
-from app.alert_episodes import (
+from app.core.alert_episodes import (
     IrregularEpisodeCoordinator,
     render_episode_notification_batch,
 )

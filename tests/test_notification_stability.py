@@ -2,7 +2,7 @@ import json
 import unittest
 from pathlib import Path
 
-from app.alert_episodes import IrregularEpisodeCoordinator
+from app.core.alert_episodes import IrregularEpisodeCoordinator
 from app.miner_monitor import _redact_telegram_token
 
 

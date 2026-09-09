@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from app.vnish_client import (
+from app.vnish.client import (
     DEFAULT_HTTP_TIMEOUT,
     get_available_presets,
     get_cooling_settings,
@@ -134,9 +134,9 @@ class TestVnishClient(unittest.TestCase):
             timeout=DEFAULT_HTTP_TIMEOUT,
         )
 
-    @patch("app.vnish_client.lock_miner")
-    @patch("app.vnish_client.set_manual_fan_duty")
-    @patch("app.vnish_client.unlock_miner")
+    @patch("app.vnish.client.lock_miner")
+    @patch("app.vnish.client.set_manual_fan_duty")
+    @patch("app.vnish.client.unlock_miner")
     def test_safe_set_fan_duty_always_locks(self, mock_unlock, mock_set, mock_lock):
         mock_unlock.return_value = (True, "active_token_123", None)
         mock_set.return_value = (True, None)
@@ -148,9 +148,9 @@ class TestVnishClient(unittest.TestCase):
         mock_set.assert_called_once_with("192.168.100.23", "active_token_123", 85, timeout=DEFAULT_HTTP_TIMEOUT)
         mock_lock.assert_called_once_with("192.168.100.23", "active_token_123", timeout=DEFAULT_HTTP_TIMEOUT)
 
-    @patch("app.vnish_client.lock_miner")
-    @patch("app.vnish_client.set_manual_fan_duty")
-    @patch("app.vnish_client.unlock_miner")
+    @patch("app.vnish.client.lock_miner")
+    @patch("app.vnish.client.set_manual_fan_duty")
+    @patch("app.vnish.client.unlock_miner")
     def test_safe_set_fan_duty_locks_on_exception(self, mock_unlock, mock_set, mock_lock):
         mock_unlock.return_value = (True, "active_token_123", None)
         mock_set.side_effect = RuntimeError("Network partition mid-set")
@@ -231,9 +231,9 @@ class TestVnishClient(unittest.TestCase):
             timeout=DEFAULT_HTTP_TIMEOUT,
         )
 
-    @patch("app.vnish_client.lock_miner")
-    @patch("app.vnish_client.set_miner_preset")
-    @patch("app.vnish_client.unlock_miner")
+    @patch("app.vnish.client.lock_miner")
+    @patch("app.vnish.client.set_miner_preset")
+    @patch("app.vnish.client.unlock_miner")
     def test_safe_set_miner_preset_always_locks(self, mock_unlock, mock_set, mock_lock):
         mock_unlock.return_value = (True, "token_abc", None)
         mock_set.return_value = (True, None)
@@ -300,9 +300,9 @@ class TestVnishClient(unittest.TestCase):
         self.assertFalse(data["switcher_enabled"])
         self.assertEqual(data["target_power_w"], 2500.0)
 
-    @patch("app.vnish_client.lock_miner")
-    @patch("app.vnish_client.get_overclock_settings")
-    @patch("app.vnish_client.unlock_miner")
+    @patch("app.vnish.client.lock_miner")
+    @patch("app.vnish.client.get_overclock_settings")
+    @patch("app.vnish.client.unlock_miner")
     def test_safe_get_overclock_settings_always_locks(self, mock_unlock, mock_get_oc, mock_lock):
         mock_unlock.return_value = (True, "tok_xyz", None)
         mock_get_oc.return_value = (True, {"target_power_w": 2700.0}, None)

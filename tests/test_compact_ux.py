@@ -7,7 +7,7 @@ IrregularEpisodeCoordinator and render_episode_notification_batch.
 
 import unittest
 
-from app.alert_episodes import (
+from app.core.alert_episodes import (
     IrregularEpisodeCoordinator,
     render_episode_notification_batch,
 )

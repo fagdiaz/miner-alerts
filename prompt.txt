@@ -1,31 +1,33 @@
 CODEX — Miner Alerts | Especificación de Trabajo Multi-Modelo (Constitución v1.5.0)
 
 =============================================================================
-ESTADO DEL PROYECTO: ARQUITECTURA MODULAR DE DOMINIOS EN `app/` (SPEC 041 COMPLETA)
+ESTADO DEL PROYECTO: PURGA LIMPIA DE SHIMS Y TESTS MODERNIZADOS (SPEC 042 COMPLETA)
 =============================================================================
-1. PRODUCCIÓN ACTIVA & ARQUITECTURA MODULAR:
+1. PRODUCCIÓN ACTIVA & MÁXIMA PULCRITUD EN `app/`:
+   - En la raíz de `app/` solo residen:
+     * `app/miner_monitor.py` (orquestador raíz de producción).
+     * `app/__init__.py` (inicializador formal del paquete).
+     * Archivos locales de runtime (`config.json`, `config.example.json`, `state.json`).
+     * 4 subpaquetes de dominio desacoplados: `app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`.
+   - Cero shims planos sueltos en `app/`: los 22 archivos puente fueron eliminados con éxito.
    - Servicio Windows `MinerAlerts` operando en vivo bajo NSSM (PID 71304):
      * Spec 039 Fan Governor: `fan_governor_enabled: true`, `fan_governor_dry_run: false`.
-     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: true`.
-     * Spec 041 Arquitectura Modular: 22 archivos organizados en 4 subpaquetes de dominio desacoplados (`app/core/`, `app/vnish/`, `app/governance/`, `app/telegram/`) con 100% retrocompatibilidad vía shims con module aliasing.
+     * Spec 040 Preset Balancer: `preset_balancer_enabled: true`, `preset_balancer_dry_run: false`.
    - Comandos Telegram Interactivos:
      * Gobernador: `/gov`, `/gov on`, `/gov off`, `/gov set <temp>`.
      * Balanceador: `/balancer`, `/balancer on`, `/balancer off`, `/balancer setmax <miner> <preset>`.
      * Elevadores: `/elevadores` (alias `/elevators`, `/sensibilidad`, `/elev`).
      * Monitoreo: `/status`, `/chart`, `/snooze`, `/digest`, `/fans`, `/efficiency`, `/presets`.
 
-2. DOMINIOS IMPLEMENTADOS (`app/`):
-   - `app/core/`: red API 4028, SQLite `EventStore`, episodios de alerta, evidencia fusionada, liveness, métricas Prometheus, calidad de minado y seguridad de reinicios (10 módulos).
-   - `app/vnish/`: cliente REST autenticado, presets/autotuning, parser de logs y telemetría (4 módulos).
-   - `app/governance/`: fan governor en lazo cerrado, preset balancer por elevador, salud térmica de fans y eficiencia energética J/TH (4 módulos).
-   - `app/telegram/`: callbacks interactivos de alerta, gráficos visuales en RAM, digests matutinos, splitter y snooze (5 módulos).
-   - Fachadas Shims en `app/`: garantizan `sys.modules[__name__] = _impl` para soporte transparente de imports y monkey-patching en tests y scripts existentes.
-   - `app/miner_monitor.py`: modernizado para importar canónicamente desde los subpaquetes con fallback a shims.
+2. MODERNIZACIÓN CANÓNICA DE TESTS (`tests/`):
+   - Todos los 44 archivos de test en `tests/` fueron modernizados para importar canónicamente desde `app.core`, `app.vnish`, `app.governance` y `app.telegram`.
+   - Todos los `@patch(...)` de unittest mock fueron actualizados a sus rutas canónicas reales.
+   - 587/587 tests PASS en 10.68s (0 fallos, 0 errores, 0 regresiones).
 
 3. CERTIFICACIÓN GLOBAL DE PRUEBAS & RELEASE:
-   - 587/587 tests PASS en 11.26s (0 fallos, 0 errores, 0 regresiones).
-   - Release Audit: PASS (`tools/release_audit.py --check-only`), 83 archivos de payload computados bajo SHA-256 `1d54510535bf6d089af3e84b75835da07b66643388e6d0ea4a2658372672f290`.
-   - Cero quiebres en importaciones ni advertencias sintácticas (`py_compile` limpio).
+   - Compilación sintáctica: 100% OK (`py_compile app\miner_monitor.py`).
+   - Release Audit: PASS (`tools/release_audit.py --check-only`), 60 archivos de payload limpios bajo SHA-256 `b11a92084d2f558327290d98c05b7fa691e512ddc7f33d36e7f0e120459249fd`.
+   - Watchdog de producción: 100% `healthy=true suppressed=false reasons=none`.
 
 =============================================================================
 SIGUIENTES PASOS:

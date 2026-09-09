@@ -1,4 +1,4 @@
-﻿"""Tests for Spec 022 T012: Shadow Comparison & Rollback Rehearsal.
+"""Tests for Spec 022 T012: Shadow Comparison & Rollback Rehearsal.
 
 Validates:
   SC-005: Normal request count remains within documented per-miner budget (1 summary + conditional stats, 0 retries).
@@ -17,7 +17,7 @@ import time
 import unittest
 from typing import Any, Callable, Mapping, Sequence
 
-from app.acquisition import (
+from app.core.acquisition import (
     AcquisitionConfig,
     AcquisitionEpoch,
     Authority,

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app.liveness import (
+from app.core.liveness import (
     MaintenanceLease,
     MonitorHeartbeat,
     WatchdogIncidentState,

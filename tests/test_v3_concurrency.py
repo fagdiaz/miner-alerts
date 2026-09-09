@@ -24,24 +24,14 @@ from pathlib import Path
 # Make sure we can import from the app package in both modes.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-try:
-    from app.telegram_callbacks import (
-        CallbackTokenRegistry,
-        build_alert_keyboard,
-        build_confirmation_keyboard,
-        build_settled_keyboard,
-        parse_callback_data,
-    )
-    from app.miner_monitor import MinerState
-except ImportError:  # fallback direct import
-    from telegram_callbacks import (
-        CallbackTokenRegistry,
-        build_alert_keyboard,
-        build_confirmation_keyboard,
-        build_settled_keyboard,
-        parse_callback_data,
-    )
-    from miner_monitor import MinerState  # type: ignore
+from app.telegram.callbacks import (
+    CallbackTokenRegistry,
+    build_alert_keyboard,
+    build_confirmation_keyboard,
+    build_settled_keyboard,
+    parse_callback_data,
+)
+from app.miner_monitor import MinerState
 
 
 # ---------------------------------------------------------------------------
@@ -382,10 +372,7 @@ class TestSQLiteConnectionContract(unittest.TestCase):
     def test_telegram_charts_mode_ro_with_timeout(self):
         """telegram_charts._connect_ro must use ?mode=ro and timeout=2.0."""
         import inspect
-        try:
-            from app.telegram_charts import _connect_ro
-        except ImportError:
-            from telegram_charts import _connect_ro  # type: ignore
+        from app.telegram.charts import _connect_ro
         src = inspect.getsource(_connect_ro)
         assert "mode=ro" in src, "_connect_ro missing ?mode=ro"
         assert "timeout=2.0" in src, "_connect_ro missing timeout=2.0"
@@ -393,10 +380,7 @@ class TestSQLiteConnectionContract(unittest.TestCase):
     def test_daily_digest_finally_conn_close(self):
         """daily_digest.fetch_daily_digest_metrics must use finally + conn.close()."""
         import inspect
-        try:
-            from app.daily_digest import fetch_daily_digest_metrics
-        except ImportError:
-            from daily_digest import fetch_daily_digest_metrics  # type: ignore
+        from app.telegram.daily_digest import fetch_daily_digest_metrics
         src = inspect.getsource(fetch_daily_digest_metrics)
         assert "finally" in src, "daily_digest missing finally: block"
         assert "conn.close()" in src, "daily_digest missing conn.close()"
@@ -406,10 +390,7 @@ class TestSQLiteConnectionContract(unittest.TestCase):
     def test_fan_health_finally_conn_close(self):
         """fan_health must use finally for conn.close()."""
         import inspect
-        try:
-            from app.fan_health import fetch_latest_cooling_assessments
-        except ImportError:
-            from fan_health import fetch_latest_cooling_assessments  # type: ignore
+        from app.governance.fan_health import fetch_latest_cooling_assessments
         src = inspect.getsource(fetch_latest_cooling_assessments)
         assert "finally" in src
         assert "mode=ro" in src
@@ -417,10 +398,7 @@ class TestSQLiteConnectionContract(unittest.TestCase):
     def test_energy_efficiency_finally_conn_close(self):
         """energy_efficiency must use finally for conn.close()."""
         import inspect
-        try:
-            from app.energy_efficiency import fetch_latest_efficiency_assessments
-        except ImportError:
-            from energy_efficiency import fetch_latest_efficiency_assessments  # type: ignore
+        from app.governance.energy_efficiency import fetch_latest_efficiency_assessments
         src = inspect.getsource(fetch_latest_efficiency_assessments)
         assert "finally" in src
         assert "mode=ro" in src
@@ -428,10 +406,7 @@ class TestSQLiteConnectionContract(unittest.TestCase):
     def test_vnish_presets_finally_conn_close(self):
         """vnish_presets must use finally for conn.close()."""
         import inspect
-        try:
-            from app.vnish_presets import fetch_latest_preset_assessments
-        except ImportError:
-            from vnish_presets import fetch_latest_preset_assessments  # type: ignore
+        from app.vnish.presets import fetch_latest_preset_assessments
         src = inspect.getsource(fetch_latest_preset_assessments)
         assert "finally" in src
         assert "mode=ro" in src

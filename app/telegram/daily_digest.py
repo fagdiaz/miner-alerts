@@ -144,10 +144,7 @@ def fetch_daily_digest_metrics(
 
     # Identify currently snoozed miners
     if states:
-        try:
-            from app.telegram_snooze import is_miner_snoozed
-        except ImportError:
-            from telegram_snooze import is_miner_snoozed
+        from app.telegram.snooze import is_miner_snoozed
         for m in miners:
             key = f"{m['name']}|{m['host']}:{m['port']}"
             st = states.get(key)

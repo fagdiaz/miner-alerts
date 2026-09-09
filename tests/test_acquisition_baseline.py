@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.acquisition import MinerEndpoint, TransportOutcome, TransportStatus
+from app.core.acquisition import MinerEndpoint, TransportOutcome, TransportStatus
 from tools.acquisition_baseline import (
     build_sanitized_endpoints,
     nearest_rank_percentile,

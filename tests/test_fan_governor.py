@@ -1,6 +1,6 @@
 import unittest
 
-from app.fan_governor import (
+from app.governance.fan_governor import (
     ACTION_EMERGENCY_SPIKE,
     ACTION_FAILSAFE_FAULT,
     ACTION_HOLD_DWELL,

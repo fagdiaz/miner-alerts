@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.event_store import EventStore
+from app.core.event_store import EventStore
 from app.miner_monitor import MinerState, record_auto_reboot_decision
-from app.vnish_telemetry import VnishTelemetry
+from app.vnish.telemetry import VnishTelemetry
 
 
 class RebootDecisionAuditTests(unittest.TestCase):

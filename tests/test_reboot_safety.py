@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 import app.miner_monitor as monitor
-from app.reboot_safety import (
+from app.core.reboot_safety import (
     INTERLOCK_FIRMWARE_TRANSITION,
     INTERLOCK_FLEET_INCIDENT,
     INTERLOCK_HIGH_TEMPERATURE,

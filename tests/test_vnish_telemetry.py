@@ -1,6 +1,6 @@
 import unittest
 
-from app.vnish_telemetry import normalize_vnish_stats
+from app.vnish.telemetry import normalize_vnish_stats
 
 
 class VnishTelemetryTests(unittest.TestCase):

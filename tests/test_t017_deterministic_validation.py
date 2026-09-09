@@ -1,4 +1,4 @@
-﻿"""SC-001 through SC-004 deterministic validation tests for Spec 023 (T017).
+"""SC-001 through SC-004 deterministic validation tests for Spec 023 (T017).
 
 Proves:
   SC-001: Known fixtures produce deterministic assessments across repeated runs.
@@ -16,7 +16,7 @@ import dataclasses
 import random
 import unittest
 
-from app.evidence_fusion import (
+from app.core.evidence_fusion import (
     RULESET_VERSION,
     CauseHypothesis,
     EvidenceFact,

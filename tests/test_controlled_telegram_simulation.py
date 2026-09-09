@@ -8,8 +8,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from app import miner_monitor
-from app.alert_episodes import format_current_status_line
-from app.telegram_messages import classify_delivery, split_telegram_message
+from app.core.alert_episodes import format_current_status_line
+from app.telegram.messages import classify_delivery, split_telegram_message
 
 
 class ControlledTelegramCommandTests(unittest.TestCase):

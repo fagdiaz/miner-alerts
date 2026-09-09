@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.event_store import EventStore
+from app.core.event_store import EventStore
 from tools.incident_report import build_report, open_read_only, render_markdown
 
 

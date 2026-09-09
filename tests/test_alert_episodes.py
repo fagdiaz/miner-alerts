@@ -1,6 +1,6 @@
 import unittest
 
-from app.alert_episodes import (
+from app.core.alert_episodes import (
     IrregularEpisodeCoordinator,
     format_current_status_line,
     render_episode_notification_batch,

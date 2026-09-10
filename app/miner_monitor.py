@@ -200,6 +200,11 @@ CMD_WHITELIST = {
     "parada",
     "resume",
     "reanudar",
+    "schedule_maintenance",
+    "schedule",
+    "programar",
+    "scheduled",
+    "programado",
 }
 
 
@@ -2359,6 +2364,15 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
+        raw_sch = raw.get("scheduled_maintenance")
+        if raw_sch and isinstance(raw_sch, dict):
+            try:
+                from app.governance.maintenance_scheduler import ScheduledWindow
+                global _ACTIVE_SCHEDULED_WINDOW
+                _ACTIVE_SCHEDULED_WINDOW = ScheduledWindow.from_dict(raw_sch)
+                log(f"[SCHEDULER] Reconstituted scheduled maintenance window: id={_ACTIVE_SCHEDULED_WINDOW.window_id} stage={_ACTIVE_SCHEDULED_WINDOW.stage.value}")
+            except Exception as _sch_exc:
+                log(f"[WARN] Error deserializing scheduled_maintenance: {_sch_exc}")
         return states, int(last_update_id) if last_update_id is not None else None
     except Exception:
         log("[WARN] state.json corrupto. Se ignora.")
@@ -2378,6 +2392,7 @@ def save_state(
         "saved_at": now_str(),
         "last_update_id": last_update_id,
         "last_daily_digest_date": _LAST_DAILY_DIGEST_DATE,
+        "scheduled_maintenance": _ACTIVE_SCHEDULED_WINDOW.to_dict() if _ACTIVE_SCHEDULED_WINDOW is not None else None,
         "states": {},
     }
     for key, state in list(states.items()):
@@ -2822,6 +2837,22 @@ from app.governance.phase_drop_discriminator import (
 )
 _LAST_PHASE_DROP_ALERT_TS: Dict[str, float] = {}
 _ACTIVE_PHASE_DROPS: Set[str] = set()
+
+# ---------------------------------------------------------------------------
+# Spec 052: Scheduled Electrical Maintenance Windows & Soft Pre-Ramp
+# ---------------------------------------------------------------------------
+from app.governance.maintenance_scheduler import (
+    ScheduledStage,
+    ScheduledWindow,
+    evaluate_window_stage,
+    parse_schedule_expression,
+    process_maintenance_scheduler_cycle,
+    render_pre_ramp_card,
+    render_schedule_cancelled_card,
+    render_schedule_confirmation_card,
+    render_scheduled_status_card,
+)
+_ACTIVE_SCHEDULED_WINDOW: Optional[ScheduledWindow] = None
 
 
 def execute_balancer_cycle(
@@ -3742,6 +3773,34 @@ def _handle_callback_query(
             current_last_update_id=current_last_update_id,
         )
         return
+
+    # Spec 052: Handle Maintenance Scheduler callbacks (sch:*)
+    if cb_data.startswith("sch:"):
+        answer_callback_query(bot_token, cb_id, text="Cancelando ventana...")
+        global _ACTIVE_SCHEDULED_WINDOW
+        if _ACTIVE_SCHEDULED_WINDOW and _ACTIVE_SCHEDULED_WINDOW.stage not in (ScheduledStage.CANCELLED, ScheduledStage.COMPLETED):
+            _ACTIVE_SCHEDULED_WINDOW.stage = ScheduledStage.CANCELLED
+            with state_lock:
+                save_state(state_path, states, current_last_update_id)
+            card = render_schedule_cancelled_card()
+            if message_id is not None:
+                edit_message_text(bot_token, str(cb_chat_id), message_id, card)
+            if event_store is not None and event_store.available:
+                record_action_outcome(
+                    event_store,
+                    occurred_ts=time.time(),
+                    miner={"name": "FLOTA", "host": ""},
+                    action="scheduled_maintenance_cancelled",
+                    source="telegram_sch",
+                    ok=True,
+                    message=f"Ventana {_ACTIVE_SCHEDULED_WINDOW.window_id} cancelada manualmente",
+                )
+            log(f"[SCHEDULER] Maintenance window {_ACTIVE_SCHEDULED_WINDOW.window_id} cancelled by user.")
+        else:
+            if message_id is not None:
+                edit_message_text(bot_token, str(cb_chat_id), message_id, "ℹ️ No hay ventana activa para cancelar.")
+        return
+
 
     # --- Parse callback data ---
 
@@ -5235,6 +5294,100 @@ def telegram_polling_worker(
                                 dbg_update_id=update_id,
                                 dbg_cmd="resume",
                             )
+                elif cmd_name in ("schedule_maintenance", "schedule", "programar"):
+                    handled = True
+                    global _ACTIVE_SCHEDULED_WINDOW
+                    if not args:
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            "ℹ️ *Uso de /schedule_maintenance*:\n`/schedule_maintenance <tiempo> [duracion]`\n\nEjemplos:\n• `/schedule_maintenance in 30m 2h`\n• `/schedule_maintenance in 2h`\n• `/schedule_maintenance 2026-09-12 08:00 3h`\n• `/schedule_maintenance 14:00 2h`",
+                            "HELP",
+                            "cmd_schedule_usage",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=cmd_name,
+                        )
+                    elif _ACTIVE_SCHEDULED_WINDOW and _ACTIVE_SCHEDULED_WINDOW.stage in (
+                        ScheduledStage.PENDING,
+                        ScheduledStage.PRE_RAMP_TIER_1,
+                        ScheduledStage.PRE_RAMP_TIER_2,
+                    ) and now_ts < _ACTIVE_SCHEDULED_WINDOW.start_ts:
+                        card_active, markup_active = render_scheduled_status_card(_ACTIVE_SCHEDULED_WINDOW, now_ts)
+                        send_telegram(
+                            bot_token,
+                            str(msg_chat_id),
+                            f"⚠️ *Ya existe una ventana programada*:\n\n{card_active}",
+                            "WARNING",
+                            "cmd_schedule_conflict",
+                            is_command=True,
+                            dbg_update_id=update_id,
+                            dbg_cmd=cmd_name,
+                            reply_markup=markup_active,
+                        )
+                    else:
+                        time_expr = args[0]
+                        dur_expr = args[1] if len(args) > 1 else None
+                        user_sender = str(item.get("message", {}).get("from", {}).get("username") or msg_chat_id)
+                        ok, new_win, err_msg = parse_schedule_expression(
+                            time_expr=time_expr,
+                            duration_expr=dur_expr,
+                            now_ts=now_ts,
+                            user_id=user_sender,
+                        )
+                        if not ok or new_win is None:
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                f"❌ *Error al programar*:\n{err_msg}",
+                                "ERROR",
+                                "cmd_schedule_error",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd=cmd_name,
+                            )
+                        else:
+                            _ACTIVE_SCHEDULED_WINDOW = new_win
+                            with state_lock:
+                                save_state(state_path, states, current_last_update_id)
+                            confirm_card, confirm_markup = render_schedule_confirmation_card(new_win)
+                            send_telegram(
+                                bot_token,
+                                str(msg_chat_id),
+                                confirm_card,
+                                "SCHEDULED",
+                                "cmd_schedule_confirm",
+                                is_command=True,
+                                dbg_update_id=update_id,
+                                dbg_cmd=cmd_name,
+                                reply_markup=confirm_markup,
+                            )
+                            if event_store is not None and event_store.available:
+                                record_action_outcome(
+                                    event_store,
+                                    occurred_ts=now_ts,
+                                    miner={"name": "FLOTA", "host": ""},
+                                    action="scheduled_maintenance_created",
+                                    source="telegram",
+                                    ok=True,
+                                    message=f"Ventana programada: inicio {new_win.start_ts}, duracion {new_win.duration_seconds}s",
+                                )
+                            log(f"[SCHEDULER] Maintenance window scheduled: id={new_win.window_id} start_ts={new_win.start_ts} dur={new_win.duration_seconds}s by={user_sender}")
+
+                elif cmd_name in ("scheduled", "programado", "mantenimientos"):
+                    handled = True
+                    card_text, reply_markup = render_scheduled_status_card(_ACTIVE_SCHEDULED_WINDOW, now_ts)
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        card_text,
+                        "SCHEDULED",
+                        "cmd_scheduled_status",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd=cmd_name,
+                        reply_markup=reply_markup,
+                    )
                 elif cmd_name in ("governor", "gov"):
                     handled = True
                     global _GOVERNOR_RUNTIME_ENABLED
@@ -8218,6 +8371,37 @@ def main() -> None:
                 )
             except Exception as _pbr_exc:
                 log(f"[PBR_ERR] Post-blackout recovery cycle failed: {type(_pbr_exc).__name__}: {_pbr_exc}")
+
+            # Spec 052: Scheduled Electrical Maintenance Windows & Soft Pre-Ramp
+            if _ACTIVE_SCHEDULED_WINDOW is not None and not first_tick:
+                try:
+                    _ACTIVE_SCHEDULED_WINDOW = process_maintenance_scheduler_cycle(
+                        window=_ACTIVE_SCHEDULED_WINDOW,
+                        miners=valid_miners,
+                        states=states,
+                        config=config,
+                        now_ts=now_ts,
+                        send_telegram_fn=send_telegram,
+                        record_event_fn=lambda **kw: record_action_outcome(
+                            event_store,
+                            occurred_ts=time.time(),
+                            miner={"name": "FLOTA", "host": ""},
+                            action=kw.get("action", "scheduled_maintenance"),
+                            source=kw.get("source", "scheduler"),
+                            ok=kw.get("ok", True),
+                            message=kw.get("message", ""),
+                        ),
+                        log_fn=log,
+                        save_state_fn=save_state,
+                        state_path=state_path,
+                        current_last_update_id=current_last_update_id,
+                        bot_token=bot_token,
+                        chat_id=str(chat_id),
+                        qa_mode=qa_mode,
+                        qa_notify=qa_notify,
+                    )
+                except Exception as _sch_exc:
+                    log(f"[SCHEDULER_ERR] Maintenance scheduler cycle failed: {type(_sch_exc).__name__}: {_sch_exc}")
 
             with state_lock:
                 save_state(state_path, states, current_last_update_id)

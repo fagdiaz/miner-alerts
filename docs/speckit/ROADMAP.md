@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (50 de 50 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 749 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (52 de 52 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 781 tests PASS).
 
 
 ---
@@ -654,6 +654,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049).
 - [x] Guardián de Recuperación Post-Blackout con Botón 1-Tap y Auto-Reanudación (Spec 050).
 - [x] Discriminador Rápido de Corte de Fase vs Caída de Conectividad (Spec 051).
+- [x] Ventanas Programadas de Mantenimiento Eléctrico y Pre-Rampa Suave (Spec 052).
 
 
 ---
@@ -692,16 +693,17 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Exclusión de mineros en mantenimiento deliberado (Spec 048) o silenciamiento activo (Spec 033).
 - [x] Cooldown antispam de 300s y trazabilidad completa en EventStore (`electrical_phase_drop`).
 
-### Iniciativa 7 — Programador de Ventanas de Mantenimiento Eléctrico (`/schedule_maintenance`)
-- [ ] Programación diferida de maniobras eléctricas (ej. `/schedule_maintenance sabado 08:00 2h`).
-- [ ] Desescalado suave y progresivo de presets de potencia antes de la ventana fijada y purga térmica automática.
+### Iniciativa 7 — Programador de Ventanas de Mantenimiento Eléctrico (Spec 052 - Completado)
+- [x] Programación diferida de maniobras eléctricas (ej. `/schedule_maintenance in 2h 3h`, `14:30 2h`).
+- [x] Desescalado suave y progresivo de presets de potencia antes de la ventana fijada (Pre-Ramp T-10m a 2300W, T-5m a 2100W) y parada segura en T-0 con purga térmica de 45s a 100% y reposo a 40% PWM.
+- [x] Cancelación en caliente mediante botón 1-tap `[ ❌ Cancelar Ventana ]` y persistencia en `state.json`.
 
 ---
 
 ## Governance
 
-- All 48 specifications in the program are complete, verified with evidence, and closed.
-- Version 3.5.0 is ready for production deployment with 721/721 tests PASS.
+- All 52 specifications in the program are complete, verified with evidence, and closed.
+- Version 3.7.0 is ready for production deployment with 781/781 tests PASS.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI) operate decoupled from the monitor.
 - Any future modifications or V4 scope must adhere to SpecKit discipline and constitutional gates.

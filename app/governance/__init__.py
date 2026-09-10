@@ -65,6 +65,18 @@ from app.governance.phase_drop_discriminator import (
     process_phase_drop_cycle,
     render_phase_drop_alert,
 )
+from app.governance.maintenance_scheduler import (
+    ScheduledStage,
+    ScheduledWindow,
+    argentina_now,
+    evaluate_window_stage,
+    parse_schedule_expression,
+    process_maintenance_scheduler_cycle,
+    render_pre_ramp_card,
+    render_schedule_cancelled_card,
+    render_schedule_confirmation_card,
+    render_scheduled_status_card,
+)
 from app.governance.fan_governor import (
     ACTION_EMERGENCY_SPIKE,
     ACTION_FAILSAFE_FAULT,
@@ -215,5 +227,15 @@ __all__ = [
     "resolve_selected_miners",
     "resolve_target_miners",
     "ShutdownTarget",
+    "ScheduledStage",
+    "ScheduledWindow",
+    "argentina_now",
+    "evaluate_window_stage",
+    "parse_schedule_expression",
+    "process_maintenance_scheduler_cycle",
+    "render_pre_ramp_card",
+    "render_schedule_cancelled_card",
+    "render_schedule_confirmation_card",
+    "render_scheduled_status_card",
     "toggle_selection_bitmask",
 ]

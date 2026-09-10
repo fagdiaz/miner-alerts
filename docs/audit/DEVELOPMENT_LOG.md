@@ -3,6 +3,35 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-10] - Spec 052: Scheduled Electrical Maintenance Windows & Soft Pre-Ramp (Completado)
+
+* **Objetivo**: Planificar y ejecutar ventanas de mantenimiento eléctrico programadas (cortes de servicio eléctrico, limpieza de filtros, obras en tablero) permitiendo a los operadores definir horarios de parada anticipados, ejecutando una desescalada progresiva de carga (Soft Pre-Ramp a 2300W en T-10m y 2100W en T-5m) para minimizar el choque térmico y picos de sobretensión inductiva al desenergizar, apagando ordenadamente la flota en T-0 con purga activa de 45s a 100% de coolers, reposo a 40% PWM, auto-snooze por la duración de la ventana y confirmación Mobile-First interactiva.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Mobile-First <= 32 Columnas)**: El 100% de las tarjetas (`render_schedule_confirmation_card`, `render_scheduled_status_card`, `render_pre_ramp_card`, `render_schedule_cancelled_card`) cumplen estrictamente con `visible_line_width(line) <= 32`.
+  - **C2 (Parser Temporal Flexible y Robusto)**: Soporte intuitivo para sintaxis relativa (`in 30m`, `in 2h`, `+1h`) y absoluta (`14:30`, `YYYY-MM-DD HH:MM`) anclada a la hora local de Argentina (UTC-3), validando que la ventana esté al menos 5 minutos en el futuro y no exceda 30 días, con duración entre 15m y 24h.
+  - **C3 (Pre-Rampa Escalonada de Carga)**: Transición automática sin intervención humana: a $T-10\text{m}$ aplica preset de 2300W (`PRE_RAMP_TIER_1`), y a $T-5\text{m}$ reduce a 2100W (`PRE_RAMP_TIER_2`) notificando a Telegram la desescalada preventiva.
+  - **C4 (Secuencia Segura en T-0)**: Parada ordenada mediante `execute_parallel_shutdown`, disparo de rampa de purga activa al 100% de ventiladores durante 45s (Spec 049), caída suave al piso acústico de reposo (40% PWM) y activación de bandera `is_shutdown_maintenance = True` con silenciamiento de alarmas (`snooze_until_ts`) hasta el fin de la ventana programada.
+  - **C5 (Cancelación en Caliente y Reconstitución de Estado)**: Botón interactivo 1-tap `[ ❌ Cancelar Ventana ]` en Telegram para anulación inmediata, con persistencia atómica en `state.json` que sobrevive a reinicios del servicio sin desfasar ni duplicar acciones.
+  - **C6 (Trazabilidad en EventStore)**: Registro de auditoría `scheduled_shutdown_t0`, `scheduled_preramp` y `schedule_cancelled`.
+* **Módulos y Cambios**:
+  - `app/governance/maintenance_scheduler.py`:
+    * Implementación del módulo de gobernanza con `ScheduledStage`, `ScheduledWindow`, `parse_duration_seconds`, `parse_schedule_expression`, `evaluate_window_stage`, `process_maintenance_scheduler_cycle` y generadores de tarjetas móviles `render_schedule_confirmation_card`, `render_scheduled_status_card`, `render_pre_ramp_card` y `render_schedule_cancelled_card`.
+  - `app/governance/__init__.py`:
+    * Exportación canónica de todas las estructuras y funciones del planificador de mantenimiento.
+  - `app/miner_monitor.py`:
+    * Whitelist de comandos ampliada: `/schedule_maintenance`, `/schedule`, `/programar`, `/scheduled`, `/programado`.
+    * Serialización en `save_state` y reconstitución en `load_state` del estado `scheduled_maintenance`.
+    * Handler de comandos Telegram para programar ventanas y consultar el estado actual con teclado interactivo inline.
+    * Handler de callbacks `sch:cancel:<window_id>` para anulación en un clic.
+    * Hook de ciclo de vida en bucle principal `process_maintenance_scheduler_cycle` evaluando transiciones temporales de forma periódica.
+  - `tests/test_maintenance_scheduler.py`:
+    * 11 pruebas unitarias cubriendo parsing de expresiones relativas y absolutas, validaciones de rango, cálculo de etapas, serialización/deserialización y ancho móvil estricto de $\le 32$ columnas.
+  - `tests/test_maintenance_scheduler_integration.py`:
+    * 3 pruebas de integración simulando la línea de tiempo completa ($T-10\text{m} \to T-5\text{m} \to T-0$), persistencia y recuperación ante reinicio, y anulación en caliente vía callback.
+* **Resultados y Pruebas**:
+  - Sintaxis: `py_compile` 100% PASS en `maintenance_scheduler.py`, `__init__.py`, `miner_monitor.py` y suites de prueba.
+  - Suite completa: **781/781 tests PASS** en 10.934s (0 fallos, 0 errores, 0 regresiones).
+
 ## [2026-09-10] - Spec 051: Fast Phase Drop vs Connectivity Discriminator (Completado)
 
 * **Objetivo**: Proveer clasificación heurística ultra-rápida (< 3 segundos) de caídas simultáneas de mineros para discriminar disparos de protecciones termomagnéticas por elevador o cortes generales de línea respecto a pérdidas de conectividad Ethernet local del host monitor (switch/router), suprimiendo la histeresis lenta habitual de 3 ticks (30 a 90s) y emitiendo inmediatamente una tarjeta ejecutiva Mobile-First en Telegram.

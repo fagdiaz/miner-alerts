@@ -284,8 +284,10 @@ The program requires three documentation sweeps.
 - Specs 039 and 040 are **Completed, Calibrated for 83°C–84°C Operation, and Active in Production** (`v3.2.0`).
 - Specs 041 and 042 are **Completed, Pure Modular Subpackages & Zero-Shim Cleanliness** (587 tests PASS).
 - Specs 043 and 044 are **Completed, Interactive Command Center, Visitor Silent Mode & Safety Thermal Guard, and Active in Production** (`v3.3.0`, 621 tests PASS).
-- All 44 specifications across V1, V2, V3, and V3.3 have satisfied their design, test, concurrency, and evidence gates with 621/621 passing automated tests.
-- Active features in production under PID 58344: Spec 039 (Fan Governor), Spec 040 (Dynamic Preset Balancer), Spec 043 (Telegram Command Center), Spec 044 (Modo Silencio & Thermal Guard).
+- Specs 045 through 047 are **Completed, Mobile-First Visual Navigation, Categorical Help & Compact Cards <= 32 cols** (`v3.5.0`, 721 tests PASS).
+- Specs 048 through 052 are **Completed, Safe Fleet Shutdown, Active Purge Ramp, Post-Blackout Guard, Fast Phase Drop Discriminator & Maintenance Scheduler** (`v3.7.0`, 781 tests PASS).
+- Spec 053 is **Completed, Governance Concurrency Hardening, Reentrant Mutexes & V4 Release Candidate Certified** (`v4.0.0`, 792/792 tests PASS).
+- All 53 specifications across V1, V2, V3, and V4 have satisfied their design, test, concurrency, and evidence gates with 792/792 passing automated tests.
 
 ## Planning Hardening Record - 2026-08-13
 

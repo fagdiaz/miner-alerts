@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (52 de 52 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 781 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (53 de 53 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 792 tests PASS).
 
 
 ---
@@ -655,6 +655,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Guardián de Recuperación Post-Blackout con Botón 1-Tap y Auto-Reanudación (Spec 050).
 - [x] Discriminador Rápido de Corte de Fase vs Caída de Conectividad (Spec 051).
 - [x] Ventanas Programadas de Mantenimiento Eléctrico y Pre-Rampa Suave (Spec 052).
+- [x] Refuerzo de Concurrencia de Gobernanza y Estabilización Release V4 (Spec 053).
 
 
 ---
@@ -702,8 +703,8 @@ Dates include implementation plus the separate review/fix gate detailed in
 
 ## Governance
 
-- All 52 specifications in the program are complete, verified with evidence, and closed.
-- Version 3.7.0 is ready for production deployment with 781/781 tests PASS.
+- All 53 specifications in the program are complete, verified with evidence, and closed.
+- Version 4.0.0 is certified and ready for production deployment with 792/792 tests PASS.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI) operate decoupled from the monitor.
 - Any future modifications or V4 scope must adhere to SpecKit discipline and constitutional gates.

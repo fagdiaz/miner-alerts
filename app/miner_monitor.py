@@ -2388,11 +2388,12 @@ def save_state(
     global _LAST_DAILY_DIGEST_DATE
     if last_daily_digest_date is not None:
         _LAST_DAILY_DIGEST_DATE = last_daily_digest_date
+    sch_win = _ACTIVE_SCHEDULED_WINDOW
     payload = {
         "saved_at": now_str(),
         "last_update_id": last_update_id,
         "last_daily_digest_date": _LAST_DAILY_DIGEST_DATE,
-        "scheduled_maintenance": _ACTIVE_SCHEDULED_WINDOW.to_dict() if _ACTIVE_SCHEDULED_WINDOW is not None else None,
+        "scheduled_maintenance": sch_win.to_dict() if sch_win is not None else None,
         "states": {},
     }
     for key, state in list(states.items()):
@@ -2411,7 +2412,7 @@ def save_state(
             "low_since_ts": state.low_since_ts,
             "last_manual_reboot_ts": state.last_manual_reboot_ts,
             "last_auto_reboot_ts": state.last_auto_reboot_ts,
-            "auto_reboot_timestamps": state.auto_reboot_timestamps or [],
+            "auto_reboot_timestamps": list(getattr(state, "auto_reboot_timestamps", None) or []),
             "degraded_mode": state.degraded_mode,
             "last_hourly_status_ts": state.last_hourly_status_ts,
             "snooze_until_ts": state.snooze_until_ts,
@@ -7105,7 +7106,7 @@ def main() -> None:
     last_update_lock = threading.Lock()
     snapshot_ref: Dict[str, Optional[str]] = {"value": None}
     snapshot_lock = threading.Lock()
-    state_lock = threading.Lock()
+    state_lock = threading.RLock()
     pending_reboots: Dict[str, dict] = {}
     pending_lock = threading.Lock()
     global _TELEGRAM_QUEUE

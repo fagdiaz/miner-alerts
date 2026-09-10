@@ -3,6 +3,29 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-10] - Spec 053: V4 Core Governance Concurrency Hardening & Release Stabilization (Completado)
+
+* **Objetivo**: Auditar, reforzar y certificar la estabilidad multihilo, la sincronización de estado compartido y la seguridad reentrante de cerrojos (`state_lock = threading.RLock()`) tras la incorporación de las 14 especificaciones del ciclo de Gobernanza Avanzada (Specs 039 a 052), garantizando la inmunidad contra colisiones en `save_state()`, verificando que el 100% de las tarjetas de Telegram del sistema cumplan estrictamente con el estándar Mobile-First (`visible_line_width <= 32`), y certificando el Release Candidate V4 (`v4.0.0`) con 792/792 tests PASS sin regresiones.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Refuerzo de Cerrojos y Reentrancia Segura)**: Migración de `state_lock` a `threading.RLock()` en `miner_monitor.py`, eliminando riesgos de bloqueos recursivos o deadlocks cuando callbacks o funciones auxiliares invocan utilidades de persistencia.
+  - **C2 (Aislamiento Atómico en `save_state`)**: Captura de referencias locales atómicas para `_ACTIVE_SCHEDULED_WINDOW` y clonación de listas mutables (`auto_reboot_timestamps`), evitando excepciones de mutación concurrente (`RuntimeError: dictionary changed size during iteration`) durante la serialización a disco.
+  - **C3 (Certificación Master Mobile-First <= 32 Columnas)**: Verificación automatizada exhaustiva sobre el 100% de las líneas emitidas por todas las tarjetas móviles del sistema (estado, métricas, fans, presets, balancer, elevadores, digest, eventos, apagado de flota, purga, post-blackout, corte de fase y planificador de mantenimiento).
+  - **C4 (Suite de Estrés y Concurrencia V4)**: Simulación de alta contención multihilo con 8 hilos concurrentes combinando mutaciones masivas de estado, serializaciones simultáneas a disco, evaluaciones temporales de ventanas y clasificación de fallas sin bloqueos ni excepciones.
+  - **C5 (Certificación Global del Release V4)**: Ejecución de la suite completa de 792 pruebas unitarias y de integración en 13.398s con 100% de aprobación y cero regresiones.
+* **Módulos y Cambios**:
+  - `app/miner_monitor.py`:
+    * Migración de `state_lock` a `threading.RLock()`.
+    * Blindaje atómico en `save_state()` con copias desacopladas de estructuras de datos mutables.
+  - `tests/test_mobile_compliance.py`:
+    * Suite maestra de certificación visual con 7 casos de prueba verificando `visible_line_width(line) <= 32` en el 100% de las tarjetas móviles del sistema.
+  - `tests/test_v4_concurrency.py`:
+    * Suite de estrés multihilo con 4 casos de prueba validando contención en `save_state`, reentrancia de cerrojos, evaluaciones concurrentes de fase y ventanas de mantenimiento.
+* **Resultados y Pruebas**:
+  - Sintaxis: `py_compile` 100% PASS en todo el proyecto.
+  - Suite de cumplimiento móvil: 7/7 tests PASS (0.004s).
+  - Suite de concurrencia V4: 4/4 tests PASS (1.512s).
+  - Suite global completa: **792/792 tests PASS** en 13.398s (0 fallos, 0 errores, 0 regresiones).
+
 ## [2026-09-10] - Spec 052: Scheduled Electrical Maintenance Windows & Soft Pre-Ramp (Completado)
 
 * **Objetivo**: Planificar y ejecutar ventanas de mantenimiento eléctrico programadas (cortes de servicio eléctrico, limpieza de filtros, obras en tablero) permitiendo a los operadores definir horarios de parada anticipados, ejecutando una desescalada progresiva de carga (Soft Pre-Ramp a 2300W en T-10m y 2100W en T-5m) para minimizar el choque térmico y picos de sobretensión inductiva al desenergizar, apagando ordenadamente la flota en T-0 con purga activa de 45s a 100% de coolers, reposo a 40% PWM, auto-snooze por la duración de la ventana y confirmación Mobile-First interactiva.

@@ -1,38 +1,41 @@
-# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPECS 051 Y 052 COMPLETADAS Y PUBLICADAS)
+# MINER ALERTS — SESIÓN DE CONTINUIDAD (RELEASE V4 CERTIFICADO Y PUBLICADO)
 # Motor recomendado: Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md)
 
-Hola agente. Las especificaciones **Spec 051 (Fast Phase Drop vs Connectivity Discriminator)** y **Spec 052 (Scheduled Electrical Maintenance Windows & Soft Pre-Ramp)** han sido completamente implementadas, verificadas con suite completa (**781/781 tests PASS** en 10.9s), documentadas, commiteadas y pusheadas a la rama remota `origin/codex/022-adaptive-acquisition`.
+Hola agente. La **Spec 053 (V4 Core Governance Concurrency Hardening & Release Stabilization)** ha sido completada, verificada y certificada con la suite global al 100% (**792/792 tests PASS** en 13.4s), commiteada (`e5f726a`) y pusheada a `origin/codex/022-adaptive-acquisition`.
 
 ---
 
-## 1. ESTADO ACTUAL DEL REPOSITORIO Y COMPONENTES
+## 1. ESTADO ACTUAL DEL REPOSITORIO Y RELEASE V4.0.0
 
-- **Rama activa**: `codex/022-adaptive-acquisition` (sincronizada con origin, commits `68a89be` y `6d88408`).
+- **Rama activa**: `codex/022-adaptive-acquisition` (sincronizada con origin hasta `e5f726a`).
 - **Producción**: Servicio Windows `MinerAlerts` activo y supervisando la flota (PID 23652).
-- **Suite global de pruebas**: **781/781 tests PASS** en 10.934s (0 fallos, 0 errores, 0 regresiones).
-- **Spec 051 (Completada, Commiteada y Pusheada - `68a89be`)**:
-  * Dominio puro: `app/governance/phase_drop_discriminator.py` con `PhaseDropVerdict`, `PhaseDropAssessment`, `PhaseDropConfig`, `check_host_gateway_reachability`, `evaluate_phase_drop`, `process_phase_drop_cycle` y `render_phase_drop_alert`.
-  * Mobile-First UX: 100% de las tarjetas de alerta de fase cumplen estrictamente con `visible_line_width <= 32`.
-  * Integración en monitor: `app/miner_monitor.py` evalúa caídas concurrentes post-adquisición, suprime la histeresis de 3 ticks ante cortes de circuito, encola alertas Telegram prioritarias y persiste eventos `electrical_phase_drop` en `event_store`.
-  * Pruebas: 12 tests unitarios (`test_phase_drop_discriminator.py`) + 6 tests de integración (`test_phase_drop_integration.py`).
-- **Spec 052 (Completada, Commiteada y Pusheada - `6d88408`)**:
-  * Dominio puro: `app/governance/maintenance_scheduler.py` con `ScheduledStage`, `ScheduledWindow`, `parse_schedule_expression`, `evaluate_window_stage`, `process_maintenance_scheduler_cycle` y renderers Mobile-First (`render_schedule_confirmation_card`, `render_scheduled_status_card`, `render_pre_ramp_card`, `render_schedule_cancelled_card`).
-  * Integración en monitor: Comandos Telegram `/schedule_maintenance <tiempo> [duración]`, `/scheduled`, callback `sch:cancel:<id>`, persistencia en `state.json` (`load_state`/`save_state`), y ciclo de ejecución periódica con pre-rampa a T-10m (2300W), T-5m (2100W) y parada segura en T-0 con rampa de purga 100% por 45s (Spec 049) y reposo a 40% PWM.
-  * Pruebas: 11 tests unitarios (`test_maintenance_scheduler.py`) + 3 tests de integración (`test_maintenance_scheduler_integration.py`).
+- **Suite global de pruebas**: **792/792 tests PASS** en 13.398s (0 fallos, 0 errores, 0 regresiones).
+- **Ciclo V4 Completado (Specs 039 a 053)**:
+  * Spec 039: Fan Governor (lazo cerrado térmico a 82°C).
+  * Spec 040: Dynamic Voltage Presets (autodescubrimiento y balanceo por elevador).
+  * Specs 041-042: Arquitectura Modular (subpaquetes `app/governance`, `app/hardware`, `app/reporting`, `app/common` y purga de shims).
+  * Spec 043: Interactive Command Center (`/menu` interactivo con RBAC).
+  * Spec 044: Modo Silencio & Thermal Guard (límite acústico acotado y guardia a 83.5°C).
+  * Spec 045: Interactive Mobile Help Center (`/help` táctil categorizado).
+  * Specs 046-047: Tarjetas Mobile-First C1-C10 (`/status`, `/fans`, `/efficiency`, `/presets`, `/balancer`, `/elevadores`, `/digest`, `/snoozed`, `/events`).
+  * Spec 048: Safe Fleet Shutdown (parada paralela y selector bitmask).
+  * Spec 049: Active Thermal Purge Ramp (purga al 100% por 45s y reposo a 40% PWM).
+  * Spec 050: Post-Blackout Recovery Guard (guarda reactiva y botón 1-tap `[ ▶️ Reanudar Flota ]`).
+  * Spec 051: Fast Phase Drop vs Connectivity Discriminator (<3s corte eléctrico vs pérdida de red local).
+  * Spec 052: Scheduled Electrical Maintenance Windows & Soft Pre-Ramp (pre-rampa T-10m/T-5m y parada segura en T-0).
+  * Spec 053: Concurrency Hardening & V4 Release Stabilization (`state_lock = threading.RLock()`, copias atómicas en `save_state`, suite de estrés multihilo y suite maestra mobile <= 32 cols).
 - **Documentación y Speckit**:
-  * `specs/051-phase-drop-discriminator/`: spec, plan, checklists, tasks (6/6 [x]), evidence (100% PASS).
-  * `specs/052-maintenance-scheduler/`: spec, plan, checklists, tasks (6/6 [x]), evidence (100% PASS).
-  * `docs/audit/DEVELOPMENT_LOG.md`: Entradas cronológicas inversas para Spec 051 y Spec 052 registradas.
-  * `docs/speckit/ROADMAP.md`: Progreso acumulado actualizado a 52/52 specs (100%) y 781 tests PASS.
+  * 53 de 53 especificaciones del programa completadas y cerradas (100% del programa).
+  * `docs/audit/DEVELOPMENT_LOG.md`: Historial cronológico actualizado con Spec 053.
+  * `docs/speckit/ROADMAP.md` y `docs/speckit/SPEC_PROGRAM.md`: Release V4.0.0 certificado con 792 tests PASS.
 
 ---
 
-## 2. RECOMENDACIÓN DE SIGUIENTES PASOS
+## 2. PRÓXIMOS PASOS OPERATIVOS
 
-1. **Observación y Despliegue en Producción**:
-   - Programar reinicio elevado del servicio Windows `MinerAlerts` (`Restart-Service MinerAlerts` en PowerShell administrativo) para cargar las nuevas capacidades de Spec 051 y Spec 052 en el proceso en vivo.
-   - Realizar una prueba de humo operativa en Telegram con `/scheduled` o `/help`.
-2. **Nuevos Horizontes (V4)**:
-   - Si se definen nuevos requerimientos o iniciativas de la Iniciativa 1 (PDU/UPS) o Iniciativa 2 (Prometheus Pushgateway), crear la siguiente spec en el marco de SpecKit.
-
-
+1. **Despliegue del Release V4.0.0 en el Servicio Windows**:
+   - En una ventana de mantenimiento con privilegios de Administrador en PowerShell:
+     `Restart-Service MinerAlerts`
+   - Verificar logs limpios de arranque y nueva telemetría.
+2. **Pruebas de Humo en Telegram**:
+   - Ejecutar `/status`, `/menu`, `/scheduled` y `/help` para comprobar el renderizado móvil y la interactividad.

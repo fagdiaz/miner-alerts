@@ -3,6 +3,34 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-10] - Spec 050: Guardián de Recuperación Post-Blackout (Completado)
+
+* **Objetivo**: Detectar de forma proactiva mineros ASIC que, tras el retorno de tensión de un corte de energía o microcorte, inician con el sistema operativo activo pero con el minado detenido (`miner_state: "stopped"` o 0 TH/s persistente), ofreciendo una notificación interactiva en Telegram con botón táctil 1-tap `[ ▶️ Reanudar Flota ]` y auto-reanudación autónoma opcional con ventana de gracia.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Mobile-First <= 32 Columnas)**: El 100% de las tarjetas (`render_post_blackout_alert`, `render_recovery_action_card`) cumplen `visible_line_width(line) <= 32`.
+  - **C2 (No-Bloqueo del Monitor)**: La evaluación periódica opera en memoria O(1); la reanudación se ejecuta concurrentemente en paralelo vía `ThreadPoolExecutor`.
+  - **C3 (Respeto a Mantenimiento y Snooze)**: Interlocks estrictos que suprimen alertas y auto-reanudaciones si los equipos se encuentran en mantenimiento intencional (Spec 048 `is_shutdown_maintenance`) o bajo silenciamiento activo (Spec 033 `snooze_until_ts`).
+  - **C4 (Histeresis Antirruido)**: Requiere $\ge 2$ ciclos de sondeo consecutivos confirmados antes de disparar la alerta, descartando arranques transitorios (`starting`, `benchmarking`).
+  - **C5 (Seguridad Térmica y Restauración de Coolers)**: La reanudación (`pbr:resume:*` o auto-resume) incluye la reactivación preventiva de los ventiladores al 100% de PWM para impedir calentamiento inicial con coolers en reposo.
+  - **C6 (Trazabilidad en EventStore)**: Registro de eventos `post_blackout_alert`, `post_blackout_resume_manual` y `post_blackout_resume_auto`.
+* **Módulos y Cambios**:
+  - `app/governance/post_blackout_guard.py`:
+    * Implementación del módulo puro con `PostBlackoutTarget`, `PostBlackoutTracker`, `evaluate_miner_post_blackout`, `render_post_blackout_alert`, `render_recovery_action_card`, `execute_post_blackout_cycle` y `process_post_blackout_callback`.
+  - `app/governance/__init__.py`:
+    * Exportación canónica de todas las clases y funciones del guardián.
+  - `app/miner_monitor.py`:
+    * Hook de ciclo periódico `execute_post_blackout_cycle` enlazado tras el balanceador de presets.
+    * Enrutamiento de callbacks `pbr:*` en el dispatcher de Telegram llamando a `process_post_blackout_callback`.
+  - `app/config.example.json`:
+    * Documentación del bloque de configuración `post_blackout_guard` (`enabled`, `confirm_ticks`, `auto_resume`, `grace_period_seconds`, `max_chip_temp_c`).
+  - `tests/test_post_blackout_guard.py`:
+    * 18 pruebas unitarias cubriendo lógica pura, interlocks, formato móvil $\le 32$ cols, tracker y ciclo.
+  - `tests/test_post_blackout_integration.py`:
+    * 4 pruebas de integración extremo a extremo con mocks de Telegram y hardware.
+* **Resultados y Pruebas**:
+  - Sintaxis: `py_compile` 100% OK en monitor, gobernanza y tests.
+  - Suite completa: **749/749 tests PASS** en 10.809s (0 fallos, 0 errores, 0 regresiones).
+
 ## [2026-09-10] - Spec 049: Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Completado)
 
 * **Objetivo**: Optimizar el protocolo de apagado seguro de la granja (Spec 048) incorporando una rampa forzada de purga térmica al 100% de PWM durante los 45 segundos de enfriamiento (con potencia hash en 0W) y una caída instantánea al piso de reposo acústico (40% PWM / ~2.400 RPM, descendiendo a ~720 RPM en reposo sin carga) en el segundo 45 exacto, simultáneamente con la notificación Telegram `✅ ÁREA ELÉCTRICA SEGURA`.

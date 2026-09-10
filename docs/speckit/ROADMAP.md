@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (49 de 49 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 727 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (50 de 50 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 749 tests PASS).
 
 
 ---
@@ -652,6 +652,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /balancer, /elevadores, /digest, /snoozed, /events (Spec 047).
 - [x] Apagado Seguro de Flota y Selector Multiselección de Mantenimiento Eléctrico con Purga Térmica (Spec 048).
 - [x] Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049).
+- [x] Guardián de Recuperación Post-Blackout con Botón 1-Tap y Auto-Reanudación (Spec 050).
 
 
 ---
@@ -677,9 +678,11 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Contraste acústico evidente para el operador (del rugido de purga al susurro de reposo) y enfriamiento acelerado de chips de 65°C a <35°C antes del corte de energía.
 - [x] Tarjeta de Telegram con indicación explícita del piso de reposo (40% PWM) previo a la apertura de la llave termomagnética.
 
-### Iniciativa 5 — Guardián de Recuperación Post-Blackout (Post-Blackout Recovery Guard)
-- [ ] Detección proactiva de mineros que inician en `miner_state: stopped` tras el retorno de tensión de un corte de red.
-- [ ] Notificación ejecutiva con botón táctil 1-tap `[ ▶️ Reanudar Flota ]` o auto-reanudación configurable con ventana de gracia.
+### Iniciativa 5 — Guardián de Recuperación Post-Blackout (Spec 050 - Completado)
+- [x] Detección proactiva de mineros que inician en `miner_state: stopped` tras el retorno de tensión de un corte de red.
+- [x] Notificación ejecutiva con botón táctil 1-tap `[ ▶️ Reanudar Flota ]` y auto-reanudación configurable con ventana de gracia.
+- [x] Respeto estricto de interlocks de mantenimiento (Spec 048) y silenciamiento temporal (Spec 033).
+- [x] Restauración automática de ventiladores al 100% PWM al reanudar el minado.
 
 ### Iniciativa 6 — Discriminador Rápido de Corte de Fase vs Caída de Conectividad
 - [ ] Clasificación instantánea (<3s): si el host local/switch sigue activo y los 4 mineros caen al unísono, clasificar de inmediato como "Corte de Fase / Disparo de Térmica", suprimiendo timeouts individuales de reintento.

@@ -1,66 +1,35 @@
-﻿# SESIÓN ELEVADA (ADMINISTRADOR) — MINER ALERTS
+# MINER ALERTS — SESIÓN DE ESPECIFICACIÓN Y DESARROLLO (SPEC 051)
 # Motor recomendado: Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md)
 
-Hola agente. Esta sesión de Antigravity (agy) fue iniciada explícitamente desde una consola de PowerShell con privilegios de ADMINISTRADOR ELEVADO. Tienes ACCESO TOTAL al sistema operativo para gestionar servicios de Windows y procesos de sistema.
+Hola agente. El servicio Windows MinerAlerts está operando en producción de forma estable con Spec 050 (Post-Blackout Recovery Guard) activa y 749/749 tests PASS.
 
 ---
 
 ## 1. CONTEXTO INMEDIATO Y ESTADO DEL REPOSITORIO
 
-- Rama activa: `codex/022-adaptive-acquisition` (sincronizada con origin, working tree clean).
-- Suite de pruebas: **727/727 tests PASS** en 10.556s.
-- Cambios completados, testeados, auditados y comiteados en los últimos commits (`d7ab94d` y `32a511e`):
-  1. **Fix Telemetría `/status`**: Restaurados `last_rate_ths`, placas activas, potencia (W), eficiencia (J/TH), temp y fans en `MinerState`, `state.json` y tarjeta Telegram `/status` (con resumen total de TH/s y kW de la granja).
-  2. **Fix Comandos Telegram**: Solucionado bug crítico `_match_miner` en comandos individuales `/fans [id]`, `/efficiency [id]` y `/presets [id]`.
-  3. **Spec 048 (Safe Fleet Shutdown)**: Selector multiselección con casillas `⬜`/`☑️`, confirmación 2-pasos con token 60s, parada suave de hash (0W), snooze 4h de mantenimiento y `/resume`.
-  4. **Spec 049 (Active Thermal Purge Ramp & Acoustic Contrast)**: Rampa forzada de ventiladores al 100% PWM durante 45s de purga (0W) y caída brusca al segundo 45 al piso de reposo acústico (40% PWM / ~2.400 RPM, cayendo a ~720 RPM en reposo silencioso), sincronizado con el envío de la tarjeta `✅ ÁREA ELÉCTRICA SEGURA`. Restauración preventiva a 100% al reanudar (`/resume`).
+- Rama activa: `codex/022-adaptive-acquisition`.
+- Producción: Servicio `MinerAlerts` activo (PID wrapper 23652) con heartbeat continuo y telemetría en vivo sin errores.
+- Suite de pruebas: **749/749 tests PASS** en 10.809s.
+- Documentos clave completados recientemente:
+  * `specs/048-safe-fleet-shutdown/` (Apagado Seguro y mantenimiento eléctrico).
+  * `specs/049-thermal-purge-ramp/` (Rampa de purga 100% y reposo acústico a 40%).
+  * `specs/050-post-blackout-recovery/` (Guardián Post-Blackout con botón 1-tap y auto-reanudación).
 
 ---
 
-## 2. DOCUMENTOS CLAVE A LEER PRIMERO
+## 2. SIGUIENTE OBJETIVO: SPEC 051 — DISCRIMINADOR RÁPIDO DE CORTE DE FASE VS CAÍDA DE RED (FAST PHASE DROP DISCRIMINATOR)
 
-1. `AGENTS.md` (Instrucciones generales y reglas de trabajo).
-2. `.specify/feature.json` (Apunta a `specs/049-thermal-purge-ramp`).
-3. `specs/049-thermal-purge-ramp/plan.md` y `evidence.md`.
-4. `docs/audit/DEVELOPMENT_LOG.md` (Últimas entradas de auditoría).
-5. `docs/speckit/ROADMAP.md` (Backlog activo e iniciativas futuras).
-
----
-
-## 3. OBJETIVO PRIMARIO INMEDIATO (REINICIO Y ACTIVACIÓN EN PRODUCCIÓN)
-
-Como ahora tienes permisos de Administrador, debes realizar las siguientes acciones en orden:
-
-### Paso 3.1: Verificar elevación de privilegios
-Ejecuta:
-```powershell
-whoami /groups | Select-String "Administradores"
-```
-Confirma que el grupo `BUILTIN\Administradores` esté habilitado con permisos de administrador.
-
-### Paso 3.2: Reiniciar el Servicio Windows MinerAlerts
-Aplica la recarga forzada del servicio para que cargue en memoria todo el nuevo código:
-```powershell
-Restart-Service -Name MinerAlerts -Force
-```
-
-### Paso 3.3: Verificar que el servicio esté corriendo y su nuevo PID
-Ejecuta:
-```powershell
-Get-Service -Name MinerAlerts
-Get-CimInstance Win32_Service -Filter "Name='MinerAlerts'" | Select-Object Name, State, ProcessId
-```
-
-### Paso 3.4: Verificar salud inicial y logs limpios
-Verifica que el monitor haya iniciado el bucle, cargado `state.json` y esté respondiendo sin errores de sintaxis ni de sockets.
+Iniciativa 6 del Roadmap (`docs/speckit/ROADMAP.md`):
+- **Problema**: Cuando salta una llave termomagnética o cae una fase eléctrica que alimenta a un grupo de mineros (ej. 2 o 4 equipos), el monitor actualmente agota los timeouts de socket TCP individuales (5.0s por worker) antes de clasificarlos como OFFLINE tras múltiples reintentos. Esto retrasa la notificación de corte eléctrico crítico entre 30 y 60 segundos.
+- **Objetivos Técnicos**:
+  1. **Detección instantánea (< 3s)**: Si la conectividad local del host (gateway/switch) está viva y todos los mineros de una fase o de la flota dejan de responder al unísono de forma simultánea, clasificar de inmediato el incidente como "Corte de Fase / Disparo de Protección Eléctrica".
+  2. **Supresión inteligente de reintentos**: En lugar de esperar timeouts largos secuenciales, abortar reintentos redundantes para esa fase y despachar la alerta Telegram de alta prioridad con la causa eléctrica probable.
+  3. **Tarjeta Mobile-First (<= 32 cols)**: Indicar de forma ejecutiva la fase o grupo de elevador afectado (ej. `Elevador 1: S19JPRO-23 / 24`).
 
 ---
 
-## 4. SIGUIENTE TAREA EN EL ROADMAP
+## 3. ACCIÓN A EJECUTAR
 
-Una vez verificado el servicio activo y estable:
-- Informa al usuario que el servicio `MinerAlerts` fue reiniciado con éxito y que la granja está operando con la telemetría en vivo, Spec 048 y Spec 049.
-- La siguiente tarea planificada en el roadmap es la **Iniciativa 5 — Guardián de Recuperación Post-Blackout (Post-Blackout Recovery Guard)**:
-  * Detección proactiva de mineros que inician en `miner_state: stopped` tras el retorno de tensión de un corte de red.
-  * Notificación ejecutiva con botón táctil 1-tap `[ ▶️ Reanudar Flota ]` o auto-reanudación configurable con ventana de gracia.
-- Pregunta al usuario si desea iniciar la especificación de la Iniciativa 5 (Spec 050).
+1. Leer `AGENTS.md` y `.specify/memory/constitution.md`.
+2. Actualizar `.specify/feature.json` a `specs/051-phase-drop-discriminator`.
+3. Iniciar el workflow de especificación (`speckit-specify`) para la Spec 051.

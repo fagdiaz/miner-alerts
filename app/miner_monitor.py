@@ -2804,6 +2804,12 @@ def refresh_vnish_overclock_settings(
 _BALANCER_RUNTIME_ENABLED: Optional[bool] = None
 _LAST_BALANCER_CYCLE_TS: float = 0.0
 
+# ---------------------------------------------------------------------------
+# Spec 050: Post-Blackout Recovery Guard
+# ---------------------------------------------------------------------------
+from app.governance.post_blackout_guard import PostBlackoutTracker
+_POST_BLACKOUT_TRACKER = PostBlackoutTracker()
+
 
 def execute_balancer_cycle(
     miners: list,
@@ -3688,6 +3694,39 @@ def _handle_callback_query(
             states=states,
             state_lock=state_lock,
             event_store=event_store,
+        )
+        return
+
+    # Spec 050: Handle Post-Blackout Recovery callbacks (pbr:*)
+    if cb_data.startswith("pbr:"):
+        from app.governance.post_blackout_guard import process_post_blackout_callback
+        process_post_blackout_callback(
+            cb_data=cb_data,
+            cb_id=cb_id,
+            cb_chat_id=cb_chat_id,
+            message_id=message_id,
+            miners=miners,
+            states=states,
+            state_lock=state_lock,
+            state_path=state_path,
+            config=config,
+            bot_token=bot_token,
+            answer_cb_fn=answer_callback_query,
+            edit_msg_fn=edit_message_text,
+            save_state_fn=save_state,
+            record_event_fn=lambda **kw: record_action_outcome(
+                event_store,
+                occurred_ts=time.time(),
+                miner=kw.get("miner"),
+                action=kw.get("action"),
+                source=kw.get("source", "telegram_pbr"),
+                ok=kw.get("ok", True),
+                message=kw.get("message", ""),
+            ),
+            qa_mode=qa_mode,
+            qa_allow_actions=qa_allow_actions,
+            tracker=_POST_BLACKOUT_TRACKER,
+            current_last_update_id=current_last_update_id,
         )
         return
 
@@ -8082,6 +8121,36 @@ def main() -> None:
                 )
             except Exception as _bal_exc:
                 log(f"[BALANCER_ERR] Balancer cycle failed: {type(_bal_exc).__name__}: {_bal_exc}")
+
+            # Spec 050: Post-Blackout Recovery Guard cycle
+            try:
+                from app.governance.post_blackout_guard import execute_post_blackout_cycle
+                execute_post_blackout_cycle(
+                    miners=valid_miners,
+                    states=states,
+                    state_lock=state_lock,
+                    config=config,
+                    now_ts=now_ts,
+                    process_start_ts=process_start_ts,
+                    tracker=_POST_BLACKOUT_TRACKER,
+                    send_telegram_fn=send_telegram,
+                    record_event_fn=lambda **kw: record_action_outcome(
+                        event_store,
+                        occurred_ts=time.time(),
+                        miner=kw.get("miner"),
+                        action=kw.get("action"),
+                        source=kw.get("source", "guard"),
+                        ok=kw.get("ok", True),
+                        message=kw.get("message", ""),
+                    ),
+                    log_fn=log,
+                    bot_token=bot_token,
+                    chat_id=str(chat_id),
+                    qa_mode=qa_mode,
+                    qa_notify=qa_notify,
+                )
+            except Exception as _pbr_exc:
+                log(f"[PBR_ERR] Post-blackout recovery cycle failed: {type(_pbr_exc).__name__}: {_pbr_exc}")
 
             with state_lock:
                 save_state(state_path, states, current_last_update_id)

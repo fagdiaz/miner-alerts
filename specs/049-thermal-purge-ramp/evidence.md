@@ -1,4 +1,4 @@
-﻿# Evidencia de Validación: Spec 049 - Active Thermal Purge Ramp & Acoustic Contrast on Safe Shutdown
+# Evidencia de Validación: Spec 049 - Active Thermal Purge Ramp & Acoustic Contrast on Safe Shutdown
 
 ## 1. Validación de Sintaxis Python
 ```powershell
@@ -28,3 +28,14 @@
   * Eventos persistidos en `event_store` con acciones `purge_fan_ramp` y `purge_idle_drop`.
 - [x] **Fase 3: Pruebas de integración y certificación global**:
   * Suite completa ejecutada: 727/727 tests PASS.
+
+## 4. Despliegue en Producción y Reinicio de Servicio (Elevado)
+- **Verificación de Elevación**: `whoami /groups` confirmó `BUILTIN\Administradores` y `Etiqueta obligatoria\Nivel obligatorio alto`.
+- **Reinicio del Servicio**: `Restart-Service -Name MinerAlerts -Force` completado con código de salida 0.
+- **Estado del Servicio**:
+  * Servicio Windows: `MinerAlerts` -> Estado: `Running`, Wrapper PID: `4420`.
+  * Proceso Python: PID `23620`, mutex `Global\MinerAlertsMonitor_fagdiaz` adquirido.
+- **Telemetría y Liveness**:
+  * Heartbeat atómico `data/monitor_heartbeat.json`: `tick_sequence` avanzando de forma continua (ticks 1, 2, ...), `queue_depth=0`.
+  * Logs en vivo `logs/out.log`: Gobernador térmico, Balanceador dry-run y Adquisición adaptativa con 4 mineros y 2 workers activos sin excepciones ni cuelgues.
+  * Código de Spec 048 y Spec 049 en ejecución activa en producción.

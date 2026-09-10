@@ -1,35 +1,38 @@
-# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 051 COMPLETADA, SIGUIENTE: COMMIT O SPEC 052)
+# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPECS 051 Y 052 COMPLETADAS Y PUBLICADAS)
 # Motor recomendado: Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md)
 
-Hola agente. La **Spec 051 (Fast Phase Drop vs Connectivity Discriminator)** ha sido completamente implementada, integrada y certificada con **767/767 tests PASS** (0 fallos, 0 errores, 0 regresiones). El servicio Windows `MinerAlerts` se encuentra activo y estable.
+Hola agente. Las especificaciones **Spec 051 (Fast Phase Drop vs Connectivity Discriminator)** y **Spec 052 (Scheduled Electrical Maintenance Windows & Soft Pre-Ramp)** han sido completamente implementadas, verificadas con suite completa (**781/781 tests PASS** en 10.9s), documentadas, commiteadas y pusheadas a la rama remota `origin/codex/022-adaptive-acquisition`.
 
 ---
 
 ## 1. ESTADO ACTUAL DEL REPOSITORIO Y COMPONENTES
 
-- **Rama activa**: `codex/022-adaptive-acquisition`.
-- **Producción**: Servicio `MinerAlerts` activo y supervisando la flota (PID 23652).
-- **Suite global de pruebas**: **767/767 tests PASS** en 10.894s.
-- **Spec 051 (Completada)**:
+- **Rama activa**: `codex/022-adaptive-acquisition` (sincronizada con origin, commits `68a89be` y `6d88408`).
+- **Producción**: Servicio Windows `MinerAlerts` activo y supervisando la flota (PID 23652).
+- **Suite global de pruebas**: **781/781 tests PASS** en 10.934s (0 fallos, 0 errores, 0 regresiones).
+- **Spec 051 (Completada, Commiteada y Pusheada - `68a89be`)**:
   * Dominio puro: `app/governance/phase_drop_discriminator.py` con `PhaseDropVerdict`, `PhaseDropAssessment`, `PhaseDropConfig`, `check_host_gateway_reachability`, `evaluate_phase_drop`, `process_phase_drop_cycle` y `render_phase_drop_alert`.
-  * Mobile-First UX: 100% de las tarjetas de alerta cumplen estrictamente con `visible_line_width <= 32`.
+  * Mobile-First UX: 100% de las tarjetas de alerta de fase cumplen estrictamente con `visible_line_width <= 32`.
   * Integración en monitor: `app/miner_monitor.py` evalúa caídas concurrentes post-adquisición, suprime la histeresis de 3 ticks ante cortes de circuito, encola alertas Telegram prioritarias y persiste eventos `electrical_phase_drop` en `event_store`.
-  * Pruebas unitarias: `tests/test_phase_drop_discriminator.py` (12 tests PASS).
-  * Pruebas de integración: `tests/test_phase_drop_integration.py` (6 tests PASS).
-  * Documentación: `specs/051-phase-drop-discriminator/tasks.md` (6/6 completadas), `evidence.md`, `docs/audit/DEVELOPMENT_LOG.md` y `docs/speckit/ROADMAP.md` actualizados.
-- **Spec 052 (Especificada de Punta a Punta, Pendiente de Implementación)**:
-  * `specs/052-maintenance-scheduler/`: `spec.md`, `checklists/requirements.md`, `plan.md`, `tasks.md`, `evidence.md`.
-  * Planificador de ventanas de mantenimiento eléctrico programado (`/schedule_maintenance`) con rampa de descarga a T-10m y parada a T-0.
+  * Pruebas: 12 tests unitarios (`test_phase_drop_discriminator.py`) + 6 tests de integración (`test_phase_drop_integration.py`).
+- **Spec 052 (Completada, Commiteada y Pusheada - `6d88408`)**:
+  * Dominio puro: `app/governance/maintenance_scheduler.py` con `ScheduledStage`, `ScheduledWindow`, `parse_schedule_expression`, `evaluate_window_stage`, `process_maintenance_scheduler_cycle` y renderers Mobile-First (`render_schedule_confirmation_card`, `render_scheduled_status_card`, `render_pre_ramp_card`, `render_schedule_cancelled_card`).
+  * Integración en monitor: Comandos Telegram `/schedule_maintenance <tiempo> [duración]`, `/scheduled`, callback `sch:cancel:<id>`, persistencia en `state.json` (`load_state`/`save_state`), y ciclo de ejecución periódica con pre-rampa a T-10m (2300W), T-5m (2100W) y parada segura en T-0 con rampa de purga 100% por 45s (Spec 049) y reposo a 40% PWM.
+  * Pruebas: 11 tests unitarios (`test_maintenance_scheduler.py`) + 3 tests de integración (`test_maintenance_scheduler_integration.py`).
+- **Documentación y Speckit**:
+  * `specs/051-phase-drop-discriminator/`: spec, plan, checklists, tasks (6/6 [x]), evidence (100% PASS).
+  * `specs/052-maintenance-scheduler/`: spec, plan, checklists, tasks (6/6 [x]), evidence (100% PASS).
+  * `docs/audit/DEVELOPMENT_LOG.md`: Entradas cronológicas inversas para Spec 051 y Spec 052 registradas.
+  * `docs/speckit/ROADMAP.md`: Progreso acumulado actualizado a 52/52 specs (100%) y 781 tests PASS.
 
 ---
 
-## 2. SIGUIENTES ACCIONES DISPONIBLES
+## 2. RECOMENDACIÓN DE SIGUIENTES PASOS
 
-1. **Opción A (Commit y Push Spec 051)**:
-   - Crear commit feature-scoped para Spec 051 y hacer push a `origin/codex/022-adaptive-acquisition`.
-2. **Opción B (Implementar Spec 052: Maintenance Scheduler)**:
-   - Actualizar `.specify/feature.json` a `specs/052-maintenance-scheduler`.
-   - Implementar Fase 1 (`app/governance/maintenance_scheduler.py` y `tests/test_maintenance_scheduler.py`).
-   - Implementar Fase 2 (comandos Telegram `/schedule_maintenance`, `/scheduled`, `/cancel_maintenance` e integración en el monitor).
-   - Validar suite de pruebas.
+1. **Observación y Despliegue en Producción**:
+   - Programar reinicio elevado del servicio Windows `MinerAlerts` (`Restart-Service MinerAlerts` en PowerShell administrativo) para cargar las nuevas capacidades de Spec 051 y Spec 052 en el proceso en vivo.
+   - Realizar una prueba de humo operativa en Telegram con `/scheduled` o `/help`.
+2. **Nuevos Horizontes (V4)**:
+   - Si se definen nuevos requerimientos o iniciativas de la Iniciativa 1 (PDU/UPS) o Iniciativa 2 (Prometheus Pushgateway), crear la siguiente spec en el marco de SpecKit.
+
 

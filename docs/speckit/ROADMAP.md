@@ -653,6 +653,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Apagado Seguro de Flota y Selector Multiselección de Mantenimiento Eléctrico con Purga Térmica (Spec 048).
 - [x] Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049).
 - [x] Guardián de Recuperación Post-Blackout con Botón 1-Tap y Auto-Reanudación (Spec 050).
+- [x] Discriminador Rápido de Corte de Fase vs Caída de Conectividad (Spec 051).
 
 
 ---
@@ -684,8 +685,12 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Respeto estricto de interlocks de mantenimiento (Spec 048) y silenciamiento temporal (Spec 033).
 - [x] Restauración automática de ventiladores al 100% PWM al reanudar el minado.
 
-### Iniciativa 6 — Discriminador Rápido de Corte de Fase vs Caída de Conectividad
-- [ ] Clasificación instantánea (<3s): si el host local/switch sigue activo y los 4 mineros caen al unísono, clasificar de inmediato como "Corte de Fase / Disparo de Térmica", suprimiendo timeouts individuales de reintento.
+### Iniciativa 6 — Discriminador Rápido de Corte de Fase vs Caída de Conectividad (Spec 051 - Completado)
+- [x] Clasificación instantánea (<3s): si el host local/switch sigue activo y los mineros de un elevador o la flota caen al unísono, clasificar de inmediato como disparo de térmica o corte general.
+- [x] Supresión de reintentos lentos e histeresis de 3 ticks habitual, encolando tarjeta ejecutiva Mobile-First en Telegram con prioridad máxima.
+- [x] Autochequeo de enlace de red del host para suprimir falsas alarmas si el host quedó aislado.
+- [x] Exclusión de mineros en mantenimiento deliberado (Spec 048) o silenciamiento activo (Spec 033).
+- [x] Cooldown antispam de 300s y trazabilidad completa en EventStore (`electrical_phase_drop`).
 
 ### Iniciativa 7 — Programador de Ventanas de Mantenimiento Eléctrico (`/schedule_maintenance`)
 - [ ] Programación diferida de maniobras eléctricas (ej. `/schedule_maintenance sabado 08:00 2h`).

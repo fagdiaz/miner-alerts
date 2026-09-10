@@ -2810,6 +2810,19 @@ _LAST_BALANCER_CYCLE_TS: float = 0.0
 from app.governance.post_blackout_guard import PostBlackoutTracker
 _POST_BLACKOUT_TRACKER = PostBlackoutTracker()
 
+# ---------------------------------------------------------------------------
+# Spec 051: Fast Phase Drop vs Connectivity Discriminator
+# ---------------------------------------------------------------------------
+from app.governance.phase_drop_discriminator import (
+    PhaseDropAssessment,
+    PhaseDropConfig,
+    PhaseDropVerdict,
+    parse_phase_drop_config,
+    process_phase_drop_cycle,
+)
+_LAST_PHASE_DROP_ALERT_TS: Dict[str, float] = {}
+_ACTIVE_PHASE_DROPS: Set[str] = set()
+
 
 def execute_balancer_cycle(
     miners: list,
@@ -7022,6 +7035,9 @@ def main() -> None:
             startup_lines = [] if first_tick else None
             degraded_candidates = []
             current_tick_signals: Dict[str, str] = {}
+            tick_failed_miners: List[Dict[str, Any]] = []
+            tick_responded_miners: List[Dict[str, Any]] = []
+            tick_maintenance_ids: Set[str] = set()
 
             # --- Adaptive epoch collection (disabled-safe, exception-safe) ---
             tick_envelopes: Optional[Dict[str, Any]] = None
@@ -7086,9 +7102,16 @@ def main() -> None:
                             responded = True
                             active_boards = max(0, expected_boards - 1)
                 # Logs operativos solo cuando hay cambios o warnings.
+                is_maint_dev = getattr(state, "is_shutdown_maintenance", False) or (state.snooze_until_ts is not None and now_ts < state.snooze_until_ts)
+                if is_maint_dev:
+                    tick_maintenance_ids.add(name)
+                    tick_maintenance_ids.add(state_key)
 
                 if responded:
+                    tick_responded_miners.append(miner)
                     state.last_seen_ts = now_ts
+                else:
+                    tick_failed_miners.append(miner)
 
                 previous_elapsed = state.last_elapsed
                 reboot_reason = ""
@@ -7889,7 +7912,51 @@ def main() -> None:
             with snapshot_lock:
                 snapshot_ref["value"] = "\n".join(status_lines)
 
+            # Spec 051: Fast Phase Drop vs Connectivity Discriminator
+            phase_drop_assessment = None
+            if not first_tick and (tick_failed_miners or _ACTIVE_PHASE_DROPS):
+                try:
+                    phase_drop_assessment = process_phase_drop_cycle(
+                        miners=valid_miners,
+                        states=states,
+                        tick_failed_miners=tick_failed_miners,
+                        tick_responded_miners=tick_responded_miners,
+                        maintenance_miner_ids=tick_maintenance_ids,
+                        phase_drop_config=parse_phase_drop_config(config),
+                        last_alert_ts=_LAST_PHASE_DROP_ALERT_TS,
+                        active_phase_drops=_ACTIVE_PHASE_DROPS,
+                        now_ts=now_ts,
+                        fails_before_alert=fails_before_alert,
+                        send_telegram_fn=send_telegram,
+                        record_event_fn=lambda **kw: record_action_outcome(
+                            event_store,
+                            occurred_ts=kw.get("occurred_ts", time.time()),
+                            miner={"name": kw.get("miner_name", ""), "host": kw.get("host", "")},
+                            action=kw.get("event_type", "electrical_phase_drop"),
+                            source="phase_drop_discriminator",
+                            ok=True,
+                            message=kw.get("summary", ""),
+                        ),
+                        log_fn=log,
+                        bot_token=bot_token,
+                        chat_id=str(chat_id),
+                        qa_mode=qa_mode,
+                        qa_notify=qa_notify,
+                    )
+                except Exception as _pd_exc:
+                    log(f"[PHASE_DROP_ERR] Phase drop cycle error: {type(_pd_exc).__name__}: {_pd_exc}")
+
             episode_batch = episode_notifications.pop_due(now_ts=now_ts)
+            if phase_drop_assessment and phase_drop_assessment.verdict in (
+                PhaseDropVerdict.PHASE_DROP_ELEVATOR,
+                PhaseDropVerdict.PHASE_DROP_FLEET,
+            ):
+                _aff_set = set(phase_drop_assessment.failed_miners)
+                if not episode_batch.empty and _aff_set:
+                    episode_batch.opened = [
+                        ep for ep in episode_batch.opened
+                        if ep.name_display not in _aff_set and ep.miner_key not in _aff_set
+                    ]
             if not notify_persistent_outage:
                 episode_batch.persistent.clear()
 

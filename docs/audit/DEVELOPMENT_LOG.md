@@ -3,6 +3,35 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-10] - Spec 051: Fast Phase Drop vs Connectivity Discriminator (Completado)
+
+* **Objetivo**: Proveer clasificación heurística ultra-rápida (< 3 segundos) de caídas simultáneas de mineros para discriminar disparos de protecciones termomagnéticas por elevador o cortes generales de línea respecto a pérdidas de conectividad Ethernet local del host monitor (switch/router), suprimiendo la histeresis lenta habitual de 3 ticks (30 a 90s) y emitiendo inmediatamente una tarjeta ejecutiva Mobile-First en Telegram.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Mobile-First <= 32 Columnas)**: El 100% de las tarjetas generadas (`render_phase_drop_alert` para corte de elevador, corte general y aislamiento de host) cumplen estrictamente con `visible_line_width(line) <= 32`.
+  - **C2 (Alerta Instantánea < 3s & Supresión de Histeresis)**: Ante la caída unísona de $\ge 2$ mineros del mismo elevador o de la flota completa, el monitor no espera los 3 ticks habituales de `fails_before_alert`, marcando inmediatamente `OFFLINE` y encolando la tarjeta con prioridad `HIGH` (msg_type="ERROR").
+  - **C3 (Autochequeo de Host y Cero Falsos Positivos)**: Verificación no bloqueante ($\le 500$ms) de la salud de red del host antes de declarar corte eléctrico. Si el host pierde acceso al gateway/red externa (`NETWORK_ISOLATION`), se suprime la falsa alarma eléctrica.
+  - **C4 (Exclusión de Mantenimiento Intencional)**: Equipos bajo mantenimiento deliberado (Spec 048 `is_shutdown_maintenance`) o silenciamiento activo (Spec 033 `snooze_until_ts`) se excluyen del cálculo de caídas unísonas.
+  - **C5 (Deduplicación & Cooldown Antispam)**: Cooldown configurable de 300s para evitar reenvío periódico de la tarjeta mientras la térmica continúe desenergizada, y deduplicación en el lote de notificaciones de episodios para evitar alertas redundantes.
+  - **C6 (Trazabilidad en EventStore)**: Registro de eventos `electrical_phase_drop` con severidad `critical` y metadatos completos de grupos y mineros afectados.
+* **Módulos y Cambios**:
+  - `app/governance/phase_drop_discriminator.py`:
+    * Implementación del módulo puro con `PhaseDropVerdict`, `PhaseDropAssessment`, `PhaseDropConfig`, `check_host_gateway_reachability`, `evaluate_phase_drop`, `parse_phase_drop_config`, `process_phase_drop_cycle` y `render_phase_drop_alert`.
+  - `app/governance/__init__.py`:
+    * Exportación canónica de todas las clases y funciones del discriminador de fase.
+  - `app/miner_monitor.py`:
+    * Inicialización de rastreador de caídas de fase y configuración.
+    * Recolección por tick de fallos concurrentes y mineros en mantenimiento.
+    * Hook de ciclo `process_phase_drop_cycle` ejecutado tras la adquisición, bypass de histeresis y filtrado de episodios redundantes en `episode_batch`.
+  - `app/config.example.json`:
+    * Documentación del bloque `phase_drop_discriminator` (`enabled`, `gateway_host`, `gateway_port`, `gateway_timeout_seconds`, `cooldown_seconds`).
+  - `tests/test_phase_drop_discriminator.py`:
+    * 12 pruebas unitarias cubriendo veredictos (`NORMAL`, `PHASE_DROP_ELEVATOR`, `PHASE_DROP_FLEET`, `NETWORK_ISOLATION`, `INDIVIDUAL_FAILURES`), chequeo de red, exclusión de mantenimiento y límite de 32 columnas.
+  - `tests/test_phase_drop_integration.py`:
+    * 6 pruebas de integración verificando bypass inmediato de histeresis, despacho Telegram, persistencia en EventStore, cooldown antispam, recuperación de circuito y deduplicación de episodios.
+* **Resultados y Pruebas**:
+  - Sintaxis: `py_compile` 100% OK en monitor, gobernanza y suites de tests.
+  - Suite completa: **767/767 tests PASS** en 10.894s (0 fallos, 0 errores, 0 regresiones).
+
 ## [2026-09-10] - Spec 050: Guardián de Recuperación Post-Blackout (Completado)
 
 * **Objetivo**: Detectar de forma proactiva mineros ASIC que, tras el retorno de tensión de un corte de energía o microcorte, inician con el sistema operativo activo pero con el minado detenido (`miner_state: "stopped"` o 0 TH/s persistente), ofreciendo una notificación interactiva en Telegram con botón táctil 1-tap `[ ▶️ Reanudar Flota ]` y auto-reanudación autónoma opcional con ventana de gracia.

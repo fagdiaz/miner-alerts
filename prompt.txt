@@ -1,35 +1,35 @@
-# MINER ALERTS — SESIÓN DE ESPECIFICACIÓN Y DESARROLLO (SPEC 051)
+# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 051 COMPLETADA, SIGUIENTE: COMMIT O SPEC 052)
 # Motor recomendado: Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md)
 
-Hola agente. El servicio Windows MinerAlerts está operando en producción de forma estable con Spec 050 (Post-Blackout Recovery Guard) activa y 749/749 tests PASS.
+Hola agente. La **Spec 051 (Fast Phase Drop vs Connectivity Discriminator)** ha sido completamente implementada, integrada y certificada con **767/767 tests PASS** (0 fallos, 0 errores, 0 regresiones). El servicio Windows `MinerAlerts` se encuentra activo y estable.
 
 ---
 
-## 1. CONTEXTO INMEDIATO Y ESTADO DEL REPOSITORIO
+## 1. ESTADO ACTUAL DEL REPOSITORIO Y COMPONENTES
 
-- Rama activa: `codex/022-adaptive-acquisition`.
-- Producción: Servicio `MinerAlerts` activo (PID wrapper 23652) con heartbeat continuo y telemetría en vivo sin errores.
-- Suite de pruebas: **749/749 tests PASS** en 10.809s.
-- Documentos clave completados recientemente:
-  * `specs/048-safe-fleet-shutdown/` (Apagado Seguro y mantenimiento eléctrico).
-  * `specs/049-thermal-purge-ramp/` (Rampa de purga 100% y reposo acústico a 40%).
-  * `specs/050-post-blackout-recovery/` (Guardián Post-Blackout con botón 1-tap y auto-reanudación).
-
----
-
-## 2. SIGUIENTE OBJETIVO: SPEC 051 — DISCRIMINADOR RÁPIDO DE CORTE DE FASE VS CAÍDA DE RED (FAST PHASE DROP DISCRIMINATOR)
-
-Iniciativa 6 del Roadmap (`docs/speckit/ROADMAP.md`):
-- **Problema**: Cuando salta una llave termomagnética o cae una fase eléctrica que alimenta a un grupo de mineros (ej. 2 o 4 equipos), el monitor actualmente agota los timeouts de socket TCP individuales (5.0s por worker) antes de clasificarlos como OFFLINE tras múltiples reintentos. Esto retrasa la notificación de corte eléctrico crítico entre 30 y 60 segundos.
-- **Objetivos Técnicos**:
-  1. **Detección instantánea (< 3s)**: Si la conectividad local del host (gateway/switch) está viva y todos los mineros de una fase o de la flota dejan de responder al unísono de forma simultánea, clasificar de inmediato el incidente como "Corte de Fase / Disparo de Protección Eléctrica".
-  2. **Supresión inteligente de reintentos**: En lugar de esperar timeouts largos secuenciales, abortar reintentos redundantes para esa fase y despachar la alerta Telegram de alta prioridad con la causa eléctrica probable.
-  3. **Tarjeta Mobile-First (<= 32 cols)**: Indicar de forma ejecutiva la fase o grupo de elevador afectado (ej. `Elevador 1: S19JPRO-23 / 24`).
+- **Rama activa**: `codex/022-adaptive-acquisition`.
+- **Producción**: Servicio `MinerAlerts` activo y supervisando la flota (PID 23652).
+- **Suite global de pruebas**: **767/767 tests PASS** en 10.894s.
+- **Spec 051 (Completada)**:
+  * Dominio puro: `app/governance/phase_drop_discriminator.py` con `PhaseDropVerdict`, `PhaseDropAssessment`, `PhaseDropConfig`, `check_host_gateway_reachability`, `evaluate_phase_drop`, `process_phase_drop_cycle` y `render_phase_drop_alert`.
+  * Mobile-First UX: 100% de las tarjetas de alerta cumplen estrictamente con `visible_line_width <= 32`.
+  * Integración en monitor: `app/miner_monitor.py` evalúa caídas concurrentes post-adquisición, suprime la histeresis de 3 ticks ante cortes de circuito, encola alertas Telegram prioritarias y persiste eventos `electrical_phase_drop` en `event_store`.
+  * Pruebas unitarias: `tests/test_phase_drop_discriminator.py` (12 tests PASS).
+  * Pruebas de integración: `tests/test_phase_drop_integration.py` (6 tests PASS).
+  * Documentación: `specs/051-phase-drop-discriminator/tasks.md` (6/6 completadas), `evidence.md`, `docs/audit/DEVELOPMENT_LOG.md` y `docs/speckit/ROADMAP.md` actualizados.
+- **Spec 052 (Especificada de Punta a Punta, Pendiente de Implementación)**:
+  * `specs/052-maintenance-scheduler/`: `spec.md`, `checklists/requirements.md`, `plan.md`, `tasks.md`, `evidence.md`.
+  * Planificador de ventanas de mantenimiento eléctrico programado (`/schedule_maintenance`) con rampa de descarga a T-10m y parada a T-0.
 
 ---
 
-## 3. ACCIÓN A EJECUTAR
+## 2. SIGUIENTES ACCIONES DISPONIBLES
 
-1. Leer `AGENTS.md` y `.specify/memory/constitution.md`.
-2. Actualizar `.specify/feature.json` a `specs/051-phase-drop-discriminator`.
-3. Iniciar el workflow de especificación (`speckit-specify`) para la Spec 051.
+1. **Opción A (Commit y Push Spec 051)**:
+   - Crear commit feature-scoped para Spec 051 y hacer push a `origin/codex/022-adaptive-acquisition`.
+2. **Opción B (Implementar Spec 052: Maintenance Scheduler)**:
+   - Actualizar `.specify/feature.json` a `specs/052-maintenance-scheduler`.
+   - Implementar Fase 1 (`app/governance/maintenance_scheduler.py` y `tests/test_maintenance_scheduler.py`).
+   - Implementar Fase 2 (comandos Telegram `/schedule_maintenance`, `/scheduled`, `/cancel_maintenance` e integración en el monitor).
+   - Validar suite de pruebas.
+

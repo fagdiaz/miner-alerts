@@ -55,6 +55,16 @@ from app.governance.post_blackout_guard import (
     render_recovery_action_card,
     resolve_target_miners,
 )
+from app.governance.phase_drop_discriminator import (
+    PhaseDropAssessment,
+    PhaseDropConfig,
+    PhaseDropVerdict,
+    check_host_gateway_reachability,
+    evaluate_phase_drop,
+    parse_phase_drop_config,
+    process_phase_drop_cycle,
+    render_phase_drop_alert,
+)
 from app.governance.fan_governor import (
     ACTION_EMERGENCY_SPIKE,
     ACTION_FAILSAFE_FAULT,
@@ -184,6 +194,14 @@ __all__ = [
     "make_full_bitmask",
     "OperationResult",
     "parse_selection_indices",
+    "PhaseDropAssessment",
+    "PhaseDropConfig",
+    "PhaseDropVerdict",
+    "check_host_gateway_reachability",
+    "evaluate_phase_drop",
+    "parse_phase_drop_config",
+    "process_phase_drop_cycle",
+    "render_phase_drop_alert",
     "PostBlackoutTarget",
     "PostBlackoutTracker",
     "process_post_blackout_callback",

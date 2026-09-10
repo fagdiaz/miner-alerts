@@ -172,5 +172,13 @@
     "auto_resume": false,
     "grace_period_seconds": 180,
     "max_chip_temp_c": 85.0
+  },
+  "_comment_phase_drop_discriminator": "Discriminador de Caída Rápida de Fase vs Conectividad de Host (Spec 051). Identifica disparos de térmicas de elevadores o cortes de cabecera en < 3s y suprime histeresis lenta.",
+  "phase_drop_discriminator": {
+    "enabled": true,
+    "gateway_host": "",
+    "gateway_port": 53,
+    "gateway_timeout_seconds": 0.5,
+    "cooldown_seconds": 300.0
   }
 }

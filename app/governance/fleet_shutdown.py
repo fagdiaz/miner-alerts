@@ -12,10 +12,12 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.telegram.help_center import visible_line_width, wrap_mobile_lines
-from app.vnish.client import safe_resume_mining, safe_stop_mining
+from app.vnish.client import safe_resume_mining, safe_set_fan_duty, safe_stop_mining
 
 DEFAULT_PURGE_SECONDS = 45
 DEFAULT_MAINTENANCE_SNOOZE_HOURS = 4.0
+DEFAULT_PURGE_FAN_DUTY = 100
+DEFAULT_IDLE_FAN_DUTY = 40
 
 
 @dataclass(frozen=True)
@@ -152,22 +154,62 @@ def execute_parallel_resume(
     return results
 
 
+def execute_parallel_fan_duty(
+    miners: List[Dict[str, Any]],
+    duty_percent: int,
+    password: str,
+    timeout: float = 2.5,
+    fan_fn: Optional[Callable[..., Tuple[bool, Optional[str]]]] = None,
+) -> Dict[str, OperationResult]:
+    """
+    Dispatch fan duty setting across selected miners in parallel (Spec 049).
+    Uses ThreadPoolExecutor bounded to the number of targets (max 4).
+    """
+    caller = fan_fn or safe_set_fan_duty
+    results: Dict[str, OperationResult] = {}
+    if not miners:
+        return results
+
+    def _call(m: Dict[str, Any]) -> Tuple[str, bool, Optional[str]]:
+        m_id = extract_miner_identifier(m)
+        host = m.get("host", "")
+        ok, err = caller(host, password, duty_percent, timeout=timeout)
+        return m_id, ok, err
+
+    max_w = min(4, len(miners))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as pool:
+        futures = [pool.submit(_call, m) for m in miners]
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                m_id, ok, err = f.result()
+                results[m_id] = OperationResult(miner_id=m_id, success=ok, error=err)
+            except Exception as exc:
+                m_id = "unknown"
+                results[m_id] = OperationResult(miner_id=m_id, success=False, error=str(exc))
+
+    return results
+
+
 # ── Mobile-First Card Layouts (<= 32 visible cols) ─────────────────────
 
-def render_shutdown_in_progress(targets: List[str], purge_seconds: int = DEFAULT_PURGE_SECONDS) -> str:
-    """Render in-progress notification card during active thermal purge."""
+def render_shutdown_in_progress(
+    targets: List[str],
+    purge_seconds: int = DEFAULT_PURGE_SECONDS,
+    purge_duty: int = DEFAULT_PURGE_FAN_DUTY,
+) -> str:
+    """Render in-progress notification card during active thermal purge (Spec 049)."""
     lines = [
         "🛑 *PARADA EN PROGRESO*",
         "─" * 32,
         "• *Carga Hash*: Desactivada (0W)",
         f"• *Equipos*: {', '.join(targets)}",
-        "• *Purga térmica*: En curso...",
-        f"⏳ Enfriando disipadores ({purge_seconds}s)",
+        f"• *Purga*: Rampa {purge_duty}% activa",
+        f"⏳ Barriendo calor ({purge_seconds}s)",
         "",
         "⚠️ *ATENCIÓN*:",
         "NO cortar la corriente aún.",
-        "Los ventiladores están barriendo",
-        "el calor residual de los chips.",
+        "Coolers forzados expulsando",
+        "el calor residual de chips.",
         "─" * 32,
     ]
     return "\n".join(lines)
@@ -176,8 +218,9 @@ def render_shutdown_in_progress(targets: List[str], purge_seconds: int = DEFAULT
 def render_safe_area_card(
     targets: List[str],
     snooze_hours: float = DEFAULT_MAINTENANCE_SNOOZE_HOURS,
+    idle_duty: int = DEFAULT_IDLE_FAN_DUTY,
 ) -> str:
-    """Render confirmation that thermal purge is complete and AC cut is safe."""
+    """Render confirmation that thermal purge is complete and AC cut is safe (Spec 049)."""
     lines = [
         "✅ *ÁREA ELÉCTRICA SEGURA*",
         "─" * 32,
@@ -188,7 +231,8 @@ def render_safe_area_card(
     lines.extend([
         "• *Potencia Hash*: 0.0 kW",
         "• *Reposo*: <25W por equipo",
-        "• *Disipadores*: Fríos (<45°C)",
+        f"• *Coolers*: Reposo ({idle_duty}% PWM)",
+        "• *Disipadores*: Fríos (<35°C)",
         f"• *Snooze*: Activo ({snooze_hours:.0f}h)",
         "",
         "🔌 *Ya podés bajar la térmica*",

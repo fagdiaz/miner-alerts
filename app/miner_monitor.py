@@ -3009,8 +3009,12 @@ def _handle_command_center_callback(
         render_resume_menu,
     )
     from app.governance.fleet_shutdown import (
+        DEFAULT_IDLE_FAN_DUTY,
         DEFAULT_MAINTENANCE_SNOOZE_HOURS,
+        DEFAULT_PURGE_FAN_DUTY,
         DEFAULT_PURGE_SECONDS,
+        OperationResult,
+        execute_parallel_fan_duty,
         execute_parallel_resume,
         execute_parallel_shutdown,
         extract_miner_identifier,
@@ -3174,16 +3178,54 @@ def _handle_command_center_callback(
 
             errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
             success_ids = [r.miner_id for r in results.values() if r.success]
+            stopped_miners = [m for m in selected_miners if results.get(extract_miner_identifier(m)) and results[extract_miner_identifier(m)].success]
+
+            if stopped_miners:
+                # Spec 049: Active Thermal Purge Ramp (100% PWM)
+                fan_res = execute_parallel_fan_duty(stopped_miners, DEFAULT_PURGE_FAN_DUTY, vnish_pw)
+                for sm in stopped_miners:
+                    sm_id = extract_miner_identifier(sm)
+                    r_item = fan_res.get(sm_id)
+                    f_ok = r_item.success if r_item else False
+                    log(f"[SHUTDOWN_PURGE] Miner {sm_id} thermal purge ramp 100% {'OK' if f_ok else 'FAILED'}")
+                    record_action_outcome(
+                        event_store,
+                        occurred_ts=time.time(),
+                        miner=sm,
+                        action="purge_fan_ramp",
+                        source="thermal_purge",
+                        ok=f_ok,
+                        message="Rampa activa 100% de purga térmica iniciada" if f_ok else "Fallo al modular coolers a 100%",
+                    )
+
             if errors and not success_ids:
                 new_text = render_shutdown_error_card(errors)
                 new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
             else:
-                new_text = render_shutdown_in_progress(success_ids, purge_seconds=DEFAULT_PURGE_SECONDS)
+                new_text = render_shutdown_in_progress(success_ids, purge_seconds=DEFAULT_PURGE_SECONDS, purge_duty=DEFAULT_PURGE_FAN_DUTY)
                 new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
                 if success_ids:
-                    def _purge_and_notify(targets=list(success_ids), chat=cb_chat_id):
+                    target_miners_for_purge = list(stopped_miners)
+                    def _purge_and_notify(targets=list(success_ids), target_miners=target_miners_for_purge, chat=cb_chat_id, pw=vnish_pw):
                         time.sleep(DEFAULT_PURGE_SECONDS)
-                        safe_card = render_safe_area_card(targets, snooze_hours=DEFAULT_MAINTENANCE_SNOOZE_HOURS)
+                        if target_miners:
+                            # Spec 049: Acoustic contrast drop to idle floor (40% PWM)
+                            idle_res = execute_parallel_fan_duty(target_miners, DEFAULT_IDLE_FAN_DUTY, pw)
+                            for tm in target_miners:
+                                tm_id = extract_miner_identifier(tm)
+                                r_idle = idle_res.get(tm_id)
+                                f_ok = r_idle.success if r_idle else False
+                                log(f"[SHUTDOWN_PURGE] Miner {tm_id} acoustic drop to idle floor 40% {'OK' if f_ok else 'FAILED'}")
+                                record_action_outcome(
+                                    event_store,
+                                    occurred_ts=time.time(),
+                                    miner=tm,
+                                    action="purge_idle_drop",
+                                    source="acoustic_contrast",
+                                    ok=f_ok,
+                                    message="Caída a reposo acústico 40% exitosa" if f_ok else "Fallo al modular coolers a reposo",
+                                )
+                        safe_card = render_safe_area_card(targets, snooze_hours=DEFAULT_MAINTENANCE_SNOOZE_HOURS, idle_duty=DEFAULT_IDLE_FAN_DUTY)
                         send_telegram(
                             bot_token,
                             str(chat),
@@ -3234,6 +3276,14 @@ def _handle_command_center_callback(
                         ok=(res.success if res else False),
                         message=("Reanudación exitosa" if res and res.success else (res.error if res else "Error")),
                     )
+
+                # Spec 049: Restore fan duty from idle floor upon resume
+                resumed_miners = [m for m in target_miners if results.get(extract_miner_identifier(m)) and results[extract_miner_identifier(m)].success]
+                if resumed_miners:
+                    execute_parallel_fan_duty(resumed_miners, DEFAULT_PURGE_FAN_DUTY, vnish_pw)
+                    for rm in resumed_miners:
+                        rm_id = extract_miner_identifier(rm)
+                        log(f"[RESUME] Miner {rm_id} coolers restored to active duty")
 
                 errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
                 success_ids = [r.miner_id for r in results.values() if r.success]

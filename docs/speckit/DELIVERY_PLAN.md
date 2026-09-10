@@ -58,6 +58,7 @@ safety gates are not compressed to recover an estimate.
 | Spec 046 mobile cards v1 | Closed 2026-09-09 (`approved`) | Mobile-First layout para /status, /fans, /efficiency, /presets | 12 tests PASS, 663 tests PASS. |
 | Spec 047 mobile cards v2 | Closed 2026-09-09 (`approved`) | Mobile-First layout para /balancer, /elevadores, /digest, /snoozed, /events | 24 tests PASS, 687 tests PASS. |
 | Spec 048 safe fleet shutdown | Closed 2026-09-09 (`approved`) | Apagado seguro, selector táctil de 1 a 4 mineros, purga térmica 45s, auto-snooze 4h y /resume | 34 tests PASS, 721 tests PASS, validado en maniobra real en vivo. |
+| Spec 049 thermal purge ramp | Closed 2026-09-10 (`approved`) | Rampa 100% de purga activa, caída al 40% (reposo acústico) en segundo 45, /resume seguro | 4 tests PASS, 727 tests PASS, validado en tests unitarios e integración. |
 
 ## Milestones
 

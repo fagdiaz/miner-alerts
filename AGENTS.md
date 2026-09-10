@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/048-safe-fleet-shutdown/plan.md` (Implementation complete; Certified & Active in Production)
+`specs/049-thermal-purge-ramp/plan.md` (Implementation complete; Domain & Integration Verified)
 
 Active production observation gate:
-`specs/048-safe-fleet-shutdown/plan.md` (Release Gate APPROVED; 723 tests PASS, active in production under PID 32436)
+`specs/049-thermal-purge-ramp/plan.md` (Release Gate APPROVED; 727 tests PASS, staged for elevated service restart)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

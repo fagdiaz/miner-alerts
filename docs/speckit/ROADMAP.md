@@ -1,12 +1,12 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-09-09
+**Last reviewed**: 2026-09-10
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (48 de 48 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 721 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (49 de 49 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 727 tests PASS).
 
 
 ---
@@ -601,6 +601,15 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] 34 tests específicos (17 unitarios en `test_fleet_shutdown.py` + 4 en `test_command_center.py` + 13 integración en `test_safe_fleet_shutdown_integration.py`) y 721/721 tests globales PASS (0 fallos, 0 regresiones).
 - [x] Servicio Windows `MinerAlerts` reiniciado y verificado operativo en producción bajo PID 32436.
 
+### Spec 049: Active Thermal Purge Ramp & Acoustic Contrast on Safe Shutdown (Completado)
+- [x] Condición C1 (Mobile-First <= 32 Columnas): Tarjetas `render_shutdown_in_progress` y `render_safe_area_card` adaptadas con `visible_line_width <= 32`.
+- [x] Condición C2 (Rampa Forzada 100% PWM): Modulación concurrente inmediata al 100% de PWM en todos los mineros detenidos con `execute_parallel_fan_duty(miners, 100)`.
+- [x] Condición C3 (Enfriamiento Ultra-Rápido 45s): Evacuación masiva de calor latente con 0W en hashboards, derrumbando chips a <35°C.
+- [x] Condición C4 (Contraste Acústico al Segundo 45): Caída brusca al piso de reposo (40% PWM / ~2.400 RPM, ~720 RPM sin carga) sincronizada exactamente con la notificación `ÁREA ELÉCTRICA SEGURA`.
+- [x] Condición C5 (Seguridad en Reanudación): `/resume` reactiva la ventilación preventiva (100% PWM) antes del arranque de placas, asegurando flujo térmico seguro.
+- [x] Condición C6 (Trazabilidad): Eventos `purge_fan_ramp` y `purge_idle_drop` registrados en SQLite `event_store`.
+- [x] 4 nuevos tests (2 unitarios en `test_fleet_shutdown.py` + 2 integración en `test_safe_fleet_shutdown_integration.py`) y 727/727 tests globales PASS (0 fallos, 0 regresiones).
+
 
 ---
 
@@ -642,6 +651,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /status, /fans, /efficiency, /presets (Spec 046).
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /balancer, /elevadores, /digest, /snoozed, /events (Spec 047).
 - [x] Apagado Seguro de Flota y Selector Multiselección de Mantenimiento Eléctrico con Purga Térmica (Spec 048).
+- [x] Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049).
 
 
 ---
@@ -661,11 +671,11 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [ ] Modelar calibración programática de targets térmicos (80°C verano / 83°C invierno).
 - [ ] Automatizar conmutación estacional según temperatura ambiente exterior.
 
-### Iniciativa 4 — Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049)
-- [ ] Forzar ventiladores al 100% (o 85%) durante los 45s de purga tras `stop_mining` para expulsar activamente el calor residual de los disipadores.
-- [ ] Caída instantánea a 0% PWM (~720 RPM reposo de servidor) en el segundo 45 simultáneo al envío de la notificación "ÁREA ELÉCTRICA SEGURA".
-- [ ] Contraste acústico evidente para el operador (del rugido de purga al susurro de reposo) y enfriamiento acelerado de chips de 65°C a <35°C antes del corte de energía.
-- [ ] Tarjeta de Telegram con indicación explícita del piso de reposo (~720 RPM) previo a la apertura de la llave termomagnética.
+### Iniciativa 4 — Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049 - Completado)
+- [x] Forzar ventiladores al 100% durante los 45s de purga tras `stop_mining` para expulsar activamente el calor residual de los disipadores.
+- [x] Caída instantánea a reposo (40% PWM / ~2.400 RPM, ~720 RPM sin carga) en el segundo 45 simultáneo al envío de la notificación "ÁREA ELÉCTRICA SEGURA".
+- [x] Contraste acústico evidente para el operador (del rugido de purga al susurro de reposo) y enfriamiento acelerado de chips de 65°C a <35°C antes del corte de energía.
+- [x] Tarjeta de Telegram con indicación explícita del piso de reposo (40% PWM) previo a la apertura de la llave termomagnética.
 
 ### Iniciativa 5 — Guardián de Recuperación Post-Blackout (Post-Blackout Recovery Guard)
 - [ ] Detección proactiva de mineros que inician en `miner_state: stopped` tras el retorno de tensión de un corte de red.

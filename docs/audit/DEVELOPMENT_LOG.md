@@ -3,6 +3,36 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-10] - Spec 049: Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Completado)
+
+* **Objetivo**: Optimizar el protocolo de apagado seguro de la granja (Spec 048) incorporando una rampa forzada de purga térmica al 100% de PWM durante los 45 segundos de enfriamiento (con potencia hash en 0W) y una caída instantánea al piso de reposo acústico (40% PWM / ~2.400 RPM, descendiendo a ~720 RPM en reposo sin carga) en el segundo 45 exacto, simultáneamente con la notificación Telegram `✅ ÁREA ELÉCTRICA SEGURA`.
+* **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:
+  - **C1 (Mobile-First <= 32 Columnas)**: El 100% de las tarjetas móviles (`render_shutdown_in_progress`, `render_safe_area_card`) cumplen `visible_line_width(line) <= 32`.
+  - **C2 (Pureza y No-Bloqueo del Monitor)**: La modulación de coolers se ejecuta mediante `ThreadPoolExecutor` desacoplado y en hilos daemon (`ShutdownPurgeNotify`) sin frenar el bucle principal de sondeo ni el polling de Telegram.
+  - **C3 (Rampa Térmica Activa 100%)**: Aceleración inmediata de coolers a 100% en todos los mineros detenidos con éxito, maximizando el caudal de aire para barrer el calor latente de chips y disipadores de 65-80°C a <35°C.
+  - **C4 (Contraste Acústico al Segundo 45)**: Desaceleración brusca de 6.000 RPM a piso de reposo (40% PWM), generando una señal física audible inconfundible para el operador ubicado frente al tablero eléctrico.
+  - **C5 (Seguridad en Reanudación)**: `/resume` restaura automáticamente la ventilación activa preventiva antes del arranque de placas, impidiendo calentamiento inicial con coolers en reposo.
+  - **C6 (Trazabilidad en EventStore)**: Registro de eventos `purge_fan_ramp` y `purge_idle_drop` con timestamp y estado en SQLite.
+* **Módulos y Cambios**:
+  - `app/governance/fleet_shutdown.py`:
+    * Constantes `DEFAULT_PURGE_FAN_DUTY = 100` y `DEFAULT_IDLE_FAN_DUTY = 40`.
+    * Función `execute_parallel_fan_duty(miners, duty_percent, password, timeout=2.5, fan_fn=None)`.
+    * Tarjeta `render_shutdown_in_progress` actualizada: `• Purga: Rampa 100% activa` y `⏳ Barriendo calor (45s)`.
+    * Tarjeta `render_safe_area_card` actualizada: `• Coolers: Reposo (40% PWM)` y `• Disipadores: Fríos (<35°C)`.
+  - `app/governance/__init__.py`:
+    * Exportación de `execute_parallel_fan_duty`, `DEFAULT_PURGE_FAN_DUTY` y `DEFAULT_IDLE_FAN_DUTY`.
+  - `app/miner_monitor.py`:
+    * `sd_cfm`: despacho de rampa al 100% en paralelo a los mineros detenidos con registro en `event_store`.
+    * Hilo `ShutdownPurgeNotify`: tras 45s de sueño, despacho de caída a reposo al 40% en paralelo y envío de `render_safe_area_card`.
+    * `resume`: reactivación de ventilación activa en mineros reanudados.
+  - `tests/test_fleet_shutdown.py`:
+    * Pruebas unitarias para `execute_parallel_fan_duty` (éxito, fallos parciales, lista vacía) y validación de ancho móvil $\le 32$ columnas.
+  - `tests/test_safe_fleet_shutdown_integration.py`:
+    * 2 nuevas pruebas de integración: `test_thermal_purge_ramp_and_acoustic_drop_integration` y `test_resume_restores_active_fan_duty`.
+* **Resultados y Pruebas**:
+  - Sintaxis: `py_compile` 100% OK en monitor, governance y tests.
+  - Suite completa: **727/727 tests PASS** en 10.556s (0 fallos, 0 errores, 0 regresiones).
+
 ## [2026-09-10] - Fix: Telemetría en Vivo y Hashrate Total en Tarjeta /status (Estabilización)
 
 * **Problema Resuelto**: El comando `/status` de Telegram no mostraba el hashrate individual de los mineros (`Hash: XX.X TH/s`), ni la potencia/eficiencia (`Pwr: XXXW (XX.X J/T)`), ni el hashrate total de la flota (`⚡ Total: 0.0 TH/s`). La tarjeta mostraba únicamente `Estado: OK` y `Temp: N/A | Fans: N/A` a pesar de que los equipos minaban a potencia nominal.

@@ -429,6 +429,132 @@ class TestSafeFleetShutdownIntegration(unittest.TestCase):
         self.assertFalse(st23.is_shutdown_maintenance)
         self.assertIsNone(st23.snooze_until_ts)
 
+    @patch("app.miner_monitor.threading.Thread")
+    @patch("app.miner_monitor.edit_message_text")
+    @patch("app.miner_monitor.answer_callback_query")
+    @patch("app.governance.fleet_shutdown.execute_parallel_fan_duty")
+    @patch("app.governance.fleet_shutdown.execute_parallel_shutdown")
+    def test_thermal_purge_ramp_and_acoustic_drop_integration(
+        self,
+        mock_exec_shutdown,
+        mock_exec_fan,
+        mock_answer,
+        mock_edit,
+        mock_thread_cls,
+    ):
+        """Verify 100% thermal purge ramp is dispatched on shutdown and 40% idle drop runs in thread (Spec 049)."""
+        token = self.reg.create_token("1000", action="shutdown")
+        mock_exec_shutdown.return_value = {
+            "23": OperationResult(miner_id="23", success=True),
+        }
+        mock_exec_fan.return_value = {
+            "23": OperationResult(miner_id="23", success=True),
+        }
+
+        thread_target = None
+        mock_thread_inst = MagicMock()
+        def _capture_thread(**kwargs):
+            nonlocal thread_target
+            thread_target = kwargs.get("target")
+            return mock_thread_inst
+        mock_thread_cls.side_effect = _capture_thread
+
+        states = {"S19JPRO-23|192.168.100.23:4028": MinerState(state="OK")}
+        cb_cfm = {
+            "id": "cb_cfm_purge",
+            "data": f"cc:act:sd_cfm:{token}:1000",
+            "message": {"message_id": 6001, "chat": {"id": 100}},
+            "from": {"id": 100},
+        }
+
+        _handle_command_center_callback(
+            cb_query=cb_cfm,
+            config=self.config,
+            bot_token="fake_token",
+            chat_id="100",
+            cb_chat_id=100,
+            message_id=6001,
+            cb_id="cb_cfm_purge",
+            miners=self.miners,
+            states=states,
+            state_lock=self.lock,
+            state_path=self.state_path,
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=True,
+            token_registry=self.reg,
+        )
+
+        mock_exec_shutdown.assert_called_once()
+        mock_exec_fan.assert_any_call([self.miners[0]], 100, "admin")
+
+        args, _ = mock_edit.call_args
+        self.assertIn("Rampa 100% activa", args[3])
+
+        mock_thread_inst.start.assert_called_once()
+        self.assertIsNotNone(thread_target)
+
+        with patch("time.sleep") as mock_sleep, patch("app.miner_monitor.send_telegram") as mock_send_tg:
+            thread_target()
+            mock_sleep.assert_called_once_with(45)
+            mock_exec_fan.assert_any_call([self.miners[0]], 40, "admin")
+            mock_send_tg.assert_called_once()
+            tg_args, _ = mock_send_tg.call_args
+            self.assertIn("ÁREA ELÉCTRICA SEGURA", tg_args[2])
+            self.assertIn("*Coolers*: Reposo (40% PWM)", tg_args[2])
+
+    @patch("app.miner_monitor.edit_message_text")
+    @patch("app.miner_monitor.answer_callback_query")
+    @patch("app.governance.fleet_shutdown.execute_parallel_fan_duty")
+    @patch("app.governance.fleet_shutdown.execute_parallel_resume")
+    def test_resume_restores_active_fan_duty(self, mock_exec_resume, mock_exec_fan, mock_answer, mock_edit):
+        """Verify resume calls execute_parallel_fan_duty with 100% to exit idle floor (Spec 049)."""
+        mock_exec_resume.return_value = {
+            "23": OperationResult(miner_id="23", success=True),
+        }
+        mock_exec_fan.return_value = {
+            "23": OperationResult(miner_id="23", success=True),
+        }
+
+        states = {
+            "S19JPRO-23|192.168.100.23:4028": MinerState(
+                state="OK",
+                is_shutdown_maintenance=True,
+            ),
+        }
+
+        cb_res = {
+            "id": "cb_res_fan",
+            "data": "cc:act:resume:23",
+            "message": {"message_id": 6002, "chat": {"id": 100}},
+            "from": {"id": 100},
+        }
+
+        _handle_command_center_callback(
+            cb_query=cb_res,
+            config=self.config,
+            bot_token="fake_token",
+            chat_id="100",
+            cb_chat_id=100,
+            message_id=6002,
+            cb_id="cb_res_fan",
+            miners=self.miners,
+            states=states,
+            state_lock=self.lock,
+            state_path=self.state_path,
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=True,
+            token_registry=self.reg,
+        )
+
+        mock_exec_resume.assert_called_once()
+        mock_exec_fan.assert_called_once_with([self.miners[0]], 100, "admin")
+
     @patch("app.miner_monitor.edit_message_text")
     @patch("app.miner_monitor.answer_callback_query")
     def test_reboot_blocked_on_stopped_miner(self, mock_answer, mock_edit):

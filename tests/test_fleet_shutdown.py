@@ -4,6 +4,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from app.governance.fleet_shutdown import (
+    DEFAULT_IDLE_FAN_DUTY,
+    DEFAULT_PURGE_FAN_DUTY,
+    DEFAULT_PURGE_SECONDS,
+    execute_parallel_fan_duty,
     execute_parallel_resume,
     execute_parallel_shutdown,
     extract_miner_identifier,
@@ -125,6 +129,42 @@ class TestConcurrentDispatchers(unittest.TestCase):
     def test_execute_empty_miners_list(self):
         self.assertEqual(execute_parallel_shutdown([], "admin"), {})
         self.assertEqual(execute_parallel_resume([], "admin"), {})
+        self.assertEqual(execute_parallel_fan_duty([], 100, "admin"), {})
+
+    def test_execute_parallel_fan_duty_all_success(self):
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23"},
+            {"name": "S19JPRO-24", "host": "192.168.100.24"},
+        ]
+        calls = []
+
+        def dummy_fan(host, pw, duty, timeout=2.5):
+            calls.append((host, duty))
+            return True, None
+
+        results = execute_parallel_fan_duty(miners, 100, "admin", fan_fn=dummy_fan)
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results["23"].success)
+        self.assertTrue(results["24"].success)
+        self.assertIn(("192.168.100.23", 100), calls)
+        self.assertIn(("192.168.100.24", 100), calls)
+
+    def test_execute_parallel_fan_duty_partial_failure(self):
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23"},
+            {"name": "S19JPRO-25", "host": "192.168.100.25"},
+        ]
+
+        def dummy_fan(host, pw, duty, timeout=2.5):
+            if "25" in host:
+                return False, "fan_adjustment_failed"
+            return True, None
+
+        results = execute_parallel_fan_duty(miners, 40, "admin", fan_fn=dummy_fan)
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results["23"].success)
+        self.assertFalse(results["25"].success)
+        self.assertEqual(results["25"].error, "fan_adjustment_failed")
 
 
 class TestMobileCardRenderers(unittest.TestCase):
@@ -140,18 +180,22 @@ class TestMobileCardRenderers(unittest.TestCase):
             )
 
     def test_render_shutdown_in_progress(self):
-        card = render_shutdown_in_progress(["23", "25"], purge_seconds=45)
+        card = render_shutdown_in_progress(["23", "25"], purge_seconds=45, purge_duty=100)
         self._assert_all_lines_mobile_width(card)
         self.assertIn("PARADA EN PROGRESO", card)
         self.assertIn("45s", card)
+        self.assertIn("*Purga*: Rampa 100% activa", card)
+        self.assertIn("Barriendo calor", card)
 
     def test_render_safe_area_card(self):
-        card = render_safe_area_card(["23", "25", "26"], snooze_hours=4.0)
+        card = render_safe_area_card(["23", "25", "26"], snooze_hours=4.0, idle_duty=40)
         self._assert_all_lines_mobile_width(card)
         self.assertIn("ÁREA ELÉCTRICA SEGURA", card)
         self.assertIn("S19JPRO-23", card)
         self.assertIn("S19JPRO-25", card)
         self.assertIn("S19JPRO-26", card)
+        self.assertIn("*Coolers*: Reposo (40% PWM)", card)
+        self.assertIn("*Disipadores*: Fríos (<35°C)", card)
 
     def test_render_resume_success_card(self):
         card = render_resume_success_card(["23", "24", "25", "26"])

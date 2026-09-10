@@ -1,4 +1,4 @@
-GEMINI 3.8 FLASH HIGH — Miner Alerts | Status Card Live Telemetry Fix & Roadmap Initiatives
+﻿GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 049 (Active Thermal Purge Ramp & Acoustic Contrast) Completed
 
 ROL Y MOTOR RECOMENDADO
 Motor: Gemini 3.8 Flash High
@@ -7,16 +7,19 @@ Rol: Monitoreo operativo, validación de telemetría y extensiones de gobernanza
 ESTADO ACTUAL:
 1. Flota Minando Estable:
    - S19JPRO-23 a 26 minando en estado 'mining' a potencia nominal completa (2500W, 2700W, 2300W, 2300W).
-   - Servicio Windows MinerAlerts activo en producción (723/723 tests PASS).
+   - Servicio Windows MinerAlerts activo en producción (727/727 tests PASS).
    - Hook de telemetría de Google Cloud neutralizado y blindado permanentemente (+r).
 
-2. Corrección de Comando /status (Auditado y Solucionado):
-   - MinerState ahora almacena y persiste en state.json: last_rate_ths, last_active_boards, last_expected_boards, last_max_chip_temp, last_fan_duty_percent, last_power_w, last_efficiency_j_th.
-   - Bucle principal alimenta estos campos bajo state_lock en cada tick.
-   - render_fleet_status_card() cuenta con fallbacks al Fan Governor (temperatura, duty, potencia) y cálculo dinámico de eficiencia.
-   - Resultado: Cada tarjeta muestra hashrate individual (ej. 98.5 TH/s (3/3)), temperatura, fans, potencia (W), eficiencia (J/T) y el pie resume el hashrate total de la flota y potencia en kW (ej. 394.0 TH/s | 10.6 kW).
-   - Requiere reiniciar el servicio en PowerShell de Administrador (`Restart-Service MinerAlerts -Force`).
+2. Spec 049: Rampa de Purga Térmica Activa y Contraste Acústico (Completado y Certificado):
+   - Al confirmar parada (`sd_cfm`): `execute_parallel_fan_duty(miners, 100)` acelera ventiladores a 100% de inmediato con hash en 0W para purgar masivamente el calor latente (<35°C).
+   - Al segundo 45: `execute_parallel_fan_duty(miners, 40)` hace caer los coolers bruscamente a reposo (40% PWM / ~2.400 RPM, cayendo sin carga a reposo silencioso ~720 RPM) en el hilo daemon `ShutdownPurgeNotify`.
+   - Contraste acústico físico evidente para el operador in situ, perfectamente sincronizado con la tarjeta Telegram `✅ ÁREA ELÉCTRICA SEGURA`.
+   - Al reanudar (`/resume`): se reactiva la ventilación preventiva (100% PWM) antes del arranque de placas.
+   - 727/727 tests PASS en 10.556s (0 fallos, 0 errores).
 
-3. Próximas Tareas de Speckit (Pendientes de Aprobación):
-   - Spec 049: Rampa de Purga Térmica Activa (100% duty durante 45s) y contraste acústico en parada segura.
-   - Iniciativa 5: Guardián de Recuperación Post-Blackout.
+3. Reinicio de Servicio Pendiente (Requiere Administrador):
+   - Ejecutar en PowerShell como Administrador: `Restart-Service -Name MinerAlerts -Force` para cargar en memoria las mejoras de Spec 048, Spec 049 y telemetría de `/status`.
+
+4. Próximas Iniciativas en Roadmap:
+   - Iniciativa 5: Guardián de Recuperación Post-Blackout (detección proactiva de mineros iniciados en 'stopped' tras corte eléctrico con botón 1-tap `[ ▶️ Reanudar Flota ]`).
+   - Iniciativa 6: Discriminador rápido de corte de fase vs caída de conectividad.

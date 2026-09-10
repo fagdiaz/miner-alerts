@@ -3,6 +3,28 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-10] - Fix: Telemetría en Vivo y Hashrate Total en Tarjeta /status (Estabilización)
+
+* **Problema Resuelto**: El comando `/status` de Telegram no mostraba el hashrate individual de los mineros (`Hash: XX.X TH/s`), ni la potencia/eficiencia (`Pwr: XXXW (XX.X J/T)`), ni el hashrate total de la flota (`⚡ Total: 0.0 TH/s`). La tarjeta mostraba únicamente `Estado: OK` y `Temp: N/A | Fans: N/A` a pesar de que los equipos minaban a potencia nominal.
+* **Causa Raíz**:
+  - En la implementación de `render_fleet_status_card()` (Spec 046), el renderizador esperaba atributos `last_rate_ths`, `last_active_boards`, `last_max_chip_temp`, `last_fan_duty_percent`, `last_power_w` y `last_efficiency_j_th` en los objetos `MinerState`.
+  - La clase `@dataclass MinerState` en `app/miner_monitor.py` no declaraba dichos campos y el bucle principal de monitoreo solo alimentaba variables del Fan Governor (`governor_last_power_w`, `governor_last_temp_c`), omitiendo persistir `rate_ths` y telemetría de placas en el estado del minero bajo `state_lock`.
+  - Tampoco se serializaban ni deserializaban estos campos en `save_state()` ni `load_state()`.
+* **Solución Implementada**:
+  - `app/miner_monitor.py`:
+    * Agregados los campos de telemetría a `@dataclass MinerState` con valores por defecto.
+    * Bucle principal de monitoreo: bajo `state_lock`, se alimenta en cada tick `state.last_rate_ths`, `state.last_active_boards`, `state.last_expected_boards`, `state.last_max_chip_temp`, `state.last_fan_duty_percent`, `state.last_power_w` y `state.last_efficiency_j_th` calculada.
+    * `save_state()` y `load_state()`: Serialización y deserialización atómica de los campos de telemetría en `state.json`.
+    * Corrección de referencia a diccionario de estados en snapshot de métricas.
+    * Corrección de bug crítico `_match_miner` en comandos individuales `/fans [miner]`, `/efficiency [miner]` y `/presets [miner]`: se reemplazó la función no declarada por `resolve_miner(target_arg, miners)` y acceso a propiedades canónicas `host/ip`.
+  - `app/telegram/fleet_cards.py`:
+    * Fallback resiliente a telemetría del Fan Governor (`governor_last_temp_c`, `governor_duty`, `governor_last_power_w`) y cálculo dinámico de eficiencia si no estaban inicializados.
+  - `tests/test_fleet_cards.py`:
+    * 2 nuevos tests unitarios: `test_status_card_with_real_miner_state_and_persistence` y `test_status_card_fallback_to_governor_telemetry`.
+* **Resultados y Pruebas**:
+  - Sintaxis: `py_compile app/miner_monitor.py app/telegram/fleet_cards.py` 100% OK.
+  - Suite global completa: **723/723 tests PASS** en 10.824s (0 fallos, 0 errores).
+
 ## [2026-09-09] - Spec 048: Safe Fleet Shutdown & Multi-Select Maintenance Mode (Completado)
 
 * **Objetivo**: Implementar un sistema de parada segura (*Apagado Seguro*) y modo de mantenimiento eléctrico desde Telegram, permitiendo desenergizar de forma selectiva (de 1 a 4 mineros o la granja completa) antes de realizar maniobras en la red eléctrica o tableros sin cortar la corriente en caliente ni generar arcos eléctricos o estrés térmico en componentes. Incluye selector táctil interactivo multiselección con casillas (`⬜`/`☑️`), confirmación en 2 pasos mediante token efímero de 60s, purga térmica activa (45s de ventiladores forzados para enfriar chips antes de habilitar el corte AC), auto-snooze de 4 horas para suprimir alarmas/reboots y reanudación limpia con auto-unsnooze.
@@ -48,6 +70,11 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Compilación sintáctica: 100% OK (`miner_monitor.py`, `fleet_shutdown.py`, `command_center.py`, `fleet_cards.py`, `snooze.py`, `help_center.py`).
   - Suite global completa: **721/721 tests PASS** en 11.124s (0 fallos, 0 errores, +34 tests netos sobre baseline).
   - Servicio Windows `MinerAlerts` reiniciado y verificado operativo bajo PID `32436`.
+  - **Prueba Operativa de Campo y Maniobra Eléctrica en Vivo**:
+    * Ejecución real de `/shutdown` en los 4 mineros (`192.168.100.23` a `26`): Parada en paralelo en <1.2s, hashboards a 0W (0.0 TH/s), disipadores fríos (<45°C), ventiladores en piso mínimo de reposo de servidor (~720 RPM).
+    * Entrega de tarjeta Telegram `✅ ÁREA ELÉCTRICA SEGURA` tras 45s de purga.
+    * Apertura física de llave térmica en tablero general; Auto-Snooze de Mantenimiento de 4 horas retuvo alarmas y suprimió reboots.
+    * Reanudación en caliente tras retorno de energía: `safe_resume_mining` en paralelo en 4/4 mineros, autotuning completado, retorno a presets nominales (2500W, 2700W, 2300W, 2300W), hashrates en 80-87 TH/s, chips en 46-56°C y notificación `▶️ MINADO REANUDADO` entregada.
 
 ## [2026-09-09] - Spec 047: Mobile-First Card Layout for Balancer, Digest & Operational Events (Completado)
 

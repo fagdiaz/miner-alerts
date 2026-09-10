@@ -212,9 +212,17 @@ def render_fleet_status_card(
         active_b = getattr(st, "last_active_boards", None)
         exp_b = getattr(st, "last_expected_boards", None) or 3
         temp = getattr(st, "last_max_chip_temp", None)
+        if temp is None:
+            temp = getattr(st, "governor_last_temp_c", None)
         pwm = getattr(st, "last_fan_duty_percent", None)
+        if pwm is None:
+            pwm = getattr(st, "governor_duty", None)
         power = getattr(st, "last_power_w", None)
+        if power is None:
+            power = getattr(st, "governor_last_power_w", None)
         efficiency = getattr(st, "last_efficiency_j_th", None)
+        if efficiency is None and power is not None and rate is not None and rate > 0:
+            efficiency = round(power / rate, 1)
         silent = getattr(st, "silent_mode_active", False)
         snooze_until = getattr(st, "snooze_until_ts", None)
 

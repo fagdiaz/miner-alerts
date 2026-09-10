@@ -54,6 +54,10 @@ safety gates are not compressed to recover an estimate.
 | Spec 042 shim purge | Closed 2026-09-08 (`approved`) | Complete purge of 22 shims, direct canonical imports across all tests | 587 tests PASS, 60 payload files. |
 | Spec 043 command center | Closed 2026-09-08 (`approved`) | Telegram interactive command center /menu, inline keyboards, 2-step reboot, rich UI | 17 tests PASS, 602 tests PASS, 61 payload files. |
 | Spec 044 silent mode | Closed 2026-09-08 (`approved`) | Modo silencio (40%-70% PWM), persistent timer, C1-C4 compliance, thermal guard 83.5°C | 17 tests PASS, 621 tests PASS, active in production under PID 58344. |
+| Spec 045 help center | Closed 2026-09-08 (`approved`) | Centro de ayuda móvil /help con categorías interactivas y tarjetas <= 32 cols | 30 tests PASS, 651 tests PASS. |
+| Spec 046 mobile cards v1 | Closed 2026-09-09 (`approved`) | Mobile-First layout para /status, /fans, /efficiency, /presets | 12 tests PASS, 663 tests PASS. |
+| Spec 047 mobile cards v2 | Closed 2026-09-09 (`approved`) | Mobile-First layout para /balancer, /elevadores, /digest, /snoozed, /events | 24 tests PASS, 687 tests PASS. |
+| Spec 048 safe fleet shutdown | Closed 2026-09-09 (`approved`) | Apagado seguro, selector táctil de 1 a 4 mineros, purga térmica 45s, auto-snooze 4h y /resume | 34 tests PASS, 721 tests PASS, validado en maniobra real en vivo. |
 
 ## Milestones
 
@@ -75,6 +79,8 @@ safety gates are not compressed to recover an estimate.
 | 2026-09-08 | V3.1 Governance & Autotuning (Specs 039-040) | Fan Governor and Dynamic Preset Balancer active in production. |
 | 2026-09-08 | V3.2 Domain Reorganization & Shim Purge (Specs 041-042) | 22 shims purged, clean app/ structure, 587 tests PASS. |
 | 2026-09-08 | V3.3 Interactive Control & Silent Mode (Specs 043-044) | RFC approved, 621 tests PASS, release audit verified, active in production under PID 58344. |
+| 2026-09-09 | V3.4 Telegram Mobile UX Harmonization (Specs 045-047) | Centro de ayuda, navegación por categorías y todas las tarjetas adaptadas a <= 32 columnas, 687 tests PASS. |
+| 2026-09-09 | V3.5 Safe Fleet Shutdown & Electrical Maintenance (Spec 048) | Selector táctil multiselección, purga térmica de 45s, maniobra física real validada en caliente, 721 tests PASS. |
 
 ## Review And Bug-Fix Rhythm
 

@@ -661,12 +661,30 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [ ] Modelar calibración programática de targets térmicos (80°C verano / 83°C invierno).
 - [ ] Automatizar conmutación estacional según temperatura ambiente exterior.
 
+### Iniciativa 4 — Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049)
+- [ ] Forzar ventiladores al 100% (o 85%) durante los 45s de purga tras `stop_mining` para expulsar activamente el calor residual de los disipadores.
+- [ ] Caída instantánea a 0% PWM (~720 RPM reposo de servidor) en el segundo 45 simultáneo al envío de la notificación "ÁREA ELÉCTRICA SEGURA".
+- [ ] Contraste acústico evidente para el operador (del rugido de purga al susurro de reposo) y enfriamiento acelerado de chips de 65°C a <35°C antes del corte de energía.
+- [ ] Tarjeta de Telegram con indicación explícita del piso de reposo (~720 RPM) previo a la apertura de la llave termomagnética.
+
+### Iniciativa 5 — Guardián de Recuperación Post-Blackout (Post-Blackout Recovery Guard)
+- [ ] Detección proactiva de mineros que inician en `miner_state: stopped` tras el retorno de tensión de un corte de red.
+- [ ] Notificación ejecutiva con botón táctil 1-tap `[ ▶️ Reanudar Flota ]` o auto-reanudación configurable con ventana de gracia.
+
+### Iniciativa 6 — Discriminador Rápido de Corte de Fase vs Caída de Conectividad
+- [ ] Clasificación instantánea (<3s): si el host local/switch sigue activo y los 4 mineros caen al unísono, clasificar de inmediato como "Corte de Fase / Disparo de Térmica", suprimiendo timeouts individuales de reintento.
+
+### Iniciativa 7 — Programador de Ventanas de Mantenimiento Eléctrico (`/schedule_maintenance`)
+- [ ] Programación diferida de maniobras eléctricas (ej. `/schedule_maintenance sabado 08:00 2h`).
+- [ ] Desescalado suave y progresivo de presets de potencia antes de la ventana fijada y purga térmica automática.
+
 ---
 
 ## Governance
 
-- All 46 specifications in the program are complete, verified with evidence, and closed.
-- Version 3.4.0 is ready for production deployment with 675/675 tests PASS.
+- All 48 specifications in the program are complete, verified with evidence, and closed.
+- Version 3.5.0 is ready for production deployment with 721/721 tests PASS.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI) operate decoupled from the monitor.
 - Any future modifications or V4 scope must adhere to SpecKit discipline and constitutional gates.
+

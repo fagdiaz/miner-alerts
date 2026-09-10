@@ -860,6 +860,15 @@ class MinerState:
     # Spec 048: Safe Fleet Shutdown & Maintenance Mode
     is_shutdown_maintenance: bool = False
     shutdown_maintenance_ts: float = 0.0
+    # Spec 046: Live Telemetry Snapshot for /status & mobile fleet cards
+    last_rate_ths: Optional[float] = None
+    last_active_boards: Optional[int] = None
+    last_expected_boards: Optional[int] = None
+    last_max_chip_temp: Optional[float] = None
+    last_fan_duty_percent: Optional[float] = None
+    last_power_w: Optional[float] = None
+    last_efficiency_j_th: Optional[float] = None
+    last_responded: bool = False
 
 
 def load_config() -> Dict[str, Any]:
@@ -2310,6 +2319,43 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                 # Spec 048: Safe Fleet Shutdown & Maintenance Mode
                 is_shutdown_maintenance=bool(data.get("is_shutdown_maintenance", False)),
                 shutdown_maintenance_ts=float(data.get("shutdown_maintenance_ts", 0.0)),
+                # Spec 046: Live Telemetry Snapshot for /status & mobile fleet cards
+                last_rate_ths=(
+                    float(data.get("last_rate_ths"))
+                    if data.get("last_rate_ths") is not None
+                    else None
+                ),
+                last_active_boards=(
+                    int(data.get("last_active_boards"))
+                    if data.get("last_active_boards") is not None
+                    else None
+                ),
+                last_expected_boards=(
+                    int(data.get("last_expected_boards"))
+                    if data.get("last_expected_boards") is not None
+                    else None
+                ),
+                last_max_chip_temp=(
+                    float(data.get("last_max_chip_temp"))
+                    if data.get("last_max_chip_temp") is not None
+                    else None
+                ),
+                last_fan_duty_percent=(
+                    float(data.get("last_fan_duty_percent"))
+                    if data.get("last_fan_duty_percent") is not None
+                    else None
+                ),
+                last_power_w=(
+                    float(data.get("last_power_w"))
+                    if data.get("last_power_w") is not None
+                    else None
+                ),
+                last_efficiency_j_th=(
+                    float(data.get("last_efficiency_j_th"))
+                    if data.get("last_efficiency_j_th") is not None
+                    else None
+                ),
+                last_responded=bool(data.get("last_responded", False)),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2388,6 +2434,15 @@ def save_state(
             # Spec 048: Safe Fleet Shutdown & Maintenance Mode
             "is_shutdown_maintenance": getattr(state, "is_shutdown_maintenance", False),
             "shutdown_maintenance_ts": getattr(state, "shutdown_maintenance_ts", 0.0),
+            # Spec 046: Live Telemetry Snapshot for /status & mobile fleet cards
+            "last_rate_ths": getattr(state, "last_rate_ths", None),
+            "last_active_boards": getattr(state, "last_active_boards", None),
+            "last_expected_boards": getattr(state, "last_expected_boards", None),
+            "last_max_chip_temp": getattr(state, "last_max_chip_temp", None),
+            "last_fan_duty_percent": getattr(state, "last_fan_duty_percent", None),
+            "last_power_w": getattr(state, "last_power_w", None),
+            "last_efficiency_j_th": getattr(state, "last_efficiency_j_th", None),
+            "last_responded": getattr(state, "last_responded", False),
         }
     tmp_path = state_path.with_suffix(".tmp")
     try:
@@ -4650,10 +4705,10 @@ def telegram_polling_worker(
                     fans_kb = None
                     if target_arg and target_arg != "all":
                         matched_ass = None
-                        matched_miner = _match_miner(miners, target_arg)
+                        matched_miner = resolve_miner(target_arg, miners)
                         if matched_miner:
                             m_name = matched_miner.get("name")
-                            m_ip = matched_miner.get("ip")
+                            m_ip = matched_miner.get("host") or matched_miner.get("ip")
                             for ass in assessments:
                                 if ass.miner_name in (m_name, m_ip) or (m_name and m_name in ass.miner_name):
                                     matched_ass = ass
@@ -4702,10 +4757,10 @@ def telegram_polling_worker(
                     eff_kb = None
                     if target_arg and target_arg != "all":
                         matched_ass = None
-                        matched_miner = _match_miner(miners, target_arg)
+                        matched_miner = resolve_miner(target_arg, miners)
                         if matched_miner:
                             m_name = matched_miner.get("name")
-                            m_ip = matched_miner.get("ip")
+                            m_ip = matched_miner.get("host") or matched_miner.get("ip")
                             for ass in assessments:
                                 if ass.miner_name in (m_name, m_ip) or (m_name and m_name in ass.miner_name):
                                     matched_ass = ass
@@ -4754,10 +4809,10 @@ def telegram_polling_worker(
                     preset_kb = None
                     if target_arg and target_arg != "all":
                         matched_ass = None
-                        matched_miner = _match_miner(miners, target_arg)
+                        matched_miner = resolve_miner(target_arg, miners)
                         if matched_miner:
                             m_name = matched_miner.get("name")
-                            m_ip = matched_miner.get("ip")
+                            m_ip = matched_miner.get("host") or matched_miner.get("ip")
                             for ass in assessments:
                                 if ass.miner_name in (m_name, m_ip) or (m_name and m_name in ass.miner_name):
                                     matched_ass = ass
@@ -7036,6 +7091,35 @@ def main() -> None:
                     state.governor_last_temp_c = None
                     state.governor_last_power_w = None
 
+                # Spec 046: Feed live telemetry snapshot to MinerState for /status & fleet cards
+                eff_j_th: Optional[float] = None
+                if (
+                    responded
+                    and vnish_telemetry.chain_power_w_total is not None
+                    and rate_ths is not None
+                    and rate_ths > 0
+                ):
+                    eff_j_th = round(vnish_telemetry.chain_power_w_total / rate_ths, 2)
+
+                with state_lock:
+                    state.last_responded = bool(responded)
+                    if responded:
+                        state.last_rate_ths = rate_ths
+                        state.last_active_boards = active_boards
+                        state.last_expected_boards = expected_boards
+                        state.last_max_chip_temp = vnish_telemetry.max_temp_c
+                        state.last_fan_duty_percent = vnish_telemetry.fan_pwm_percent
+                        state.last_power_w = vnish_telemetry.chain_power_w_total
+                        state.last_efficiency_j_th = eff_j_th
+                    else:
+                        state.last_rate_ths = 0.0
+                        state.last_active_boards = 0
+                        state.last_expected_boards = expected_boards
+                        state.last_max_chip_temp = None
+                        state.last_fan_duty_percent = None
+                        state.last_power_w = 0.0
+                        state.last_efficiency_j_th = None
+
                 # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
                 cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
                 if cooling_alert_enabled and not first_tick and responded:
@@ -7993,7 +8077,10 @@ def main() -> None:
                             for m_cfg in config.get("miners", []):
                                 m_name = str(m_cfg.get("name", ""))
                                 m_key = display_name(m_name)
-                                m_st = miner_states.get(m_key)
+                                m_host = m_cfg.get("host", "")
+                                m_port = m_cfg.get("port", 4028)
+                                m_sk = f"{m_name}|{m_host}:{m_port}"
+                                m_st = states.get(m_sk) or states.get(m_key)
                                 if m_st:
                                     m_list.append({
                                         "miner_id": m_key,

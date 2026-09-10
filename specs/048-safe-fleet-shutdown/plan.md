@@ -28,21 +28,21 @@
 ## 2. Fases de Entrega
 
 ### Fase 1: Cliente Vnish, Orquestador Desacoplado y Pruebas de Dominio
-- [ ] **P1.1**: Implementar `stop_mining()` y `resume_mining()` en `app/vnish/client.py` con manejo de excepciones y transaccionalidad de token.
-- [ ] **P1.2**: Implementar `app/governance/fleet_shutdown.py` con orquestación de parada, purga térmica de 45s y generación de tarjetas mobile-first $\le 32$ columnas.
-- [ ] **P1.3**: Desarrollar suite `tests/test_fleet_shutdown.py` validando mocks de API Vnish, ejecución concurrente, estados de purga y contratos de retorno.
+- [x] **P1.1**: Implementar `stop_mining()` y `resume_mining()` en `app/vnish/client.py` con manejo de excepciones y transaccionalidad de token.
+- [x] **P1.2**: Implementar `app/governance/fleet_shutdown.py` con orquestación de parada, purga térmica de 45s y generación de tarjetas mobile-first $\le 32$ columnas.
+- [x] **P1.3**: Desarrollar suite `tests/test_fleet_shutdown.py` validando mocks de API Vnish, ejecución concurrente, estados de purga y contratos de retorno.
 
 ### Fase 2: Selector Táctil Multiselección en Command Center
-- [ ] **P2.1**: Implementar `render_shutdown_menu(states, miners, selected_mask)` en `app/telegram/command_center.py` con casillas `⬜`/`☑️` y botón dinámico con contador.
-- [ ] **P2.2**: Implementar `render_shutdown_confirmation(selected_ids, token)` con diálogo de 2 pasos.
-- [ ] **P2.3**: Desarrollar pruebas unitarias de renderizado móvil ($\le 32$ cols) y parsing de bitmask en `tests/test_command_center.py`.
+- [x] **P2.1**: Implementar `render_shutdown_menu(states, miners, selected_mask)` en `app/telegram/command_center.py` con casillas `⬜`/`☑️` y botón dinámico con contador.
+- [x] **P2.2**: Implementar `render_shutdown_confirmation(selected_ids, token)` con diálogo de 2 pasos.
+- [x] **P2.3**: Desarrollar pruebas unitarias de renderizado móvil ($\le 32$ cols) y parsing de bitmask en `tests/test_command_center.py`.
 
 ### Fase 3: Integración en Monitor, Callbacks, Interlocks y Armonización
-- [ ] **P3.1**: Conectar callbacks `cc:act:sd_tog`, `cc:act:sd_req`, `cc:act:sd_cfm`, `cc:act:sd_ccl`, `cc:act:resume` en `app/miner_monitor.py`.
-- [ ] **P3.2**: Conectar comandos de texto `/shutdown`, `/stop`, `/resume` con soporte para lista de argumentos múltiples (`/shutdown 23 25`).
-- [ ] **P3.3**: Aplicar Auto-Snooze de Mantenimiento de 4 horas en parada y Auto-Unsnooze en reanudación.
-- [ ] **P3.4**: Integrar guarda en `/reboot` para mineros en mantenimiento y armonizar `/help` ([`help_center.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/help_center.py)), `/status`, `/digest`, [Fan Governor](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/fan_governor.py) y [Preset Balancer](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/preset_balancer.py).
-- [ ] **P3.5**: Ejecutar suite completa ($\ge 695$ PASS), release audit, restart de servicio y validación de sintaxis.
+- [x] **P3.1**: Conectar callbacks `cc:act:sd_tog`, `cc:act:sd_req`, `cc:act:sd_cfm`, `cc:act:sd_ccl`, `cc:act:resume` en `app/miner_monitor.py`.
+- [x] **P3.2**: Conectar comandos de texto `/shutdown`, `/stop`, `/resume` con soporte para lista de argumentos múltiples (`/shutdown 23 25`).
+- [x] **P3.3**: Aplicar Auto-Snooze de Mantenimiento de 4 horas en parada y Auto-Unsnooze en reanudación.
+- [x] **P3.4**: Integrar guarda en `/reboot` para mineros en mantenimiento y armonizar `/help`, `/status`, `/digest`, Fan Governor y Preset Balancer.
+- [x] **P3.5**: Ejecutar suite completa ($\ge 695$ PASS), release audit, restart de servicio y validación de sintaxis.
 
 ---
 

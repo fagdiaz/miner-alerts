@@ -157,6 +157,87 @@ class TestFleetCardsLineLimits(unittest.TestCase):
         text = build_presets_table_text(assessments)
         self._assert_all_lines_under_limit(text, "build_presets_table_text")
 
+    def test_status_card_with_real_miner_state_and_persistence(self):
+        """Verify real MinerState populates hashrate, temp, power, efficiency and persists."""
+        import tempfile
+        from pathlib import Path
+        from app.miner_monitor import MinerState, save_state, load_state
+
+        miners = [
+            {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028},
+            {"name": "S19JPRO-24", "host": "192.168.100.24", "port": 4028},
+        ]
+        st23 = MinerState(
+            state="OK",
+            last_rate_ths=101.5,
+            last_active_boards=3,
+            last_expected_boards=3,
+            last_max_chip_temp=81.2,
+            last_fan_duty_percent=92.0,
+            last_power_w=2698.0,
+            last_efficiency_j_th=26.58,
+            last_responded=True,
+        )
+        st24 = MinerState(
+            state="OK",
+            last_rate_ths=93.6,
+            last_active_boards=3,
+            last_expected_boards=3,
+            last_max_chip_temp=82.0,
+            last_fan_duty_percent=94.0,
+            last_power_w=2499.0,
+            last_efficiency_j_th=26.7,
+            last_responded=True,
+        )
+        states = {
+            "S19JPRO-23|192.168.100.23:4028": st23,
+            "S19JPRO-24|192.168.100.24:4028": st24,
+        }
+
+        # 1. Render card with real MinerState
+        text, kb = render_fleet_status_card(states, miners=miners, now_ts_str="11:45 hs")
+        self._assert_all_lines_under_limit(text, "real_miner_state_status")
+        self.assertIn("Hash: 101.5 TH/s (3/3)", text)
+        self.assertIn("Hash: 93.6 TH/s (3/3)", text)
+        self.assertIn("Temp: 81.2°C | Fans: 92%", text)
+        self.assertIn("Pwr: 2,698W (26.6 J/T)", text)
+        self.assertIn("⚡ Total: 195.1 TH/s | 5.2 kW", text)
+
+        # 2. Verify state serialization round-trip
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir) / "state.json"
+            save_state(tmp_path, states, last_update_id=999)
+            loaded_states, loaded_id = load_state(tmp_path)
+            self.assertEqual(loaded_id, 999)
+            self.assertIn("S19JPRO-23|192.168.100.23:4028", loaded_states)
+            loaded_st23 = loaded_states["S19JPRO-23|192.168.100.23:4028"]
+            self.assertEqual(loaded_st23.last_rate_ths, 101.5)
+            self.assertEqual(loaded_st23.last_power_w, 2698.0)
+            self.assertEqual(loaded_st23.last_max_chip_temp, 81.2)
+            self.assertEqual(loaded_st23.last_fan_duty_percent, 92.0)
+            self.assertEqual(loaded_st23.last_active_boards, 3)
+            self.assertEqual(loaded_st23.last_efficiency_j_th, 26.58)
+            self.assertTrue(loaded_st23.last_responded)
+
+    def test_status_card_fallback_to_governor_telemetry(self):
+        """Verify fallback to governor_last_temp_c and governor_last_power_w if last_* are None."""
+        from app.miner_monitor import MinerState
+
+        miners = [{"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028}]
+        st = MinerState(
+            state="OK",
+            last_rate_ths=100.0,
+            governor_last_temp_c=80.5,
+            governor_duty=88,
+            governor_last_power_w=2500.0,
+        )
+        states = {"S19JPRO-23|192.168.100.23:4028": st}
+        text, kb = render_fleet_status_card(states, miners=miners)
+        self.assertIn("Temp: 80.5°C | Fans: 88%", text)
+        self.assertIn("Pwr: 2,500W (25.0 J/T)", text)
+        self.assertIn("⚡ Total: 100.0 TH/s | 2.5 kW", text)
+
+
 
 class TestFleetCardsCallbacksAndKeyboards(unittest.TestCase):
     """Test callback parsing, validation, and keyboard construction."""
@@ -210,3 +291,4 @@ class TestFleetCardsCallbacksAndKeyboards(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -1,30 +1,22 @@
-GEMINI 3.8 FLASH HIGH — Miner Alerts | Spec 048: Safe Fleet Shutdown & Maintenance Mode (CERTIFICADO Y ACTIVO)
+GEMINI 3.8 FLASH HIGH — Miner Alerts | Status Card Live Telemetry Fix & Roadmap Initiatives
 
 ROL Y MOTOR RECOMENDADO
 Motor: Gemini 3.8 Flash High
 Rol: Monitoreo operativo, validación de telemetría y extensiones de gobernanza.
 
-ESTADO DEL SISTEMA TRAS SPEC 048:
-1. Funcionalidad Implementada y Verificada:
-   - Apagado seguro selectivo con selector interactivo táctil multi-select (⬜/☑️) en /menu y comando /shutdown [id1 id2... | all].
-   - Confirmación en 2 pasos con token criptográfico efímero de 60s en CallbackTokenRegistry.
-   - Purga térmica activa de 45s con coolers forzados para barrer calor residual de los chips antes del corte de corriente física.
-   - Notificación de alerta "ÁREA ELÉCTRICA SEGURA" tras completar los 45s de purga.
-   - Auto-snooze de mantenimiento de 4 horas (suprime falsas alarmas OFFLINE/0 TH/s y bloquea autorreinicios).
-   - Reanudación limpia vía botón táctil o /resume [id1 id2... | all] con auto-unsnooze automático.
-   - Interlocks de seguridad: /reboot (manual y bulk) bloqueado en mineros detenidos; Fan Governor y Preset Balancer omiten mineros en mantenimiento.
-   - Armonización visual en /status (⏸️ DETENIDO) y /snoozed ([⏸️ DETENIDO]); /help actualizado con /shutdown y /resume en categoría ctrl.
+ESTADO ACTUAL:
+1. Flota Minando Estable:
+   - S19JPRO-23 a 26 minando en estado 'mining' a potencia nominal completa (2500W, 2700W, 2300W, 2300W).
+   - Servicio Windows MinerAlerts activo en producción (723/723 tests PASS).
+   - Hook de telemetría de Google Cloud neutralizado y blindado permanentemente (+r).
 
-2. Pruebas y Certificación:
-   - 721/721 tests PASS en 11.124s (0 fallos, 0 errores, +34 tests netos de Spec 048).
-   - Servicio Windows MinerAlerts activo en producción bajo PID 32436.
-   - Telemetría en vivo respondiendo normalmente sin spam ni excepciones.
+2. Corrección de Comando /status (Auditado y Solucionado):
+   - MinerState ahora almacena y persiste en state.json: last_rate_ths, last_active_boards, last_expected_boards, last_max_chip_temp, last_fan_duty_percent, last_power_w, last_efficiency_j_th.
+   - Bucle principal alimenta estos campos bajo state_lock en cada tick.
+   - render_fleet_status_card() cuenta con fallbacks al Fan Governor (temperatura, duty, potencia) y cálculo dinámico de eficiencia.
+   - Resultado: Cada tarjeta muestra hashrate individual (ej. 98.5 TH/s (3/3)), temperatura, fans, potencia (W), eficiencia (J/T) y el pie resume el hashrate total de la flota y potencia en kW (ej. 394.0 TH/s | 10.6 kW).
+   - Requiere reiniciar el servicio en PowerShell de Administrador (`Restart-Service MinerAlerts -Force`).
 
-ARCHIVOS CLAVE MODIFICADOS:
-- app/vnish/client.py & app/vnish/__init__.py: stop_mining, resume_mining, safe_* wrappers.
-- app/governance/fleet_shutdown.py: Bitmask helpers, dispatchers concurrentes y tarjetas móviles <= 32 cols.
-- app/telegram/command_center.py: render_shutdown_menu, render_shutdown_confirmation, render_resume_menu.
-- app/miner_monitor.py: MinerState persistente, callback routing, text commands, interlocks de seguridad.
-- app/telegram/help_center.py: Registro canónico de /shutdown y /resume en categoría ctrl.
-- app/telegram/fleet_cards.py & app/telegram/snooze.py: Insignia ⏸️ y etiquetas de mantenimiento.
-- tests/test_fleet_shutdown.py, test_command_center.py, test_safe_fleet_shutdown_integration.py.
+3. Próximas Tareas de Speckit (Pendientes de Aprobación):
+   - Spec 049: Rampa de Purga Térmica Activa (100% duty durante 45s) y contraste acústico en parada segura.
+   - Iniciativa 5: Guardián de Recuperación Post-Blackout.

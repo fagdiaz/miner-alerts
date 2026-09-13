@@ -162,6 +162,7 @@ class TestTelegramCallbacks(unittest.TestCase):
 
 
 from unittest.mock import MagicMock, patch
+import tempfile
 import threading
 from pathlib import Path
 from app.miner_monitor import _handle_callback_query, MinerState
@@ -169,6 +170,8 @@ from app.miner_monitor import _handle_callback_query, MinerState
 
 class TestCallbackDispatcherIntegration(unittest.TestCase):
     def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temp_dir.name) / "state.json"
         self.bot_token = "dummy_token"
         self.chat_id = "1206728163"
         self.config = {
@@ -181,6 +184,9 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
         }
         self.state_lock = threading.Lock()
         self.token_registry = CallbackTokenRegistry(ttl_seconds=60.0, max_tokens=10)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
 
     @patch("app.miner_monitor.answer_callback_query")
     @patch("app.miner_monitor.run_hashcore_cli")
@@ -199,7 +205,7 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -237,7 +243,7 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -270,7 +276,7 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -312,7 +318,7 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -351,7 +357,7 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -368,12 +374,17 @@ class TestCallbackDispatcherIntegration(unittest.TestCase):
 
 class TestHelpCenterCallbacksIntegration(unittest.TestCase):
     def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temp_dir.name) / "state.json"
         self.bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
         self.chat_id = "1206728163"
         self.config = {"chat_id": self.chat_id}
         self.miners = []
         self.states = {}
         self.state_lock = unittest.mock.MagicMock()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
 
     @unittest.mock.patch("app.miner_monitor.edit_message_text")
     @unittest.mock.patch("app.miner_monitor.answer_callback_query")
@@ -395,7 +406,7 @@ class TestHelpCenterCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -432,7 +443,7 @@ class TestHelpCenterCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -467,7 +478,7 @@ class TestHelpCenterCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -501,7 +512,7 @@ class TestHelpCenterCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -534,7 +545,7 @@ class TestHelpCenterCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -550,6 +561,8 @@ class TestHelpCenterCallbacksIntegration(unittest.TestCase):
 
 class TestDiagnosticCallbacksIntegration(unittest.TestCase):
     def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.state_path = Path(self.temp_dir.name) / "state.json"
         self.bot_token = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
         self.chat_id = "1206728163"
         self.config = {
@@ -584,6 +597,9 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
         }
         self.state_lock = unittest.mock.MagicMock()
 
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
     @unittest.mock.patch("app.miner_monitor.edit_message_text")
     @unittest.mock.patch("app.miner_monitor.answer_callback_query")
     def test_diag_ref_status_dispatch(self, mock_answer_cb, mock_edit_text):
@@ -604,7 +620,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -644,7 +660,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -680,7 +696,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -716,7 +732,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -752,7 +768,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -788,7 +804,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -824,7 +840,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -867,7 +883,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=mock_event_store,
@@ -903,7 +919,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,
@@ -936,7 +952,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             miners=self.miners,
             states=self.states,
             state_lock=self.state_lock,
-            state_path=Path("app/state.json"),
+            state_path=self.state_path,
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,

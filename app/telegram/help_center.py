@@ -131,11 +131,11 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
     ),
     "silent": CommandDefinition(
         name="silent",
-        summary="Modo silencio (40-70% PWM).",
+        summary="Modo silencio (30-50% PWM).",
         usage="/silent <duración|off>",
         category="thm",
         detail=[
-            "Régimen acústico reducido acotando PWM entre 40% y 70%.",
+            "Régimen acústico reducido acotando PWM entre 30% y 50%.",
             "Guarda térmica reactiva ventiladores al 100% ante >80°C o fallas.",
         ],
         examples=["/silent 2h", "/silent 30m", "/silent off"],
@@ -421,6 +421,19 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
         examples=["/help", "/help silent", "/help reboot"],
         danger_level="safe",
     ),
+    "chains": CommandDefinition(
+        name="chains",
+        summary="Salud y sensores por hashboard.",
+        usage="/chains [id|all]",
+        category="diag",
+        detail=[
+            "Supervisa temperatura, frecuencia, chips y sensores I2C de cada placa.",
+            "Detecta fallas de sensor previas a cortes de cadena (chain break).",
+        ],
+        examples=["/chains", "/chains 24", "/chains all"],
+        aliases=["chain", "placas"],
+        danger_level="safe",
+    ),
 }
 
 HELP_CATEGORIES: Dict[str, HelpCategory] = {
@@ -477,6 +490,7 @@ HELP_CATEGORIES: Dict[str, HelpCategory] = {
             "quality",
             "firmware",
             "selftest",
+            "chains",
             "help",
         ],
     ),
@@ -820,7 +834,7 @@ def render_legacy_help_index() -> str:
         "TÉRMICO Y FANS",
         "/fans [id|all] - Salud de coolers y margen 85°C.",
         "/gov [on|off|set] - Regulador lazo cerrado (82°C).",
-        "/silent <duración|off> - Modo silencio (40-70% PWM).",
+        "/silent <duración|off> - Modo silencio (30-50% PWM).",
         "",
         "ENERGÍA Y PRESETS",
         "/efficiency [id|all] - Eficiencia en Joules por TH.",

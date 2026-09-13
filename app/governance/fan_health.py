@@ -80,11 +80,25 @@ def assess_miner_cooling(
             fan_mode=fan_mode,
         )
 
-    # 2. Fan defect: missing tachometer or < 2000 RPM while hashing
-    has_missing_signal = "fan_signal_missing" in diagnostic_flags
+    # 2. Fan defect: missing tachometer or < 2000 RPM while actively hashing
+    is_hashing = rate_ths is not None and rate_ths > 0.0
+    if not is_hashing and ("fan_signal_missing" in diagnostic_flags or (fan_rpm_max is not None and fan_rpm_max < 2000)):
+        return CoolingAssessment(
+            miner_name=miner_name,
+            status=STATUS_UNKNOWN,
+            status_label=STATUS_LABELS[STATUS_UNKNOWN],
+            max_temp_c=max_temp_c,
+            thermal_headroom_c=headroom,
+            fan_rpm_max=fan_rpm_max,
+            fan_pwm_percent=fan_pwm_percent,
+            diagnostic_flags=tuple(diagnostic_flags),
+            recommendation="Equipo en arranque o sin carga de minado; telemetría de ventilación no concluyente.",
+            fan_mode=fan_mode,
+        )
+
+    has_missing_signal = is_hashing and ("fan_signal_missing" in diagnostic_flags)
     is_stalled = (
-        rate_ths is not None
-        and rate_ths > 0.0
+        is_hashing
         and fan_rpm_max is not None
         and fan_rpm_max < 2000
     )

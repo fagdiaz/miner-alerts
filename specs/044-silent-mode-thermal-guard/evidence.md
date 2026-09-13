@@ -80,3 +80,35 @@ Terminal dispositions: 8/8 verified
 - `test_emergency_spike_persists_state_atomic` (C4): Guardado inmediato bajo `state_lock`.
 - `test_dispatch_nav_silent`: Navegación interactiva táctil en Command Center.
 - `test_dispatch_act_silent_30m_and_off`: Activación y desactivación táctil de 1 toque desde teclado inline.
+
+---
+
+## 6. Auditoría y Recalibración 30%–50% PWM a 82.0°C con Autonomía por Elevador (2026-09-12)
+
+### Verificación de Sintaxis
+```powershell
+& ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py app\vnish\client.py app\governance\fan_governor.py app\telegram\command_center.py app\telegram\help_center.py tests\test_silent_mode.py tests\test_vnish_client.py
+# Salida: Código 0, sin errores ni warnings.
+```
+
+### Certificación de Suite Completa de Tests (800/800 PASS)
+```powershell
+& ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py"
+```
+**Resultado**:
+```text
+Ran 800 tests in 13.583s
+
+OK
+```
+
+### Pruebas Específicas de la Recalibración en `tests/test_silent_mode.py`
+- `test_governor_silent_mode_30_50_bounds`: Verifica que el corredor asignado al gobernador sea exactamente [30%, 50%] y no se restrinja por el mínimo estándar de 75%.
+- `test_governor_reactive_clamp_above_max`: Comprueba el descenso inmediato (`STEP_DOWN`) a 50% cuando el duty reportado supera el techo permitido sin esperar settling time.
+- `test_governor_reactive_clamp_below_min`: Comprueba el ascenso inmediato (`STEP_UP`) a 30% si el duty cae por debajo del piso de hardware.
+- `test_independent_elevators_thermal_regulation`: Simulación simultánea de dos elevadores con distinta disipación. Minero 1 en Elevator 1 sosteniendo 82.0°C al 50% PWM y Minero 2 en Elevator 2 sosteniendo 82.0°C al 30% PWM, ambos con idéntico hashrate y presets, validando la autonomía total del lazo cerrado.
+
+### Estado en Producción Live
+- **Servicio Windows**: `MinerAlerts` activo bajo PID 19496 / 15796, estado `RUNNING`.
+- **Flota ASIC**: 4/4 mineros en estado `OK` reportando telemetría de forma continua.
+- **Heartbeat & Liveness**: Secuencia de ticks avanzando sin demoras ni excepciones.

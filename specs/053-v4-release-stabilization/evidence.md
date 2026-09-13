@@ -43,3 +43,22 @@
 - [x] Fase 3: Suite de concurrencia V4 sin deadlocks ni excepciones bajo contención pesada.
 - [x] Fase 4: Suite completa PASS (792/792 tests).
 - [x] Fase 5: Documentación de release y certificación de Release Candidate V4 (v4.0.0).
+- [x] Fase 6: Release Hotfix V4.0.1 (Post-Blackout Persistence & Scope Hotfix) aplicado, probado y certificado en producción.
+
+## 6. Validación de Release Hotfix V4.0.1 (Post-Blackout Persistence & AST Audit)
+```powershell
+& ".\.venv\Scripts\python.exe" -m unittest tests.test_state_resilience -v
+& ".\.venv\Scripts\python.exe" -m unittest discover -s tests -q
+```
+- **Resultado de Resiliencia**: PASS (5/5 tests PASS en 0.406s en `test_state_resilience.py`).
+  * `test_save_state_creates_file_and_bak`: PASS (persistencia con `os.fsync` y creación de `state.json.bak`).
+  * `test_load_state_recovers_from_bak_on_null_bytes_corruption`: PASS (recuperación automática ante bytes nulos `\x00`).
+  * `test_load_state_recovers_from_bak_on_invalid_json`: PASS (recuperación ante JSON truncado).
+  * `test_load_state_handles_clean_empty_on_total_loss`: PASS (inicio limpio ante pérdida total).
+  * `test_no_unbound_module_variables_in_miner_monitor`: PASS (auditoría AST: cero funciones con variables de módulo no declaradas como `global`).
+- **Resultado Suite Global**: **797/797 tests PASS** en 13.020s (0 fallos, 0 errores, 0 regresiones).
+- **Evidencia Operativa en Producción**:
+  * Servicio Windows `MinerAlerts`: ESTADO 4 `RUNNING` (PID 6424).
+  * Ticks autoritativos cada 30s sin excepciones en `logs/err.log`.
+  * Watchdog: `healthy=true`, notificación de recuperación emitida en Telegram.
+  * Flota ASIC: 4/4 mineros en estado `OK` con Fan Governor regulando a 75°C.

@@ -30,6 +30,7 @@ DIAG_REF_BALANCER = "diag:ref:balancer"
 DIAG_REF_ELEV = "diag:ref:elev"
 DIAG_REF_DIGEST = "diag:ref:digest"
 DIAG_REF_EVENTS = "diag:ref:events"
+DIAG_REF_CHAINS = "diag:ref:chains"
 
 MOBILE_LINE_WIDTH_LIMIT = 32
 MOBILE_CARD_SEPARATOR = "─" * 28
@@ -43,14 +44,16 @@ SUPPORTED_REPORT_TYPES = (
     "elev",
     "digest",
     "events",
+    "chains",
 )
 
 
 # ── Callback Parser ───────────────────────────────────────────────────
 @dataclass(frozen=True)
 class DiagnosticCallbackAction:
-    action: str  # e.g. "ref"
-    report_type: str  # e.g. "status", "fans", "eff", "presets", "balancer", etc.
+    action: str  # e.g. "ref", "view"
+    report_type: str  # e.g. "status", "fans", "eff", "presets", "balancer", "chains", etc.
+    miner_id: Optional[str] = None
 
 
 def parse_diagnostic_callback(callback_data: str) -> Optional[DiagnosticCallbackAction]:
@@ -61,16 +64,28 @@ def parse_diagnostic_callback(callback_data: str) -> Optional[DiagnosticCallback
         return None
 
     parts = callback_data.split(":")
-    if len(parts) != 3 or parts[0] != "diag":
+    if len(parts) < 3 or parts[0] != "diag":
         return None
 
-    action, report_type = parts[1], parts[2]
+    action = parts[1]
+    # Support direct miner view: diag:chains:<miner_id>
+    if action == "chains" and len(parts) == 3:
+        return DiagnosticCallbackAction(action="view", report_type="chains", miner_id=parts[2])
+
     if action != "ref":
         return None
+
+    report_type = parts[2]
     if report_type not in SUPPORTED_REPORT_TYPES:
         return None
 
-    return DiagnosticCallbackAction(action=action, report_type=report_type)
+    miner_id = None
+    if len(parts) == 4 and report_type == "chains":
+        miner_id = parts[3]
+    elif len(parts) != 3:
+        return None
+
+    return DiagnosticCallbackAction(action=action, report_type=report_type, miner_id=miner_id)
 
 
 # ── Keyboard Builder ──────────────────────────────────────────────────
@@ -91,6 +106,52 @@ def build_diagnostic_keyboard(report_type: str) -> Dict[str, Any]:
             {"text": "📱 Menú", "callback_data": CC_NAV_MAIN},
         ]
     ])
+
+
+def build_chains_keyboard(
+    current_miner: Optional[str] = None,
+    miners: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Build navigation keyboard for chain health inspection (/chains)."""
+    miners_list = miners or []
+    miner_buttons = []
+    for m in miners_list:
+        raw_name = str(m.get("name") or "")
+        short_id = raw_name.replace("S19JPRO-", "").replace("S19-", "")
+        if not short_id:
+            raw_host = str(m.get("host") or m.get("ip") or "")
+            short_id = raw_host.split(".")[-1] if "." in raw_host else raw_host
+
+        if not short_id:
+            continue
+
+        # If inspecting this specific miner, highlight or skip
+        if current_miner and (current_miner == short_id or current_miner == raw_name or current_miner in raw_name):
+            continue
+
+        miner_buttons.append({
+            "text": f"🔍 {short_id}",
+            "callback_data": f"diag:chains:{short_id}",
+        })
+
+    rows: List[List[Dict[str, str]]] = []
+    if miner_buttons:
+        # Group in chunks of up to 4 per row
+        chunk_size = 4
+        for i in range(0, len(miner_buttons), chunk_size):
+            rows.append(miner_buttons[i : i + chunk_size])
+
+    action_row = []
+    if current_miner:
+        action_row.append({"text": "📋 Ver Flota", "callback_data": "diag:ref:chains"})
+        action_row.append({"text": "🔄 Actualizar", "callback_data": f"diag:chains:{current_miner}"})
+    else:
+        action_row.append({"text": "🔄 Actualizar Flota", "callback_data": "diag:ref:chains"})
+
+    rows.append(action_row)
+    rows.append([{"text": "📱 Menú Principal", "callback_data": CC_NAV_MAIN}])
+    return build_inline_keyboard(rows)
+
 
 
 # ── State Helpers ─────────────────────────────────────────────────────

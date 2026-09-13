@@ -478,6 +478,18 @@ _COMMANDS = [
         "aliases": ["fan"],
     },
     {
+        "name": "chains",
+        "summary": "Salud granular y sensores por placa/hashboard.",
+        "usage": "/chains  |  /chains all  |  /chains <miner>",
+        "detail": [
+            "Detalle: diagnostico predictivo de silicio y bus de sensores I2C por cadena.",
+        ],
+        "examples": ["/chains", "/chains 24"],
+        "notes": ["Identifica placas con sensores en error o deficit de hashrate."],
+        "danger_level": "safe",
+        "aliases": ["chain", "placas"],
+    },
+    {
         "name": "efficiency",
         "summary": "Analiza el consumo y ratio de eficiencia en Joules por Terahash (J/TH).",
         "usage": "/efficiency  |  /efficiency all  |  /efficiency <miner>",
@@ -663,10 +675,10 @@ _COMMANDS = [
     },
     {
         "name": "silent",
-        "summary": "Modo silencio para coolers (40-70% PWM).",
+        "summary": "Modo silencio para coolers (30-50% PWM).",
         "usage": "/silent <duración|off>",
         "detail": [
-            "Detalle: limita ventiladores al 40%-70% con guarda térmica de reversión ante >80°C.",
+            "Detalle: limita ventiladores al 30%-50% con guarda térmica de reversión ante >80°C.",
         ],
         "examples": ["/silent 2h", "/silent off"],
         "notes": ["Duraciones: 30m, 1h, 2h, 4h, 6h, indef, off."],
@@ -861,7 +873,7 @@ class MinerState:
     silent_mode_revert_ts: Optional[float] = None      # Unix ts when mode expires; None = indefinite
     silent_mode_prev_duty: Optional[int] = None        # Hardware duty before silent mode activation
     silent_mode_prev_preset: Optional[str] = None      # VNish preset name before activation
-    silent_mode_target_max_duty: int = 70              # Acoustic ceiling (default 70%)
+    silent_mode_target_max_duty: int = 50              # Acoustic ceiling (default 50%)
     # Spec 048: Safe Fleet Shutdown & Maintenance Mode
     is_shutdown_maintenance: bool = False
     shutdown_maintenance_ts: float = 0.0
@@ -2174,8 +2186,28 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
     global _LAST_DAILY_DIGEST_DATE
     if not state_path.exists():
         return {}, None
+    bak_path = state_path.with_suffix(".bak")
+    raw = None
     try:
-        raw = json.loads(state_path.read_text(encoding="utf-8"))
+        content = state_path.read_text(encoding="utf-8").strip()
+        if not content or content.replace("\x00", "") == "":
+            raise ValueError("empty or null-byte corrupted file")
+        raw = json.loads(content)
+    except Exception as primary_exc:
+        log(f"[WARN] state.json corrupto o ilegible ({primary_exc}). Intentando recuperar desde .bak...")
+        if bak_path.exists():
+            try:
+                bak_content = bak_path.read_text(encoding="utf-8").strip()
+                if bak_content and bak_content.replace("\x00", "") != "":
+                    raw = json.loads(bak_content)
+                    log("[INFO] Estado restaurado exitosamente desde state.json.bak")
+            except Exception as bak_exc:
+                log(f"[WARN] state.json.bak también corrupto o ilegible ({bak_exc}).")
+        if raw is None:
+            log("[WARN] state.json corrupto. Se ignora.")
+            return {}, None
+
+    try:
         _LAST_DAILY_DIGEST_DATE = raw.get("last_daily_digest_date")
         saved_at = raw.get("saved_at")
         if saved_at:
@@ -2320,7 +2352,7 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("silent_mode_prev_preset") is not None
                     else None
                 ),
-                silent_mode_target_max_duty=int(data.get("silent_mode_target_max_duty", 70)),
+                silent_mode_target_max_duty=int(data.get("silent_mode_target_max_duty", 50)),
                 # Spec 048: Safe Fleet Shutdown & Maintenance Mode
                 is_shutdown_maintenance=bool(data.get("is_shutdown_maintenance", False)),
                 shutdown_maintenance_ts=float(data.get("shutdown_maintenance_ts", 0.0)),
@@ -2446,7 +2478,7 @@ def save_state(
             "silent_mode_revert_ts": getattr(state, "silent_mode_revert_ts", None),
             "silent_mode_prev_duty": getattr(state, "silent_mode_prev_duty", None),
             "silent_mode_prev_preset": getattr(state, "silent_mode_prev_preset", None),
-            "silent_mode_target_max_duty": getattr(state, "silent_mode_target_max_duty", 70),
+            "silent_mode_target_max_duty": getattr(state, "silent_mode_target_max_duty", 50),
             # Spec 048: Safe Fleet Shutdown & Maintenance Mode
             "is_shutdown_maintenance": getattr(state, "is_shutdown_maintenance", False),
             "shutdown_maintenance_ts": getattr(state, "shutdown_maintenance_ts", 0.0),
@@ -2461,11 +2493,108 @@ def save_state(
             "last_responded": getattr(state, "last_responded", False),
         }
     tmp_path = state_path.with_suffix(".tmp")
+    bak_path = state_path.with_suffix(".bak")
     try:
-        tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        content = json.dumps(payload, indent=2)
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        if state_path.exists():
+            try:
+                import shutil
+                shutil.copyfile(state_path, bak_path)
+            except Exception:
+                pass
         os.replace(tmp_path, state_path)
     except Exception:
         log("[WARN] No se pudo guardar state.json.")
+
+
+# ---------------------------------------------------------------------------
+# Spec 054: Asynchronous Hashboard Chain Telemetry Worker
+# ---------------------------------------------------------------------------
+
+_CHAIN_HEALTH_STREAKS: Dict[str, Dict[str, Any]] = {}
+
+
+def _async_collect_chain_telemetry(
+    miners_list: list,
+    event_store_inst: Optional[Any],
+    token: Optional[str] = None,
+    miner_name_filter: Optional[str] = None,
+    config: Optional[dict] = None,
+    bot_token: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    qa_mode: bool = False,
+    qa_notify: bool = False,
+) -> None:
+    """Collect /api/v1/chains in background, record to EventStore, and evaluate predictive health (Spec 054)."""
+    if event_store_inst is None or not event_store_inst.available:
+        return
+    try:
+        from app.vnish.chain_collector import fetch_miner_chains
+        from app.governance.chain_health import (
+            assess_miner_chains,
+            evaluate_chain_health_streak,
+        )
+
+        for m in miners_list:
+            m_name = str(m.get("name", ""))
+            if miner_name_filter and m_name != miner_name_filter:
+                continue
+            m_host = str(m.get("host", ""))
+            if not m_host:
+                continue
+            ok, chains, err = fetch_miner_chains(m_host, token=token, timeout=2.5)
+            if ok and chains:
+                inserted = event_store_inst.record_chain_samples(m_name, chains)
+                log(f"[CHAIN_TELEMETRY] miner={m_name} collected={len(chains)} inserted={inserted}")
+
+                # Spec 054 T008: Chain Health Assessment & Predictive Alerting
+                try:
+                    assessment = assess_miner_chains(m_name, chains)
+                    streak_data = _CHAIN_HEALTH_STREAKS.setdefault(m_name, {})
+                    min_streak = int(config.get("chain_health_min_streak", 2)) if config else 2
+                    cooldown = float(config.get("chain_health_cooldown_s", 7200.0)) if config else 7200.0
+                    should_alert, alert_card = evaluate_chain_health_streak(
+                        streak_data,
+                        assessment,
+                        min_streak=min_streak,
+                        cooldown_s=cooldown,
+                    )
+                    if should_alert and alert_card:
+                        if bot_token and chat_id and ((not qa_mode) or qa_notify):
+                            send_telegram(
+                                bot_token,
+                                str(chat_id),
+                                alert_card,
+                                "CHAIN_HEALTH",
+                                "chain_health_warning",
+                            )
+                        if event_store_inst and event_store_inst.available:
+                            event_store_inst.record_event(
+                                occurred_ts=time.time(),
+                                miner_key=f"{m_name}|{m_host}",
+                                miner_name=m_name,
+                                host=m_host,
+                                event_type="chain_health_warning",
+                                severity="warning",
+                                summary=assessment.summary,
+                                details={
+                                    "overall_status": assessment.overall_status,
+                                    "faulty_chains": list(assessment.faulty_chains),
+                                    "has_sensor_error": assessment.has_sensor_error,
+                                },
+                            )
+                        log(f"[CHAIN_HEALTH] Alert sent for miner={m_name} status={assessment.overall_status}")
+                except Exception as _ch_exc:
+                    log(f"[CHAIN_HEALTH_ERR] assessment failed for {m_name}: {_ch_exc}")
+            elif err:
+                log(f"[CHAIN_TELEMETRY] miner={m_name} host={m_host} error={err}")
+    except Exception as exc:
+        log(f"[CHAIN_TELEMETRY] worker error: {type(exc).__name__}: {exc}")
+
 
 
 # ---------------------------------------------------------------------------
@@ -2473,6 +2602,7 @@ def save_state(
 # ---------------------------------------------------------------------------
 # None = use config value; True/False = user override (persists until restart)
 _GOVERNOR_RUNTIME_ENABLED: Optional[bool] = None
+
 
 
 # ---------------------------------------------------------------------------
@@ -2514,7 +2644,7 @@ def execute_governor_cycle(
         deadband_low_c=float(config.get("fan_governor_deadband_low_c", 81.0)),
         deadband_high_c=float(config.get("fan_governor_deadband_high_c", 82.5)),
         emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 83.5)),
-        min_fan_duty_percent=int(config.get("fan_governor_min_duty_pct", 75)),
+        min_fan_duty_percent=int(config.get("fan_governor_min_duty_pct", 30)),
         max_fan_duty_percent=100,
         step_down_percent=int(config.get("fan_governor_step_down_pct", 2)),
         step_up_percent=int(config.get("fan_governor_step_up_pct", 3)),
@@ -2582,8 +2712,10 @@ def execute_governor_cycle(
             # operate within the acoustic ceiling. EMERGENCY_SPIKE overrides max_fan_duty_percent
             # by its own rule (goes to 100% regardless), so this is safe.
             if getattr(state, "silent_mode_active", False):
-                _sm_min = int(config.get("silent_mode_min_duty_pct", 40))
-                _sm_max = int(getattr(state, "silent_mode_target_max_duty", 70))
+                _sm_min = int(config.get("silent_mode_min_duty_pct", 30))
+                _sm_max = int(getattr(state, "silent_mode_target_max_duty", 50))
+                _eff_min = min(_sm_min, _sm_max)
+                _eff_max = max(_sm_min, _sm_max)
                 miner_gov_cfg = GovernorConfig(
                     enabled=miner_gov_cfg.enabled,
                     dry_run=miner_gov_cfg.dry_run,
@@ -2591,8 +2723,8 @@ def execute_governor_cycle(
                     deadband_low_c=miner_gov_cfg.deadband_low_c,
                     deadband_high_c=miner_gov_cfg.deadband_high_c,
                     emergency_spike_temp_c=miner_gov_cfg.emergency_spike_temp_c,
-                    min_fan_duty_percent=max(_sm_min, miner_gov_cfg.min_fan_duty_percent),
-                    max_fan_duty_percent=_sm_max,  # Acoustic ceiling
+                    min_fan_duty_percent=_eff_min,
+                    max_fan_duty_percent=_eff_max,  # Acoustic ceiling
                     step_down_percent=miner_gov_cfg.step_down_percent,
                     step_up_percent=miner_gov_cfg.step_up_percent,
                     dwell_seconds=miner_gov_cfg.dwell_seconds,
@@ -2604,6 +2736,7 @@ def execute_governor_cycle(
                     power_margin_w=miner_gov_cfg.power_margin_w,
                 )
 
+            gov_target_pwr = None if getattr(state, "silent_mode_active", False) else target_pwr
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
@@ -2612,7 +2745,7 @@ def execute_governor_cycle(
                 consecutive_failures=state.governor_failures,
                 config=miner_gov_cfg,
                 current_power_w=getattr(state, "governor_last_power_w", None),
-                target_power_w=target_pwr,
+                target_power_w=gov_target_pwr,
             )
             miner_decisions.append((miner, state_key, decision))
 
@@ -2705,7 +2838,7 @@ def execute_governor_cycle(
             # must override the acoustic ceiling immediately and clear state.json.
             if action in (ACTION_EMERGENCY_SPIKE, ACTION_FAILSAFE_FAULT):
                 if getattr(state, "silent_mode_active", False):
-                    prev_max = getattr(state, "silent_mode_target_max_duty", 70)
+                    prev_max = getattr(state, "silent_mode_target_max_duty", 50)
                     state.silent_mode_active = False
                     state.silent_mode_revert_ts = None
                     temp_c = state.governor_last_temp_c
@@ -3129,7 +3262,7 @@ def _handle_command_center_callback(
                 new_text, new_markup = render_main_dashboard(states_snapshot, config, miners)
         elif action.target == "silent":
             sub = (action.param or "").strip().lower()
-            _sm_target_max = int(config.get("silent_mode_target_max_duty", 70))
+            _sm_target_max = int(config.get("silent_mode_target_max_duty", 50))
             _SM_DURATIONS = {
                 "30m": 30, "1h": 60, "2h": 120, "4h": 240, "6h": 360, "indef": None,
             }
@@ -3624,6 +3757,30 @@ def _handle_diagnostic_callback(
             else:
                 new_text = "Historial no disponible."
             new_markup = build_diagnostic_keyboard("events")
+        elif action.report_type == "chains":
+            from app.governance.chain_health import (
+                assess_miner_chains,
+                build_chains_card_text,
+                build_chains_fleet_summary_text,
+            )
+            from app.telegram.fleet_cards import build_chains_keyboard
+            miner_arg = action.miner_id
+            if miner_arg:
+                matched_miner = resolve_miner(miner_arg, miners)
+                m_name = matched_miner.get("name") if matched_miner else miner_arg
+                m_key = f"{matched_miner['name']}|{matched_miner['host']}:{matched_miner['port']}" if matched_miner else miner_arg
+                samples = event_store.get_latest_chain_samples(m_key) if (event_store and event_store.available) else []
+                ass = assess_miner_chains(m_name, samples)
+                new_text = build_chains_card_text(ass)
+                new_markup = build_chains_keyboard(current_miner=m_name, miners=miners)
+            else:
+                assessments_list = []
+                for m in miners:
+                    m_key = f"{m.get('name')}|{m.get('host')}:{m.get('port')}"
+                    samples = event_store.get_latest_chain_samples(m_key) if (event_store and event_store.available) else []
+                    assessments_list.append(assess_miner_chains(m.get("name", "Miner"), samples))
+                new_text = build_chains_fleet_summary_text(assessments_list)
+                new_markup = build_chains_keyboard(miners=miners)
     except Exception as exc:
         log(f"DIAG_CB_ERR cb_id={cb_id} report={action.report_type} exc={exc}")
         return
@@ -4900,6 +5057,47 @@ def telegram_polling_worker(
                         dbg_cmd="fans",
                         reply_markup=fans_kb,
                     )
+                elif cmd_name in ("chains", "chain", "placas"):
+                    handled = True
+                    from app.governance.chain_health import (
+                        assess_miner_chains,
+                        build_chains_card_text,
+                        build_chains_fleet_summary_text,
+                    )
+                    from app.telegram.fleet_cards import build_chains_keyboard
+                    target_arg = args[0].strip().lower() if args else None
+                    if target_arg and target_arg != "all":
+                        matched_miner = resolve_miner(target_arg, miners)
+                        if matched_miner:
+                            m_name = matched_miner.get("name", target_arg)
+                            m_key = f"{matched_miner['name']}|{matched_miner['host']}:{matched_miner['port']}"
+                            samples = event_store.get_latest_chain_samples(m_key) if (event_store and event_store.available) else []
+                            ass = assess_miner_chains(m_name, samples)
+                            chains_msg = build_chains_card_text(ass)
+                            chains_kb = build_chains_keyboard(current_miner=m_name, miners=miners)
+                        else:
+                            chains_msg = f"⚠️ Minero '{target_arg}' no encontrado.\nUso: /chains [minero]"
+                            chains_kb = build_chains_keyboard(miners=miners)
+                    else:
+                        assessments_list = []
+                        for m in miners:
+                            m_key = f"{m.get('name')}|{m.get('host')}:{m.get('port')}"
+                            samples = event_store.get_latest_chain_samples(m_key) if (event_store and event_store.available) else []
+                            assessments_list.append(assess_miner_chains(m.get("name", "Miner"), samples))
+                        chains_msg = build_chains_fleet_summary_text(assessments_list)
+                        chains_kb = build_chains_keyboard(miners=miners)
+
+                    send_telegram(
+                        bot_token,
+                        str(msg_chat_id),
+                        chains_msg,
+                        "CHAINS",
+                        "cmd_chains",
+                        is_command=True,
+                        dbg_update_id=update_id,
+                        dbg_cmd="chains",
+                        reply_markup=chains_kb,
+                    )
                 elif cmd_name in ("efficiency", "eff"):
                     handled = True
                     from app.governance.energy_efficiency import (
@@ -5007,8 +5205,8 @@ def telegram_polling_worker(
                 elif cmd_name in ("silent", "silencio", "modo_silencio"):
                     handled = True
                     sub = args[0].strip().lower() if args else ""
-                    _sm_target_max = int(config.get("silent_mode_target_max_duty", 70))
-                    _sm_min = int(config.get("silent_mode_min_duty_pct", 40))
+                    _sm_target_max = int(config.get("silent_mode_target_max_duty", 50))
+                    _sm_min = int(config.get("silent_mode_min_duty_pct", 30))
 
                     # Duration presets in minutes
                     _SM_DURATIONS = {
@@ -5396,7 +5594,7 @@ def telegram_polling_worker(
                     gov_enabled_cfg = bool(config.get("fan_governor_enabled", False))
                     gov_dry_run = bool(config.get("fan_governor_dry_run", True))
                     gov_target = float(config.get("fan_governor_target_temp_c", 82.0))
-                    gov_min_duty = int(config.get("fan_governor_min_duty_pct", 75))
+                    gov_min_duty = int(config.get("fan_governor_min_duty_pct", 30))
 
                     if sub == "on":
                         _GOVERNOR_RUNTIME_ENABLED = True
@@ -6900,7 +7098,7 @@ def main() -> None:
         f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
     )
     qa_mode, qa_mode_source = qa_enabled(config)
-    global _QA_MODE, _LAST_DAILY_DIGEST_DATE
+    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW
     _QA_MODE = qa_mode
     qa_notify = qa_notify_enabled(config)
     qa_verbose = qa_verbose_enabled(config)
@@ -7156,7 +7354,12 @@ def main() -> None:
         )
         last_sample_ts: Dict[str, float] = {}
         last_retention_ts = process_start_ts
+        last_chain_collection_ts = 0.0
+        chain_telemetry_enabled = bool(config.get("chain_telemetry_enabled", True))
+        chain_telemetry_interval_s = float(config.get("chain_telemetry_interval_s", 900.0))
+        vnish_api_password = str(config.get("vnish_api_password", "admin"))
         previous_tick_signals: Dict[str, str] = {}
+
         previous_tick_signals_ts: Optional[float] = None
         tick_sequence = 0
         heartbeat_error_logged = False
@@ -7275,9 +7478,17 @@ def main() -> None:
                             reboot_reason = "elapsed_drop"
                         elif elapsed < 300 and state.last_elapsed > 3600:
                             reboot_reason = "elapsed_reset"
-                    state.last_elapsed = elapsed
                     if reboot_reason:
                         state.low_since_ts = None
+                        if chain_telemetry_enabled and event_store is not None and event_store.available:
+                            threading.Thread(
+                                target=_async_collect_chain_telemetry,
+                                args=(valid_miners, event_store, vnish_api_password, name, config, bot_token, chat_id, qa_mode, qa_notify),
+                                daemon=True,
+                                name=f"ChainTelemetryReactive_{name}",
+                            ).start()
+
+
 
                 if not responded:
                     state.offline_streak += 1
@@ -7307,7 +7518,18 @@ def main() -> None:
                 elif responded and rate_ths is not None and rate_ths >= threshold_ths and state.ok_streak >= recovery_successes:
                     new_state = STATE_OK
 
+                if new_state != prev_state and new_state in (STATE_HASHBOARD, STATE_LOW):
+                    if chain_telemetry_enabled and event_store is not None and event_store.available:
+                        threading.Thread(
+                            target=_async_collect_chain_telemetry,
+                            args=(valid_miners, event_store, vnish_api_password, name, config, bot_token, chat_id, qa_mode, qa_notify),
+                            daemon=True,
+                            name=f"ChainTelemetryTransition_{name}",
+                        ).start()
+
+
                 state.state = new_state
+
 
                 if new_state == STATE_OK:
                     state.low_streak = 0
@@ -7508,6 +7730,17 @@ def main() -> None:
                     )
                     incident_id = None
                     m_group = miner.get("electrical_group", "default")
+                    recent_chain_samples = None
+                    if event_store is not None and event_store.available:
+                        try:
+                            recent_chain_samples = (
+                                event_store.get_latest_chain_samples(name)
+                                or event_store.get_latest_chain_samples(name_display)
+                                or event_store.get_latest_chain_samples(state_key)
+                            )
+                        except Exception as _cs_exc:
+                            log(f"[CHAIN_SAMPLES_ERR] get latest chain samples failed: {_cs_exc}")
+
                     elev_circumstance = record_elevator_restart_circumstance(
                         miner_name=name_display,
                         electrical_group=m_group,
@@ -7515,6 +7748,7 @@ def main() -> None:
                         states=states,
                         now_ts=now_ts,
                         cascade_window_s=float(config.get("preset_balancer_group_cascade_window_s", 1800.0)),
+                        chain_samples=recent_chain_samples,
                     )
                     restart_details = {
                         "reason": reboot_reason,
@@ -7526,7 +7760,13 @@ def main() -> None:
                         "is_elevator_cascade": elev_circumstance.get("is_elevator_cascade", False),
                         "cascade_peer": elev_circumstance.get("cascade_peer"),
                         "cascade_delta_s": elev_circumstance.get("cascade_delta_s"),
+                        "culprit_chain": elev_circumstance.get("culprit_chain"),
                     }
+                    incident_summary = f"Uptime reiniciado: {previous_elapsed}s -> {elapsed}s"
+                    culprit = elev_circumstance.get("culprit_chain")
+                    if culprit and isinstance(culprit, dict):
+                        incident_summary += f" | Causa aislada: Cadena {culprit.get('chain_id')} ({culprit.get('reason')})"
+
                     if event_store is not None and event_store.available:
                         incident_id = event_store.record_event(
                             occurred_ts=now_ts,
@@ -7544,11 +7784,10 @@ def main() -> None:
                             current_elapsed=elapsed,
                             action_source=restart_classification.action_source,
                             action_ts=restart_classification.action_ts,
-                            summary=(
-                                f"Uptime reiniciado: {previous_elapsed}s -> {elapsed}s"
-                            ),
+                            summary=incident_summary,
                             details=restart_details,
                         )
+
                         if elev_circumstance.get("is_elevator_cascade"):
                             event_store.record_event(
                                 occurred_ts=now_ts,
@@ -8374,10 +8613,12 @@ def main() -> None:
                 log(f"[PBR_ERR] Post-blackout recovery cycle failed: {type(_pbr_exc).__name__}: {_pbr_exc}")
 
             # Spec 052: Scheduled Electrical Maintenance Windows & Soft Pre-Ramp
-            if _ACTIVE_SCHEDULED_WINDOW is not None and not first_tick:
+            with state_lock:
+                _sched_win = _ACTIVE_SCHEDULED_WINDOW
+            if _sched_win is not None and not first_tick:
                 try:
-                    _ACTIVE_SCHEDULED_WINDOW = process_maintenance_scheduler_cycle(
-                        window=_ACTIVE_SCHEDULED_WINDOW,
+                    _updated_win = process_maintenance_scheduler_cycle(
+                        window=_sched_win,
                         miners=valid_miners,
                         states=states,
                         config=config,
@@ -8401,6 +8642,8 @@ def main() -> None:
                         qa_mode=qa_mode,
                         qa_notify=qa_notify,
                     )
+                    with state_lock:
+                        _ACTIVE_SCHEDULED_WINDOW = _updated_win
                 except Exception as _sch_exc:
                     log(f"[SCHEDULER_ERR] Maintenance scheduler cycle failed: {type(_sch_exc).__name__}: {_sch_exc}")
 
@@ -8440,7 +8683,21 @@ def main() -> None:
                             f"schema=1 tick_sequence={tick_sequence}"
                         )
                     heartbeat_error_logged = False
+
+                    # Spec 054: Periodic Hashboard Chain Telemetry Collection
+                    if chain_telemetry_enabled and event_store is not None and event_store.available:
+                        if (completed_ts - last_chain_collection_ts) >= chain_telemetry_interval_s:
+                            last_chain_collection_ts = completed_ts
+                            threading.Thread(
+                                target=_async_collect_chain_telemetry,
+                                args=(valid_miners, event_store, vnish_api_password, None, config, bot_token, chat_id, qa_mode, qa_notify),
+                                daemon=True,
+                                name="ChainTelemetryScheduled",
+                            ).start()
+
+
                     if config.get("metrics_snapshot_enabled", False):
+
                         try:
                             from app.core.metrics_snapshot import write_monitor_metrics_snapshot_safe
                             snapshot_path = config.get("metrics_snapshot_path", "diagnostics/metrics/current.json")

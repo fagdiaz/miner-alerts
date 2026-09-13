@@ -121,6 +121,30 @@ class TestFanHealth(unittest.TestCase):
         )
         self.assertEqual(assessment2.status, STATUS_FAN_DEFECT)
 
+    def test_assess_miner_cooling_startup_no_false_fan_defect(self):
+        # When rate_ths is 0.0 (booting/rebooting/recovering), missing fan signal or low RPM must NOT report STATUS_FAN_DEFECT
+        assessment1 = assess_miner_cooling(
+            miner_name="S19JPRO-24",
+            max_temp_c=53.0,
+            fan_rpm_max=None,
+            fan_pwm_percent=30.0,
+            diagnostic_flags=("fan_signal_missing",),
+            rate_ths=0.0,
+        )
+        self.assertEqual(assessment1.status, STATUS_UNKNOWN)
+        self.assertIn("SIN DATOS", assessment1.status_label)
+
+        # Stalled fan candidate during 0 TH/s must also be STATUS_UNKNOWN
+        assessment2 = assess_miner_cooling(
+            miner_name="S19JPRO-24",
+            max_temp_c=48.0,
+            fan_rpm_max=500,
+            fan_pwm_percent=30.0,
+            diagnostic_flags=(),
+            rate_ths=0.0,
+        )
+        self.assertEqual(assessment2.status, STATUS_UNKNOWN)
+
     def test_assess_miner_cooling_unknown(self):
         assessment = assess_miner_cooling(
             miner_name="S19JPRO-99",

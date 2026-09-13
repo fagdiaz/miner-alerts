@@ -21,7 +21,7 @@ class GovernorConfig:
     deadband_low_c: float = 81.0
     deadband_high_c: float = 82.5
     emergency_spike_temp_c: float = 83.0
-    min_fan_duty_percent: int = 75           # R4: Piso elevado a 75%
+    min_fan_duty_percent: int = 30           # Safe hardware minimum floor (30%)
     max_fan_duty_percent: int = 100
     step_down_percent: int = 2
     step_up_percent: int = 3
@@ -61,8 +61,8 @@ def compute_governor_step(
     Zero side-effects, zero I/O, 100% deterministic and testable.
     """
     cfg = config or GovernorConfig()
-    curr_duty = int(current_duty) if current_duty is not None else cfg.max_fan_duty_percent
-    curr_duty = max(cfg.min_fan_duty_percent, min(cfg.max_fan_duty_percent, curr_duty))
+    raw_duty = int(current_duty) if current_duty is not None else cfg.max_fan_duty_percent
+    curr_duty = max(cfg.min_fan_duty_percent, min(cfg.max_fan_duty_percent, raw_duty))
 
     # 1. Unknown telemetry
     if max_temp_c is None:
@@ -85,12 +85,12 @@ def compute_governor_step(
             reason=f"Failsafe defensivo: {consecutive_failures} fallos consecutivos de comunicación",
             dwell_effective=0,
             is_emergency=True,
-            requires_write=(curr_duty < cfg.max_fan_duty_percent),
+            requires_write=(raw_duty < cfg.max_fan_duty_percent),
         )
 
     # 3. P0: Emergency Thermal Spike (T >= 83.0°C)
     if max_temp_c >= cfg.emergency_spike_temp_c:
-        needs_write = curr_duty < cfg.max_fan_duty_percent
+        needs_write = raw_duty != cfg.max_fan_duty_percent
         return GovernorDecision(
             action=ACTION_EMERGENCY_SPIKE,
             target_duty=cfg.max_fan_duty_percent,
@@ -99,6 +99,31 @@ def compute_governor_step(
             dwell_effective=0,
             is_emergency=True,
             requires_write=needs_write,
+        )
+
+    # 4. Out-of-bounds ceiling clamp: if hardware is currently running above max ceiling (e.g. at silent mode activation),
+    # immediately step down to acoustic ceiling without waiting for dwell.
+    if raw_duty > cfg.max_fan_duty_percent:
+        return GovernorDecision(
+            action=ACTION_STEP_DOWN,
+            target_duty=cfg.max_fan_duty_percent,
+            current_duty=raw_duty,
+            reason=f"Exceso sobre techo acústico/máximo ({raw_duty}% > {cfg.max_fan_duty_percent}%): limitando a {cfg.max_fan_duty_percent}%",
+            dwell_effective=cfg.dwell_seconds,
+            is_emergency=False,
+            requires_write=True,
+        )
+
+    # 5. Out-of-bounds floor clamp: if hardware is currently below min floor, immediately step up to floor
+    if raw_duty < cfg.min_fan_duty_percent:
+        return GovernorDecision(
+            action=ACTION_STEP_UP,
+            target_duty=cfg.min_fan_duty_percent,
+            current_duty=raw_duty,
+            reason=f"Por debajo del piso mínimo ({raw_duty}% < {cfg.min_fan_duty_percent}%): elevando a {cfg.min_fan_duty_percent}%",
+            dwell_effective=cfg.dwell_seconds,
+            is_emergency=False,
+            requires_write=True,
         )
 
     # 4. Autoswitch Recovery / Power Deficit Protection:

@@ -114,11 +114,11 @@ def set_manual_fan_duty(
 ) -> Tuple[bool, Optional[str]]:
     """
     Set fan speed duty cycle in manual mode.
-    Duty is clamped between 40% (hardware minimum) and 100% (maximum).
+    Duty is clamped between 30% (hardware minimum) and 100% (maximum).
     
     Returns: (success: bool, error_message: Optional[str])
     """
-    clamped_duty = max(40, min(100, int(duty_percent)))
+    clamped_duty = max(30, min(100, int(duty_percent)))
     url = f"http://{host}/api/v1/settings"
     headers = {
         "Authorization": f"Bearer {token}",

@@ -50,9 +50,19 @@ from app.vnish.telemetry import (
     VnishTelemetry,
     normalize_vnish_stats,
 )
+from app.vnish.chains import (
+    ChainSensor,
+    ChainTelemetry,
+)
+from app.vnish.chain_collector import (
+    fetch_fleet_chains,
+    fetch_miner_chains,
+)
 
 __all__ = [
     "ALLOWED_LOG_TABS",
+    "ChainSensor",
+    "ChainTelemetry",
     "DEFAULT_HTTP_TIMEOUT",
     "PresetAssessment",
     "STATUS_AUTOTUNING",
@@ -66,7 +76,9 @@ __all__ = [
     "build_miner_preset_detail_text",
     "build_presets_table_text",
     "evaluate_preset_alerts",
+    "fetch_fleet_chains",
     "fetch_latest_preset_assessments",
+    "fetch_miner_chains",
     "get_available_presets",
     "get_cooling_settings",
     "get_miner_status",

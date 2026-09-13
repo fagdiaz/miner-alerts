@@ -59,6 +59,12 @@ safety gates are not compressed to recover an estimate.
 | Spec 047 mobile cards v2 | Closed 2026-09-09 (`approved`) | Mobile-First layout para /balancer, /elevadores, /digest, /snoozed, /events | 24 tests PASS, 687 tests PASS. |
 | Spec 048 safe fleet shutdown | Closed 2026-09-09 (`approved`) | Apagado seguro, selector táctil de 1 a 4 mineros, purga térmica 45s, auto-snooze 4h y /resume | 34 tests PASS, 721 tests PASS, validado en maniobra real en vivo. |
 | Spec 049 thermal purge ramp | Closed 2026-09-10 (`approved`) | Rampa 100% de purga activa, caída al 40% (reposo acústico) en segundo 45, /resume seguro | 4 tests PASS, 727 tests PASS, validado en tests unitarios e integración. |
+| Spec 050 post blackout guard | Closed 2026-09-10 (`approved`) | Guardián post-blackout, detección de minado detenido, botón 1-tap `[ ▶️ Reanudar Flota ]` y auto-resume | 18 tests PASS, 745 tests PASS. |
+| Spec 051 fast phase drop | Closed 2026-09-10 (`approved`) | Discriminador rápido de corte de fase (<3s), supresión de histeresis y bypass de alarma | 18 tests PASS, 767 tests PASS. |
+| Spec 052 maintenance scheduler | Closed 2026-09-10 (`approved`) | Planificador de ventanas de mantenimiento eléctrico con pre-rampa suave T-10m/T-5m y parada en T-0 | 14 tests PASS, 781 tests PASS. |
+| Release Hotfix v4.0.1 | Closed 2026-09-10 (`approved`) | Persistencia inmune a apagones con `os.fsync()`, respaldo `.bak`, scope global en `main` y aislamiento de tests | 5 tests PASS, 797 tests PASS, activo en producción bajo PID 6424. |
+| Release Hotfix v4.0.3 | Closed 2026-09-12 (`approved`) | Piso de modulación del fan governor calibrado de 75% a 30% PWM permitiendo regulación continua hacia 82.0°C | 2 tests añadidos, 802 tests PASS, activo en producción. |
+| Spec 054 chain diagnostics | Closed 2026-09-12 (`approved`) | Ingesta asíncrona `/api/v1/chains`, SQLite v7, diagnóstico predictivo, comando `/chains` y CLI analítico | 33 tests añadidos, 835 tests PASS, activo en producción bajo PID 12660. |
 
 ## Milestones
 
@@ -82,6 +88,11 @@ safety gates are not compressed to recover an estimate.
 | 2026-09-08 | V3.3 Interactive Control & Silent Mode (Specs 043-044) | RFC approved, 621 tests PASS, release audit verified, active in production under PID 58344. |
 | 2026-09-09 | V3.4 Telegram Mobile UX Harmonization (Specs 045-047) | Centro de ayuda, navegación por categorías y todas las tarjetas adaptadas a <= 32 columnas, 687 tests PASS. |
 | 2026-09-09 | V3.5 Safe Fleet Shutdown & Electrical Maintenance (Spec 048) | Selector táctil multiselección, purga térmica de 45s, maniobra física real validada en caliente, 721 tests PASS. |
+| 2026-09-10 | V4 Governance & Safety Release (Specs 048-053) | Parada segura, purga térmica activa, post-blackout, corte de fase, scheduler y cerrojos reentrantes, 792 tests PASS. |
+| 2026-09-10 | V4.0.1 Post-Blackout Persistence Hotfix | Blindaje físico de disco `fsync`, fallback `.bak`, scope de ciclo de mantenimiento y 797 tests PASS. |
+| 2026-09-12 | V4.0.2 Silent Mode 30%-50% PWM & 82°C Autonomy (Spec 044) | Recalibración acústica 30%-50%, lazo cerrado a 82°C, elevadores independientes y 800 tests PASS. |
+| 2026-09-12 | V4.0.3 Fan Governor Floor 30% Hotfix | Piso mínimo de 30% PWM en gobernador, independencia total por minero hacia 82.0°C y 802 tests PASS. |
+| 2026-09-12 | Spec 054 Predictive Chain Diagnostics Closed | Colector asíncrono, SQLite v7, diagnóstico predictivo, UX /chains y CLI analítica certificados con 835 tests PASS. |
 
 ## Review And Bug-Fix Rhythm
 

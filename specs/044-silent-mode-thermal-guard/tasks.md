@@ -29,3 +29,12 @@
 - [x] T016 Validar compilación de todos los módulos modificados (`py_compile`).
 - [x] T017 Documentar evidencia de ejecución y pruebas en `specs/044-silent-mode-thermal-guard/evidence.md`.
 - [x] T018 Actualizar `docs/speckit/ROADMAP.md` y `docs/audit/DEVELOPMENT_LOG.md`.
+
+## Fase 7: Recalibración 30%–50% PWM, Regulación a 82°C y Autonomía por Elevador (2026-09-12)
+- [x] T019 Recalibrar piso mínimo de hardware en `app/vnish/client.py` a 30% PWM (`max(30, min(100, int(duty_percent)))`).
+- [x] T020 Corregir inversión de límites en `execute_governor_cycle` fijando corredor [30%, 50%] cuando `silent_mode_active` está habilitado.
+- [x] T021 Incorporar clamps reactivos inmediatos fuera de banda en `app/governance/fan_governor.py` (forzar descenso a 50% o subida a 30% sin latencia de cooldown).
+- [x] T022 Neutralizar `gov_target_pwr = None` en modo silencio para permitir modulación térmica libre hacia 30% a 82.0°C sin anclaje por déficit de potencia.
+- [x] T023 Garantizar autonomía independiente por elevador y minero (aislamiento térmico y de ventiladores por equipo).
+- [x] T024 Actualizar catálogo de comandos, Command Center y textos de ayuda en Telegram a 30%–50% PWM.
+- [x] T025 Extender suite `tests/test_silent_mode.py` con pruebas de autonomía por elevador y certificar 800/800 tests PASS en producción.

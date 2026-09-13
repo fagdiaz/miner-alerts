@@ -175,7 +175,7 @@ class TestTelegramPhotoAndCallback(unittest.TestCase):
             miners=config["miners"],
             states={"S19JPRO-23|192.168.100.23:4028": MinerState()},
             state_lock=threading.Lock(),
-            state_path=Path("app/state.json"),
+            state_path=Path(temp_dir.name) / "state.json",
             current_last_update_id=1,
             hashcore_cfg={},
             event_store=None,

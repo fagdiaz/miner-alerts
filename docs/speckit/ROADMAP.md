@@ -1,12 +1,12 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-09-10
+**Last reviewed**: 2026-09-12
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (53 de 53 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 792 tests PASS).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (54 de 54 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 835 tests PASS — Release V4.1.0 / Spec 054 Chain Break Diagnostics Certificada).
 
 
 ---
@@ -646,7 +646,7 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Arquitectura modular de 4 dominios desacoplados en `app/` (Spec 041).
 - [x] Purga definitiva de shims y modernización canónica de tests (Spec 042).
 - [x] Centro de Comando táctil interactivo `/menu` con submenús in-place y seguridad RBAC (Spec 043).
-- [x] Modo Silencio / Visitas acotado al 40%-70% PWM con temporizadores y Thermal Guard a 83.5°C (Spec 044).
+- [x] Modo Silencio / Visitas acotado al 30%–50% PWM a 82.0°C con elevadores independientes, temporizadores y Thermal Guard a 83.5°C (Spec 044 - Recalibrado).
 - [x] Centro de Ayuda táctil interactivo `/help` con navegación por categorías y tarjetas Mobile-First <= 32 cols (Spec 045).
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /status, /fans, /efficiency, /presets (Spec 046).
 - [x] Formato Mobile-First vertical con tarjetas <= 32 cols y refresco en 1 toque para /balancer, /elevadores, /digest, /snoozed, /events (Spec 047).
@@ -654,13 +654,18 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Rampa de Purga Térmica Activa y Contraste Acústico en Parada Segura (Spec 049).
 - [x] Guardián de Recuperación Post-Blackout con Botón 1-Tap y Auto-Reanudación (Spec 050).
 - [x] Discriminador Rápido de Corte de Fase vs Caída de Conectividad (Spec 051).
-- [x] Ventanas Programadas de Mantenimiento Eléctrico y Pre-Rampa Suave (Spec 052).
 - [x] Refuerzo de Concurrencia de Gobernanza y Estabilización Release V4 (Spec 053).
+- [x] Resiliencia de Persistencia Post-Blackout y Ámbito Global en Ciclo Principal (Release Hotfix V4.0.1, 797 tests PASS).
+- [x] Recalibración de Modo Silencio 30%–50% PWM, Regulación a 82°C y Autonomía por Elevador (Spec 044 Update, 800 tests PASS).
+- [x] Calibración de Piso Dinámico a 30% PWM en Fan Governor para Modulación Autónoma a 82°C (Hotfix V4.0.3, 802 tests PASS).
+- [x] Telemetría Profunda por Cadena y Diagnóstico Predictivo de Hashboard (Spec 054, 835 tests PASS).
 
 
 ---
 
 ## Future Strategic Initiatives (V4 / Next Horizon)
+
+Las propuestas técnicas detalladas de mejora para el sistema se encuentran documentadas en [`docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`](../proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md).
 
 ### Iniciativa 1 — Integración PDU/UPS Inteligente (Continuación Spec 024)
 - [ ] Relevar especificación técnica de fabricantes y protocolos soportados (SNMPv3 / Modbus TCP).
@@ -699,13 +704,20 @@ Dates include implementation plus the separate review/fix gate detailed in
 - [x] Desescalado suave y progresivo de presets de potencia antes de la ventana fijada (Pre-Ramp T-10m a 2300W, T-5m a 2100W) y parada segura en T-0 con purga térmica de 45s a 100% y reposo a 40% PWM.
 - [x] Cancelación en caliente mediante botón 1-tap `[ ❌ Cancelar Ventana ]` y persistencia en `state.json`.
 
+### Iniciativa 8 — Telemetría Profunda por Cadena y Diagnóstico Predictivo de Hashboard (Spec 054 - Completado)
+- [x] Ingesta y normalización periódica de telemetría de cadenas `/api/v1/chains` (sensores de temperatura por chip, chips funcionales/esperados, voltajes y estado I2C).
+- [x] Detección temprana de anomalías físicas de sensor y bus (`state: error`, `chip: 54`, `loc: 28`) para predecir `chain_break` antes del reinicio abrupto.
+- [x] Acumulación estructurada de telemetría en SQLite (`chain_telemetry_samples`) para análisis forense, correlación de fallas y minería de datos.
+- [x] Tarjeta de alerta preventiva y comando interactivo `/chains` en Telegram con visualización ejecutiva del estado por hashboard.
+- [x] Herramienta analítica de línea de comandos `tools/analyze_chain_breaks.py` para cruce de fallas y predicción de fin de vida de placas.
+
 ---
 
 ## Governance
 
-- All 53 specifications in the program are complete, verified with evidence, and closed.
-- Version 4.0.0 is certified and ready for production deployment with 792/792 tests PASS.
+- All 54 specifications in the program are complete, verified with evidence, and closed.
+- Version 4.1.0 (Spec 054 Predictive Chain Diagnostics) is certified with 835/835 tests PASS.
+- Spec 054 (Predictive Chain Diagnostics) is fully implemented, verified, and operational in production.
 - Production action authority remains strictly centralized in the Windows monitor.
-- External read-only surfaces (Grafana, static dashboard, backup CLI) operate decoupled from the monitor.
-- Any future modifications or V4 scope must adhere to SpecKit discipline and constitutional gates.
-
+- External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
+- Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`.

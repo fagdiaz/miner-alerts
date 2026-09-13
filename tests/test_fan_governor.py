@@ -112,16 +112,28 @@ class TestFanGovernor(unittest.TestCase):
         self.assertTrue(dec.requires_write)
 
     def test_minimum_duty_floor(self):
-        # R4: Default floor is 75%
+        # Default floor is 30%
         dec = compute_governor_step(
             max_temp_c=75.0,
-            current_duty=75,
+            current_duty=30,
             seconds_since_last_change=150.0,
             config=self.cfg,
         )
         self.assertEqual(dec.action, ACTION_STEP_DOWN)
-        self.assertEqual(dec.target_duty, 75)
+        self.assertEqual(dec.target_duty, 30)
         self.assertFalse(dec.requires_write)  # Already at minimum
+
+    def test_minimum_duty_floor_custom(self):
+        cfg_75 = GovernorConfig(min_fan_duty_percent=75)
+        dec = compute_governor_step(
+            max_temp_c=75.0,
+            current_duty=75,
+            seconds_since_last_change=150.0,
+            config=cfg_75,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_DOWN)
+        self.assertEqual(dec.target_duty, 75)
+        self.assertFalse(dec.requires_write)  # Already at custom minimum
 
     def test_hold_target_deadband(self):
         # 81.0°C <= T <= 82.5°C

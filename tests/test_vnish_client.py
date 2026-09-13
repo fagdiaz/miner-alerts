@@ -121,7 +121,7 @@ class TestVnishClient(unittest.TestCase):
             timeout=DEFAULT_HTTP_TIMEOUT,
         )
 
-        # Duty clamped to 40
+        # Duty clamped to 30
         ok, err = set_manual_fan_duty("192.168.100.23", "token_123", 25)
         self.assertTrue(ok)
         mock_post.assert_called_with(
@@ -130,7 +130,7 @@ class TestVnishClient(unittest.TestCase):
                 "Authorization": "Bearer token_123",
                 "Content-Type": "application/json",
             },
-            json={"miner": {"cooling": {"mode": {"name": "manual", "param": 40}}}},
+            json={"miner": {"cooling": {"mode": {"name": "manual", "param": 30}}}},
             timeout=DEFAULT_HTTP_TIMEOUT,
         )
 

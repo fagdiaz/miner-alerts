@@ -31,7 +31,7 @@ def _make_miner(n):
 
 
 def _make_states(miners, temp_c=79.0, duty=100,
-                 silent_active=False, revert_ts=None, target_max_duty=70):
+                 silent_active=False, revert_ts=None, target_max_duty=50):
     states = {}
     for m in miners:
         sk = f"{m['name']}|{m['host']}:{m['port']}"
@@ -65,8 +65,8 @@ def _make_config(**overrides):
         "fan_governor_max_failures": 3,
         "fan_governor_power_margin_w": 120.0,
         "vnish_api_password": "admin",
-        "silent_mode_target_max_duty": 70,
-        "silent_mode_min_duty_pct": 40,
+        "silent_mode_target_max_duty": 50,
+        "silent_mode_min_duty_pct": 30,
     }
     cfg.update(overrides)
     return cfg
@@ -81,7 +81,7 @@ class TestMinerStateIsolation(unittest.TestCase):
         self.assertIsNone(st.silent_mode_revert_ts)
         self.assertIsNone(st.silent_mode_prev_duty)
         self.assertIsNone(st.silent_mode_prev_preset)
-        self.assertEqual(st.silent_mode_target_max_duty, 70)
+        self.assertEqual(st.silent_mode_target_max_duty, 50)
 
     def test_silent_mode_independent_from_snooze(self):
         """Modifying silent_mode must not affect snooze_until_ts and vice versa."""
@@ -138,7 +138,7 @@ class TestGovernorAcousticCeiling(unittest.TestCase):
         """With silent_mode_active=True and max_duty=70%, governor never commands >70%."""
         miners = [_make_miner(1)]
         states = _make_states(miners, temp_c=79.0, duty=70,
-                               silent_active=True, target_max_duty=70)
+                               silent_active=True, target_max_duty=50)
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=True)
         with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
@@ -149,22 +149,22 @@ class TestGovernorAcousticCeiling(unittest.TestCase):
         sk = "S19JPRO-1|192.168.100.1:4028"
         st = states[sk]
         if st.governor_duty is not None:
-            self.assertLessEqual(st.governor_duty, 70,
-                f"Governor duty {st.governor_duty}% exceeded acoustic ceiling 70%")
+            self.assertLessEqual(st.governor_duty, 50,
+                f"Governor duty {st.governor_duty}% exceeded acoustic ceiling 50%")
 
     def test_governor_c3_min_duty_floor_respected(self):
         """At acoustic floor, STEP_DOWN should not require write."""
-        cfg = GovernorConfig(min_fan_duty_percent=40, max_fan_duty_percent=70, step_down_percent=5)
+        cfg = GovernorConfig(min_fan_duty_percent=30, max_fan_duty_percent=50, step_down_percent=5)
         decision = compute_governor_step(
-            max_temp_c=79.0, current_duty=40,
+            max_temp_c=79.0, current_duty=30,
             seconds_since_last_change=200.0, config=cfg,
         )
         self.assertFalse(decision.requires_write)
-        self.assertEqual(decision.target_duty, 40)
+        self.assertEqual(decision.target_duty, 30)
 
     def test_emergency_spike_overrides_acoustic_ceiling(self):
         """EMERGENCY_SPIKE at 83C goes to 100% even with acoustic max=70%."""
-        cfg = GovernorConfig(min_fan_duty_percent=40, max_fan_duty_percent=70,
+        cfg = GovernorConfig(min_fan_duty_percent=30, max_fan_duty_percent=50,
                              emergency_spike_temp_c=83.0)
         decision = compute_governor_step(
             max_temp_c=83.5, current_duty=60,
@@ -173,7 +173,7 @@ class TestGovernorAcousticCeiling(unittest.TestCase):
         self.assertEqual(decision.action, ACTION_EMERGENCY_SPIKE)
         # With acoustic max_fan_duty_percent=70, EMERGENCY_SPIKE targets 70% (the configured ceiling).
         # The full 100% override happens on the next tick after C4 clears silent_mode_active.
-        self.assertEqual(decision.target_duty, 70)
+        self.assertEqual(decision.target_duty, 50)
         self.assertTrue(decision.requires_write)
 
 
@@ -183,7 +183,7 @@ class TestThermalGuardC4(unittest.TestCase):
     def test_thermal_guard_cancels_silent_mode_on_emergency_spike(self):
         miners = [_make_miner(1)]
         states = _make_states(miners, temp_c=83.5, duty=60,
-                               silent_active=True, target_max_duty=70)
+                               silent_active=True, target_max_duty=50)
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=False, fan_governor_emergency_temp_c=83.0)
         with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
@@ -203,7 +203,7 @@ class TestThermalGuardC4(unittest.TestCase):
 
     def test_thermal_guard_does_not_trigger_when_cool(self):
         miners = [_make_miner(1)]
-        states = _make_states(miners, temp_c=79.0, duty=60, silent_active=True, target_max_duty=70)
+        states = _make_states(miners, temp_c=79.0, duty=60, silent_active=True, target_max_duty=50)
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=True, fan_governor_emergency_temp_c=83.0)
         with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
@@ -218,7 +218,7 @@ class TestThermalGuardC4(unittest.TestCase):
 
     def test_failsafe_fault_also_cancels_silent_mode(self):
         miners = [_make_miner(1)]
-        states = _make_states(miners, temp_c=79.0, duty=60, silent_active=True, target_max_duty=70)
+        states = _make_states(miners, temp_c=79.0, duty=60, silent_active=True, target_max_duty=50)
         sk = "S19JPRO-1|192.168.100.1:4028"
         states[sk].governor_failures = 3
         lock = threading.Lock()
@@ -256,7 +256,7 @@ class TestC1NoHTTPInPollingThread(unittest.TestCase):
             st.silent_mode_prev_duty = st.governor_duty
             st.silent_mode_active = True
             st.silent_mode_revert_ts = time.time() + 7200.0
-            st.silent_mode_target_max_duty = 70
+            st.silent_mode_target_max_duty = 50
         self.assertEqual(http_calls, [])
         self.assertTrue(st.silent_mode_active)
         self.assertIsNotNone(st.silent_mode_revert_ts)
@@ -331,6 +331,112 @@ class TestTimerExpiry(unittest.TestCase):
         self.assertIsNone(st.silent_mode_revert_ts)
         self.assertEqual(st.silent_mode_prev_duty, 85)
 
+
+
+
+class TestSilentModeIndependentElevators(unittest.TestCase):
+    """Spec 044 / User Requirement: 30-50% PWM range, 82C target, independent elevators."""
+
+    def test_independent_miners_different_duty_at_82c(self):
+        """
+        Miner 1 (elevator_1) at 82C with 50% PWM and Miner 2 (elevator_2) at 82C with 30% PWM.
+        Both hold their respective duties in deadband [81.0, 82.5] without cross-interference.
+        """
+        m1 = {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028, "electrical_group": "elevator_1", "target_power_w": 2700.0}
+        m2 = {"name": "S19JPRO-25", "host": "192.168.100.25", "port": 4028, "electrical_group": "elevator_2", "target_power_w": 2700.0}
+        miners = [m1, m2]
+
+        now = time.time()
+        sk1 = "S19JPRO-23|192.168.100.23:4028"
+        st1 = MinerState()
+        st1.governor_last_temp_c = 82.0
+        st1.governor_duty = 50
+        st1.governor_last_power_w = 2700.0
+        st1.governor_last_change_ts = now - 200.0
+        st1.silent_mode_active = True
+        st1.silent_mode_target_max_duty = 50
+
+        sk2 = "S19JPRO-25|192.168.100.25:4028"
+        st2 = MinerState()
+        st2.governor_last_temp_c = 82.0
+        st2.governor_duty = 30
+        st2.governor_last_power_w = 2700.0
+        st2.governor_last_change_ts = now - 200.0
+        st2.silent_mode_active = True
+        st2.silent_mode_target_max_duty = 50
+
+        states = {sk1: st1, sk2: st2}
+        lock = threading.Lock()
+        config = _make_config(
+            fan_governor_dry_run=False,
+            silent_mode_target_max_duty=50,
+            silent_mode_min_duty_pct=30,
+        )
+
+        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)) as mock_write:
+            execute_governor_cycle(
+                miners=miners, states=states, state_lock=lock,
+                config=config, now_ts=now, qa_mode=False,
+            )
+            # Both are in deadband [81.0, 82.5] -> ACTION_HOLD_TARGET -> no writes needed
+            mock_write.assert_not_called()
+
+        self.assertEqual(states[sk1].governor_duty, 50)
+        self.assertEqual(states[sk2].governor_duty, 30)
+        self.assertEqual(states[sk1].governor_last_action, ACTION_HOLD_TARGET)
+        self.assertEqual(states[sk2].governor_last_action, ACTION_HOLD_TARGET)
+
+    def test_step_down_to_30_pct_floor(self):
+        """Miner at 79C steps down fans down to 30% floor."""
+        cfg = GovernorConfig(
+            min_fan_duty_percent=30,
+            max_fan_duty_percent=50,
+            deadband_low_c=81.0,
+            deadband_high_c=82.5,
+            step_down_percent=2,
+            dwell_seconds=90,
+        )
+        # Stepping down from 34% -> 32%
+        dec = compute_governor_step(
+            max_temp_c=79.0, current_duty=34, seconds_since_last_change=100.0, config=cfg,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_DOWN)
+        self.assertEqual(dec.target_duty, 32)
+        self.assertTrue(dec.requires_write)
+
+        # Already at 30% floor
+        dec_floor = compute_governor_step(
+            max_temp_c=79.0, current_duty=30, seconds_since_last_change=100.0, config=cfg,
+        )
+        self.assertEqual(dec_floor.action, ACTION_STEP_DOWN)
+        self.assertEqual(dec_floor.target_duty, 30)
+        self.assertFalse(dec_floor.requires_write)
+
+    def test_step_up_to_50_pct_ceiling(self):
+        """Miner at 82.8C steps up fans up to 50% ceiling."""
+        cfg = GovernorConfig(
+            min_fan_duty_percent=30,
+            max_fan_duty_percent=50,
+            deadband_low_c=81.0,
+            deadband_high_c=82.5,
+            step_up_percent=3,
+            dwell_seconds=90,
+        )
+        # Stepping up from 46% -> 49%
+        dec = compute_governor_step(
+            max_temp_c=82.8, current_duty=46, seconds_since_last_change=100.0, config=cfg,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_UP)
+        self.assertEqual(dec.target_duty, 49)
+        self.assertTrue(dec.requires_write)
+
+        # Stepping up capped at 50%
+        dec_ceil = compute_governor_step(
+            max_temp_c=82.8, current_duty=49, seconds_since_last_change=100.0, config=cfg,
+        )
+        self.assertEqual(dec_ceil.action, ACTION_STEP_UP)
+        self.assertEqual(dec_ceil.target_duty, 50)
+        self.assertTrue(dec_ceil.requires_write)
 
 if __name__ == "__main__":
     unittest.main()

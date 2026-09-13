@@ -24,6 +24,7 @@ CC_NAV_ALERTS = "cc:nav:alerts"
 CC_NAV_SILENT = "cc:nav:silent"
 CC_NAV_SHUTDOWN = "cc:nav:shutdown"
 CC_NAV_RESUME = "cc:nav:resume"
+CC_NAV_CHAINS = "cc:nav:chains"
 CC_ACT_REFRESH = "cc:act:refresh"
 
 
@@ -435,8 +436,8 @@ def render_silent_mode_view(
     miners: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """Render interactive Modo Silencio duration selector and status."""
-    sm_target_max = int((config or {}).get("silent_mode_target_max_duty", 70))
-    sm_min = int((config or {}).get("silent_mode_min_duty_pct", 40))
+    sm_target_max = int((config or {}).get("silent_mode_target_max_duty", 50))
+    sm_min = int((config or {}).get("silent_mode_min_duty_pct", 30))
     emergency_temp = float((config or {}).get("fan_governor_emergency_temp_c", 83.5))
 
     miners_list = miners or []

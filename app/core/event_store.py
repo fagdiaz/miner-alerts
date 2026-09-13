@@ -11,7 +11,7 @@ from app.telegram.help_center import visible_line_width, wrap_mobile_lines
 MOBILE_CARD_SEPARATOR = "─" * 28
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 _TELEMETRY_COLUMNS = {
@@ -315,8 +315,35 @@ class EventStore:
 
                 CREATE INDEX IF NOT EXISTS ix_fact_refs_assessment
                     ON assessment_fact_refs(assessment_id);
+
+                -- Spec 054: additive chain telemetry samples table (v7)
+                CREATE TABLE IF NOT EXISTS chain_telemetry_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    observed_ts REAL NOT NULL,
+                    miner_key TEXT NOT NULL,
+                    chain_id INTEGER NOT NULL,
+                    state TEXT NOT NULL,
+                    hr_realtime REAL NOT NULL,
+                    hr_nominal REAL NOT NULL,
+                    hr_deficit_pct REAL NOT NULL,
+                    freq_avg REAL NOT NULL,
+                    sensors_error_count INTEGER NOT NULL,
+                    sensors_json TEXT NOT NULL DEFAULT '[]',
+                    chips_total INTEGER NOT NULL DEFAULT 0,
+                    chips_error_count INTEGER NOT NULL DEFAULT 0,
+                    chips_throttled_count INTEGER NOT NULL DEFAULT 0,
+                    chips_hw_errors_total INTEGER NOT NULL DEFAULT 0
+                );
+
+                CREATE INDEX IF NOT EXISTS ix_chain_telemetry_miner_time
+                    ON chain_telemetry_samples(miner_key, observed_ts DESC);
+                CREATE INDEX IF NOT EXISTS ix_chain_telemetry_chain_error
+                    ON chain_telemetry_samples(chain_id, sensors_error_count);
+                CREATE INDEX IF NOT EXISTS ix_chain_telemetry_time
+                    ON chain_telemetry_samples(observed_ts DESC);
                 """
             )
+
 
     def record_sample(
         self,
@@ -1170,8 +1197,197 @@ class EventStore:
             self._report_error("load_assessment", exc)
             return None
 
+    def record_chain_samples(
+        self,
+        miner_key: str,
+        samples: Iterable[Any],
+        observed_ts: Optional[float] = None,
+    ) -> int:
+        """Record per-chain telemetry samples in chain_telemetry_samples table.
+
+        Args:
+            miner_key: Canonical miner key (e.g. S19JPRO-24).
+            samples: Iterable of ChainTelemetry or Mapping objects.
+            observed_ts: Optional timestamp (defaults to current time).
+
+        Returns:
+            Number of successfully inserted chain sample records.
+        """
+        connection = self._connection
+        if connection is None:
+            return 0
+        ts = float(observed_ts if observed_ts is not None else time.time())
+        inserted = 0
+        try:
+            with self._lock, connection:
+                for s in samples:
+                    if hasattr(s, "chain_id"):
+                        c_id = int(s.chain_id)
+                        c_state = str(s.state)
+                        c_hr_real = float(s.hr_realtime_mhs)
+                        c_hr_nom = float(s.hr_nominal_mhs)
+                        c_deficit = float(s.hr_deficit_pct)
+                        c_freq = float(s.freq_mhz_avg)
+                        c_sensors_err = int(s.sensors_error_count)
+                        c_sensors_json = s.sensors_json() if callable(getattr(s, "sensors_json", None)) else str(getattr(s, "sensors_json", "[]"))
+                        c_chips_tot = int(getattr(s, "chips_total", 0))
+                        c_chips_err = int(getattr(s, "chips_error_count", 0))
+                        c_chips_throt = int(getattr(s, "chips_throttled_count", 0))
+                        c_chips_hw = int(getattr(s, "chips_hw_errors_total", 0))
+                    elif isinstance(s, dict):
+                        c_id = int(s.get("chain_id", 0))
+                        c_state = str(s.get("state", "unknown"))
+                        c_hr_real = float(s.get("hr_realtime_mhs", 0.0))
+                        c_hr_nom = float(s.get("hr_nominal_mhs", 0.0))
+                        c_deficit = float(s.get("hr_deficit_pct", 0.0))
+                        c_freq = float(s.get("freq_mhz_avg", 0.0))
+                        c_sensors_err = int(s.get("sensors_error_count", 0))
+                        s_json = s.get("sensors_json")
+                        if isinstance(s_json, str):
+                            c_sensors_json = s_json
+                        else:
+                            c_sensors_json = json.dumps(s.get("sensors") or [], ensure_ascii=True, separators=(",", ":"))
+                        c_chips_tot = int(s.get("chips_total", 0))
+                        c_chips_err = int(s.get("chips_error_count", 0))
+                        c_chips_throt = int(s.get("chips_throttled_count", 0))
+                        c_chips_hw = int(s.get("chips_hw_errors_total", 0))
+                    else:
+                        continue
+
+                    connection.execute(
+                        """
+                        INSERT INTO chain_telemetry_samples (
+                            observed_ts, miner_key, chain_id, state,
+                            hr_realtime, hr_nominal, hr_deficit_pct, freq_avg,
+                            sensors_error_count, sensors_json, chips_total,
+                            chips_error_count, chips_throttled_count, chips_hw_errors_total
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            ts,
+                            str(miner_key),
+                            c_id,
+                            c_state,
+                            c_hr_real,
+                            c_hr_nom,
+                            c_deficit,
+                            c_freq,
+                            c_sensors_err,
+                            c_sensors_json,
+                            c_chips_tot,
+                            c_chips_err,
+                            c_chips_throt,
+                            c_chips_hw,
+                        ),
+                    )
+                    inserted += 1
+            return inserted
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            self._report_error("record_chain_samples", exc)
+            return 0
+
+    def get_latest_chain_samples(self, miner_key: str) -> List[Dict[str, Any]]:
+        """Retrieve the most recent chain samples for a miner."""
+        connection = self._connection
+        if connection is None:
+            return []
+        try:
+            with self._lock:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM chain_telemetry_samples
+                    WHERE miner_key = ?
+                      AND observed_ts = (
+                          SELECT MAX(observed_ts) FROM chain_telemetry_samples WHERE miner_key = ?
+                      )
+                    ORDER BY chain_id ASC
+                    """,
+                    (str(miner_key), str(miner_key)),
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            self._report_error("get_latest_chain_samples", exc)
+            return []
+
+    def get_chain_samples_window(
+        self,
+        miner_key: str,
+        start_ts: float,
+        end_ts: float,
+        chain_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve chain telemetry samples within a time window."""
+        connection = self._connection
+        if connection is None:
+            return []
+        try:
+            with self._lock:
+                if chain_id is not None:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM chain_telemetry_samples
+                        WHERE miner_key = ?
+                          AND observed_ts >= ? AND observed_ts <= ?
+                          AND chain_id = ?
+                        ORDER BY observed_ts ASC
+                        """,
+                        (str(miner_key), float(start_ts), float(end_ts), int(chain_id)),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM chain_telemetry_samples
+                        WHERE miner_key = ?
+                          AND observed_ts >= ? AND observed_ts <= ?
+                        ORDER BY observed_ts ASC, chain_id ASC
+                        """,
+                        (str(miner_key), float(start_ts), float(end_ts)),
+                    ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            self._report_error("get_chain_samples_window", exc)
+            return []
+
+    def get_chain_error_history(
+        self,
+        miner_key: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve recent chain samples where sensors_error_count > 0, chips_error_count > 0, or deficit >= 10%."""
+        connection = self._connection
+        if connection is None:
+            return []
+        try:
+            with self._lock:
+                if miner_key:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM chain_telemetry_samples
+                        WHERE miner_key = ?
+                          AND (sensors_error_count > 0 OR chips_error_count > 0 OR hr_deficit_pct >= 10.0)
+                        ORDER BY observed_ts DESC
+                        LIMIT ?
+                        """,
+                        (str(miner_key), int(limit)),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM chain_telemetry_samples
+                        WHERE (sensors_error_count > 0 OR chips_error_count > 0 OR hr_deficit_pct >= 10.0)
+                        ORDER BY observed_ts DESC
+                        LIMIT ?
+                        """,
+                        (int(limit),),
+                    ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            self._report_error("get_chain_error_history", exc)
+            return []
+
 
 def _event_label(event: Dict[str, Any]) -> str:
+
     event_type = str(event.get("event_type") or "event")
     classification = str(event.get("classification") or "")
     if event_type == "restart_detected":
@@ -1263,7 +1479,22 @@ def render_event_detail(
         for s_line in wrap_mobile_lines(summary, width=28, indent="  "):
             lines.append(s_line)
 
+    details_raw = event.get("details_json")
+    if isinstance(details_raw, str) and details_raw:
+        try:
+            details_obj = json.loads(details_raw)
+            if isinstance(details_obj, dict):
+                culprit = details_obj.get("culprit_chain")
+                if isinstance(culprit, dict):
+                    c_id = culprit.get("chain_id")
+                    c_reason = culprit.get("reason", "")
+                    lines.append(f"• Causa física: Cadena {c_id}")
+                    lines.append(f"  {c_reason}")
+        except Exception:
+            pass
+
     lines.append(f"• Fecha: {occurred}")
+
 
     if related_events:
         lines.append(MOBILE_CARD_SEPARATOR)

@@ -5,11 +5,13 @@ import unittest
 from pathlib import Path
 
 from app.core.event_store import (
+    SCHEMA_VERSION,
     EventStore,
     render_event_detail,
     render_event_list,
     render_reboot_decision,
 )
+
 
 
 class EventStoreTests(unittest.TestCase):
@@ -104,7 +106,7 @@ class EventStoreTests(unittest.TestCase):
 
         migrated = EventStore(legacy_path)
         try:
-            self.assertEqual(6, migrated.schema_version)
+            self.assertEqual(SCHEMA_VERSION, migrated.schema_version)
             self.assertEqual(0, migrated.count_rows("firmware_events"))
         finally:
             migrated.close()
@@ -255,7 +257,7 @@ class EventStoreTests(unittest.TestCase):
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
             self.assertTrue(migrated.available)
-            self.assertEqual(6, migrated.schema_version)
+            self.assertEqual(SCHEMA_VERSION, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertIn("chain_voltage_mv_avg", sample)
@@ -307,7 +309,7 @@ class EventStoreTests(unittest.TestCase):
 
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
-            self.assertEqual(6, migrated.schema_version)
+            self.assertEqual(SCHEMA_VERSION, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             sample = migrated.list_samples(limit=1)[0]
             self.assertEqual(22, sample["hw_errors_total"])
@@ -471,7 +473,7 @@ class EventStoreTests(unittest.TestCase):
                 summary="Watchdog reinicio el proceso",
             )
             rows = migrated.list_firmware_events(miner_key="m23")
-            self.assertEqual(6, migrated.schema_version)
+            self.assertEqual(SCHEMA_VERSION, migrated.schema_version)
             self.assertEqual(0, duplicate)
             self.assertEqual(1, len(rows))
             self.assertEqual(1_758_000_000.0, rows[0]["source_ts_epoch"])
@@ -668,7 +670,7 @@ class AcquisitionQualityPersistenceTests(unittest.TestCase):
     def test_schema_v6_columns_exist(self):
         """Schema v6 must create acquisition_authority and acquisition_reason_code."""
         from app.core.event_store import SCHEMA_VERSION
-        self.assertEqual(SCHEMA_VERSION, 6)
+        self.assertGreaterEqual(SCHEMA_VERSION, 6)
         conn = sqlite3.connect(str(self.db_path))
         cols = {row[1] for row in conn.execute(
             "PRAGMA table_info(telemetry_samples)"
@@ -676,6 +678,64 @@ class AcquisitionQualityPersistenceTests(unittest.TestCase):
         conn.close()
         self.assertIn("acquisition_authority", cols)
         self.assertIn("acquisition_reason_code", cols)
+
+    def test_schema_v7_chain_telemetry_table_exists(self):
+        """Schema v7 must create chain_telemetry_samples table and indexes."""
+        from app.core.event_store import SCHEMA_VERSION
+        self.assertEqual(SCHEMA_VERSION, 7)
+        conn = sqlite3.connect(str(self.db_path))
+        tables = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+        self.assertIn("chain_telemetry_samples", tables)
+        cols = {row[1] for row in conn.execute(
+            "PRAGMA table_info(chain_telemetry_samples)"
+        ).fetchall()}
+        conn.close()
+        expected_cols = {
+            "id", "observed_ts", "miner_key", "chain_id", "state",
+            "hr_realtime", "hr_nominal", "hr_deficit_pct", "freq_avg",
+            "sensors_error_count", "sensors_json", "chips_total",
+            "chips_error_count", "chips_throttled_count", "chips_hw_errors_total",
+        }
+        self.assertTrue(expected_cols.issubset(cols))
+
+    def test_record_and_get_chain_samples(self):
+        """EventStore records and queries chain telemetry samples accurately."""
+        from app.vnish.chains import ChainSensor, ChainTelemetry
+        sensor_ok = ChainSensor(state="measure", board_temp=45.0, chip_temp=60.0, loc=28)
+        sensor_err = ChainSensor(state="error", board_temp=39.0, chip_temp=54.0, loc=28)
+
+        chain1 = ChainTelemetry(
+            chain_id=1, state="mining", hr_realtime_mhs=33000.0, hr_nominal_mhs=33000.0,
+            freq_mhz_avg=520.0, sensors=[sensor_ok], sensors_error_count=0,
+            chips_total=126, chips_error_count=0, chips_throttled_count=0, chips_hw_errors_total=0
+        )
+        chain2 = ChainTelemetry(
+            chain_id=2, state="mining", hr_realtime_mhs=29000.0, hr_nominal_mhs=33000.0,
+            freq_mhz_avg=520.0, sensors=[sensor_err], sensors_error_count=1,
+            chips_total=126, chips_error_count=2, chips_throttled_count=1, chips_hw_errors_total=5
+        )
+
+        now = 1700000000.0
+        inserted = self.store.record_chain_samples("S19JPRO-24", [chain1, chain2], observed_ts=now)
+        self.assertEqual(inserted, 2)
+
+        latest = self.store.get_latest_chain_samples("S19JPRO-24")
+        self.assertEqual(len(latest), 2)
+        self.assertEqual(latest[0]["chain_id"], 1)
+        self.assertEqual(latest[0]["sensors_error_count"], 0)
+        self.assertEqual(latest[1]["chain_id"], 2)
+        self.assertEqual(latest[1]["sensors_error_count"], 1)
+        self.assertAlmostEqual(latest[1]["hr_deficit_pct"], 12.12, places=1)
+
+        err_history = self.store.get_chain_error_history("S19JPRO-24")
+        self.assertEqual(len(err_history), 1)
+        self.assertEqual(err_history[0]["chain_id"], 2)
+
+        window = self.store.get_chain_samples_window("S19JPRO-24", now - 10, now + 10)
+        self.assertEqual(len(window), 2)
+
 
     def test_record_sample_persists_acquisition_quality(self):
         """record_sample stores authority and reason_code when provided."""
@@ -744,7 +804,7 @@ class AcquisitionQualityPersistenceTests(unittest.TestCase):
         migrated = EventStore(legacy_path, on_error=self.errors.append)
         try:
             self.assertTrue(migrated.available)
-            self.assertEqual(6, migrated.schema_version)
+            self.assertEqual(SCHEMA_VERSION, migrated.schema_version)
             self.assertEqual(1, migrated.count_rows("telemetry_samples"))
             # Old row should read NULL for the new columns
             conn2 = sqlite3.connect(str(legacy_path))

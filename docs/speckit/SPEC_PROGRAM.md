@@ -283,11 +283,15 @@ The program requires three documentation sweeps.
 - Specs 031 through 038 are **Completed, Hardened and Certified in Production** (`v3.0.0`).
 - Specs 039 and 040 are **Completed, Calibrated for 83°C–84°C Operation, and Active in Production** (`v3.2.0`).
 - Specs 041 and 042 are **Completed, Pure Modular Subpackages & Zero-Shim Cleanliness** (587 tests PASS).
-- Specs 043 and 044 are **Completed, Interactive Command Center, Visitor Silent Mode & Safety Thermal Guard, and Active in Production** (`v3.3.0`, 621 tests PASS).
+- Specs 043 and 044 are **Completed, Interactive Command Center, Visitor Silent Mode & Safety Thermal Guard, and Active in Production** (`v3.3.0`, 621 tests PASS; Recalibrated 2026-09-12 for 30%–50% PWM, 82.0°C and independent elevators).
 - Specs 045 through 047 are **Completed, Mobile-First Visual Navigation, Categorical Help & Compact Cards <= 32 cols** (`v3.5.0`, 721 tests PASS).
 - Specs 048 through 052 are **Completed, Safe Fleet Shutdown, Active Purge Ramp, Post-Blackout Guard, Fast Phase Drop Discriminator & Maintenance Scheduler** (`v3.7.0`, 781 tests PASS).
 - Spec 053 is **Completed, Governance Concurrency Hardening, Reentrant Mutexes & V4 Release Candidate Certified** (`v4.0.0`, 792/792 tests PASS).
-- All 53 specifications across V1, V2, V3, and V4 have satisfied their design, test, concurrency, and evidence gates with 792/792 passing automated tests.
+- Release Hotfix V4.0.1 is **Completed, Post-Blackout Persistence Hardening & Concurrency Scope Hotfix Verified in Live Production** (`v4.0.1`, 797/797 tests PASS).
+- Release V4.0.2 / Spec 044 Recalibration is **Completed, Silent Mode 30%–50% PWM, 82.0°C Regulation & Independent Elevator Modulation Verified in Live Production** (`v4.0.2`, 800/800 tests PASS).
+- Release V4.0.3 / Fan Floor 30% Hotfix is **Completed, Minimum Fan Duty Floor Calibrated to 30% for Full Thermal Modulation Bandwidth Down to 82.0°C Target** (`v4.0.3`, 802/802 tests PASS).
+- Spec 054 is **Completed, Deep Chain Telemetry Ingestion, SQLite v7 Storage, Predictive Hashboard Diagnostics & Interactive /chains UX Certified in Live Production** (`v4.1.0`, 835/835 tests PASS).
+- All 54 specifications across V1, V2, V3, and V4 have satisfied their design, test, concurrency, and evidence gates with 835/835 passing automated tests.
 
 ## Planning Hardening Record - 2026-08-13
 

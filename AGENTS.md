@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/049-thermal-purge-ramp/plan.md` (Implementation complete; Domain & Integration Verified)
+`specs/054-chain-break-predictive-diagnostics/plan.md` (Release V4.1.0 Deployed; Predictive Hashboard & Chain Break Diagnostics)
 
 Active production observation gate:
-`specs/049-thermal-purge-ramp/plan.md` (Release Gate APPROVED; 727 tests PASS, staged for elevated service restart)
+`specs/054-chain-break-predictive-diagnostics/plan.md` (Release Gate APPROVED; 835 tests PASS, Windows Service RUNNING under PID 12660)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

@@ -540,10 +540,12 @@ def record_elevator_restart_circumstance(
     states: Optional[dict] = None,
     now_ts: Optional[float] = None,
     cascade_window_s: float = 1800.0,
+    chain_samples: Optional[list] = None,
 ) -> Dict[str, Any]:
     """
     Evaluate environmental & electrical conditions at the moment a miner restarts.
-    Determines group total load, peer states, and whether a cascade restart occurred.
+    Determines group total load, peer states, whether a cascade restart occurred,
+    and isolates physical culprit chain if chain samples are provided (Spec 054).
     """
     now = now_ts or time.time()
     group_miners = [m for m in miners if (m.get("electrical_group") or "default") == electrical_group]
@@ -579,6 +581,14 @@ def record_elevator_restart_circumstance(
                         "last_reboot_ts": last_reb,
                     })
 
+    culprit_chain: Optional[Dict[str, Any]] = None
+    if chain_samples:
+        try:
+            from app.governance.chain_health import find_culprit_chain_for_restart
+            culprit_chain = find_culprit_chain_for_restart(chain_samples)
+        except Exception:
+            culprit_chain = None
+
     return {
         "electrical_group": electrical_group,
         "group_total_power_w": round(total_power, 1),
@@ -586,7 +596,9 @@ def record_elevator_restart_circumstance(
         "is_elevator_cascade": is_cascade,
         "cascade_peer": cascade_peer,
         "cascade_delta_s": cascade_delta_s,
+        "culprit_chain": culprit_chain,
     }
+
 
 
 def analyze_elevator_sensitivity(

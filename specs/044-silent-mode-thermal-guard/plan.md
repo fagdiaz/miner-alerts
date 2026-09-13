@@ -18,10 +18,10 @@ graph TD
 
     MainLoop --> GovCycle[execute_governor_cycle]
     GovCycle --> Bounds{silent_mode_active?}
-    Bounds -->|Sí C3| DynamicLimits[max_duty = 70%]
-    Bounds -->|No| NormalLimits[max_duty = 100%]
+    Bounds -->|Sí C3| DynamicLimits[max_duty = 50%, min_duty = 30%]
+    Bounds -->|No| NormalLimits[max_duty = 100%, min_duty = 75%]
 
-    GovCycle --> TempCheck{T_max >= 83.0°C?}
+    GovCycle --> TempCheck{T_max >= 83.5°C?}
     TempCheck -->|Sí C4| Spike[Emergency Spike: silent_mode = False, PWM = 100%, Alerta Telegram]
 ```
 
@@ -41,8 +41,9 @@ graph TD
 
 ### Fase 3: Integración Dinámica con Fan Governor (Condición C3)
 - Modificar el punto de construcción de `GovernorConfig` en `miner_monitor.py` / `execute_governor_cycle`.
-- Si `silent_mode_active == True`, setear `max_fan_duty_percent = state.silent_mode_target_max_duty` (default 70%).
-- Permitir modulación descendente o ascendente dentro del corredor seguro [40%, 70%].
+- Si `silent_mode_active == True`, setear `max_fan_duty_percent = state.silent_mode_target_max_duty` (default 50%) y `min_fan_duty_percent = 30%`.
+- Permitir modulación descendente o ascendente dentro del corredor seguro [30%, 50%] regulando a 82.0°C.
+- Mantener la autonomía individual de modulación por cada elevador y minero según su propia resistencia térmica.
 
 ### Fase 4: Thermal Guard y Protocolo de Emergencia (Condición C4)
 - En el branch de `ACTION_EMERGENCY_SPIKE` o `FAILSAFE_FAULT` de `execute_governor_cycle`:
@@ -61,8 +62,9 @@ graph TD
   - Test de no bloqueo con mock de VNish lento (C1).
   - Test de recuperación de estado tras reinicio (C2).
   - Test de coexistencia con el Governor (C3).
-  - Test de Thermal Guard a 83.0°C (C4).
-- Suite global completa: 587+ tests PASS.
+  - Test de Thermal Guard a 83.5°C (C4).
+  - Test de autonomía simultánea multi-elevador a 82°C con 50% y 30% PWM.
+- Suite global completa: 800 tests PASS al 100%.
 
 ---
 

@@ -3,6 +3,123 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-12] - Spec 054: Deep Hashboard Telemetry & Predictive Chain Break Diagnostics (Completado)
+
+* **Objetivo**: Implementar la adquisición desacoplada, persistencia histórica en SQLite v7, diagnóstico predictivo de silicio e interfaz interactiva Mobile-First para la telemetría granular de hashboards expuesta por Vnish en `/api/v1/chains`, permitiendo detectar fallas en el bus I2C y sensores térmicos (p. ej. falla de sensor loc 28 en Minero 24) antes de que deriven en cortes de cadena físicos (`chain_break`) y reinicios abruptos de hardware.
+* **Componentes y Cambios Implementados**:
+  - **Fase 1 (Modelo de Datos y SQLite v7)**:
+    - `app/vnish/chains.py`: Modelos `ChainSensor` y `ChainTelemetry` con cálculo de déficit de hashrate, temperaturas máximas por chip/placa, estado de salud y parseo de arrays `sensors` y `chips`.
+    - `app/core/event_store.py`: Incremento a `SCHEMA_VERSION = 7` con tabla `chain_telemetry_samples` e índices optimizados (`ix_chain_telemetry_miner_time`, `ix_chain_telemetry_chain_error`, `ix_chain_telemetry_time`). Métodos de inserción por lotes y consulta en ventana.
+  - **Fase 2 (Colector Asíncrono de Cadenas Vnish)**:
+    - `app/vnish/chain_collector.py`: Funciones no bloqueantes `fetch_miner_chains` y `fetch_fleet_chains` con timeout estricto de 2.5s y ejecución en `ThreadPoolExecutor`.
+    - `app/miner_monitor.py`: Hilo daemon programado `ChainTelemetryScheduled` cada 900s (15 min) y disparadores reactivos ante eventos de reinicio o transición hacia estados `HASHBOARD` o `LOW`.
+  - **Fase 3 (Motor de Diagnóstico Predictivo y Aislamiento de Fallas)**:
+    - `app/governance/chain_health.py`: Clasificación de salud por placa (`CHAIN_OK`, `CHAIN_SENSOR_ERROR`, `CHAIN_DEFICIT`, `CHAIN_FAULT`). Filtro de racha (mínimo 2 capturas) y cooldown (7200s) para alertas preventivas tempranas en Telegram.
+    - `app/governance/preset_balancer.py` y `app/core/event_store.py`: Enriquecimiento automático de `record_elevator_restart_circumstance` y `operational_events` con la placa física culpable (`culprit_chain`) y su visualización en el detalle del incidente (`• Causa física: Cadena X`).
+  - **Fase 4 (UX Telegram y Comando Interactivo `/chains`)**:
+    - `app/telegram/command_center.py` y `app/telegram/fleet_cards.py`: Tarjetas Mobile-First con ancho visible `<= 32` columnas (`build_chains_card_text` y `build_chains_fleet_summary_text`), teclado interactivo de 1-tap `build_chains_keyboard` con navegación directa entre mineros, refresco en sitio y retorno al menú principal.
+    - `app/miner_monitor.py`: Despacho del comando `/chains [minero]` y alias `/chain`, `/placas`, junto con manejo de callbacks `diag:chains:<id>` y `diag:ref:chains`.
+    - `app/telegram/help_center.py`: Registro del comando `/chains` dentro de la categoría `diag`.
+  - **Fase 5 (Herramienta Analítica de Historial)**:
+    - `tools/analyze_chain_breaks.py`: CLI desacoplada para análisis forense y minería de datos históricos en SQLite. Calcula métricas de degradación de silicio, correlaciones con reinicios históricos y ofrece salida en tabla formateada y `--json`.
+* **Verificación y Pruebas**:
+  - `tests/test_chain_collector.py`, `tests/test_chain_health.py`, `tests/test_analyze_chain_breaks.py`, `tests/test_event_store.py`, `tests/test_fleet_cards.py`.
+  - **835/835 tests PASS** al 100% en 13.63s (33 nuevos tests añadidos, cero regresiones).
+  - Verificación exitosa en producción real contra `data/miner_alerts.db`: la herramienta analítica confirmó el 100% de errores de sensor I2C en la Cadena 2 del Minero 24 (loc 28) y salud óptima en los demás equipos.
+
+## [2026-09-12] - Release v4.0.3: Fan Governor Minimum Floor 30% Hotfix & Spec 054 Predictive Diagnostics Planning (Completado)
+
+* **Objetivo**: Corregir el piso mínimo de ventilación en el gobernador de ventiladores (`fan_governor.py`), que mantenía anclado al Minero 26 en 75% PWM cuando operaba a 79.0°C (por debajo del objetivo térmico de 82.0°C), permitir la modulación continua independiente de coolers hasta el piso físico del 30% PWM por equipo, y formalizar la especificación técnica completa (Spec 054) para la ingesta y análisis predictivo de fallas de hashboard (`chain_break`) basada en telemetría profunda de `/api/v1/chains`.
+* **Diagnóstico de Causa Raíz (Minero 26 a 79°C anclado al 75% PWM)**:
+  - En `app/governance/fan_governor.py`, la regla de desescalado térmico (R4) calcula `new_duty = max(config.min_fan_duty_percent, curr_duty - step)`.
+  - El valor por defecto de `min_fan_duty_percent` en `GovernorConfig` estaba configurado en `75%`.
+  - Cuando el Minero 26 registró 79.0°C (frío respecto a la banda muerta de 81.0°C–82.5°C), el gobernador intentó reducir ventilación (`75% - 2% = 73%`), pero la función `max(75, 73)` forzó nuevamente 75%, concluyendo `requires_write = False` y reteniendo el ciclo.
+* **Fix Implementado en Gobernador y Monitor**:
+  - `app/governance/fan_governor.py`: Se modificó el valor por defecto de `GovernorConfig.min_fan_duty_percent` de 75 a 30 (abarcando todo el rango físico permitido de modulación continua).
+  - `app/miner_monitor.py`: Se actualizaron los fallbacks de configuración en línea 2548 y 5433 de 75 a 30.
+  - `app/config.json` y `app/config.example.json`: Se actualizó `"fan_governor_min_duty_pct": 30`.
+  - `tests/test_fan_governor.py`: Se adaptó `test_minimum_duty_floor` al nuevo piso del 30% y se añadió `test_minimum_duty_floor_custom` para verificar pisos configurables superiores (75%).
+  - Todos los interlocks de seguridad (`EMERGENCY_SPIKE` a 83.5°C hacia 100% PWM y `STEP_UP` por encima de 82.5°C) permanecen 100% intactos.
+* **Verificación Operativa en Vivo**:
+  - Se reinició el servicio Windows `MinerAlerts` (`Restart-Service -Name MinerAlerts`).
+  - En el primer tick de producción, el monitor registró:
+    `[2026-09-12 20:42:32] [GOV] miner=S19JPRO-26 action=STEP_DOWN duty=73% target=73% holds=0 fails=0 pwr=2699/2700W`
+  - Minero 26 redujo de inmediato sus ventiladores de 75% a 73% PWM buscando los 82.0°C, mientras que los otros mineros de la flota mantuvieron su autonomía absoluta (Minero 23 a 81%, Minero 24 a 88%, Minero 25 a 88%).
+* **Planificación de Spec 054 (Predictive Chain Diagnostics)**:
+  - Se redactó la especificación formal `specs/054-chain-break-predictive-diagnostics/spec.md`, el plan de arquitectura `plan.md` y el desglose de tareas `tasks.md` (T001 a T018 en 6 fases).
+  - Se incorporó la propuesta formal `PROP-008` en `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`.
+  - Se sincronizaron la hoja de ruta `docs/speckit/ROADMAP.md`, `SPEC_PROGRAM.md` y `DELIVERY_PLAN.md`.
+* **Pruebas y Estado**:
+  - **802/802 tests PASS** al 100% en 13.68s.
+  - Servicio Windows en ejecución en vivo sin errores.
+
+## [2026-09-12] - Fan Health False Positive Fix & Incident 940 Chain Break Diagnostic Discovery (Completado)
+
+* **Objetivo**: Corregir el falso positivo de alarma mecánica de ventilador (`[VENTILADOR] 24 Falla mecánica de ventilador detectada`) emitido durante secuencias de reinicio/arranque del firmware Vnish, auditar otros evaluadores de salud preventiva y realizar una investigación técnica profunda sobre la causa raíz del `chain_break` en el minero 24 registrado a las 16:28:11, definiendo la estrategia de acumulación de datos para análisis predictivo.
+* **Diagnóstico de Incidente en Producción (Evento 940 - 16:28 a 16:35)**:
+  - **Reinicio del Minero 24**: A las `16:28:11`, Vnish registró en el minero 24: `S19JPRO-24 (miner) - chain/chain_break: Corte de cadena detectado` y `restart/miner_stopped: Proceso de minado detenido`. Su uptime cayó de 114.917s (~32h) a 1s.
+  - **Aislamiento Respecto al Elevador 1**: El Minero 23 (peer en el mismo elevador 1) operó sin interrupciones, sosteniendo 2.698W continuos, 100 TH/s y 12.875 mV estables. El monitor registró `is_elevator_cascade: false` y carga total de 2.698W, descartando fluctuaciones globales en el elevador 1.
+  - **Causa del Falso Positivo de Cooler (16:31:07)**: Durante el arranque del driver de minado (`firmware_initializing`), la API 4028 devolvió temporalmente `fan_rpm_max: None`. `assess_miner_cooling` en `app/governance/fan_health.py` evaluaba `has_missing_signal = "fan_signal_missing" in diagnostic_flags` sin comprobar si la máquina estaba realmente minando (`rate_ths > 0.0`), disparando inmediatamente una alerta crítica de falla mecánica de cooler y riesgo de sobrecalentamiento, a pesar de que los chips estaban fríos a 47°C y 30 segundos después los ventiladores giraban a 6.000 RPM al 100% PWM.
+* **Fix Implementado en `app/governance/fan_health.py`**:
+  - En `assess_miner_cooling`: se añadió verificación explícita de minado activo `is_hashing = rate_ths is not None and rate_ths > 0.0`. Si `not is_hashing`, la falta de señal de tacómetro o bajas RPM se clasifica como `STATUS_UNKNOWN` ("Equipo en arranque o sin carga de minado; telemetría no concluyente"), suprimiendo por completo la generación de alertas `STATUS_FAN_DEFECT` durante arranques, autotuning o paradas controladas.
+  - Se confirmó que los demás evaluadores preventivos (`energy_efficiency.py` y `presets.py`) ya se encontraban blindados contra 0 TH/s.
+* **Hallazgo Clave de Hardware en Minero 24 (Sonda `/api/v1/chains`)**:
+  - Se realizó una sonda en caliente sobre las APIs REST de los 4 mineros.
+  - Los mineros 23, 25 y 26 reportaron el 100% de sus sensores térmicos en estado `measure` en todas las cadenas (`[measure, measure, measure, measure]`).
+  - **Exclusivamente el Minero 24 en la Cadena 2 (Board 2)** presenta un sensor en estado de error: `{'state': 'error', 'board': 39, 'chip': 54, 'loc': 28}`.
+  - En el modelo Antminer S19j Pro, la posición 28 corresponde al sensor de temperatura I2C del chip 28 de la Hashboard 2. Las fallas intermitentes en la línea I2C de este sensor o soldaduras frías en ese sector de la placa provocan cuelgues en el bus de comunicación con la controladora PIC, siendo el disparador físico directo del `chain_break`.
+* **Pruebas y Certificación**:
+  - Se agregó `test_assess_miner_cooling_startup_no_false_fan_defect` en `tests/test_fan_health.py`.
+  - **801/801 tests PASS** en 14.33s (0 errores, 0 fallos).
+  - Servicio Windows `MinerAlerts` reiniciado y operativo en producción bajo PID 20460 / 25004.
+
+## [2026-09-12] - Silent Mode / Modo Visitas: 30%–50% PWM Duty Range, 82°C Thermal Regulation & Elevator Autonomy (Completado)
+
+* **Objetivo**: Modificar el Modo Silencio / Visitas (Spec 044) para acotar la modulación de ventilación al rango estricto de **30% a 50% PWM** (anteriormente 40%–70%), manteniendo la máxima potencia de minado posible mientras se sostiene la temperatura objetivo en **82.0°C**, y garantizando la autonomía operativa independiente por cada elevador y minero (p. ej. un minero estabilizado en 82°C con 50% de coolers y otro en 82°C con 30% de coolers con idéntico hashrate según su flujo térmico local).
+* **Diagnóstico y Corrección de Limitadores Ocultos**:
+  - **Inversión de Rangos en `execute_governor_cycle`**: Se corrigió `miner_gov_cfg.min_fan_duty_percent = max(_sm_min, miner_gov_cfg.min_fan_duty_percent)`. Debido a que el piso normal por defecto era 75%, el cálculo forzaba `min=75%` contra un `max=50%` acústico, impidiendo físicamente que los ventiladores modularan por debajo de 75%. Se fijó `min_fan_duty_percent = min(_sm_min, _sm_max)` (30%) y `max_fan_duty_percent = max(_sm_min, _sm_max)` (50%).
+  - **Pinzamiento Hardware en Cliente Vnish**: En `app/vnish/client.py`, la función `set_manual_fan_duty` imponía un clamp estricto `clamped_duty = max(40, ...)`. Se actualizó a `max(30, ...)` permitiendo que las órdenes entre 30% y 39% PWM alcancen el hardware físico.
+  - **Prioridad Térmica y Bucle de Recuperación en Silencio**: En `execute_governor_cycle`, `target_power_w` forzaba `ACTION_RECOVERY_MAX_COOLING` si la potencia estaba bajo el objetivo nominal, anclando los coolers al techo máximo (50%) e impidiendo la bajada a 30%. Se neutralizó `gov_target_pwr = None` durante modo silencio, permitiendo que el lazo cerrado regule exclusivamente por la banda muerta de temperatura (81.0°C – 82.5°C).
+  - **Clamp Rápido Fuera de Rango**: En `app/governance/fan_governor.py`, se implementó detección reactiva de exceso sobre techo (`curr_duty > max_fan_duty_percent` -> `ACTION_STEP_DOWN` inmediato a techo sin esperar dwell) y piso (`curr_duty < min_fan_duty_percent` -> `ACTION_STEP_UP` inmediato a piso).
+* **Configuración y UI**:
+  - `app/config.json` y `app/config.example.json`: `silent_mode_min_duty_pct: 30`, `silent_mode_target_max_duty: 50`.
+  - `app/miner_monitor.py`: Actualizados catálogos, comando `/silent` y vistas de Command Center a 30%–50% PWM.
+  - `app/telegram/command_center.py` y `help_center.py`: Actualizados textos de ayuda y tarjetas interactivas de Telegram a 30%–50% PWM.
+* **Pruebas y Verificación**:
+  - Suite de pruebas ampliada a **800 tests PASS al 100%** (0 fallos, 0 errores) en 13.58s.
+  - Se añadieron tests dedicados en `tests/test_silent_mode.py` (`TestSilentModeIndependentElevators`) validando independencia simultánea de mineros en elevador 1 y 2 a 82°C con 50% y 30% PWM respectivamente.
+  - Servicio Windows `MinerAlerts` reiniciado y operativo en producción supervisando la flota sin incidencias.
+
+## [2026-09-10] - Release v4.0.1: Post-Blackout Persistence Hardening & Concurrency Scope Hotfix (Completado)
+
+* **Objetivo**: Diagnosticar, corregir y certificar la resiliencia operativa tras un corte de suministro eléctrico real (blackout), eliminando un `UnboundLocalError` en `main()` que causaba el bloqueo del servicio en estado `PAUSED` por el acelerador de reinicios de NSSM, blindando la persistencia de `state.json` mediante sincronización física `os.fsync()` contra corrupción de bloques nulos (`\x00`) en apagones abruptos, aislando las pruebas de callbacks de Telegram para no mutar el estado de producción, e incorporando una suite automatizada de resiliencia y verificación estática AST que eleva la cobertura a 797 tests PASS al 100%.
+* **Diagnóstico de Incidente en Producción**:
+  - Tras el restablecimiento eléctrico a las 21:41, el monitor emitió la notificación inicial de `STARTUP` pero crasheó en el primer tick por acceso no inicializado a `_ACTIVE_SCHEDULED_WINDOW` dentro de `main()`.
+  - El bucle rápido de caídas provocó que NSSM pausara el servicio (`sc queryex MinerAlerts` -> `7 PAUSED`), impidiendo que el bot procesara comandos (`Status`) y disparando la alerta del watchdog externo (`tools/monitor_watchdog.py`) por estancamiento de heartbeat (`MONITOR SIN PROGRESO: service_stopped, tick_stale, telegram_poller_stale`).
+  - Adicionalmente, el corte repentino dejó `app/state.json` con 9.075 bytes nulos (`\x00`) al no haberse forzado el volcado de la memoria intermedia del sistema operativo a almacenamiento físico.
+* **Cumplimiento de Condiciones Técnicas Obligatorias**:
+  - **C1 (Declaración Global y Cerrojo Reentrante en `main`)**: Declaración explícita de `global _ACTIVE_SCHEDULED_WINDOW` en `main()` y captura/actualización bajo `with state_lock:` eliminando el `UnboundLocalError` y previniendo colisiones con comandos concurrentes de Telegram.
+  - **C2 (Persistencia Inmune a Apagones con `fsync` y Respaldo `.bak`)**: En `save_state()`, escritura con `f.flush()` y `os.fsync(f.fileno())` antes de `os.replace()`, junto a la creación automática de `state.json.bak`.
+  - **C3 (Recuperación Automática de Estado Corrupto)**: En `load_state()`, detección de archivos vacíos o con secuencias de bytes nulos (`\x00`), recuperando automáticamente desde `state.json.bak` sin abortar ni corromper memoria.
+  - **C4 (Aislamiento Total de Tests Unitarios)**: Refactorización de `test_telegram_callbacks.py` y `test_telegram_charts.py` para operar sobre `tempfile.TemporaryDirectory()`, evitando que la ejecución de pruebas sobreescriba el archivo de producción `app/state.json`.
+  - **C5 (Suite de Resiliencia y Verificación AST)**: Creación de `tests/test_state_resilience.py` con 5 pruebas unitarias que validan la creación de `.bak`, recuperación ante corrupción por apagón y una auditoría AST sobre el 100% de funciones de `miner_monitor.py` asegurando cero variables de módulo no declaradas como globales.
+* **Módulos y Cambios**:
+  - `app/miner_monitor.py`:
+    * Declaración `global _ACTIVE_SCHEDULED_WINDOW` en `main()`.
+    * Envoltura con `state_lock` en lectura y actualización de ventanas programadas.
+    * Persistencia segura con `os.fsync()` y respaldo `.bak` en `save_state()`.
+    * Deserialización tolerante con fallback automático a `.bak` en `load_state()`.
+  - `tests/test_telegram_callbacks.py` & `tests/test_telegram_charts.py`:
+    * Uso de directorios temporales aislados en `setUp`/`tearDown`.
+  - `tests/test_state_resilience.py`:
+    * Nueva suite de 5 pruebas de resiliencia y verificación estática AST.
+* **Resultados y Pruebas**:
+  - Sintaxis: `py_compile` 100% PASS en monitor y suites de prueba.
+  - Servicio de Producción: Restablecido y supervisando activamente en estado `4 RUNNING` (PID 6424).
+  - Watchdog de Producción: `healthy=true`, notificación automática `MONITOR RECUPERADO` emitida en Telegram.
+  - Flota ASIC: 4/4 mineros en estado `OK` reportando telemetría normal y fan governor regulando a 75°C.
+  - Suite global completa: **797/797 tests PASS** en 13.02s (0 fallos, 0 errores, 0 regresiones).
+
 ## [2026-09-10] - Spec 053: V4 Core Governance Concurrency Hardening & Release Stabilization (Completado)
 
 * **Objetivo**: Auditar, reforzar y certificar la estabilidad multihilo, la sincronización de estado compartido y la seguridad reentrante de cerrojos (`state_lock = threading.RLock()`) tras la incorporación de las 14 especificaciones del ciclo de Gobernanza Avanzada (Specs 039 a 052), garantizando la inmunidad contra colisiones en `save_state()`, verificando que el 100% de las tarjetas de Telegram del sistema cumplan estrictamente con el estándar Mobile-First (`visible_line_width <= 32`), y certificando el Release Candidate V4 (`v4.0.0`) con 792/792 tests PASS sin regresiones.

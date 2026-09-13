@@ -95,13 +95,19 @@ def assess_single_chain(miner_name: str, chain: Any) -> ChainAssessment:
         c_max_board = getattr(chain, "max_board_temp", None)
 
         faulty_locs_list: List[int] = []
+        is_chain_mining = c_state in ("mining", "ok")
         for s in getattr(chain, "sensors", []):
-            if hasattr(s, "is_healthy") and not s.is_healthy:
-                if getattr(s, "loc", None) is not None:
-                    faulty_locs_list.append(int(s.loc))
-            elif isinstance(s, dict) and str(s.get("state", "")).lower() != "measure":
-                if s.get("loc") is not None:
-                    faulty_locs_list.append(int(s["loc"]))
+            s_state = getattr(s, "state", "") if hasattr(s, "state") else (s.get("state", "") if isinstance(s, dict) else "")
+            s_state_str = str(s_state).lower()
+            is_sensor_err = False
+            if s_state_str in ("error", "err", "fault", "failed", "broken", "offline"):
+                is_sensor_err = True
+            elif is_chain_mining and s_state_str != "measure":
+                is_sensor_err = True
+            if is_sensor_err:
+                loc_val = getattr(s, "loc", None) if hasattr(s, "loc") else (s.get("loc") if isinstance(s, dict) else None)
+                if loc_val is not None:
+                    faulty_locs_list.append(int(loc_val))
         faulty_locs = tuple(sorted(faulty_locs_list))
 
     elif isinstance(chain, dict) or hasattr(chain, "keys"):
@@ -119,13 +125,20 @@ def assess_single_chain(miner_name: str, chain: Any) -> ChainAssessment:
         faulty_locs_list = []
         c_max_chip = None
         c_max_board = None
+        is_chain_mining = c_state in ("mining", "ok")
         if isinstance(sensors_raw, str):
             try:
                 sensors_list = json.loads(sensors_raw)
                 if isinstance(sensors_list, list):
                     for s in sensors_list:
-                        if isinstance(s, dict) and str(s.get("state", "")).lower() != "measure":
-                            if s.get("loc") is not None:
+                        if isinstance(s, dict):
+                            s_state_str = str(s.get("state", "")).lower()
+                            is_sensor_err = False
+                            if s_state_str in ("error", "err", "fault", "failed", "broken", "offline"):
+                                is_sensor_err = True
+                            elif is_chain_mining and s_state_str != "measure":
+                                is_sensor_err = True
+                            if is_sensor_err and s.get("loc") is not None:
                                 faulty_locs_list.append(int(s["loc"]))
                     chip_temps = [float(s["chip"]) for s in sensors_list if isinstance(s, dict) and isinstance(s.get("chip"), (int, float))]
                     board_temps = [float(s["board"]) for s in sensors_list if isinstance(s, dict) and isinstance(s.get("board"), (int, float))]
@@ -335,9 +348,20 @@ def build_chain_alert_card(miner_name: str, assessment: MinerChainsAssessment) -
             lines.append(MOBILE_CARD_SEPARATOR)
 
     lines.append("💡 *Diagnóstico Preventivo:*")
-    lines.append("Falla de bus/sensor en placa.")
-    lines.append("Vnish puede abortar cadena")
-    lines.append("(chain_break) abruptamente.")
+    if assessment.has_sensor_error:
+        lines.append("Falla de bus/sensor en placa.")
+        lines.append("Vnish puede abortar cadena")
+        lines.append("(chain_break) abruptamente.")
+    elif any(c.status == STATUS_CHAIN_FAULT for c in assessment.chains):
+        lines.append("Cadena fuera de servicio.")
+        lines.append("Posible corte de cadena,")
+        lines.append("alimentación o falla de inicio.")
+    elif any(c.status == STATUS_CHAIN_DEFICIT for c in assessment.chains):
+        lines.append("Déficit sostenido de hashrate.")
+        lines.append("Verificar chips estrangulados.")
+    else:
+        rec_wrapped = wrap_mobile_lines(assessment.summary, width=MOBILE_LINE_WIDTH_LIMIT)
+        lines.extend(rec_wrapped)
     lines.append(MOBILE_CARD_SEPARATOR)
 
     return "\n".join(lines)

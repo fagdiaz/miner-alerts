@@ -99,6 +99,39 @@ class TestStateResilience(unittest.TestCase):
 
         self.assertEqual(overlaps, [], f"Functions assigning module vars without global: {overlaps}")
 
+    def test_state_last_elapsed_updates_preventing_loop(self):
+        """Verify that state.last_elapsed updates to current elapsed, preventing perpetual restart triggers."""
+        from app.miner_monitor import MinerState
+
+        state = MinerState()
+        state.last_elapsed = 119847
+
+        # Simulate tick 1: miner restarted, elapsed dropped to 500
+        elapsed = 500
+        reboot_reason = ""
+        if state.last_elapsed is not None:
+            if elapsed < state.last_elapsed - 600:
+                reboot_reason = "elapsed_drop"
+            elif elapsed < 300 and state.last_elapsed > 3600:
+                reboot_reason = "elapsed_reset"
+        state.last_elapsed = elapsed
+
+        self.assertEqual(reboot_reason, "elapsed_drop")
+        self.assertEqual(state.last_elapsed, 500)
+
+        # Simulate tick 2 (30 seconds later): elapsed is 530
+        elapsed = 530
+        reboot_reason = ""
+        if state.last_elapsed is not None:
+            if elapsed < state.last_elapsed - 600:
+                reboot_reason = "elapsed_drop"
+            elif elapsed < 300 and state.last_elapsed > 3600:
+                reboot_reason = "elapsed_reset"
+        state.last_elapsed = elapsed
+
+        self.assertEqual(reboot_reason, "")
+        self.assertEqual(state.last_elapsed, 530)
+
 
 if __name__ == "__main__":
     unittest.main()

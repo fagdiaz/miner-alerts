@@ -132,11 +132,15 @@ class ChainTelemetry:
         raw_sensors = data.get("sensors") or []
         sensors: List[ChainSensor] = []
         err_sensors = 0
+        is_chain_mining = state.lower() in ("mining", "ok")
         for s in raw_sensors:
             if isinstance(s, dict):
                 sensor = ChainSensor.from_dict(s)
                 sensors.append(sensor)
-                if not sensor.is_healthy:
+                s_state = str(sensor.state).lower()
+                if s_state in ("error", "err", "fault", "failed", "broken", "offline"):
+                    err_sensors += 1
+                elif is_chain_mining and not sensor.is_healthy:
                     err_sensors += 1
 
         raw_chips = data.get("chips") or []

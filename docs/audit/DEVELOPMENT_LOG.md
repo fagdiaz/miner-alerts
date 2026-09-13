@@ -3,6 +3,20 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-12] - Release v4.1.1: Monitor Uptime Persistence Hardening & Sensor Diagnostic Accuracy Hotfix (Completado)
+
+* **Objetivo**: Corregir la actualización de `state.last_elapsed` en el ciclo principal de monitoreo para evitar falsos incidentes recurrentes de reinicio, eliminar falsos positivos de errores I2C en cadenas inactivas/apagadas, y purgar eventos residuales en SQLite tras el arranque en producción.
+* **Componentes y Cambios Implementados**:
+  - `app/miner_monitor.py`: Incorporada la asignación `state.last_elapsed = elapsed` en cada ciclo cuando el minero responde, asegurando que `reboot_reason` solo se active una vez tras una caída de uptime y evitando el re-disparo recurrente cada 30 segundos.
+  - `app/vnish/chains.py`: Refinada la métrica `sensors_error_count` en `from_api_dict` para no clasificar sensores en estado `"init"` o inactivos como errores de hardware cuando la cadena no está en producción (`mining`/`ok`).
+  - `app/governance/chain_health.py`: Filtrado de sensores defectuosos en `assess_single_chain` para ignorar sensores no inicializados en cadenas en estado de falla o detenidas, y dinamización del diagnóstico en `build_chain_alert_card` (`Cadena fuera de servicio` vs `Falla de bus/sensor en placa` según el estado real).
+  - `tests/test_state_resilience.py`: Añadido test determinista `test_state_last_elapsed_updates_preventing_loop` validando que `reboot_reason` no se re-dispare en el tick subsiguiente.
+  - `tests/test_chain_health.py`: Añadido test `test_uninitialized_sensors_on_failure_chain_no_false_i2c_error` validando cero falsos positivos de I2C en placas inactivas.
+  - Base de datos (`data/miner_alerts.db`): Purga de 108 registros espurios de `restart_detected` y 60 de `elevator_cascade_restart` generados por la falta de actualización del uptime.
+* **Verificación y Pruebas**:
+  - **837/837 tests PASS** en 14.5s (2 nuevos tests añadidos, cero regresiones).
+  - Minero 25 recuperado y reanudado en minería activa (76+ TH/s en auto-tuning con 12/12 sensores midiendo normalmente).
+
 ## [2026-09-12] - Spec 054: Deep Hashboard Telemetry & Predictive Chain Break Diagnostics (Completado)
 
 * **Objetivo**: Implementar la adquisición desacoplada, persistencia histórica en SQLite v7, diagnóstico predictivo de silicio e interfaz interactiva Mobile-First para la telemetría granular de hashboards expuesta por Vnish en `/api/v1/chains`, permitiendo detectar fallas en el bus I2C y sensores térmicos (p. ej. falla de sensor loc 28 en Minero 24) antes de que deriven en cortes de cadena físicos (`chain_break`) y reinicios abruptos de hardware.

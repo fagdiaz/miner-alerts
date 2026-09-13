@@ -281,6 +281,36 @@ class ChainHealthAssessmentTests(unittest.TestCase):
 
         self.assertIn("chains", HELP_CATEGORIES["diag"].command_names)
 
+    def test_uninitialized_sensors_on_failure_chain_no_false_i2c_error(self):
+        # When a chain is in 'failure' and sensors are in 'init', do NOT treat as I2C sensor errors
+        failure_chain = ChainTelemetry(
+            chain_id=1,
+            state="failure",
+            hr_realtime_mhs=0.0,
+            hr_nominal_mhs=0.0,
+            freq_mhz_avg=0.0,
+            sensors=[
+                ChainSensor(state="init", board_temp=0.0, chip_temp=0.0, loc=28),
+                ChainSensor(state="init", board_temp=0.0, chip_temp=0.0, loc=61),
+                ChainSensor(state="init", board_temp=0.0, chip_temp=0.0, loc=66),
+                ChainSensor(state="init", board_temp=0.0, chip_temp=0.0, loc=99),
+            ],
+            sensors_error_count=0,
+        )
+        ass = assess_single_chain("S19JPRO-25", failure_chain)
+        self.assertEqual(ass.status, STATUS_CHAIN_FAULT)
+        self.assertEqual(ass.faulty_sensor_locs, ())
+        self.assertEqual(ass.sensors_error_count, 0)
+
+        miner_ass = assess_miner_chains("S19JPRO-25", [failure_chain])
+        self.assertFalse(miner_ass.has_sensor_error)
+        card = build_chain_alert_card("S19JPRO-25", miner_ass)
+        self.assertNotIn("Sensor: loc", card)
+        self.assertIn("Cadena fuera de servicio", card)
+        for line in card.split("\n"):
+            if line.strip():
+                self.assertLessEqual(visible_line_width(line), 32, f"Line too wide: '{line}'")
+
 
 if __name__ == "__main__":
     unittest.main()

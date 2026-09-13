@@ -7487,6 +7487,7 @@ def main() -> None:
                                 daemon=True,
                                 name=f"ChainTelemetryReactive_{name}",
                             ).start()
+                    state.last_elapsed = elapsed
 
 
 

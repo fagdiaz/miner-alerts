@@ -1,32 +1,24 @@
-# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 054: COMPLETADA Y EN PRODUCCIÓN)
+# MINER ALERTS — SESIÓN DE CONTINUIDAD (RELEASE V4.1.1 HOTFIX EN PRODUCCIÓN)
 # Motor recomendado: Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md)
 
-Hola agente. La **Spec 054: Telemetría Profunda por Cadena y Diagnóstico Predictivo de Hashboard (Chain Break Analysis)** ha sido completada al 100% y se encuentra desplegada y verificada en producción:
+Hola agente. La **Spec 054 (v4.1.0)** y el **Hotfix de Estabilización y Resiliencia (Release v4.1.1)** han sido completados y verificados en producción:
 
-1. **Fase 1 (Modelo de Datos y SQLite v7)**:
-   - `app/vnish/chains.py`: Modelos fuertemente tipados `ChainSensor` y `ChainTelemetry`.
-   - `app/core/event_store.py`: Esquema SQLite v7 con tabla `chain_telemetry_samples` y 3 índices optimizados. Métodos de inserción por lotes y consulta histórica.
-2. **Fase 2 (Colector Asíncrono de Cadenas Vnish)**:
-   - `app/vnish/chain_collector.py`: `fetch_miner_chains` y `fetch_fleet_chains` en background con timeout de 2.5s y pool no bloqueante.
-   - `app/miner_monitor.py`: Hilo programado cada 15 min y disparador reactivo ante eventos y transiciones a `HASHBOARD`/`LOW`.
-3. **Fase 3 (Motor de Diagnóstico Predictivo y Aislamiento de Fallas)**:
-   - `app/governance/chain_health.py`: `assess_miner_chains`, clasificación de fallas (`CHAIN_OK`, `CHAIN_SENSOR_ERROR`, `CHAIN_DEFICIT`, `CHAIN_FAULT`), racha consecutiva y cooldown anti-spam.
-   - `app/governance/preset_balancer.py` y `app/core/event_store.py`: Enriquecimiento automático de incidentes con la placa física culpable (`culprit_chain`) y renderizado en detalle de evento.
-4. **Fase 4 (UX Telegram y Comando Interactivo `/chains`)**:
-   - Tarjetas Mobile-First (`<= 32` cols) para `/chains` (resumen de flota) y `/chains <minero>` (detalle de placas).
-   - Teclado interactivo `build_chains_keyboard` con botones de salto rápido entre mineros y refresco en sitio.
-   - Registrado en catálogo `/help` (categoría `diag`) y alias `/chain`, `/placas`.
-5. **Fase 5 (Herramienta Analítica de Historial)**:
-   - `tools/analyze_chain_breaks.py`: CLI de análisis retrospectivo y correlación de cortes de cadena, compatible con consolas Windows (`--days`, `--hours`, `--miner`, `--json`).
-6. **Fase 6 (Certificación y Producción)**:
-   - **835/835 tests PASS** al 100% en 13.6s (33 nuevos tests añadidos, cero regresiones).
-   - Servicio Windows `MinerAlerts` activo en producción, recolectando y persistiendo telemetría de cadenas en tiempo real en `data/miner_alerts.db`.
-   - `specs/054-chain-break-predictive-diagnostics/tasks.md` (18/18 tareas completadas).
-   - `docs/speckit/ROADMAP.md` y `docs/audit/DEVELOPMENT_LOG.md` actualizados.
+1. **Hotfix Release v4.1.1**:
+   - `app/miner_monitor.py`: Incorporada la actualización `state.last_elapsed = elapsed` en cada ciclo cuando el minero responde, eliminando el re-disparo recurrente de `reboot_reason="elapsed_drop"` cada 30 segundos.
+   - `app/vnish/chains.py` y `app/governance/chain_health.py`: Sensores con estado `"init"` o en placas detenidas ya no son falsamente clasificados como errores de hardware I2C (`loc 28, 61, 66, 99 ERROR`). Diagnóstico dinámico en tarjetas (`Cadena fuera de servicio` vs `Falla de bus/sensor en placa`).
+   - `data/miner_alerts.db`: Purgados 108 registros de reinicio falso y 60 de cascada espurios.
+   - `app/state.json`: Uptime sincronizado con la flota real.
+2. **Estado de Flota en Producción**:
+   - Minero 23: ~100 TH/s (estable, cadena saludable).
+   - Minero 24: ~100 TH/s (Cadena 2 con falla I2C loc 28 monitoreada preventivamente).
+   - Minero 25: Minería restablecida con éxito tras recuperación de falla de voltaje de arranque (operando con 3/3 placas y 12/12 sensores midiendo normalmente).
+   - Minero 26: ~100 TH/s (estable, cadena saludable).
+3. **Certificación**:
+   - **837/837 tests PASS** al 100% en 14.5s (2 nuevos tests añadidos).
+   - Servicio Windows `MinerAlerts` listo para reinicio y producción.
 
 ---
 
 ## PRÓXIMOS PASOS RECOMENDADOS
-- Observación pasiva en producción de la recolección periódica cada 15 minutos en `logs/out.log`.
-- Evaluación de métricas acumuladas mediante `python tools/analyze_chain_breaks.py --hours 24`.
-- Consultar con el usuario si desea avanzar con alguna de las iniciativas estratégicas futuras de `docs/speckit/ROADMAP.md` o realizar tareas de mantenimiento.
+- Observación pasiva en producción del servicio y del log `logs/out.log`.
+- Evaluación de telemetría con `python tools/analyze_chain_breaks.py --hours 24`.

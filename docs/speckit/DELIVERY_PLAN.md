@@ -68,6 +68,7 @@ safety gates are not compressed to recover an estimate.
 | Release Hotfix v4.1.1 | Closed 2026-09-12 (`approved`) | Actualización segura de `last_elapsed`, supresión de falsas alarmas I2C en cadenas inactivas | 2 tests añadidos, 837 tests PASS. |
 | Release v4.1.2 | Closed 2026-09-12 (`approved`) | Desescalado adaptativo con gradientes térmicos (-5%/-3%/-2%) y corrección de dwell | 3 tests añadidos, 840 tests PASS. |
 | Spec 055 hashboard auto-reboot | Closed 2026-09-13 (`approved`) | Auto-reboot seguro ante falla total de placas (0/3), ventana sostenida 600s, 6 interlocks | 14 tests añadidos, 854 tests PASS. |
+| Spec 056 two-tier recovery | Closed 2026-09-13 (`approved`) | Discriminador de 2 niveles: Soft Auto-Restart (Nivel 1, Vnish REST 15s) vs Hard Auto-Reboot (Nivel 2, Hashcore CLI 4m) | 27 tests añadidos, 881 tests PASS. |
 
 ## Milestones
 

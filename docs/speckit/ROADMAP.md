@@ -1,12 +1,12 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-09-12
+**Last reviewed**: 2026-09-13
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (55 de 55 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 854 tests PASS — Release V4.1.3 Auto-Reboot Hashboard & Resiliencia Certificada).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (56 de 56 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 881 tests PASS — Release V4.1.4 Two-Tier Mining Recovery Certificada).
 
 
 ---

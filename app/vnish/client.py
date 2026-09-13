@@ -513,7 +513,8 @@ def get_miner_status(
     """
     Read unauthenticated status from /api/v1/status.
     Returns: (success: bool, status_dict: Optional[dict], error_message: Optional[str])
-    where status_dict contains 'miner_state' ('mining', 'stopped', 'paused', etc.)
+    where status_dict contains 'miner_state' ('mining', 'stopped', 'paused', etc.),
+    'restart_required', and 'reboot_required'.
     """
     url = f"http://{host}/api/v1/status"
     requester = session or requests
@@ -526,6 +527,72 @@ def get_miner_status(
         return False, None, "connection_timeout"
     except Exception as exc:
         return False, None, f"request_error: {type(exc).__name__}"
+
+
+def parse_miner_status_flags(status_dict: Optional[Dict[str, Any]]) -> Tuple[str, bool, bool]:
+    """
+    Extract normalized (miner_state, restart_required, reboot_required) from status dict.
+    Defaults: miner_state='', restart_required=False, reboot_required=False.
+    """
+    if not isinstance(status_dict, dict):
+        return "", False, False
+    st = str(status_dict.get("miner_state") or "").strip().lower()
+    restart_req = bool(status_dict.get("restart_required", False))
+    reboot_req = bool(status_dict.get("reboot_required", False))
+    return st, restart_req, reboot_req
+
+
+def restart_mining(
+    host: str,
+    token: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Restart mining process via POST /api/v1/mining/restart (or /mining/start / /mining/resume fallback).
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    requester = session or requests
+    for endpoint in ("mining/restart", "mining/start", "mining/resume"):
+        url = f"http://{host}/api/v1/{endpoint}"
+        try:
+            resp = requester.post(url, headers=headers, timeout=timeout)
+            if resp.status_code == 200:
+                return True, None
+        except requests.exceptions.Timeout:
+            return False, "connection_timeout"
+        except Exception as exc:
+            return False, f"request_error: {type(exc).__name__}"
+    return False, "http_status_restart_failed"
+
+
+def safe_restart_mining(
+    host: str,
+    password: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Transactional wrapper to restart mining:
+    1. Authenticate (unlock)
+    2. Dispatch mining restart
+    3. Ensure session is locked in finally block
+    
+    Returns: (success: bool, error_message: Optional[str])
+    """
+    token = None
+    try:
+        ok, token, err = unlock_miner(host, password, timeout=timeout)
+        if not ok or not token:
+            return False, f"unlock_failed: {err}"
+        return restart_mining(host, token, timeout=timeout)
+    finally:
+        if token:
+            try:
+                lock_miner(host, token, timeout=timeout)
+            except Exception:
+                pass
 
 
 

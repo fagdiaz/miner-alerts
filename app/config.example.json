@@ -99,6 +99,9 @@
   "auto_reboot_fleet_guard_enabled": true,
   "auto_reboot_fleet_guard_min_affected": 2,
   "auto_reboot_firmware_transition_guard_enabled": true,
+  "auto_restart_mining_enabled": true,
+  "auto_restart_cooldown_seconds": 300,
+  "auto_restart_max_retries_before_reboot": 2,
   "offline_is_actionable": true,
   "qa_mode": false,
   "qa_notify": false,
@@ -108,6 +111,7 @@
   "qa_reboot_window_seconds": 30,
   "qa_low_seconds": 60,
   "qa_auto_reboot_window_seconds": 600,
+  "qa_auto_restart_cooldown_seconds": 30,
   "qa_force_state": {},
   "hashcore": {
     "cli_path": "C:\\Program Files\\Hashcore\\Toolkit\\toolkit_cli.bat",

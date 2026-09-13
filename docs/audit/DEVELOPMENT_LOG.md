@@ -3,7 +3,34 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-09-13] - Spec 055: Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard (Completado)
+## [2026-09-13] - Spec 056: Two-Tier Mining Recovery (Auto-Restart vs Auto-Reboot) (Completado)
+
+* **Objetivo**: Implementar una estrategia de recuperación escalonada de dos niveles que discrimine de forma segura y automática entre un **Auto-Reinicio de Minado por Software (Nivel 1)** y un **Auto-Reboot Completo de Hardware (Nivel 2)** cuando un minero detiene su hasheo (0.0 TH/s), pierde temporalmente sus placas (0/3 placas) o entra en estado detenido (`stopped`), previniendo caídas prolongadas sin desgastar innecesariamente la controladora ni reiniciar el sistema operativo Linux de la máquina.
+* **Diagnóstico Forense de Causa Raíz**:
+  - En incidentes como el del Minero 23 (`2026-09-13 09:35:06`), tras un error de cadena (`chain_break`), el firmware Vnish detuvo el proceso de minado `bmminer` pasando a `miner_state="stopped"` con 0/3 placas y 0.0 TH/s.
+  - La única herramienta automática disponible hasta ahora era el hard reboot vía Hashcore CLI (`POST /api/v1/system/reboot` o script bat), el cual tarda entre 3 y 4 minutos, corta la energía de los chips, reinicia el sistema operativo Linux y causa oscilaciones en la red.
+  - La API REST autenticada de Vnish expone `GET /api/v1/status` (que retorna `restart_required` y `reboot_required`) y `POST /api/v1/mining/restart`, permitiendo reiniciar exclusivamente el motor de minado de software en 15 a 20 segundos manteniendo el sistema operativo y la conectividad intactos.
+* **Componentes y Cambios Implementados**:
+  - `app/vnish/client.py`:
+    - Implementadas `restart_mining` (con fallback de endpoints `/api/v1/mining/restart` y `/api/v1/mining/start`) y `safe_restart_mining` con desbloqueo y bloqueo transaccional.
+    - Implementada `parse_miner_status_flags` para extraer limpiamente `miner_state`, `restart_required` y `reboot_required` de `/api/v1/status`.
+  - `app/vnish/__init__.py`:
+    - Exportadas las nuevas funciones en el paquete.
+  - `app/miner_monitor.py`:
+    - Incorporados campos `last_auto_restart_ts: Optional[float] = None` y `auto_restart_count: int = 0` en `@dataclass MinerState`, con serialización completa en `save_state` y `load_state`.
+    - Nuevas claves de configuración: `auto_restart_mining_enabled` (default `True`), `auto_restart_cooldown_seconds` (default `300s`), `auto_restart_max_retries_before_reboot` (default `2`).
+    - Implementada la función pura `evaluate_auto_restart_candidate(...)` con filtros para estados transitorios (`starting`, `init`, etc.), reboots de hardware requeridos, cooldown de software y límite de reintentos.
+    - Creado worker asíncrono `_async_execute_mining_restart` para despachar el reinicio de software en background sin bloquear el ciclo de adquisición.
+    - Canalización en el loop del monitor: si el minero se encuentra degradado y califica para Nivel 1, despacha el soft restart. Si los reintentos de Nivel 1 se agotan (`auto_restart_count >= 2`), cede limpiamente el control a la política de Nivel 2 (Spec 055 / Spec 008) tras transcurrir la ventana sostenida.
+    - Notificaciones operativas de Telegram para Nivel 1: `[AUTO-RESTART] {name} hasheo detenido -> reinicio rápido de minado enviado (Nivel 1)`.
+    - Reseteo automático de `auto_restart_count` ante recuperación a `STATE_OK` o tras la ejecución de un hard reboot manual/automático.
+  - `app/config.example.json`:
+    - Documentadas las claves de configuración de dos niveles y sus overrides para QA.
+  - `tests/test_two_tier_recovery.py`:
+    - 27 pruebas unitarias cubriendo endpoints REST, flags de firmware, lógica de decisión de Nivel 1, persistencia de estado y ciclo de vida de escalación a Nivel 2.
+* **Verificación y Pruebas**:
+  - **881/881 tests PASS** en 14.0s (27 tests nuevos añadidos, cero regresiones).
+  - Validación sintáctica completa con `py_compile`.
 
 * **Objetivo**: Proveer autorecuperación automática y segura ante pérdidas totales o severas de placas hash (`STATE_HASHBOARD`, 0/3 placas activas, 0.0 TH/s) tras caídas de cadena (`chain_break`) o desincronización de firmware, evitando que los mineros queden atrapados en bucles de inactividad de más de 7 horas sin reinicio.
 * **Diagnóstico Forense de Causa Raíz**:

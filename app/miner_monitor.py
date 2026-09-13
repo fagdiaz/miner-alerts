@@ -63,12 +63,15 @@ from app.vnish import (
     build_presets_table_text,
     evaluate_preset_alerts,
     fetch_latest_preset_assessments,
+    get_miner_status,
     get_overclock_settings,
     infer_operating_profile,
     mask_secret,
     normalize_vnish_stats,
+    parse_miner_status_flags,
     render_firmware_events,
     safe_get_overclock_settings,
+    safe_restart_mining,
     safe_set_fan_duty,
     safe_set_miner_preset,
 )
@@ -837,6 +840,8 @@ class MinerState:
     last_reboot_ts: float = 0.0
     low_since_ts: Optional[float] = None
     hashboard_since_ts: Optional[float] = None
+    last_auto_restart_ts: Optional[float] = None  # Spec 056: Soft mining restart timestamp
+    auto_restart_count: int = 0                   # Spec 056: Soft mining restart attempts
     last_manual_reboot_ts: Optional[float] = None
     last_auto_reboot_ts: Optional[float] = None
     auto_reboot_timestamps: list = field(default_factory=list)
@@ -1211,6 +1216,129 @@ def reset_sustained_hashboard_if_ineligible(
             state.hashboard_since_ts = None
             return True
     return False
+
+
+def evaluate_auto_restart_candidate(
+    *,
+    now_ts: float,
+    responded: bool,
+    rate_ths: Optional[float],
+    threshold_ths: float,
+    active_boards: Optional[int],
+    expected_boards: int,
+    miner_state: str,
+    restart_required: bool,
+    reboot_required: bool,
+    auto_restart_enabled: bool,
+    last_auto_restart_ts: Optional[float],
+    auto_restart_cooldown_seconds: float,
+    auto_restart_count: int,
+    max_retries_before_reboot: int,
+    in_maintenance: bool = False,
+    is_snoozed: bool = False,
+) -> Tuple[bool, Optional[str], Optional[float]]:
+    """
+    Evaluates whether a miner qualifies for a Soft Auto-Restart of mining (Level 1).
+    Returns: (is_candidate: bool, reason_or_blocker: Optional[str], cooldown_remaining: Optional[float])
+    """
+    if not auto_restart_enabled:
+        return False, "disabled", None
+    if not responded:
+        return False, "unresponsive", None
+    if in_maintenance or is_snoozed:
+        return False, "maintenance_or_snoozed", None
+    if reboot_required:
+        return False, "hardware_reboot_required", None
+
+    norm_state = (miner_state or "").strip().lower()
+    if norm_state in ("starting", "init", "initializing", "benchmarking", "rebooting", "booting"):
+        return False, "transient_starting", None
+
+    # Check degradation triggers
+    is_stopped = norm_state in ("stopped", "paused", "idle", "stop", "halted")
+    is_zero_hash = (rate_ths is not None and rate_ths <= 0.0)
+    is_zero_boards = (active_boards is not None and active_boards <= 0)
+    has_restart_flag = bool(restart_required)
+
+    if not (is_stopped or is_zero_hash or is_zero_boards or has_restart_flag):
+        return False, "not_needed", None
+
+    # Check retry limit before escalating to hardware reboot
+    if auto_restart_count >= max_retries_before_reboot:
+        return False, "max_retries_exceeded", None
+
+    # Check cooldown
+    if last_auto_restart_ts is not None:
+        delta = max(0.0, now_ts - last_auto_restart_ts)
+        if delta < auto_restart_cooldown_seconds:
+            return False, "cooldown", auto_restart_cooldown_seconds - delta
+
+    trigger_reason = "restart_required_flag" if has_restart_flag else (
+        "stopped_state" if is_stopped else (
+            "zero_boards" if is_zero_boards else "zero_hashrate"
+        )
+    )
+    return True, trigger_reason, None
+
+
+def _async_execute_mining_restart(
+    host: str,
+    password: str,
+    miner_name: str,
+    miner_dict: dict,
+    trigger_reason: str,
+    attempt: int,
+    max_attempts: int,
+    bot_token: str,
+    chat_id: str,
+    qa_mode: bool,
+    qa_notify: bool,
+    event_store: Optional[EventStore],
+) -> None:
+    ts = time.time()
+    disp_name = display_name(miner_name)
+    log(f"[AUTO-RESTART] {disp_name} ({host}) iniciando soft restart de minado (intento {attempt}/{max_attempts}, razon={trigger_reason})...")
+    ok, err = safe_restart_mining(host, password)
+    if ok:
+        log(f"[AUTO-RESTART] {disp_name} ({host}) soft mining restart enviado exitosamente (intento {attempt}/{max_attempts}).")
+        if (not qa_mode) or qa_notify:
+            send_telegram(
+                bot_token,
+                str(chat_id),
+                f"[AUTO-RESTART] {disp_name} hasheo detenido ({trigger_reason}) -> reinicio rapido de minado enviado (Nivel 1, intento {attempt}/{max_attempts})\n"
+                f"Diagnostico: /why",
+                "REBOOT",
+                "auto_restart",
+            )
+        record_action_outcome(
+            event_store,
+            occurred_ts=ts,
+            miner=miner_dict,
+            action="restart_mining",
+            source="auto",
+            ok=True,
+            message=f"Soft restart sent ({trigger_reason})",
+        )
+    else:
+        log(f"[WARN] [AUTO-RESTART] {disp_name} ({host}) fallo soft restart de minado: {err}")
+        if (not qa_mode) or qa_notify:
+            send_telegram(
+                bot_token,
+                str(chat_id),
+                f"[AUTO-RESTART FAILED] {disp_name}: fallo al reiniciar minado: {err}\n"
+                f"Diagnostico: /why",
+                "ERROR",
+                "auto_restart_failed",
+            )
+        record_action_outcome(
+            event_store,
+            occurred_ts=ts,
+            miner=miner_dict,
+            action="restart_mining",
+            source="auto",
+            ok=False,
+            message=str(err),
+        )
 
 
 def send_telegram(
@@ -2293,6 +2421,12 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("last_auto_reboot_ts") is not None
                     else None
                 ),
+                last_auto_restart_ts=(
+                    float(data.get("last_auto_restart_ts"))
+                    if data.get("last_auto_restart_ts") is not None
+                    else None
+                ),
+                auto_restart_count=int(data.get("auto_restart_count", 0)),
                 auto_reboot_timestamps=auto_list,
                 degraded_mode=bool(data.get("degraded_mode", False)),
                 last_hourly_status_ts=(
@@ -2488,6 +2622,8 @@ def save_state(
             "hashboard_since_ts": getattr(state, "hashboard_since_ts", None),
             "last_manual_reboot_ts": state.last_manual_reboot_ts,
             "last_auto_reboot_ts": state.last_auto_reboot_ts,
+            "last_auto_restart_ts": getattr(state, "last_auto_restart_ts", None),
+            "auto_restart_count": getattr(state, "auto_restart_count", 0),
             "auto_reboot_timestamps": list(getattr(state, "auto_reboot_timestamps", None) or []),
             "degraded_mode": state.degraded_mode,
             "last_hourly_status_ts": state.last_hourly_status_ts,
@@ -7255,6 +7391,10 @@ def main() -> None:
     auto_reboot_firmware_transition_guard_enabled = bool(
         config.get("auto_reboot_firmware_transition_guard_enabled", True)
     )
+    # Spec 056: Two-Tier Mining Recovery (Soft Auto-Restart vs Hard Auto-Reboot)
+    auto_restart_mining_enabled = bool(config.get("auto_restart_mining_enabled", True))
+    auto_restart_cooldown_seconds = int(config.get("auto_restart_cooldown_seconds", 300))
+    auto_restart_max_retries_before_reboot = int(config.get("auto_restart_max_retries_before_reboot", 2))
     if qa_mode:
         poll_seconds = int(config.get("qa_poll_seconds", 2))
         reboot_cooldown_seconds = int(config.get("qa_reboot_cooldown_seconds", 120))
@@ -7262,9 +7402,16 @@ def main() -> None:
         low_sustained_seconds = int(config.get("qa_low_seconds", 60))
         auto_reboot_hashboard_sustained_seconds = int(config.get("qa_hashboard_seconds", 60))
         auto_reboot_window_seconds = int(config.get("qa_auto_reboot_window_seconds", 600))
+        auto_restart_cooldown_seconds = int(config.get("qa_auto_restart_cooldown_seconds", 30))
     auto_reboot_fleet_snapshot_max_age_seconds = max(60.0, float(poll_seconds * 2))
     offline_is_actionable = bool(config.get("offline_is_actionable", True))
     hashcore_cfg = config.get("hashcore", {})
+    log(
+        "Two-tier mining recovery: "
+        f"auto_restart_enabled={str(auto_restart_mining_enabled).lower()} "
+        f"cooldown={auto_restart_cooldown_seconds}s "
+        f"max_retries={auto_restart_max_retries_before_reboot}"
+    )
     log(
         "Auto-reboot interlocks: "
         f"thermal={str(auto_reboot_thermal_guard_enabled).lower()} "
@@ -7589,6 +7736,7 @@ def main() -> None:
                     state.low_streak = 0
                     state.offline_streak = 0
                     state.hashboard_since_ts = None
+                    state.auto_restart_count = 0
 
                 if new_state == STATE_LOW:
                     if state.low_since_ts is None:
@@ -7911,6 +8059,75 @@ def main() -> None:
                     state.reboot_pending_reason = ""
                     state.reboot_pending_elapsed = None
 
+                # Spec 056: Two-Tier Mining Recovery - Level 1 (Soft Auto-Restart)
+                if (
+                    auto_restart_mining_enabled
+                    and responded
+                    and not first_tick
+                    and (
+                        new_state in (STATE_LOW, STATE_HASHBOARD)
+                        or (rate_ths is not None and rate_ths <= 0.0)
+                        or (active_boards is not None and active_boards == 0)
+                    )
+                ):
+                    _v_st_ok, _v_st_data, _ = get_miner_status(host)
+                    _vn_state, _restart_req, _reboot_req = parse_miner_status_flags(_v_st_data if _v_st_ok else None)
+                    _is_restart_cand, _restart_reason, _restart_cd = evaluate_auto_restart_candidate(
+                        now_ts=now_ts,
+                        responded=responded,
+                        rate_ths=rate_ths,
+                        threshold_ths=threshold_ths,
+                        active_boards=active_boards,
+                        expected_boards=expected_boards,
+                        miner_state=_vn_state,
+                        restart_required=_restart_req,
+                        reboot_required=_reboot_req,
+                        auto_restart_enabled=auto_restart_mining_enabled,
+                        last_auto_restart_ts=state.last_auto_restart_ts,
+                        auto_restart_cooldown_seconds=auto_restart_cooldown_seconds,
+                        auto_restart_count=state.auto_restart_count,
+                        max_retries_before_reboot=auto_restart_max_retries_before_reboot,
+                        in_maintenance=getattr(state, "is_shutdown_maintenance", False),
+                        is_snoozed=(state.snooze_until_ts is not None and now_ts < state.snooze_until_ts),
+                    )
+                    if _is_restart_cand:
+                        if qa_mode and not qa_allow_actions:
+                            log(f"[AUTO-RESTART] blocked_by=qa miner={name_display} reason={_restart_reason}")
+                            if qa_notify:
+                                send_telegram(
+                                    bot_token,
+                                    str(chat_id),
+                                    f"[AUTO-RESTART] Accion bloqueada (QA): {name_display} ({_restart_reason}).",
+                                    "ERROR",
+                                    "qa_block",
+                                )
+                        else:
+                            state.last_auto_restart_ts = now_ts
+                            state.auto_restart_count += 1
+                            threading.Thread(
+                                target=_async_execute_mining_restart,
+                                args=(
+                                    host,
+                                    vnish_api_password,
+                                    name,
+                                    miner,
+                                    _restart_reason,
+                                    state.auto_restart_count,
+                                    auto_restart_max_retries_before_reboot,
+                                    bot_token,
+                                    chat_id,
+                                    qa_mode,
+                                    qa_notify,
+                                    event_store,
+                                ),
+                                daemon=True,
+                                name=f"AutoRestart_{name}",
+                            ).start()
+                    elif _restart_reason == "cooldown":
+                        log(f"[AUTO-RESTART] blocked_by=cooldown miner={name_display} cooldown_remaining={_restart_cd:.0f}s")
+                    elif _restart_reason == "max_retries_exceeded":
+                        log(f"[AUTO-RESTART] blocked_by=max_retries_exceeded miner={name_display} attempts={state.auto_restart_count}/{auto_restart_max_retries_before_reboot} -> escalando a Nivel 2 (auto-reboot)")
+
                 # Auto-reboot policy
                 state.auto_reboot_timestamps = [
                     ts for ts in state.auto_reboot_timestamps if (now_ts - ts) <= auto_reboot_window_seconds
@@ -8183,6 +8400,7 @@ def main() -> None:
                             state.last_auto_reboot_ts = now_ts
                             state.auto_reboot_timestamps.append(now_ts)
                             state.low_since_ts = None
+                            state.auto_restart_count = 0
                             if low_sustained_seconds % 60 == 0:
                                 window_label = f"{int(low_sustained_seconds / 60)} min"
                             else:
@@ -8452,6 +8670,7 @@ def main() -> None:
                             state.auto_reboot_timestamps.append(now_ts)
                             state.low_since_ts = None
                             state.hashboard_since_ts = None
+                            state.auto_restart_count = 0
                             if auto_reboot_hashboard_sustained_seconds % 60 == 0:
                                 window_label = f"{int(auto_reboot_hashboard_sustained_seconds / 60)} min"
                             else:

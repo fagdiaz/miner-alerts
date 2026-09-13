@@ -1,29 +1,30 @@
-# MINER ALERTS — SESIÓN DE CONTINUIDAD (RELEASE V4.1.2 EN PRODUCCIÓN)
-# Motor recomendado: Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md)
+# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 055: AUTO-REBOOT ANTE FALLA DE HASHBOARD)
+# Motor recomendado: Claude Sonnet 4.6 (Thinking) o Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md / Constitución)
 
-Hola agente. La **Release v4.1.2 (Optimización de Desescalado Gradiente-Adaptativo de Ventilación y Resiliencia)** ha sido completada, testeada (840/840 PASS), commiteada (`3118f21`), pusheada a `origin/codex/022-adaptive-acquisition` y desplegada en producción:
+Hola agente. La **Spec 055 (Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard)** ha sido formalizada tras el análisis forense del incidente del Minero 23 ocurrido en la madrugada del 2026-09-13:
 
-1. **Innovación y Corrección Release v4.1.2**:
-   - `app/governance/fan_governor.py`:
-     * **Régimen de Frío Profundo** (T <= 76.0°C, delta >= 5.0°C respecto a banda muerta): Paso ágil de **-5%** PWM por ciclo y dwell dinámico reducido a **60s** (cuando no está reteniendo banda muerta), acelerando la convergencia de 25 min a 4-5 min.
-     * **Régimen de Frío Moderado** (76.0°C < T <= 78.5°C, delta >= 2.5°C): Paso intermedio de **-3%** PWM por ciclo con dwell de **90s**.
-     * **Zona de Aproximación Fina** (78.5°C < T < 81.0°C): Paso suave de **-2%** PWM con dwell de **90s** para garantizar cero overshoot térmico al ingresar a la banda muerta [81.0, 82.5]°C.
-     * **Banda Muerta** [81.0, 82.5]°C: Retención absoluta de duty (`HOLD_TARGET`).
-     * **Calentamiento** (T > 82.5°C): Subida de ventilación (+3% PWM).
-     * **Spike Térmico** (T >= 83.0°C): Salto de emergencia al 100% PWM.
-   - `app/miner_monitor.py`:
-     * Corregida la acumulación de `state.governor_holds`: ahora solo incrementa ante `ACTION_HOLD_TARGET`. Las acciones `ACTION_HOLD_DWELL` ya no inflan los holds durante la fase de desescalado, eliminando la penalización indebida de 120s.
-2. **Estado de Flota en Producción (Verificado en Vivo bajo PID 22068)**:
-   - **Minero 23**: 2698W / 2700W, chips en aproximación térmica, ventiladores bajando gradualmente (actualmente en 80% PWM).
-   - **Minero 24**: 2698W / 2700W, chips en perfecto equilibrio térmico a 82°C, ventiladores reteniendo de forma estable en 85% PWM (`HOLD_TARGET`).
-   - **Minero 25**: 2298W / 2700W, en proceso de auto-tuning de Vnish, ventiladores al 100% (`RECOVERY_MAX_COOLING`) con chips a ~65°C otorgando margen térmico ideal para subir a 2500W y 2700W.
-   - **Minero 26**: 2699W / 2700W, chips a ~76°C, ventiladores reduciendo sostenidamente desde 75% -> 66% PWM para converger a los 82°C objetivo.
-3. **Certificación y Calidad**:
-   - **840/840 tests PASS** al 100% en 14.6s (3 nuevos tests unitarios deterministas añadidos).
-   - Servicio Windows `MinerAlerts` reiniciado y operando normalmente bajo PID 22068.
+1. **Diagnóstico Forense de Causa Raíz**:
+   - A las 00:38:17, el Minero 23 sufrió un reinicio tras un `chain_break` en Cadena 1 detectado por el firmware Vnish.
+   - Al reiniciar el firmware, las 3 cadenas fallaron en arrancar (`state=failure` en Cadenas 1, 2 y 3), dejando al equipo con 0/3 placas activas y 0.0 TH/s.
+   - El monitor cambió a `STATE_HASHBOARD`.
+   - **Falla del Auto-Reboot**: El motor de auto-reinicio (diseñado en Spec 008) estaba rígidamente acoplado a `STATE_LOW`. Al entrar en `STATE_HASHBOARD`, el monitor reseteó `low_since_ts = None`, clasificó el evento como `blocked_by=not_low` cada 30 segundos durante 7 horas consecutivas, y nunca ejecutó el auto-reinicio, forzando la intervención manual matutina del operador.
+
+2. **Especificación Creada (Spec 055)**:
+   - Directorio activo: `specs/055-hashboard-failure-auto-reboot/`
+   - `spec.md`, `plan.md`, `tasks.md` completamente redactados y estructurados.
+   - `.specify/feature.json` actualizado a `specs/055-hashboard-failure-auto-reboot`.
+
+3. **Objetivo de la Siguiente Iteración**:
+   - Implementar las tareas de `specs/055-hashboard-failure-auto-reboot/tasks.md` (T001 a T015).
+   - Incorporar `hashboard_since_ts` en `MinerState`.
+   - Extender `auto_reboot_signal_allows_evaluation` para calificar mineros en `STATE_HASHBOARD` (falla total 0/3) tras superar el umbral sostenido (600s) pasando por todos los interlocks de seguridad (startup guard, cooldown 1800s, max reboots 24h, thermal guard, fleet guard).
+   - Crear suite de pruebas `tests/test_hashboard_auto_reboot.py` garantizando cero regresiones sobre los 840 tests existentes.
 
 ---
 
-## PRÓXIMOS PASOS RECOMENDADOS
-- Observación pasiva del log `logs/out.log` mientras el Minero 26 y 23 continúan su descenso hasta la banda muerta [81.0, 82.5]°C.
-- Monitoreo del avance de sintonización del Minero 25 hacia los 2700W.
+## ARCHIVOS CLAVE PARA COMENZAR:
+- `specs/055-hashboard-failure-auto-reboot/spec.md`
+- `specs/055-hashboard-failure-auto-reboot/plan.md`
+- `specs/055-hashboard-failure-auto-reboot/tasks.md`
+- `app/miner_monitor.py` (Líneas 1136-1175 y 7850-7980)
+- `tests/test_auto_reboot_signal_gate.py`

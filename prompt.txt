@@ -1,20 +1,23 @@
-﻿# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 055 Y OBSERVACIÓN EN PRODUCCIÓN)
+# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 056 Y OBSERVACIÓN EN PRODUCCIÓN)
 # Motor recomendado: Gemini 3.8 Flash High
 
-Hola agente. La **Spec 055 (Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard)** ha sido completada, verificada al 100% y desplegada en producción:
+Hola agente. La **Spec 056 (Two-Tier Mining Recovery: Soft Auto-Restart vs Hard Auto-Reboot)** ha sido completada, verificada al 100% y desplegada en producción:
 
 1. **Estado del Sistema**:
-   - **Spec 055 Implementada y Certificada**: 4 iteraciones bounded ejecutadas, 14 nuevos tests añadidos, 854/854 tests PASS.
-   - **Servicio Windows MinerAlerts**: Reiniciado exitosamente bajo PID 19832 (PPID 32436).
+   - **Spec 056 Implementada y Certificada**: 4 iteraciones bounded ejecutadas, 27 nuevos tests añadidos, 881/881 tests PASS en 14.0s (cero regresiones).
+   - **Estrategia Two-Tier Activa**:
+     * Nivel 1 (Soft Auto-Restart): Endpoint Vnish `POST /api/v1/mining/restart` en 15-20s, cooldown 300s, máximo 2 reintentos antes de escalar.
+     * Nivel 2 (Hard Auto-Reboot): Hashcore CLI (`POST /api/v1/system/reboot` o batch), ventana sostenida 600s, 6 interlocks constitucionales.
+   - **Servicio Windows MinerAlerts**: Reiniciado exitosamente bajo PID 28096 (PPID 19420), mutex adquirido, logs limpios.
    - **Flota en Producción (100% Operativa)**:
-     * Minero 23 (192.168.100.23): 3/3 placas activas, autotuning a 2500W-2700W, temp 66°C, fans 100%.
-     * Minero 24 (192.168.100.24): 3/3 placas activas, 100.0 TH/s, 2698W, temp 75°C, fans 83% modulando a 82°C.
-     * Minero 25 (192.168.100.25): 3/3 placas activas, 73.4 TH/s, 2698W, temp 75°C, fans 80% modulando a 82°C.
-     * Minero 26 (192.168.100.26): 3/3 placas activas, 100.1 TH/s, 2699W, temp 72°C, fans 90% modulando a 82°C.
-   - **Base de Datos SQLite**: Integridad verificada (`ok`), 59.5k muestras, decisiones registradas con `trigger="hashboard_failure"`.
-   - **Watchdog / Liveness**: Heartbeat activo (`schema_version=1`), sin errores en logs.
-   - **Repositorio Git**: Branch `codex/022-adaptive-acquisition` al día con `origin` (`1deea4c`), working tree limpio.
+     * Minero 23 (192.168.100.23): 3/3 placas activas, 2500W, temp 66°C.
+     * Minero 24 (192.168.100.24): 3/3 placas activas, 100.0 TH/s, 2698W, temp 75°C.
+     * Minero 25 (192.168.100.25): 3/3 placas activas, 73.4 TH/s, 2698W, temp 75°C.
+     * Minero 26 (192.168.100.26): 3/3 placas activas, 100.1 TH/s, 2699W, temp 72°C.
+   - **Base de Datos SQLite & Liveness**: Heartbeat activo, chain telemetry ingiriendo 3/3 cadenas cada 900s.
+   - **Repositorio Git**: Branch `codex/022-adaptive-acquisition` commiteada y pusheada a `origin` (`6cf51b4`).
 
 2. **Próximos Pasos**:
-   - Continuar la ventana de observación en producción de Spec 055.
-   - Atender cualquier consulta del operador o solicitud de nuevas capacidades operativas.
+   - Mantener observación en producción de la recuperación de dos niveles (Nivel 1 y Nivel 2).
+   - Proceder con la auditoría exhaustiva solicitada por el usuario o resolver cualquier consulta operativa.
+

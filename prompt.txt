@@ -1,24 +1,29 @@
-# MINER ALERTS — SESIÓN DE CONTINUIDAD (RELEASE V4.1.1 HOTFIX EN PRODUCCIÓN)
+# MINER ALERTS — SESIÓN DE CONTINUIDAD (RELEASE V4.1.2 EN PRODUCCIÓN)
 # Motor recomendado: Gemini 3.8 Flash High (según protocolo de gobernanza AGENTS.md)
 
-Hola agente. La **Spec 054 (v4.1.0)** y el **Hotfix de Estabilización y Resiliencia (Release v4.1.1)** han sido completados y verificados en producción:
+Hola agente. La **Release v4.1.2 (Optimización de Desescalado Gradiente-Adaptativo de Ventilación y Resiliencia)** ha sido completada, testeada (840/840 PASS), commiteada (`3118f21`), pusheada a `origin/codex/022-adaptive-acquisition` y desplegada en producción:
 
-1. **Hotfix Release v4.1.1**:
-   - `app/miner_monitor.py`: Incorporada la actualización `state.last_elapsed = elapsed` en cada ciclo cuando el minero responde, eliminando el re-disparo recurrente de `reboot_reason="elapsed_drop"` cada 30 segundos.
-   - `app/vnish/chains.py` y `app/governance/chain_health.py`: Sensores con estado `"init"` o en placas detenidas ya no son falsamente clasificados como errores de hardware I2C (`loc 28, 61, 66, 99 ERROR`). Diagnóstico dinámico en tarjetas (`Cadena fuera de servicio` vs `Falla de bus/sensor en placa`).
-   - `data/miner_alerts.db`: Purgados 108 registros de reinicio falso y 60 de cascada espurios.
-   - `app/state.json`: Uptime sincronizado con la flota real.
-2. **Estado de Flota en Producción**:
-   - Minero 23: ~100 TH/s (estable, cadena saludable).
-   - Minero 24: ~100 TH/s (Cadena 2 con falla I2C loc 28 monitoreada preventivamente).
-   - Minero 25: Minería restablecida con éxito tras recuperación de falla de voltaje de arranque (operando con 3/3 placas y 12/12 sensores midiendo normalmente).
-   - Minero 26: ~100 TH/s (estable, cadena saludable).
-3. **Certificación**:
-   - **837/837 tests PASS** al 100% en 14.5s (2 nuevos tests añadidos).
-   - Servicio Windows `MinerAlerts` listo para reinicio y producción.
+1. **Innovación y Corrección Release v4.1.2**:
+   - `app/governance/fan_governor.py`:
+     * **Régimen de Frío Profundo** (T <= 76.0°C, delta >= 5.0°C respecto a banda muerta): Paso ágil de **-5%** PWM por ciclo y dwell dinámico reducido a **60s** (cuando no está reteniendo banda muerta), acelerando la convergencia de 25 min a 4-5 min.
+     * **Régimen de Frío Moderado** (76.0°C < T <= 78.5°C, delta >= 2.5°C): Paso intermedio de **-3%** PWM por ciclo con dwell de **90s**.
+     * **Zona de Aproximación Fina** (78.5°C < T < 81.0°C): Paso suave de **-2%** PWM con dwell de **90s** para garantizar cero overshoot térmico al ingresar a la banda muerta [81.0, 82.5]°C.
+     * **Banda Muerta** [81.0, 82.5]°C: Retención absoluta de duty (`HOLD_TARGET`).
+     * **Calentamiento** (T > 82.5°C): Subida de ventilación (+3% PWM).
+     * **Spike Térmico** (T >= 83.0°C): Salto de emergencia al 100% PWM.
+   - `app/miner_monitor.py`:
+     * Corregida la acumulación de `state.governor_holds`: ahora solo incrementa ante `ACTION_HOLD_TARGET`. Las acciones `ACTION_HOLD_DWELL` ya no inflan los holds durante la fase de desescalado, eliminando la penalización indebida de 120s.
+2. **Estado de Flota en Producción (Verificado en Vivo bajo PID 22068)**:
+   - **Minero 23**: 2698W / 2700W, chips en aproximación térmica, ventiladores bajando gradualmente (actualmente en 80% PWM).
+   - **Minero 24**: 2698W / 2700W, chips en perfecto equilibrio térmico a 82°C, ventiladores reteniendo de forma estable en 85% PWM (`HOLD_TARGET`).
+   - **Minero 25**: 2298W / 2700W, en proceso de auto-tuning de Vnish, ventiladores al 100% (`RECOVERY_MAX_COOLING`) con chips a ~65°C otorgando margen térmico ideal para subir a 2500W y 2700W.
+   - **Minero 26**: 2699W / 2700W, chips a ~76°C, ventiladores reduciendo sostenidamente desde 75% -> 66% PWM para converger a los 82°C objetivo.
+3. **Certificación y Calidad**:
+   - **840/840 tests PASS** al 100% en 14.6s (3 nuevos tests unitarios deterministas añadidos).
+   - Servicio Windows `MinerAlerts` reiniciado y operando normalmente bajo PID 22068.
 
 ---
 
 ## PRÓXIMOS PASOS RECOMENDADOS
-- Observación pasiva en producción del servicio y del log `logs/out.log`.
-- Evaluación de telemetría con `python tools/analyze_chain_breaks.py --hours 24`.
+- Observación pasiva del log `logs/out.log` mientras el Minero 26 y 23 continúan su descenso hasta la banda muerta [81.0, 82.5]°C.
+- Monitoreo del avance de sintonización del Minero 25 hacia los 2700W.

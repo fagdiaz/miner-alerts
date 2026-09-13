@@ -59,5 +59,5 @@ Para garantizar precisión matemática absoluta, carga al ~50% de contexto por i
 - [x] **T013**: Ejecutar suite completa de pruebas (`unittest discover -s tests`) y certificar 100% PASS (840+ tests).
 - [x] **T014**: Validar sintaxis con `py_compile` en `app/miner_monitor.py`.
 - [x] **T015**: Actualizar `docs/audit/DEVELOPMENT_LOG.md`, `docs/speckit/ROADMAP.md` y `docs/speckit/DELIVERY_PLAN.md`.
-- [ ] **T016**: Commit y push a `origin/codex/022-adaptive-acquisition`.
-- [ ] **T017**: Reinicio del servicio Windows `MinerAlerts` (`Restart-Service`) y verificación del nuevo PID y logs limpios en `logs/out.log`.
+- [x] **T016**: Commit y push a `origin/codex/022-adaptive-acquisition`.
+- [x] **T017**: Reinicio del servicio Windows `MinerAlerts` (`Restart-Service`) y verificación del nuevo PID y logs limpios en `logs/out.log`.

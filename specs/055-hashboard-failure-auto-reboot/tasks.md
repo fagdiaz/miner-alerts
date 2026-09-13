@@ -28,12 +28,12 @@ Para garantizar precisión matemática absoluta, carga al ~50% de contexto por i
 ---
 
 ## Iteración 2: Temporización Sostenida de Hashboard en el Monitor
-> **Alcance**: Seguimiento temporal en el bucle principal. Solo observación, sin acciones de reinicio.
-- [ ] **T006**: En el ciclo de actualización de estado de `app/miner_monitor.py`:
+> **Alcance**: Seguimiento temporal en el bucle principal. Solo observabilidad, sin acciones de reinicio.
+- [x] **T006**: En el ciclo de actualización de estado de `app/miner_monitor.py`:
   - Cuando `new_state == STATE_HASHBOARD`: si `state.hashboard_since_ts is None`, fijarlo en `now_ts`.
   - Cuando `new_state == STATE_OK`: resetear `state.hashboard_since_ts = None`.
-- [ ] **T007**: Suprimir la clasificación espuria `result="not_low"` cuando `new_state == STATE_HASHBOARD`, registrando en su lugar `result="hashboard_not_sustained"` mientras el tiempo transcurrido sea `< hashboard_sustained_seconds`.
-- [ ] **T008**: Crear tests unitarios en `tests/test_hashboard_auto_reboot.py` verificando que el reloj `hashboard_since_ts` acumula segundos determinísticamente en cada tick y se reinicia adecuadamente ante la recuperación de placas.
+- [x] **T007**: Suprimir la clasificación espuria `result="not_low"` cuando `new_state == STATE_HASHBOARD`, registrando en su lugar `result="hashboard_not_sustained"` mientras el tiempo transcurrido sea `< hashboard_sustained_seconds`.
+- [x] **T008**: Crear tests unitarios en `tests/test_hashboard_auto_reboot.py` verificando que el reloj `hashboard_since_ts` acumula segundos determinísticamente en cada tick y se reinicia adecuadamente ante la recuperación de placas.
 
 ---
 

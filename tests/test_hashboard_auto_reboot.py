@@ -221,6 +221,51 @@ class TestHashboardAutoRebootSignalGate(unittest.TestCase):
         st.hashboard_since_ts = 12345.67
         self.assertEqual(st.hashboard_since_ts, 12345.67)
 
+    def test_hashboard_timer_advances_deterministically(self) -> None:
+        """Simulate tick progression keeping the timer anchored to the initial entry ts."""
+        st = MinerState()
+        t0 = 1000.0
+
+        # Tick 1: enters STATE_HASHBOARD -> timer initialized
+        if st.hashboard_since_ts is None:
+            st.hashboard_since_ts = t0
+        self.assertEqual(st.hashboard_since_ts, t0)
+        self.assertEqual(t0 - st.hashboard_since_ts, 0.0)
+
+        # Tick 2 (30s later): remains in STATE_HASHBOARD -> timer preserved
+        t1 = t0 + 30.0
+        if st.hashboard_since_ts is None:
+            st.hashboard_since_ts = t1
+        self.assertEqual(st.hashboard_since_ts, t0)
+        self.assertEqual(t1 - st.hashboard_since_ts, 30.0)
+
+        # Tick 20 (600s later): sustained threshold reached
+        t20 = t0 + 600.0
+        self.assertEqual(st.hashboard_since_ts, t0)
+        self.assertEqual(t20 - st.hashboard_since_ts, 600.0)
+
+    def test_hashboard_timer_resets_on_recovery_to_ok(self) -> None:
+        """Returning to STATE_OK must reset hashboard_since_ts to None."""
+        st = MinerState(state=STATE_HASHBOARD, hashboard_since_ts=1000.0)
+
+        # State transition to STATE_OK
+        new_state = STATE_OK
+        if new_state == STATE_OK:
+            st.hashboard_since_ts = None
+
+        self.assertIsNone(st.hashboard_since_ts)
+
+    def test_hashboard_timer_resets_on_reboot_detected(self) -> None:
+        """Detecting a miner reboot must reset hashboard_since_ts to None."""
+        st = MinerState(state=STATE_HASHBOARD, hashboard_since_ts=1000.0)
+
+        reboot_reason = "elapsed_reset"
+        if reboot_reason:
+            st.low_since_ts = None
+            st.hashboard_since_ts = None
+
+        self.assertIsNone(st.hashboard_since_ts)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7530,6 +7530,7 @@ def main() -> None:
                             reboot_reason = "elapsed_reset"
                     if reboot_reason:
                         state.low_since_ts = None
+                        state.hashboard_since_ts = None
                         if chain_telemetry_enabled and event_store is not None and event_store.available:
                             threading.Thread(
                                 target=_async_collect_chain_telemetry,
@@ -7585,6 +7586,7 @@ def main() -> None:
                 if new_state == STATE_OK:
                     state.low_streak = 0
                     state.offline_streak = 0
+                    state.hashboard_since_ts = None
 
                 if new_state == STATE_LOW:
                     if state.low_since_ts is None:
@@ -7592,6 +7594,12 @@ def main() -> None:
                 else:
                     state.low_since_ts = None
                     state.low_streak = 0
+
+                if new_state == STATE_HASHBOARD:
+                    if state.hashboard_since_ts is None:
+                        state.hashboard_since_ts = now_ts
+                else:
+                    state.hashboard_since_ts = None
 
                 if event_store is not None and event_store.available:
                     last_sample = last_sample_ts.get(state_key, 0.0)
@@ -7944,7 +7952,7 @@ def main() -> None:
                     "qa_mode": qa_mode,
                     "window_seconds": auto_reboot_window_seconds,
                 }
-                if auto_reboot_candidate and new_state != STATE_LOW:
+                if auto_reboot_candidate and new_state not in (STATE_LOW, STATE_HASHBOARD):
                     record_auto_reboot_decision(
                         event_store,
                         result="not_low",
@@ -7960,6 +7968,31 @@ def main() -> None:
                         f"rate_ths={rate_ths} threshold_ths={threshold_ths} "
                         f"low_streak={state.low_streak}/{fails_before_alert}"
                     )
+                if (
+                    new_state == STATE_HASHBOARD
+                    and state.hashboard_since_ts
+                    and auto_reboot_hashboard_enabled
+                ):
+                    hashboard_elapsed = now_ts - state.hashboard_since_ts
+                    if hashboard_elapsed < auto_reboot_hashboard_sustained_seconds:
+                        record_auto_reboot_decision(
+                            event_store,
+                            result="not_sustained",
+                            cooldown_remaining_seconds=None,
+                            details={
+                                "trigger": "hashboard_failure",
+                                "active_boards": active_boards,
+                                "expected_boards": expected_boards,
+                                "required_seconds": auto_reboot_hashboard_sustained_seconds,
+                                "elapsed_seconds": int(hashboard_elapsed),
+                            },
+                            **decision_context,
+                        )
+                        log(
+                            f"[AUTO-REBOOT] blocked_by=not_sustained miner={name_display} "
+                            f"trigger=hashboard_failure boards={active_boards}/{expected_boards} "
+                            f"elapsed={hashboard_elapsed:.0f}s required={auto_reboot_hashboard_sustained_seconds}s"
+                        )
                 if auto_reboot_signal == AUTO_REBOOT_SIGNAL_INVALID and prev_state == STATE_LOW:
                     record_auto_reboot_decision(
                         event_store,

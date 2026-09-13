@@ -1,21 +1,20 @@
-# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 055: AUTO-REBOOT ANTE FALLA DE HASHBOARD)
-# Motor recomendado: Gemini 3.8 Flash High (con división en 4 iteraciones seguras al ~50% de contexto)
+﻿# MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 055 Y OBSERVACIÓN EN PRODUCCIÓN)
+# Motor recomendado: Gemini 3.8 Flash High
 
-Hola agente. La **Spec 055 (Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard)** avanza con éxito y seguridad:
+Hola agente. La **Spec 055 (Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard)** ha sido completada, verificada al 100% y desplegada en producción:
 
-1. **Estado de las Iteraciones**:
-   - **Iteración 1 (COMPLETADA)**: Modelo de datos, configuración y puerta de señal pura certificados con 849 tests PASS.
-   - **Iteración 2 (COMPLETADA)**: Temporización sostenida de hashboard y supresión de falsos `not_low` implementadas (T006-T008).
-     * `state.hashboard_since_ts` se fija al entrar a `STATE_HASHBOARD` y se resetea a `None` al recuperar `STATE_OK` o tras reinicio.
-     * Suprimido el falso log `blocked_by=not_low` para `STATE_HASHBOARD`; se registra `result="not_sustained"` con `trigger="hashboard_failure"`.
-     * **852/852 tests PASS** en la suite automatizada.
-   - **Iteración 3 (SIGUIENTE PASO INMEDIATO)**: Canalización de Interlocks y Decisión de Auto-Reinicio (T009-T011).
-     * T009: Conectar la condición sostenida de `STATE_HASHBOARD` a `evaluate_auto_reboot_interlocks`, verificando los 6 interlocks (startup guard, cooldown 1800s, max reboots 24h, thermal guard 85°C, fleet guard, firmware transition guard).
-     * T010: Persistir la decisión en `reboot_decisions` del `EventStore` con `trigger: "hashboard_total_failure"`.
-     * T011: Validar la ejecución simulada (QA / Dry-run) en `tests/test_hashboard_auto_reboot.py`.
-   - **Iteración 4**: UX Telegram, Auditoría Completa, Documentación y Despliegue (T012-T017).
+1. **Estado del Sistema**:
+   - **Spec 055 Implementada y Certificada**: 4 iteraciones bounded ejecutadas, 14 nuevos tests añadidos, 854/854 tests PASS.
+   - **Servicio Windows MinerAlerts**: Reiniciado exitosamente bajo PID 19832 (PPID 32436).
+   - **Flota en Producción (100% Operativa)**:
+     * Minero 23 (192.168.100.23): 3/3 placas activas, autotuning a 2500W-2700W, temp 66°C, fans 100%.
+     * Minero 24 (192.168.100.24): 3/3 placas activas, 100.0 TH/s, 2698W, temp 75°C, fans 83% modulando a 82°C.
+     * Minero 25 (192.168.100.25): 3/3 placas activas, 73.4 TH/s, 2698W, temp 75°C, fans 80% modulando a 82°C.
+     * Minero 26 (192.168.100.26): 3/3 placas activas, 100.1 TH/s, 2699W, temp 72°C, fans 90% modulando a 82°C.
+   - **Base de Datos SQLite**: Integridad verificada (`ok`), 59.5k muestras, decisiones registradas con `trigger="hashboard_failure"`.
+   - **Watchdog / Liveness**: Heartbeat activo (`schema_version=1`), sin errores en logs.
+   - **Repositorio Git**: Branch `codex/022-adaptive-acquisition` al día con `origin` (`1deea4c`), working tree limpio.
 
-2. **Archivos Clave**:
-   - `specs/055-hashboard-failure-auto-reboot/tasks.md`
-   - `app/miner_monitor.py` (Líneas 7950-8050)
-   - `tests/test_hashboard_auto_reboot.py`
+2. **Próximos Pasos**:
+   - Continuar la ventana de observación en producción de Spec 055.
+   - Atender cualquier consulta del operador o solicitud de nuevas capacidades operativas.

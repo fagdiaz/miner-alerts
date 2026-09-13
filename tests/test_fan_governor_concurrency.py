@@ -431,9 +431,9 @@ class TestAutoswitchRecovery(unittest.TestCase):
         self.assertEqual(st24.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
         self.assertEqual(st24.governor_duty, 100)
 
-        # M26 is AT target power and cool (76°C < 82°C) -> steps down to 98%
+        # M26 is AT target power and deep cool (76°C <= 82°C - 5°C) -> steps down by 5% to 95%
         self.assertEqual(st26.governor_last_action, ACTION_STEP_DOWN)
-        self.assertEqual(st26.governor_duty, 98)
+        self.assertEqual(st26.governor_duty, 95)
 
 
 if __name__ == "__main__":

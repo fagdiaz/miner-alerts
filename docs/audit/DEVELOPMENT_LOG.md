@@ -3,6 +3,27 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-12] - Release v4.1.2: Gradient-Adaptive Fan Step-Down & Fast Cool-Zone Dwell Optimization (Completado)
+
+* **Objetivo**: Acelerar la convergencia térmica independiente de cada minero hacia el objetivo constitucional de 82.0°C cuando operan a máxima potencia (ej. 2700W) pero en temperaturas frías (ej. 72°C-76°C con ventiladores excesivos al 84%+), eliminando la lentitud del paso fijo (-2% cada 90s/120s) sin generar overshoot térmico al acercarse a la banda muerta.
+* **Diagnóstico de Causa Raíz**:
+  - El algoritmo de desescalado térmico en `app/governance/fan_governor.py` aplicaba un decremento plano y uniforme de `-2%` PWM sin importar la magnitud del margen térmico disponible (incluso estando 10°C por debajo del objetivo).
+  - Adicionalmente, en `app/miner_monitor.py`, la acción `ACTION_HOLD_DWELL` incrementaba el contador `state.governor_holds`, lo que hacía que tras 3 ciclos de espera se activara prematuramente el dwell adaptativo penalizador de `120s`, ralentizando el desescalado a ~1% por minuto y demorando más de 20-25 minutos en estabilizarse.
+* **Componentes y Cambios Implementados**:
+  - `app/governance/fan_governor.py`:
+    - **Régimen de Frío Profundo** ($T \le 76.0^\circ\text{C}$, $\Delta \ge 5.0^\circ\text{C}$): Paso ágil de **-5%** PWM por ciclo y dwell dinámico reducido a **60s** (cuando no está reteniendo banda muerta), reduciendo el tiempo de convergencia de 25 minutos a 4-5 minutos.
+    - **Régimen de Frío Moderado** ($76.0^\circ\text{C} < T \le 78.5^\circ\text{C}$, $\Delta \ge 2.5^\circ\text{C}$): Paso intermedio de **-3%** PWM por ciclo con dwell estándar de **90s**.
+    - **Zona de Aproximación Fina** ($78.5^\circ\text{C} < T < 81.0^\circ\text{C}$): Paso suave de aterrizaje de **-2%** PWM con dwell de **90s** para garantizar estabilidad absoluta y cero overshoot térmico al ingresar a la banda muerta $[81.0, 82.5]^\circ\text{C}$.
+  - `app/miner_monitor.py`:
+    - Corregida la actualización de `state.governor_holds`: ahora solo se incrementa ante `ACTION_HOLD_TARGET` (cuando el minero está efectivamente reteniendo la banda muerta objetivo), previniendo que `ACTION_HOLD_DWELL` infle el contador durante la fase de desescalado.
+  - `tests/test_fan_governor.py`:
+    - Incorporados 3 nuevos tests unitarios deterministas: `test_step_down_gradient_deep_cold`, `test_step_down_gradient_moderate_cold` y `test_step_down_gradient_fine_landing`.
+  - `tests/test_fan_governor_concurrency.py`:
+    - Actualizado test concurrente multi-minero (`test_individual_miner_reasoning_different_targets_and_temperatures`) para reflejar la reducción ágil de -5% en el Minero 26 en zona de frío profundo.
+* **Verificación y Pruebas**:
+  - **840/840 tests PASS** en 14.6s (3 nuevos tests añadidos, cero regresiones).
+  - Validación de análisis térmico 100% independiente por minero certificada.
+
 ## [2026-09-12] - Release v4.1.1: Monitor Uptime Persistence Hardening & Sensor Diagnostic Accuracy Hotfix (Completado)
 
 * **Objetivo**: Corregir la actualización de `state.last_elapsed` en el ciclo principal de monitoreo para evitar falsos incidentes recurrentes de reinicio, eliminar falsos positivos de errores I2C en cadenas inactivas/apagadas, y purgar eventos residuales en SQLite tras el arranque en producción.

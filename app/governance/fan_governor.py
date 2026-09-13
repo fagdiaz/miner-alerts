@@ -152,6 +152,9 @@ def compute_governor_step(
         if consecutive_holds >= cfg.consecutive_holds_threshold
         else cfg.dwell_seconds
     )
+    # Deep cool regime (T <= 76.0°C and delta >= 5.0°C): allow agile 60s dwell when not holding deadband
+    if max_temp_c is not None and (cfg.deadband_low_c - max_temp_c) >= 5.0 and consecutive_holds == 0:
+        dwell_effective = min(dwell_effective, 60)
 
     if seconds_since_last_change < dwell_effective:
         return GovernorDecision(
@@ -190,14 +193,28 @@ def compute_governor_step(
             requires_write=False,
         )
 
-    # 7. Cool regime (T < 81.0°C): Step Down (-2%)
-    new_duty = max(cfg.min_fan_duty_percent, curr_duty - cfg.step_down_percent)
+    # 7. Cool regime (T < 81.0°C): Adaptive Gradient Step Down
+    delta_cool = cfg.deadband_low_c - max_temp_c
+    if delta_cool >= 5.0:
+        # Deep cold regime (T <= 76.0°C, delta >= 5.0°C): agile step-down (-5%)
+        eff_step_down = max(cfg.step_down_percent, 5)
+    elif delta_cool >= 2.5:
+        # Moderate cold regime (76.0°C < T <= 78.5°C, delta 2.5°C - 5.0°C): intermediate step-down (-3%)
+        eff_step_down = max(cfg.step_down_percent, 3)
+    else:
+        # Fine approach zone (78.5°C < T < 81.0°C): gentle landing (-2%)
+        eff_step_down = cfg.step_down_percent
+
+    new_duty = max(cfg.min_fan_duty_percent, curr_duty - eff_step_down)
     needs_write = new_duty != curr_duty
     return GovernorDecision(
         action=ACTION_STEP_DOWN,
         target_duty=new_duty,
         current_duty=curr_duty,
-        reason=f"Margen térmico disponible ({max_temp_c:.1f}°C < {cfg.deadband_low_c:.1f}°C): reduciendo PWM a {new_duty}%",
+        reason=(
+            f"Margen térmico disponible ({max_temp_c:.1f}°C < {cfg.deadband_low_c:.1f}°C, "
+            f"delta={delta_cool:.1f}°C): reduciendo PWM a {new_duty}% (-{eff_step_down}%)"
+        ),
         dwell_effective=dwell_effective,
         is_emergency=False,
         requires_write=needs_write,

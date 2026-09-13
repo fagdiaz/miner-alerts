@@ -2822,9 +2822,9 @@ def execute_governor_cycle(
                     state.governor_failures = 0
 
             # Update duty and holds
-            if action in (ACTION_HOLD_TARGET, ACTION_HOLD_DWELL):
+            if action == ACTION_HOLD_TARGET:
                 state.governor_holds = state.governor_holds + 1
-            else:
+            elif action != ACTION_HOLD_DWELL:
                 state.governor_holds = 0
 
             if dec.requires_write and (dry_run or write_ok):

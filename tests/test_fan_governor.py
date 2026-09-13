@@ -213,6 +213,48 @@ class TestFanGovernor(unittest.TestCase):
         self.assertEqual(dec.target_duty, 88)
         self.assertTrue(dec.requires_write)
 
+    def test_step_down_gradient_deep_cold(self):
+        # T = 74.0°C (delta = 7.0°C >= 5.0°C): deep cold -> drops by 5% and dwell = 60s
+        dec = compute_governor_step(
+            max_temp_c=74.0,
+            current_duty=90,
+            seconds_since_last_change=65.0,
+            consecutive_holds=0,
+            config=self.cfg,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_DOWN)
+        self.assertEqual(dec.target_duty, 85)
+        self.assertEqual(dec.dwell_effective, 60)
+        self.assertTrue(dec.requires_write)
+
+    def test_step_down_gradient_moderate_cold(self):
+        # T = 77.0°C (delta = 4.0°C >= 2.5°C): moderate cold -> drops by 3%
+        dec = compute_governor_step(
+            max_temp_c=77.0,
+            current_duty=90,
+            seconds_since_last_change=95.0,
+            consecutive_holds=0,
+            config=self.cfg,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_DOWN)
+        self.assertEqual(dec.target_duty, 87)
+        self.assertEqual(dec.dwell_effective, 90)
+        self.assertTrue(dec.requires_write)
+
+    def test_step_down_gradient_fine_landing(self):
+        # T = 79.5°C (delta = 1.5°C < 2.5°C): fine landing approach -> drops by 2%
+        dec = compute_governor_step(
+            max_temp_c=79.5,
+            current_duty=90,
+            seconds_since_last_change=95.0,
+            consecutive_holds=0,
+            config=self.cfg,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_DOWN)
+        self.assertEqual(dec.target_duty, 88)
+        self.assertEqual(dec.dwell_effective, 90)
+        self.assertTrue(dec.requires_write)
+
 
 if __name__ == "__main__":
     unittest.main()

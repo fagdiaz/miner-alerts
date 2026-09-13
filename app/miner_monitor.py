@@ -1736,6 +1736,8 @@ def record_auto_reboot_decision(
     low_elapsed = None
     if state.low_since_ts is not None:
         low_elapsed = max(0.0, evaluated_ts - state.low_since_ts)
+    elif state.hashboard_since_ts is not None:
+        low_elapsed = max(0.0, evaluated_ts - state.hashboard_since_ts)
     event_store.record_reboot_decision(
         evaluated_ts=evaluated_ts,
         miner_key=f"{miner.get('name')}|{miner.get('host')}:{miner.get('port')}",
@@ -7968,31 +7970,6 @@ def main() -> None:
                         f"rate_ths={rate_ths} threshold_ths={threshold_ths} "
                         f"low_streak={state.low_streak}/{fails_before_alert}"
                     )
-                if (
-                    new_state == STATE_HASHBOARD
-                    and state.hashboard_since_ts
-                    and auto_reboot_hashboard_enabled
-                ):
-                    hashboard_elapsed = now_ts - state.hashboard_since_ts
-                    if hashboard_elapsed < auto_reboot_hashboard_sustained_seconds:
-                        record_auto_reboot_decision(
-                            event_store,
-                            result="not_sustained",
-                            cooldown_remaining_seconds=None,
-                            details={
-                                "trigger": "hashboard_failure",
-                                "active_boards": active_boards,
-                                "expected_boards": expected_boards,
-                                "required_seconds": auto_reboot_hashboard_sustained_seconds,
-                                "elapsed_seconds": int(hashboard_elapsed),
-                            },
-                            **decision_context,
-                        )
-                        log(
-                            f"[AUTO-REBOOT] blocked_by=not_sustained miner={name_display} "
-                            f"trigger=hashboard_failure boards={active_boards}/{expected_boards} "
-                            f"elapsed={hashboard_elapsed:.0f}s required={auto_reboot_hashboard_sustained_seconds}s"
-                        )
                 if auto_reboot_signal == AUTO_REBOOT_SIGNAL_INVALID and prev_state == STATE_LOW:
                     record_auto_reboot_decision(
                         event_store,
@@ -8221,6 +8198,273 @@ def main() -> None:
                                     str(chat_id),
                                     f"AUTO-REBOOT{qa_suffix}: {name_display} LOW por {window_label} "
                                     f"({format_rate(rate_ths)} < {threshold_ths:.2f} TH/s) -> reboot enviado\n"
+                                    "Diagnostico: /why",
+                                    "REBOOT",
+                                    "auto_reboot",
+                                )
+                        else:
+                            if (not qa_mode) or qa_notify:
+                                key = f"{name}|{host}:{port}"
+                                last = _CLI_MISSING_NOTIFIED.get(key, 0.0)
+                                if "no encontrado" in msg.lower():
+                                    if (now_ts - last) >= 3600:
+                                        _CLI_MISSING_NOTIFIED[key] = now_ts
+                                        send_telegram(
+                                            bot_token,
+                                            str(chat_id),
+                                            f"AUTO-REBOOT FAILED: {name_display}. {msg}\nDiagnostico: /why",
+                                            "ERROR",
+                                            "auto_reboot_failed",
+                                        )
+                                else:
+                                    send_telegram(
+                                        bot_token,
+                                        str(chat_id),
+                                        f"AUTO-REBOOT FAILED: {name_display}. {msg}\nDiagnostico: /why",
+                                        "ERROR",
+                                        "auto_reboot_failed",
+                                    )
+                elif (
+                    new_state == STATE_HASHBOARD
+                    and state.hashboard_since_ts
+                    and auto_reboot_hashboard_enabled
+                ):
+                    if not auto_reboot_signal_allows_evaluation(
+                        new_state,
+                        state.low_since_ts,
+                        auto_reboot_signal,
+                        hashboard_since_ts=state.hashboard_since_ts,
+                        active_boards=active_boards,
+                        expected_boards=expected_boards,
+                        allow_partial_hashboard=auto_reboot_hashboard_partial_enabled,
+                        hashboard_reboot_enabled=auto_reboot_hashboard_enabled,
+                    ):
+                        reset_sustained_hashboard_if_ineligible(
+                            state,
+                            auto_reboot_signal,
+                            active_boards,
+                            expected_boards,
+                            auto_reboot_hashboard_partial_enabled,
+                        )
+                    elif startup_guard_active:
+                        record_auto_reboot_decision(
+                            event_store,
+                            result="startup_guard",
+                            cooldown_remaining_seconds=None,
+                            details={
+                                "startup_guard_seconds": startup_guard_seconds,
+                                "trigger": "hashboard_failure",
+                            },
+                            **decision_context,
+                        )
+                        log(
+                            f"[AUTO-REBOOT] blocked_by=startup_guard miner={name_display} "
+                            f"since_start={now_ts - process_start_ts:.1f}s guard={startup_guard_seconds}s trigger=hashboard_failure"
+                        )
+                    elif (now_ts - state.hashboard_since_ts) < auto_reboot_hashboard_sustained_seconds:
+                        hashboard_elapsed = now_ts - state.hashboard_since_ts
+                        record_auto_reboot_decision(
+                            event_store,
+                            result="not_sustained",
+                            cooldown_remaining_seconds=None,
+                            details={
+                                "trigger": "hashboard_failure",
+                                "active_boards": active_boards,
+                                "expected_boards": expected_boards,
+                                "required_seconds": auto_reboot_hashboard_sustained_seconds,
+                                "elapsed_seconds": int(hashboard_elapsed),
+                            },
+                            **decision_context,
+                        )
+                        log(
+                            f"[AUTO-REBOOT] blocked_by=not_sustained miner={name_display} "
+                            f"trigger=hashboard_failure boards={active_boards}/{expected_boards} "
+                            f"elapsed={hashboard_elapsed:.0f}s required={auto_reboot_hashboard_sustained_seconds}s"
+                        )
+                    elif not interlock_decision.allowed:
+                        interlock_reason = interlock_decision.reason or "safety_interlock"
+                        affected_miners = list(interlock_decision.affected_miners)
+                        record_auto_reboot_decision(
+                            event_store,
+                            result=interlock_reason,
+                            cooldown_remaining_seconds=None,
+                            details={
+                                "trigger": "hashboard_failure",
+                                "affected_miners": affected_miners,
+                                "affected_count": len(affected_miners),
+                                "fleet_min_affected": auto_reboot_fleet_guard_min_affected,
+                                "fleet_snapshot_age_seconds": (
+                                    interlock_decision.fleet_snapshot_age_seconds
+                                ),
+                                "max_temp_c": interlock_decision.max_temp_c,
+                                "thermal_limit_c": auto_reboot_max_temp_c,
+                                "chains_transitioning_count": (
+                                    interlock_decision.chains_transitioning_count
+                                ),
+                                "firmware_transition_guard_enabled": (
+                                    auto_reboot_firmware_transition_guard_enabled
+                                ),
+                                "hashboard_timer_reset": bool(
+                                    auto_reboot_firmware_transition_guard_enabled
+                                    and (interlock_decision.chains_transitioning_count or 0) > 0
+                                ),
+                            },
+                            **decision_context,
+                        )
+                        if (
+                            auto_reboot_firmware_transition_guard_enabled
+                            and (interlock_decision.chains_transitioning_count or 0) > 0
+                        ):
+                            state.hashboard_since_ts = now_ts
+                        if interlock_reason == "high_temperature":
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=high_temperature miner={name_display} "
+                                f"max_temp_c={interlock_decision.max_temp_c} "
+                                f"limit_c={auto_reboot_max_temp_c:.1f}"
+                            )
+                        elif interlock_reason == "firmware_transition":
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=firmware_transition miner={name_display} "
+                                f"transitioning_chains={interlock_decision.chains_transitioning_count} "
+                                f"hashboard_timer_reset=true"
+                            )
+                        else:
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=fleet_incident miner={name_display} "
+                                f"affected_count={len(affected_miners)} "
+                                f"min_affected={auto_reboot_fleet_guard_min_affected} "
+                                f"snapshot_age={interlock_decision.fleet_snapshot_age_seconds} "
+                                f"affected={','.join(affected_miners)}"
+                            )
+                    else:
+                        skew_tolerance_seconds = 10
+                        last_reboot_ts = None
+                        if state.last_manual_reboot_ts is not None:
+                            last_reboot_ts = state.last_manual_reboot_ts
+                        if state.last_auto_reboot_ts is not None:
+                            last_reboot_ts = (
+                                state.last_auto_reboot_ts
+                                if last_reboot_ts is None
+                                else max(last_reboot_ts, state.last_auto_reboot_ts)
+                            )
+                        if last_reboot_ts is not None and last_reboot_ts > now_ts + skew_tolerance_seconds:
+                            log(
+                                f"[WARN] last_reboot_ts ahead of clock "
+                                f"miner={name_display} last_reboot_ts={last_reboot_ts} now={now_ts}"
+                            )
+                            last_reboot_ts = now_ts
+                        if last_reboot_ts is not None:
+                            cooldown_delta = max(0.0, now_ts - last_reboot_ts)
+                            if cooldown_delta < reboot_cooldown_seconds:
+                                cooldown_remaining = max(
+                                    0.0,
+                                    reboot_cooldown_seconds - cooldown_delta,
+                                )
+                                record_auto_reboot_decision(
+                                    event_store,
+                                    result="cooldown",
+                                    cooldown_remaining_seconds=cooldown_remaining,
+                                    details={
+                                        "cooldown_seconds": reboot_cooldown_seconds,
+                                        "trigger": "hashboard_failure",
+                                    },
+                                    **decision_context,
+                                )
+                                log(
+                                    f"[AUTO-REBOOT] blocked_by=cooldown miner={name_display} "
+                                    f"trigger=hashboard_failure cooldown_delta={cooldown_delta:.0f}s cooldown={reboot_cooldown_seconds}s"
+                                )
+                                continue
+                        if len(state.auto_reboot_timestamps) >= max_reboots_per_window:
+                            record_auto_reboot_decision(
+                                event_store,
+                                result="window",
+                                cooldown_remaining_seconds=None,
+                                details={
+                                    "max_reboots_per_window": max_reboots_per_window,
+                                    "trigger": "hashboard_failure",
+                                },
+                                **decision_context,
+                            )
+                            log(
+                                f"[AUTO-REBOOT] blocked_by=window miner={name_display} "
+                                f"trigger=hashboard_failure window_count={len(state.auto_reboot_timestamps)} window_seconds={auto_reboot_window_seconds}"
+                            )
+                            if not state.degraded_mode:
+                                state.degraded_mode = True
+                                log(
+                                    f"[DEGRADED] {name_display} ({host}) limite auto-reboot alcanzado."
+                                )
+                                if (not qa_mode) or qa_notify:
+                                    send_telegram(
+                                        bot_token,
+                                        str(chat_id),
+                                        f"DEGRADED: {name_display} limite auto-reboot alcanzado.",
+                                        "STATE_CHANGE",
+                                        "degraded",
+                                    )
+                            continue
+                        if qa_mode and not qa_allow_actions:
+                            record_auto_reboot_decision(
+                                event_store,
+                                result="qa",
+                                cooldown_remaining_seconds=None,
+                                details={
+                                    "qa_allow_actions": qa_allow_actions,
+                                    "trigger": "hashboard_failure",
+                                },
+                                **decision_context,
+                            )
+                            log(f"[AUTO-REBOOT] blocked_by=qa miner={name_display} trigger=hashboard_failure")
+                            if qa_notify:
+                                send_telegram(
+                                    bot_token,
+                                    str(chat_id),
+                                    "Accion bloqueada (QA). Habilita qa_allow_real_actions=true para permitir reboots reales.",
+                                    "ERROR",
+                                    "qa_block",
+                                )
+                            continue
+                        ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                        record_auto_reboot_decision(
+                            event_store,
+                            result="executed" if ok else "failed",
+                            cooldown_remaining_seconds=None,
+                            details={
+                                "trigger": "hashboard_failure",
+                                "message": _short_text(msg, 120),
+                                "active_boards": active_boards,
+                                "expected_boards": expected_boards,
+                            },
+                            **decision_context,
+                        )
+                        record_action_outcome(
+                            event_store,
+                            occurred_ts=now_ts,
+                            miner=miner,
+                            action="reboot",
+                            source="auto",
+                            ok=ok,
+                            message=msg,
+                        )
+                        if ok:
+                            state.last_auto_reboot_ts = now_ts
+                            state.auto_reboot_timestamps.append(now_ts)
+                            state.low_since_ts = None
+                            state.hashboard_since_ts = None
+                            if auto_reboot_hashboard_sustained_seconds % 60 == 0:
+                                window_label = f"{int(auto_reboot_hashboard_sustained_seconds / 60)} min"
+                            else:
+                                window_label = f"{auto_reboot_hashboard_sustained_seconds}s"
+                            log(
+                                f"[AUTO-REBOOT] {name_display} HASHBOARD ({active_boards}/{expected_boards} placas) por {window_label}."
+                            )
+                            if (not qa_mode) or qa_notify:
+                                qa_suffix = " (QA)" if qa_mode else ""
+                                send_telegram(
+                                    bot_token,
+                                    str(chat_id),
+                                    f"AUTO-REBOOT{qa_suffix}: {name_display} falla de placas ({active_boards}/{expected_boards}) sostenida por {window_label} -> reboot enviado\n"
                                     "Diagnostico: /why",
                                     "REBOOT",
                                     "auto_reboot",

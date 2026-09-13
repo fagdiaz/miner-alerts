@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (54 de 54 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 840 tests PASS — Release V4.1.2 Gradiente-Adaptativo & Resiliencia Certificada).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (55 de 55 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 854 tests PASS — Release V4.1.3 Auto-Reboot Hashboard & Resiliencia Certificada).
 
 
 ---
@@ -711,13 +711,21 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Tarjeta de alerta preventiva y comando interactivo `/chains` en Telegram con visualización ejecutiva del estado por hashboard.
 - [x] Herramienta analítica de línea de comandos `tools/analyze_chain_breaks.py` para cruce de fallas y predicción de fin de vida de placas.
 
+### Iniciativa 9 — Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard (Spec 055 - Completado)
+- [x] Extensión de la puerta pura `auto_reboot_signal_allows_evaluation` para admitir `STATE_HASHBOARD` (0/3 placas con temporizador activo) manteniendo compatibilidad 100% con `STATE_LOW`.
+- [x] Temporizador monótono `hashboard_since_ts` en `MinerState` inicializado al entrar en falla y reseteado al recuperar 3/3 placas o ante reinicio.
+- [x] Canalización completa a través de los 6 interlocks constitucionales (Startup Guard, ventana sostenida 600s, Thermal Guard 85°C, Fleet Incident Guard >= 2, Firmware Transition Guard, Cooldown 1800s, Límite de ventana 3/24h).
+- [x] Ejecución controlada vía Hashcore CLI (`run_hashcore_cli`), reseteo de temporizadores y tarjeta ejecutiva especializada en Telegram.
+- [x] Registro determinista en `reboot_decisions` del `EventStore` con `trigger="hashboard_failure"`.
+- [x] Certificación global con 854/854 tests unitarios y de regresión PASS.
+
 ---
 
 ## Governance
 
-- All 54 specifications in the program are complete, verified with evidence, and closed.
-- Version 4.1.2 (Release V4.1.2 Gradient-Adaptive Fan Step-Down & Resiliencia) is certified with 840/840 tests PASS.
-- Spec 054 (Predictive Chain Diagnostics) and Hotfixes v4.1.1/v4.1.2 are fully implemented, verified, and operational in production.
+- All 55 specifications in the program are complete, verified with evidence, and closed.
+- Version 4.1.3 (Release V4.1.3 Auto-Reboot Hashboard & Resiliencia) is certified with 854/854 tests PASS.
+- Spec 055 (Hashboard Failure Auto-Reboot) is fully implemented, verified, and operational in production.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
 - Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`.

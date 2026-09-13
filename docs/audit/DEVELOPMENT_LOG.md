@@ -3,6 +3,34 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-13] - Spec 055: Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard (Completado)
+
+* **Objetivo**: Proveer autorecuperación automática y segura ante pérdidas totales o severas de placas hash (`STATE_HASHBOARD`, 0/3 placas activas, 0.0 TH/s) tras caídas de cadena (`chain_break`) o desincronización de firmware, evitando que los mineros queden atrapados en bucles de inactividad de más de 7 horas sin reinicio.
+* **Diagnóstico Forense de Causa Raíz**:
+  - Durante el incidente del Minero 23 (`2026-09-13 00:38:17`), un `chain_break` en cadena 1 provocó que el firmware reiniciara y dejara 0 de 3 placas activas.
+  - El monitor clasificó el estado como `STATE_HASHBOARD`. Sin embargo, la lógica histórica de auto-reboot (`Spec 008`) estaba restringida exclusivamente a `STATE_LOW`. En `STATE_HASHBOARD`, el monitor reseteaba `low_since_ts = None`, clasificando erróneamente al minero como `blocked_by=not_low`, impidiendo la evaluación del reinicio durante más de 7 horas continuas hasta la intervención humana.
+* **Componentes y Cambios Implementados**:
+  - `app/miner_monitor.py`:
+    - Incorporado campo `hashboard_since_ts: Optional[float] = None` en `@dataclass MinerState`, con persistencia en `save_state` y reinicio seguro en `load_state`.
+    - Claves de configuración agregadas con fallbacks seguros: `auto_reboot_hashboard_enabled` (default `True`), `auto_reboot_hashboard_sustained_seconds` (default `600s`), `auto_reboot_hashboard_partial_enabled` (default `False`).
+    - Extendida la función pura `auto_reboot_signal_allows_evaluation` para soportar `STATE_HASHBOARD` (0/3 placas con temporizador activo) manteniendo compatibilidad 100% con `STATE_LOW`.
+    - Creado helper `reset_sustained_hashboard_if_ineligible` para resetear el reloj ante recuperación o señales inválidas.
+    - Canalización completa y dedicada de interlocks en el bucle principal de monitorización:
+      1. Startup Guard (600s).
+      2. Ventana sostenida (600s).
+      3. Interlocks constitucionales (Thermal Guard 85°C, Fleet Incident Guard $\ge 2$ mineros, Firmware Transition Guard que resetea el reloj si hay cadenas en reinicio).
+      4. Cooldown (1800s).
+      5. Límite de ventana (3 reboots / 24h) y modo degradado.
+      6. Ejecución controlada vía Hashcore CLI (`run_hashcore_cli`) y reseteo simultáneo de temporizadores `low_since_ts` y `hashboard_since_ts`.
+    - Notificación Telegram especializada para recuperación de hashboard:
+      `AUTO-REBOOT: {name} falla de placas (0/3) sostenida por 10 min -> reboot enviado\nDiagnostico: /why`.
+    - Registro en `reboot_decisions` del `EventStore` con `trigger="hashboard_failure"` y `low_elapsed_seconds=600.0`.
+  - `tests/test_hashboard_auto_reboot.py`:
+    - 14 tests unitarios y de canalización cubriendo compatibilidad de señales, gates parciales vs totales, temporización monótona, preservación de los 6 interlocks y serialización de estado.
+* **Verificación y Pruebas**:
+  - **854/854 tests PASS** en 14.5s (14 nuevos tests añadidos, cero regresiones).
+  - Cero violaciones de invariantes en `test_auto_reboot_signal_gate.py`, `test_reboot_safety.py` y `test_vnish_hashboard_detection.py`.
+
 ## [2026-09-12] - Release v4.1.2: Gradient-Adaptive Fan Step-Down & Fast Cool-Zone Dwell Optimization (Completado)
 
 * **Objetivo**: Acelerar la convergencia térmica independiente de cada minero hacia el objetivo constitucional de 82.0°C cuando operan a máxima potencia (ej. 2700W) pero en temperaturas frías (ej. 72°C-76°C con ventiladores excesivos al 84%+), eliminando la lentitud del paso fijo (-2% cada 90s/120s) sin generar overshoot térmico al acercarse a la banda muerta.

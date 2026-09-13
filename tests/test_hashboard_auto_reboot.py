@@ -1,5 +1,7 @@
+import inspect
 import unittest
 from typing import Optional
+from unittest.mock import MagicMock
 
 from app.miner_monitor import (
     AUTO_REBOOT_SIGNAL_ELIGIBLE,
@@ -9,7 +11,10 @@ from app.miner_monitor import (
     STATE_LOW,
     STATE_OK,
     MinerState,
+    VnishTelemetry,
     auto_reboot_signal_allows_evaluation,
+    main,
+    record_auto_reboot_decision,
     reset_sustained_hashboard_if_ineligible,
     reset_sustained_low_if_signal_ineligible,
 )
@@ -265,6 +270,81 @@ class TestHashboardAutoRebootSignalGate(unittest.TestCase):
             st.hashboard_since_ts = None
 
         self.assertIsNone(st.hashboard_since_ts)
+
+
+class TestHashboardAutoRebootPipeline(unittest.TestCase):
+    """Spec 055 - Iteration 3 & 4: Pipeline tests for hashboard auto-reboot and interlocks."""
+
+    def test_runtime_wiring_hashboard_reboot_pipeline_preserves_interlocks(self) -> None:
+        """Verify the hashboard auto-reboot block in main maintains all 6 constitutional interlocks in sequence."""
+        source = inspect.getsource(main)
+
+        # Hashboard auto-reboot policy block must exist
+        self.assertIn("elif (\n                    new_state == STATE_HASHBOARD", source)
+        hashboard_policy = source.split("elif (\n                    new_state == STATE_HASHBOARD", 1)[1]
+
+        # Verify presence of evaluation gate and helper
+        self.assertIn("reset_sustained_hashboard_if_ineligible", hashboard_policy)
+
+        # Verify ordering of the 6 constitutional interlocks
+        startup_pos = hashboard_policy.index("elif startup_guard_active:")
+        sustained_pos = hashboard_policy.index("(now_ts - state.hashboard_since_ts) < auto_reboot_hashboard_sustained_seconds:")
+        interlock_pos = hashboard_policy.index("elif not interlock_decision.allowed:")
+        cooldown_pos = hashboard_policy.index("cooldown_delta < reboot_cooldown_seconds:")
+        window_pos = hashboard_policy.index("len(state.auto_reboot_timestamps) >= max_reboots_per_window:")
+        action_pos = hashboard_policy.index('run_hashcore_cli(hashcore_cfg, miner, "reboot"')
+
+        self.assertLess(startup_pos, sustained_pos, "Startup guard must precede sustained check")
+        self.assertLess(sustained_pos, interlock_pos, "Sustained check must precede interlock evaluation")
+        self.assertLess(interlock_pos, cooldown_pos, "Interlocks must precede cooldown check")
+        self.assertLess(cooldown_pos, window_pos, "Cooldown must precede window check")
+        self.assertLess(window_pos, action_pos, "Window check must precede reboot action execution")
+
+        # Verify transition guard resets hashboard_since_ts
+        interlock_branch = hashboard_policy.split("elif not interlock_decision.allowed:", 1)[1].split("else:", 1)[0]
+        self.assertIn("state.hashboard_since_ts = now_ts", interlock_branch)
+
+        # Verify action execution resets both timers and records decisions
+        action_branch = hashboard_policy.split('run_hashcore_cli(hashcore_cfg, miner, "reboot"', 1)[1]
+        self.assertIn("state.hashboard_since_ts = None", action_branch)
+        self.assertIn("state.low_since_ts = None", action_branch)
+
+        # Verify Telegram alert message format
+        self.assertIn("falla de placas ({active_boards}/{expected_boards}) sostenida por {window_label}", action_branch)
+
+    def test_record_auto_reboot_decision_populates_hashboard_elapsed(self) -> None:
+        """record_auto_reboot_decision must populate low_elapsed_seconds using hashboard_since_ts when low_since_ts is None."""
+        mock_store = MagicMock()
+        mock_store.available = True
+
+        st = MinerState(state=STATE_HASHBOARD, hashboard_since_ts=1000.0, low_since_ts=None)
+        telemetry = VnishTelemetry(max_temp_c=65.0)
+
+        record_auto_reboot_decision(
+            event_store=mock_store,
+            evaluated_ts=1600.0,
+            miner={"name": "23", "host": "192.168.100.23", "port": 4028},
+            state=st,
+            result="not_sustained",
+            responded=True,
+            rate_ths=0.0,
+            threshold_ths=60.0,
+            active_boards=0,
+            expected_boards=3,
+            telemetry=telemetry,
+            startup_guard_active=False,
+            qa_mode=False,
+            cooldown_remaining_seconds=None,
+            window_seconds=21600,
+            details={"trigger": "hashboard_failure", "active_boards": 0, "expected_boards": 3},
+        )
+
+        mock_store.record_reboot_decision.assert_called_once()
+        _, kwargs = mock_store.record_reboot_decision.call_args
+        self.assertEqual(kwargs["low_elapsed_seconds"], 600.0)
+        self.assertEqual(kwargs["state"], STATE_HASHBOARD)
+        self.assertEqual(kwargs["result"], "not_sustained")
+        self.assertEqual(kwargs["details"]["trigger"], "hashboard_failure")
 
 
 if __name__ == "__main__":

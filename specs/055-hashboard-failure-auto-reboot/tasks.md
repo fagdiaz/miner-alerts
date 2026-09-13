@@ -39,7 +39,7 @@ Para garantizar precisión matemática absoluta, carga al ~50% de contexto por i
 
 ## Iteración 3: Canalización de Interlocks y Decisión de Auto-Reinicio
 > **Alcance**: Evaluación y toma de decisión estricta a través de los 6 interlocks constitucionales.
-- [ ] **T009**: Conectar la condición de `STATE_HASHBOARD` sostenido a la llamada de `evaluate_auto_reboot_interlocks`:
+- [x] **T009**: Conectar la condición de `STATE_HASHBOARD` sostenido a la llamada de `evaluate_auto_reboot_interlocks`:
   - Si `startup_guard_active` -> Bloqueado por `startup_guard`.
   - Si `elapsed < hashboard_sustained_seconds` -> Bloqueado por `not_sustained`.
   - Si `now_ts - last_reboot_ts < cooldown_seconds` -> Bloqueado por `cooldown`.
@@ -47,17 +47,17 @@ Para garantizar precisión matemática absoluta, carga al ~50% de contexto por i
   - Si `max_temp_c >= thermal_limit_c` -> Bloqueado por `thermal_guard`.
   - Si `fleet_affected >= fleet_min_affected` -> Bloqueado por `fleet_guard`.
   - Si `firmware_transition_active` -> Bloqueado por `firmware_transition_guard`.
-- [ ] **T010**: Persistir en la tabla `reboot_decisions` del `EventStore` el registro determinista con `trigger: "hashboard_total_failure"`, número de placas activas y tiempo sostenido.
-- [ ] **T011**: Validar la ejecución simulada (QA / Dry-run) en `tests/test_hashboard_auto_reboot.py` verificando que `run_hashcore_cli(..., "reboot")` solo se invoca cuando todos los 6 interlocks están en verde.
+- [x] **T010**: Persistir en la tabla `reboot_decisions` del `EventStore` el registro determinista con `trigger: "hashboard_total_failure"`, número de placas activas y tiempo sostenido.
+- [x] **T011**: Validar la ejecución simulada (QA / Dry-run) en `tests/test_hashboard_auto_reboot.py` verificando que `run_hashcore_cli(..., "reboot")` solo se invoca cuando todos los 6 interlocks están en verde.
 
 ---
 
 ## Iteración 4: UX Telegram, Auditoría Completa, Documentación y Despliegue
 > **Alcance**: Notificación al operador, regresión global (840+ tests), commit, push y reinicio en producción.
-- [ ] **T012**: Formatear mensaje/tarjeta de Telegram para auto-reinicio por falla de placas:
+- [x] **T012**: Formatear mensaje/tarjeta de Telegram para auto-reinicio por falla de placas:
   `[AUTOREBOOT] Minero {name} reiniciado automáticamente tras 10 min sin placas activas (0/3)`.
-- [ ] **T013**: Ejecutar suite completa de pruebas (`unittest discover -s tests`) y certificar 100% PASS (840+ tests).
-- [ ] **T014**: Validar sintaxis con `py_compile` en `app/miner_monitor.py`.
-- [ ] **T015**: Actualizar `docs/audit/DEVELOPMENT_LOG.md`, `docs/speckit/ROADMAP.md` y `docs/speckit/DELIVERY_PLAN.md`.
+- [x] **T013**: Ejecutar suite completa de pruebas (`unittest discover -s tests`) y certificar 100% PASS (840+ tests).
+- [x] **T014**: Validar sintaxis con `py_compile` en `app/miner_monitor.py`.
+- [x] **T015**: Actualizar `docs/audit/DEVELOPMENT_LOG.md`, `docs/speckit/ROADMAP.md` y `docs/speckit/DELIVERY_PLAN.md`.
 - [ ] **T016**: Commit y push a `origin/codex/022-adaptive-acquisition`.
 - [ ] **T017**: Reinicio del servicio Windows `MinerAlerts` (`Restart-Service`) y verificación del nuevo PID y logs limpios en `logs/out.log`.

@@ -65,6 +65,9 @@ safety gates are not compressed to recover an estimate.
 | Release Hotfix v4.0.1 | Closed 2026-09-10 (`approved`) | Persistencia inmune a apagones con `os.fsync()`, respaldo `.bak`, scope global en `main` y aislamiento de tests | 5 tests PASS, 797 tests PASS, activo en producción bajo PID 6424. |
 | Release Hotfix v4.0.3 | Closed 2026-09-12 (`approved`) | Piso de modulación del fan governor calibrado de 75% a 30% PWM permitiendo regulación continua hacia 82.0°C | 2 tests añadidos, 802 tests PASS, activo en producción. |
 | Spec 054 chain diagnostics | Closed 2026-09-12 (`approved`) | Ingesta asíncrona `/api/v1/chains`, SQLite v7, diagnóstico predictivo, comando `/chains` y CLI analítico | 33 tests añadidos, 835 tests PASS, activo en producción bajo PID 12660. |
+| Release Hotfix v4.1.1 | Closed 2026-09-12 (`approved`) | Actualización segura de `last_elapsed`, supresión de falsas alarmas I2C en cadenas inactivas | 2 tests añadidos, 837 tests PASS. |
+| Release v4.1.2 | Closed 2026-09-12 (`approved`) | Desescalado adaptativo con gradientes térmicos (-5%/-3%/-2%) y corrección de dwell | 3 tests añadidos, 840 tests PASS. |
+| Spec 055 hashboard auto-reboot | Closed 2026-09-13 (`approved`) | Auto-reboot seguro ante falla total de placas (0/3), ventana sostenida 600s, 6 interlocks | 14 tests añadidos, 854 tests PASS. |
 
 ## Milestones
 

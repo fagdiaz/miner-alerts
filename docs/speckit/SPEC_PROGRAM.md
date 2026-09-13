@@ -291,7 +291,9 @@ The program requires three documentation sweeps.
 - Release V4.0.2 / Spec 044 Recalibration is **Completed, Silent Mode 30%–50% PWM, 82.0°C Regulation & Independent Elevator Modulation Verified in Live Production** (`v4.0.2`, 800/800 tests PASS).
 - Release V4.0.3 / Fan Floor 30% Hotfix is **Completed, Minimum Fan Duty Floor Calibrated to 30% for Full Thermal Modulation Bandwidth Down to 82.0°C Target** (`v4.0.3`, 802/802 tests PASS).
 - Spec 054 is **Completed, Deep Chain Telemetry Ingestion, SQLite v7 Storage, Predictive Hashboard Diagnostics & Interactive /chains UX Certified in Live Production** (`v4.1.0`, 835/835 tests PASS).
-- All 54 specifications across V1, V2, V3, and V4 have satisfied their design, test, concurrency, and evidence gates with 835/835 passing automated tests.
+- Spec 055 is **Completed, Automated Hashboard Failure Recovery, 6-Interlock Auto-Reboot & Sustained 600s Window Certified in Live Production** (`v4.1.3`, 854/854 tests PASS).
+- Spec 056 is **Completed, Two-Tier Mining Recovery (Soft Auto-Restart via Vnish REST vs Hard Auto-Reboot via Hashcore CLI) Certified in Live Production** (`v4.1.4`, 881/881 tests PASS).
+- All 56 specifications across V1, V2, V3, and V4 have satisfied their design, test, concurrency, and evidence gates with 881/881 passing automated tests.
 
 ## Planning Hardening Record - 2026-08-13
 

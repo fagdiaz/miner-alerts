@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (54 de 54 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 835 tests PASS — Release V4.1.0 / Spec 054 Chain Break Diagnostics Certificada).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (54 de 54 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 840 tests PASS — Release V4.1.2 Gradiente-Adaptativo & Resiliencia Certificada).
 
 
 ---
@@ -716,8 +716,8 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 ## Governance
 
 - All 54 specifications in the program are complete, verified with evidence, and closed.
-- Version 4.1.0 (Spec 054 Predictive Chain Diagnostics) is certified with 835/835 tests PASS.
-- Spec 054 (Predictive Chain Diagnostics) is fully implemented, verified, and operational in production.
+- Version 4.1.2 (Release V4.1.2 Gradient-Adaptive Fan Step-Down & Resiliencia) is certified with 840/840 tests PASS.
+- Spec 054 (Predictive Chain Diagnostics) and Hotfixes v4.1.1/v4.1.2 are fully implemented, verified, and operational in production.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
 - Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`.

@@ -93,6 +93,8 @@ safety gates are not compressed to recover an estimate.
 | 2026-09-12 | V4.0.2 Silent Mode 30%-50% PWM & 82°C Autonomy (Spec 044) | Recalibración acústica 30%-50%, lazo cerrado a 82°C, elevadores independientes y 800 tests PASS. |
 | 2026-09-12 | V4.0.3 Fan Governor Floor 30% Hotfix | Piso mínimo de 30% PWM en gobernador, independencia total por minero hacia 82.0°C y 802 tests PASS. |
 | 2026-09-12 | Spec 054 Predictive Chain Diagnostics Closed | Colector asíncrono, SQLite v7, diagnóstico predictivo, UX /chains y CLI analítica certificados con 835 tests PASS. |
+| 2026-09-12 | V4.1.1 Uptime Persistence & Sensor Accuracy Hotfix | Persistencia de last_elapsed, discriminación de sensores inactivos, purga DB y 837 tests PASS. |
+| 2026-09-12 | V4.1.2 Gradient-Adaptive Fan Step-Down & Dwell Fix | Desescalado térmico adaptativo (-5%/-3%/-2%), dwell ágil de 60s en frío y 840 tests PASS. |
 
 ## Review And Bug-Fix Rhythm
 

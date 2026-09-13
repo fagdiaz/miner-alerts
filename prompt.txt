@@ -1,25 +1,23 @@
 # MINER ALERTS — SESIÓN DE CONTINUIDAD (SPEC 055: AUTO-REBOOT ANTE FALLA DE HASHBOARD)
 # Motor recomendado: Gemini 3.8 Flash High (con división en 4 iteraciones seguras al ~50% de contexto)
 
-Hola agente. La **Spec 055 (Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard)** ha sido formalizada y dividida en **4 Iteraciones Bounded y Secuenciales** para su ejecución segura con **Gemini 3.8 Flash High**:
+Hola agente. La **Spec 055 (Auto-Reboot ante Falla de Placa y Recuperación Automática de Hashboard)** avanza de forma segura:
 
-1. **Estructura de las 4 Iteraciones (según `tasks.md`)**:
-   - **Iteración 1 (Siguiente paso inmediato)**: Modelo de Datos, Configuración y Puerta de Señal Pura (T001-T005). Riesgo en producción: **0%**.
-     * Agregar `hashboard_since_ts: Optional[float] = None` a `MinerState` con `to_dict()`/`from_dict()`.
-     * Claves de config con fallbacks: `auto_reboot_hashboard_enabled`, `auto_reboot_hashboard_sustained_seconds`, `auto_reboot_hashboard_partial_enabled`.
-     * Extender la función pura `auto_reboot_signal_allows_evaluation` preservando 100% de compatibilidad hacia atrás.
-     * Crear `tests/test_hashboard_auto_reboot.py` y verificar que los 840+ tests pasen.
-   - **Iteración 2**: Temporización Sostenida de Hashboard en el Monitor (T006-T008).
+1. **Estado de las Iteraciones**:
+   - **Iteración 1 (COMPLETADA)**: T001-T005 implementadas y certificadas.
+     * `MinerState.hashboard_since_ts` agregado con `to_dict()`/`from_dict()` y cargado seguro en `load_state`/`save_state`.
+     * Claves de configuración agregadas con fallbacks (`auto_reboot_hashboard_enabled: true`, `auto_reboot_hashboard_sustained_seconds: 600`, `auto_reboot_hashboard_partial_enabled: false`).
+     * `auto_reboot_signal_allows_evaluation` extendido y probado exhaustivamente.
+     * Creado `tests/test_hashboard_auto_reboot.py` (9 tests unitarios nuevos).
+     * **849/849 tests PASS** en suite automatizada.
+   - **Iteración 2 (SIGUIENTE PASO INMEDIATO)**: Temporización Sostenida de Hashboard en el Monitor (T006-T008).
+     * T006: En el ciclo de actualización de estado de `app/miner_monitor.py`, fijar `state.hashboard_since_ts = now_ts` al entrar a `STATE_HASHBOARD` (si es None), y resetearlo a `None` al volver a `STATE_OK`.
+     * T007: Suprimir la clasificación espuria `result="not_low"` cuando `new_state == STATE_HASHBOARD`, registrando `result="hashboard_not_sustained"` mientras el tiempo transcurrido sea `< hashboard_sustained_seconds`.
+     * T008: Crear tests unitarios en `tests/test_hashboard_auto_reboot.py` verificando avance determinista del reloj de falla.
    - **Iteración 3**: Canalización de Interlocks y Decisión de Auto-Reinicio (T009-T011).
    - **Iteración 4**: UX Telegram, Auditoría Completa, Documentación y Despliegue (T012-T017).
 
 2. **Archivos Clave**:
-   - `specs/055-hashboard-failure-auto-reboot/spec.md`
-   - `specs/055-hashboard-failure-auto-reboot/plan.md`
    - `specs/055-hashboard-failure-auto-reboot/tasks.md`
-   - `app/miner_monitor.py` (Líneas 1136-1175)
-   - `tests/test_auto_reboot_signal_gate.py`
-
-3. **Instrucción para el Agente**:
-   - Comenzar inmediatamente con la **Iteración 1** ejecutando las tareas T001, T002, T003, T004 y T005 de `tasks.md`.
-   - Mantener la ejecución acotada a funciones puras y tests unitarios sin tocar el bucle de producción.
+   - `app/miner_monitor.py` (Líneas 7515-7545 y 7895-7945)
+   - `tests/test_hashboard_auto_reboot.py`

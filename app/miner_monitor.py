@@ -836,6 +836,7 @@ class MinerState:
     reboot_pending_elapsed: Optional[int] = None
     last_reboot_ts: float = 0.0
     low_since_ts: Optional[float] = None
+    hashboard_since_ts: Optional[float] = None
     last_manual_reboot_ts: Optional[float] = None
     last_auto_reboot_ts: Optional[float] = None
     auto_reboot_timestamps: list = field(default_factory=list)
@@ -1155,12 +1156,31 @@ def auto_reboot_signal_allows_evaluation(
     new_state: str,
     low_since_ts: Optional[float],
     signal_classification: str,
+    hashboard_since_ts: Optional[float] = None,
+    active_boards: Optional[int] = None,
+    expected_boards: int = 3,
+    allow_partial_hashboard: bool = False,
+    hashboard_reboot_enabled: bool = True,
 ) -> bool:
-    return (
-        new_state == STATE_LOW
-        and low_since_ts is not None
-        and signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE
-    )
+    if new_state == STATE_LOW:
+        return (
+            low_since_ts is not None
+            and signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE
+        )
+    if new_state == STATE_HASHBOARD and hashboard_reboot_enabled:
+        if hashboard_since_ts is None:
+            return False
+        if signal_classification == AUTO_REBOOT_SIGNAL_INVALID:
+            return False
+        if active_boards is not None:
+            if active_boards == 0:
+                return True
+            elif active_boards < expected_boards:
+                return bool(allow_partial_hashboard)
+            else:
+                return False
+        return signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE
+    return False
 
 
 def reset_sustained_low_if_signal_ineligible(
@@ -1171,6 +1191,26 @@ def reset_sustained_low_if_signal_ineligible(
         return False
     state.low_since_ts = None
     return True
+
+
+def reset_sustained_hashboard_if_ineligible(
+    state: "MinerState",
+    signal_classification: str,
+    active_boards: Optional[int],
+    expected_boards: int = 3,
+    allow_partial_hashboard: bool = False,
+) -> bool:
+    if signal_classification == AUTO_REBOOT_SIGNAL_INVALID:
+        state.hashboard_since_ts = None
+        return True
+    if active_boards is not None:
+        if active_boards >= expected_boards:
+            state.hashboard_since_ts = None
+            return True
+        if active_boards > 0 and not allow_partial_hashboard:
+            state.hashboard_since_ts = None
+            return True
+    return False
 
 
 def send_telegram(
@@ -2240,6 +2280,7 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                 reboot_pending_elapsed=data.get("reboot_pending_elapsed"),
                 last_reboot_ts=float(data.get("last_reboot_ts", 0.0)),
                 low_since_ts=None,
+                hashboard_since_ts=None,
                 last_manual_reboot_ts=(
                     float(data.get("last_manual_reboot_ts"))
                     if data.get("last_manual_reboot_ts") is not None
@@ -2442,6 +2483,7 @@ def save_state(
             "reboot_pending_elapsed": state.reboot_pending_elapsed,
             "last_reboot_ts": state.last_reboot_ts,
             "low_since_ts": state.low_since_ts,
+            "hashboard_since_ts": getattr(state, "hashboard_since_ts", None),
             "last_manual_reboot_ts": state.last_manual_reboot_ts,
             "last_auto_reboot_ts": state.last_auto_reboot_ts,
             "auto_reboot_timestamps": list(getattr(state, "auto_reboot_timestamps", None) or []),
@@ -7185,6 +7227,13 @@ def main() -> None:
     reboot_cooldown_seconds = int(config.get("reboot_cooldown_seconds", 1800))
     reboot_window_seconds = int(config.get("reboot_window_seconds", 300))
     low_sustained_seconds = 600
+    auto_reboot_hashboard_enabled = bool(config.get("auto_reboot_hashboard_enabled", True))
+    auto_reboot_hashboard_sustained_seconds = int(
+        config.get("auto_reboot_hashboard_sustained_seconds", 600)
+    )
+    auto_reboot_hashboard_partial_enabled = bool(
+        config.get("auto_reboot_hashboard_partial_enabled", False)
+    )
     auto_reboot_window_seconds = int(config.get("auto_reboot_window_seconds", 21600))
     max_reboots_per_window = int(config.get("max_reboots_per_window", 3))
     auto_reboot_thermal_guard_enabled = bool(
@@ -7209,6 +7258,7 @@ def main() -> None:
         reboot_cooldown_seconds = int(config.get("qa_reboot_cooldown_seconds", 120))
         reboot_window_seconds = int(config.get("qa_reboot_window_seconds", 30))
         low_sustained_seconds = int(config.get("qa_low_seconds", 60))
+        auto_reboot_hashboard_sustained_seconds = int(config.get("qa_hashboard_seconds", 60))
         auto_reboot_window_seconds = int(config.get("qa_auto_reboot_window_seconds", 600))
     auto_reboot_fleet_snapshot_max_age_seconds = max(60.0, float(poll_seconds * 2))
     offline_is_actionable = bool(config.get("offline_is_actionable", True))

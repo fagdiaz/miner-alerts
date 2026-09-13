@@ -11,19 +11,19 @@ Para garantizar precisión matemática absoluta, carga al ~50% de contexto por i
 
 ## Iteración 1: Modelo de Datos, Configuración y Puerta de Señal Pura
 > **Alcance**: Funciones puras y contratos de datos. Riesgo en producción: **0%**.
-- [ ] **T001**: Agregar campo `hashboard_since_ts: Optional[float] = None` a `MinerState` con serialización `to_dict()` y deserialización `from_dict()` en `app/miner_monitor.py`.
-- [ ] **T002**: Registrar claves de configuración con fallbacks seguros en `app/miner_monitor.py` y documentar en `app/config.example.json`:
+- [x] **T001**: Agregar campo `hashboard_since_ts: Optional[float] = None` a `MinerState` con serialización `to_dict()` y deserialización `from_dict()` en `app/miner_monitor.py`.
+- [x] **T002**: Registrar claves de configuración con fallbacks seguros en `app/miner_monitor.py` y documentar en `app/config.example.json`:
   - `auto_reboot_hashboard_enabled`: `true`
   - `auto_reboot_hashboard_sustained_seconds`: `600`
   - `auto_reboot_hashboard_partial_enabled`: `false`
-- [ ] **T003**: Extender la función pura `auto_reboot_signal_allows_evaluation` para aceptar `hashboard_since_ts`, `active_boards`, `expected_boards` y `allow_partial_hashboard` manteniendo 100% de compatibilidad hacia atrás con los callers existentes de `STATE_LOW`.
-- [ ] **T004**: Crear `tests/test_hashboard_auto_reboot.py` con pruebas unitarias para `auto_reboot_signal_allows_evaluation` con casos:
+- [x] **T003**: Extender la función pura `auto_reboot_signal_allows_evaluation` para aceptar `hashboard_since_ts`, `active_boards`, `expected_boards` y `allow_partial_hashboard` manteniendo 100% de compatibilidad hacia atrás con los callers existentes de `STATE_LOW`.
+- [x] **T004**: Crear `tests/test_hashboard_auto_reboot.py` con pruebas unitarias para `auto_reboot_signal_allows_evaluation` con casos:
   - Falla total (0/3 placas) con `hashboard_since_ts` activo -> `True`.
   - Falla total sin `hashboard_since_ts` -> `False`.
   - Falla parcial con `allow_partial=False` -> `False`.
   - Falla parcial con `allow_partial=True` -> `True`.
   - Preservación idéntica de comportamiento para `STATE_LOW` y `STATE_OK`.
-- [ ] **T005**: Ejecutar `tests/test_auto_reboot_signal_gate.py` y la suite para verificar cero regresiones en la puerta de señales.
+- [x] **T005**: Ejecutar `tests/test_auto_reboot_signal_gate.py` y la suite para verificar cero regresiones en la puerta de señales.
 
 ---
 

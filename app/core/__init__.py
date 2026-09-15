@@ -7,6 +7,11 @@ Prometheus metrics snapshots, mining quality evaluation, and reboot safety inter
 
 from __future__ import annotations
 
+# Spec 060: Core Daemon architecture — state manager, dependency container, engine
+from app.core.state_manager import StateManager, _serialise_miner_state
+from app.core.context import MonitorContext, build_monitor_context
+from app.core.engine import CoreSupervisoryEngine, TickResult
+
 from app.core.acquisition import (
     AcquisitionConfig,
     AcquisitionEpoch,
@@ -106,6 +111,14 @@ from app.core.stability_profile import (
 )
 
 __all__ = [
+    # Spec 060: Core Daemon architecture
+    "StateManager",
+    "MonitorContext",
+    "CoreSupervisoryEngine",
+    "TickResult",
+    "build_monitor_context",
+    "_serialise_miner_state",
+    # Legacy core exports
     "AcquisitionConfig",
     "AcquisitionEpoch",
     "Api4028Transport",

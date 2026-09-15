@@ -375,8 +375,13 @@ class WatchdogIsolationTests(unittest.TestCase):
         source = Path("app/miner_monitor.py").read_text(encoding="utf-8")
         tick_tail = source[source.index("while True:\n            tick_start") :]
         self.assertIn("write_heartbeat_atomic(", tick_tail)
+        persistence_target = (
+            "_flush_state_payload(state_path, _payload)"
+            if "_flush_state_payload(state_path, _payload)" in tick_tail
+            else "save_state(state_path, states, current_last_update_id)"
+        )
         self.assertLess(
-            tick_tail.rindex("save_state(state_path, states, current_last_update_id)"),
+            tick_tail.rindex(persistence_target),
             tick_tail.index("write_heartbeat_atomic("),
         )
         self.assertLess(

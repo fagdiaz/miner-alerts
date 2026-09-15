@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/056-two-tier-mining-recovery/plan.md` (Release V4.1.4 Deployed; Two-Tier Mining Recovery: Soft Auto-Restart vs Hard Auto-Reboot)
+`specs/060-core-daemon-state-architecture/plan.md` (Release V5.0 Architecture Milestone Complete; Core Daemon & State Architecture)
 
 Active production observation gate:
-`specs/056-two-tier-mining-recovery/plan.md` (Release Gate APPROVED; 881 tests PASS, Windows Service RUNNING under PID 28096)
+`specs/060-core-daemon-state-architecture/plan.md` (Release Gate APPROVED; 935 tests PASS, Windows Service RUNNING)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

@@ -1,12 +1,12 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-09-13
+**Last reviewed**: 2026-09-15
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (56 de 56 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 881 tests PASS — Release V4.1.4 Two-Tier Mining Recovery Certificada).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (57 de 57 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 902 tests PASS — Release V4.1.5 Intervention Governance & Adaptive Contingency Certificada).
 
 
 ---
@@ -719,13 +719,51 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Registro determinista en `reboot_decisions` del `EventStore` con `trigger="hashboard_failure"`.
 - [x] Certificación global con 854/854 tests unitarios y de regresión PASS.
 
+### Iniciativa 10 — Recuperación Escalonada de Dos Niveles (Spec 056 - Completado)
+- [x] Discriminación segura entre Auto-Restart de software (Nivel 1, `/api/v1/mining/restart` en 15-20s) y Auto-Reboot completo de hardware (Nivel 2, Hashcore CLI en 3-4m).
+- [x] `evaluate_auto_restart_candidate` con filtros transitorios, cooldown de 300s y límite de reintentos (2 intentos antes de ceder a Nivel 2).
+- [x] Worker asíncrono no bloqueante `_async_execute_mining_restart` y notificaciones Telegram de Nivel 1.
+- [x] Certificación con 881 tests PASS.
+
+### Iniciativa 11 — Gobernanza de Intervenciones & Contingencia Asimétrica Adaptativa (Spec 057 - Completado)
+- [x] Modo global "Vnish Libre" (solo lectura/supervisión) con interlocking de 100% de los actuadores mutantes (Reinicios L1/L2, Fan Governor, Preset Balancer y Contingencia) preservando telemetría, SQLite y alertas.
+- [x] Menú táctil e interactivo en Telegram Command Center (`[ 🛡️ Intervenciones: 🟢 ON / 🔴 LIBRE ]`) con selectores individuales y temporizadores de cuenta regresiva (30m, 1h, 2h, 4h, Indef) para reactivación segura automática.
+- [x] Contingencia eléctrica asimétrica por elevador relativa al estado actual: reducción exclusiva del minero canario (S19JPRO-24 en Elevador 1, S19JPRO-25 en Elevador 2) ante perturbación matutina de red, manteniendo intacto al compañero.
+- [x] Prueba en los límites: descenso escalonado si el canario vuelve a reiniciar, y reducción del compañero solo ante perturbación severa.
+- [x] Rampa de Step-Up Soak: tras 2 horas continuas sin reinicios, recuperación progresiva hacia los presets nominales.
+- [x] Comandos rápidos `/interventions` y `/contingency` y persistencia atómica en `state.json`.
+- [x] Certificación global con 902/902 tests unitarios y de regresión PASS.
+
+### Iniciativa 12 — Desacoplamiento y Modularización Arquitectónica del Monolito (Horizonte V5.0)
+- Documento de Plan de Acción: [`docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`](ACTION_PLAN_V5_MODULARIZATION.md)
+- **Fase 0 — Quick Wins Inmediatos**:
+  - [x] **QW-01**: Extracción de teclados y menús táctiles (integrada en Spec 058).
+  - [x] **QW-02**: Rotación automática de registros con `RotatingFileHandler` en `logs/out.log` para prevenir saturación de disco bajo el servicio Windows.
+  - [x] **QW-03**: Saneamiento y purga de funciones y wrappers legados de ayuda (`render_legacy_help_index()`) obsoletos tras Spec 045.
+  - [x] **QW-04**: Extracción de `_build_state_payload()` fuera de `state_lock` reduciendo a 0ms la retención del lock de memoria durante `os.fsync()` en Windows NTFS (902 tests PASS).
+- **Fase 1 — Spec 058: Desacoplamiento de Telegram Command Center & Dispatcher (MT-01)**:
+  - [x] Desacoplamiento del bucle procedural de `telegram_polling_worker` (-2,669 LOC extraídas de `miner_monitor.py`).
+  - [x] Arquitectura orientada a handlers desacoplados: `app/telegram/router.py`, `app/telegram/poller.py` y `app/telegram/commands/` (`status`, `fans`, `reboot`, `interventions`, `diagnostics`, `maintenance`, `help`).
+  - [x] Suite de pruebas unitarias aisladas (`tests/test_telegram_dispatcher.py` con 8 tests nuevos), con 910/910 tests globales PASS.
+- **Fase 2 — Spec 059: Protocolos de Red y Clientes de Hardware (MT-02)**:
+  - [x] Extracción del protocolo TCP Socket 4028 (`query_cgminer`, parsers de summary, pools, version, stats, conteo de placas hashboard y temperaturas) a `app/network/cgminer_client.py`.
+  - [x] Extracción del actuador de hardware Hashcore Toolkit CLI a `app/network/hashcore_client.py` con guardarraíles QA y flags windowless en Windows (`CREATE_NO_WINDOW`).
+  - [x] Cliente formal y tipado para la API REST de Vnish a `app/network/vnish_client.py` (`VnishClient`) con context manager, timeouts acotados de 2.5s y manejo de excepciones.
+  - [x] Suite de 18 pruebas unitarias en `tests/test_network_clients.py` con 928/928 tests globales PASS (cero regresiones).
+- **Fase 3 — Spec 060: Core Daemon & Contenedor de Estado (ST-01 & ST-02 - Milestone V5.0)**:
+  - [x] Formalización de `app/core/state_manager.py` con jerarquía estricta anti-deadlock (`state_lock` Nivel 1 -> `_SAVE_STATE_LOCK` Nivel 2, con fsync fuera de `state_lock`).
+  - [x] Motor de supervisión declarativo con arquitectura de hooks por tick en `app/core/engine.py` (`CoreSupervisoryEngine`, `TickResult`).
+  - [x] Inyección de dependencias `MonitorContext` y factoría `build_monitor_context` en `app/core/context.py`.
+  - [x] Conexión aditiva de `StateManager` y `MonitorContext` en `main()` de `miner_monitor.py` preservando el 100% de contratos `inspect.getsource(main)`.
+  - [x] Suite de 7 pruebas unitarias en `tests/test_core_daemon.py` con **935/935 tests globales PASS** (cero fallos, cero regresiones). Milestone V5.0 certificado.
+
 ---
 
 ## Governance
 
-- All 55 specifications in the program are complete, verified with evidence, and closed.
-- Version 4.1.3 (Release V4.1.3 Auto-Reboot Hashboard & Resiliencia) is certified with 854/854 tests PASS.
-- Spec 055 (Hashboard Failure Auto-Reboot) is fully implemented, verified, and operational in production.
+- All 57 specifications in the initial program are complete, verified with evidence, and closed.
+- Version 4.1.5 (Release V4.1.5 Intervention Governance & Adaptive Contingency) is certified with 902/902 tests PASS.
+- Spec 057 (Intervention Governance & Adaptive Contingency) is fully implemented, verified, and operational in production.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
-- Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`.
+- Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md` and `docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`.

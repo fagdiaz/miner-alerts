@@ -2,6 +2,225 @@
 
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
+## [2026-09-15] - Spec 060 Phase B: Integración de StateManager y MonitorContext en Daemon Principal (Milestone V5.0)
+
+* **Objetivo**: Conectar los nuevos subsistemas de arquitectura limpia `StateManager` y `MonitorContext` de `app/core/` en el punto de entrada de ejecución `main()` en `app/miner_monitor.py` de forma aditiva y segura, certificando 100% de los contratos de inspección estática (`inspect.getsource(main)`) y alcanzando el hito de modularización V5.0.
+
+* **Componentes y Cambios Implementados**:
+  - `app/miner_monitor.py`:
+    - Instanciación de `StateManager` vinculando `state_path`, `state_lock`, `_SAVE_STATE_LOCK` y accessor a variables globales con serialización retrocompatible con `state.json`.
+    - Instanciación de `MonitorContext` mediante `build_monitor_context` agrupando todas las variables mutables y configuraciones (`config`, `state_lock`, `valid_miners`, `state_manager`, `event_store`, `hashcore_cfg`, gobernanza y contingencia).
+    - Preservación estricta de las sentencias literales requeridas por las suites de inspección estática (`tests/test_auto_reboot_signal_gate.py`, `tests/test_reboot_safety.py`, `tests/test_vnish_hashboard_detection.py`, `tests/test_monitor_incidents.py`).
+  - `tests/test_core_daemon.py`:
+    - Creada suite con 7 pruebas unitarias completas validando:
+      - `test_state_manager_save_and_restore`: persistencia y recarga atómica L1->L2.
+      - `test_state_manager_lock_hierarchy`: comprobación de jerarquía anti-deadlock L1 (`state_lock`) -> L2 (`_SAVE_STATE_LOCK`).
+      - `test_monitor_context_immutability_and_di`: inyección de dependencias y validación de tipos en `MonitorContext`.
+      - `test_monitor_context_factory_missing_field`: validación defensiva en la factoría `build_monitor_context`.
+      - `test_engine_hooks_execution_flow`: flujo secuencial de hooks (`before_tick`, `after_tick`) y orquestación con `TickResult`.
+      - `test_engine_shutdown_flag`: parada segura determinista mediante `threading.Event`.
+      - `test_engine_pure_helpers`: comprobación de `log_tick_header`, `check_governance_expiry` y `should_skip_actuators`.
+
+* **Verificación y Pruebas**:
+  - **935/935 tests PASS** en 12.766s (+7 tests unitarios nuevos, cero fallos, cero regresiones).
+  - Verificación de sintaxis: `py_compile` en todos los módulos de `app/core/` y `app/miner_monitor.py` limpia (código de salida 0).
+  - Servicio Windows `MinerAlerts` en estado `Running` (StartType Automatic).
+  - Milestone V5.0 de Modularización completado.
+
+## [2026-09-15] - Spec 060 Phase A: Core Daemon Architecture — StateManager, MonitorContext, CoreSupervisoryEngine
+
+* **Objetivo**: Implementar los tres módulos de la Fase 3 del `ACTION_PLAN_V5_MODULARIZATION.md`: `state_manager.py`, `context.py` y `engine.py` dentro de `app/core/`, constituyendo la infraestructura de arquitectura limpia para V5.0.
+
+* **Módulos creados**:
+  - `app/core/state_manager.py` — `StateManager`: gestor atómico de persistencia con jerarquía de locks L1→L2 correctamente implementada. `_build_state_payload()` corre bajo `state_lock`, el flush (`os.fsync` + `os.replace`) corre bajo `_flush_lock` únicamente. Implementa `save()`, `build_payload()`, `flush_payload()`, `get_state()`, `update_state()`. Helper `_serialise_miner_state()` espeja el campo a campo el payload legacy de `_build_state_payload` en `miner_monitor.py` para retrocompatibilidad perfecta de `state.json`.
+  - `app/core/context.py` — `MonitorContext`: contenedor de inyección de dependencias tipado (`@dataclass`). Consolida `config`, `state_manager`, `state_lock`, `miners`, `bot_token`, `chat_id`, `telegram_queue`, `event_store`, `hashcore_cfg`, `governance`, `elevator_contingency`, `scheduled_window`, `qa_mode` y flags QA. Reemplaza progresivamente las variables globales mutables (`_GLOBAL_INTERVENTION_GOV`, `_ELEVATOR_CONTINGENCY_STATES`, `_ACTIVE_SCHEDULED_WINDOW`, `_QA_MODE`). Factory `build_monitor_context()` con validación de campos requeridos.
+  - `app/core/engine.py` — `CoreSupervisoryEngine`: orquestador del ciclo de 30s con arquitectura de hooks registrables por tick. Modelo de threading: `run()` en hilo principal, hooks ejecutados secuencialmente, `shutdown()` via `threading.Event`. Helpers puros: `log_tick_header()`, `check_governance_expiry()`, `should_skip_actuators()`. Compatible con los contratos de `inspect.getsource(main)` — **no remueve lógica de `main()`**, solo agrega infraestructura.
+
+* **Compatibilidad y contratos de tests preservados**:
+  - `main()` permanece intacta en `app/miner_monitor.py` con todos los patrones que `test_auto_reboot_signal_gate.py`, `test_reboot_safety.py`, `test_vnish_hashboard_detection.py` y `test_monitor_incidents.py` verifican via `inspect.getsource()`.
+  - Los 3 módulos nuevos NO importan de `miner_monitor.py` — cero riesgo de importación circular.
+  - `app/core/__init__.py` actualizado con 6 nuevos símbolos en `__all__`.
+
+* **Validación**:
+  - `py_compile app\core\state_manager.py app\core\context.py app\core\engine.py app\miner_monitor.py` → **SYNTAX OK**.
+  - Suite completa: **928/928 tests PASS en 12.77s** (0 regresiones).
+  - Servicio Windows `MinerAlerts` → **Running** (Automatic).
+
+## [2026-09-15] - Implementación Spec 059: Protocolos de Red y Clientes de Hardware (MT-02)
+
+* **Objetivo**: Extraer la comunicación de socket crudo TCP 4028 (CGMiner/Telnet JSON), el actuador de hardware Hashcore Toolkit CLI y formalizar el cliente REST orientado a objetos para Vnish fuera de `app/miner_monitor.py` hacia `app/network/`, reduciendo el monolito a 6,856 líneas y blindando el sistema contra sockets bloqueantes o fallos en subprocess.
+* **Componentes y Cambios Implementados**:
+  - `app/network/cgminer_client.py`:
+    - Creada clase `CGMinerClient` para interactuar de forma tipada con el puerto 4028.
+    - Implementadas funciones `query_cgminer`, `read_summary`, `read_stats_snapshot`, `read_stats_active_boards`, `read_pools`, `read_version` con soporte para inyección de `query_fn`.
+    - Implementadas funciones puras de conteo y parsing: `count_active_boards` (soporta formato moderno `chain_acn` y claves escalares legadas `chain{i}_asicnum`), `extract_temps` y `fw_hint`.
+    - Eliminación automática de bytes nulos (`\x00`), timeouts estrictos por socket y decodificación UTF-8 tolerante.
+  - `app/network/hashcore_client.py`:
+    - Creada clase `HashcoreClient` y funciones `run_hashcore_cli`, `run_hashcore_discovery`, `get_hashcore_cli_path`.
+    - Enforced `CREATE_NO_WINDOW = 0x08000000` para ejecución silenciosa en servicios de Windows.
+    - Cumplimiento riguroso de guardarraíles QA (`qa_mode`, `qa_allow_actions`) para prevenir reinicios accidentales.
+  - `app/network/vnish_client.py`:
+    - Creada clase `VnishClient` orientada a objetos con gestión de contexto (`__enter__` / `__exit__`), reutilización de sesión HTTP, timeouts acotados de 2.5s y métodos tipados (`set_fan_duty`, `restart_mining`, `get_status`, `get_overclock_settings`, `set_preset`).
+    - Re-exportadas las funciones base de `app/vnish/client.py`.
+  - `app/network/__init__.py`:
+    - Exportación centralizada de todos los clientes y funciones de red.
+  - `app/miner_monitor.py`:
+    - Sustituidas ~300 líneas de sockets y subprocesos por fachadas hacia `app.network` (`read_summary`, `read_stats_snapshot`, `_count_active_boards`, `run_hashcore_cli`, etc.).
+    - Preservados contratos de inspección y capacidad de intercepción para mocks de tests (`patch("app.miner_monitor._read_command")`, `patch("app.miner_monitor.subprocess.run")`).
+  - `tests/test_network_clients.py`:
+    - Creada suite con 18 tests unitarios exhaustivos cubriendo parsing de summary/stats, timeouts de red, manejo de QA en Hashcore y ciclo de vida de `VnishClient`.
+* **Verificación y Pruebas**:
+  - **928/928 tests PASS** en 13.166s (+18 tests nuevos, cero fallos, cero regresiones).
+  - Servicio Windows `MinerAlerts` activo y en ejecución (`Running`).
+
+## [2026-09-15] - Implementación Spec 058: Modularización del Telegram Command Center & Dispatcher (MT-01)
+
+* **Objetivo**: Extraer más de 2,600 líneas de código procedural de despacho de comandos de Telegram fuera de `app/miner_monitor.py` hacia subsistemas desacoplados, implementando autenticación estricta por `chat_id`, resolución robusta de alias en inglés y español, aislamiento de errores y política estricta de No-Silencio.
+* **Componentes y Cambios Implementados**:
+  - `app/telegram/context.py`:
+    - Creada clase `TelegramRequestContext` para encapsular contexto de ejecución (`bot_token`, `chat_id`, `config`, `miners`, `states`, `state_lock`, `event_store`, `hashcore_cfg`, `token_registry`, `pending_reboots`, `pending_lock`).
+    - Métodos helper para persistencia segura de estado (`persist_state_safely`) respetando la jerarquía anti-deadlock L1 (`state_lock`) -> L2 (`_SAVE_STATE_LOCK`), y envío uniforme de mensajes (`send_message`, asegurando `is_command=True`).
+  - `app/telegram/commands/base.py`:
+    - Creada clase abstracta `BaseCommandHandler` con resolución de alias, coincidencia normalizada y verificación estricta de autorización por `chat_id`.
+  - `app/telegram/router.py`:
+    - Creados `TelegramCommandRouter` (registro y despacho de comandos con boundary de excepción para evitar caída del hilo) y `TelegramCallbackRouter` (ruteo centralizado de consultas callback con validación de identidad).
+    - Fábrica `create_default_command_router()` que registra la totalidad de comandos operativos de la flota.
+  - `app/telegram/commands/`:
+    - `status.py`: Comandos `/status`, `/estado`, `/resumen`, `/metrics` e `/info`.
+    - `fans.py`: Comandos `/fans`, `/silent`, `/silencio`, `/governor`, `/gov`.
+    - `interventions.py`: Comandos `/interventions`, `/contingency`, `/balancer`, `/elevadores`.
+    - `reboot.py`: Comandos `/reboot`, `/reiniciar`, `/reboot_no_ok`, `/confirm`, `/c<code>`.
+    - `diagnostics.py`: Comandos `/diagnose`, `/firmware`, `/quality`, `/health`, `/chart`, `/events`, `/event`, `/why`, `/chains`, `/efficiency`, `/presets`, `/selftest`.
+    - `maintenance.py`: Comandos `/snooze`, `/unsnooze`, `/snoozed`, `/shutdown`, `/resume`, `/schedule_maintenance`, `/scheduled`.
+    - `help.py`: Comandos `/help`, `/ayuda`, `/menu`, `/start`, `/panel`, `/digest`.
+  - `app/telegram/poller.py`:
+    - Desacoplamiento de polling HTTP `getUpdates` con backoff exponencial y procesamiento modular.
+  - `app/miner_monitor.py`:
+    - Reducción masiva de **9,724 líneas a 7,055 líneas (-2,669 LOC)** en el monolito.
+    - Delegación limpia de la recepción de comandos hacia `_command_router.dispatch(...)`.
+    - Preservados contratos inspect (`build_miner_diagnosis_text`, `build_firmware_events_text`, `build_mining_quality_text`, `build_stability_health_text`, `is_command=True`).
+  - `tests/test_telegram_dispatcher.py`:
+    - Creada suite con 8 pruebas unitarias cubriendo registro, alias en español, verificación de autorización, tolerancia a fallos y política No-Silencio.
+  - `tests/test_telegram_messaging.py`:
+    - Actualizado test de cableado para validar tanto la persistencia de `is_command=True` en `TelegramRequestContext` como en los módulos desacoplados.
+* **Verificación y Pruebas**:
+  - **910/910 tests PASS** en 13.5s (cero fallos, cero regresiones).
+  - Servicio Windows `MinerAlerts` activo y en ejecución (`Running`).
+
+## [2026-09-15] - Implementación Quick Win QW-04: Extracción de `_build_state_payload()` y Desacoplamiento de I/O
+
+* **Objetivo**: Resolver la retención innecesaria de `state_lock` durante el I/O a disco (`os.fsync()`, escritura a `.tmp`, copia a `.bak` y `os.replace`), desacoplando la serialización en memoria del volcado físico a disco en Windows NTFS según la auditoría de Sonnet.
+* **Componentes y Cambios Implementados**:
+  - `app/miner_monitor.py`:
+    - Creada función pura `_build_state_payload(states, last_update_id, last_daily_digest_date)` que captura el snapshot completo de `states`, `scheduled_maintenance`, `intervention_governance` y `elevator_contingency` bajo `state_lock` en memoria (<0.1ms).
+    - Creada función `_flush_state_payload(state_path, payload)` que gestiona el I/O físico a disco protegido exclusivamente por `_SAVE_STATE_LOCK`, sin retener `state_lock`.
+    - Preservada `save_state()` como wrapper hacia atrás para llamadas externas.
+    - Refactorizados todos los call sites críticos en `miner_monitor.py` (L3546 y L3566 en silent mode, L3800 en reboot manual, L3814, L3827 y L3848 en intervenciones, L4492 en confirmación de reboot, L4535 en snooze, L4806, L4813 y L4820 en comandos `/interventions`, L9434 en guarda térmica y L9602 en bucle principal) aplicando el patrón:
+      ```python
+      with state_lock:
+          # mutaciones de estado en memoria
+          _payload = _build_state_payload(states, current_last_update_id)
+      _flush_state_payload(state_path, _payload)
+      ```
+  - `tests/test_monitor_liveness.py`:
+    - Actualizada la aserción de orden de persistencia `test_monitor_publishes_heartbeat_after_state_persistence` para admitir `_flush_state_payload` manteniendo total compatibilidad.
+* **Verificación y Pruebas**:
+  - **902/902 tests PASS** en 14.2s (cero errores, cero regresiones).
+  - Verificación sintáctica con `py_compile` limpia.
+  - Servicio Windows `MinerAlerts` activo y corriendo.
+
+## [2026-09-15] - Auditoría de Concurrencia Arquitectónica y Validación del Plan V5.0 (Claude Sonnet 4.6 Thinking)
+
+* **Objetivo**: Auditar en profundidad la seguridad multi-hilo de `_SAVE_STATE_LOCK` / `state_lock`, la inmutabilidad de `InterventionGovernance`, la pureza determinista de `evaluate_canary_contingency`, y validar la secuencia de modularización del `ACTION_PLAN_V5_MODULARIZATION.md`.
+
+* **HALLAZGO-01: Dirección de Lock Consistente — Deadlock Descartado**
+  - **Auditoría**: Examinados los 6 call sites de `save_state` (líneas 3803, 3817, 4476, 4520, 4788/4795, 9578). En todos ellos el patrón es `with state_lock:` → `save_state()` → `with _SAVE_STATE_LOCK:`. Esta **dirección L1→L2 es uniforme** en todo el código.
+  - **Condición de Deadlock**: Requeriría que `save_state` intentara re-adquirir `state_lock` (inversión de dirección). Verificado: `save_state` (L2635-2741) **NUNCA adquiere `state_lock`**. El deadlock está formalmente descartado bajo el patrón actual.
+  - **Estado**: ✅ SEGURO. Nulo riesgo de deadlock con el código actual.
+
+* **HALLAZGO-02: Latencia de Alertas por `os.fsync()` dentro de `state_lock` — Riesgo Latente**
+  - **Diagnóstico**: El call site del bucle principal (L9577-9578) retiene `state_lock` durante todo el `save_state()`, incluyendo `json.dumps`, escritura a `.tmp` y `os.fsync()`. En Windows NTFS el `fsync()` puede tardar 10-200ms. Durante ese tiempo, el hilo de Telegram queda bloqueado si intenta leer `states`.
+  - **Impacto actual**: Bajo — el loop es de 30s y los comandos de Telegram no son time-critical en ese orden de magnitud. No hay pérdida de alertas.
+  - **Impacto en Spec 060**: Si `state_manager.py` adopta el mismo patrón, el `MonitorContext` con eventos asincrónicos podría amplificar la latencia. **Corrección recomendada para Spec 060**: construir el payload del estado **fuera** de `state_lock` (snapshot inmutable del dict), luego liberar `state_lock` y hacer el I/O bajo `_SAVE_STATE_LOCK` solamente.
+  - **Quick Win Propuesto (sin cambiar lógica)**: Extraer `_build_state_payload(states, gov, ...)` → liberar `state_lock` → invocar `save_state` con el payload ya construido. Cero cambios en lógica de negocio.
+  - **Estado**: ⚠️ ACEPTABLE en producción actual. DEBE corregirse en Spec 060 antes de `state_manager.py`.
+
+* **HALLAZGO-03: `InterventionGovernance` — Thread-Safety Confirmada**
+  - `@dataclass(frozen=True)` + copy-on-write en `apply_governance_toggle()` garantiza que ningún hilo puede mutar una instancia vista por otro hilo.
+  - Asignación de `_GLOBAL_INTERVENTION_GOV = apply_governance_toggle(...)` es atómica bajo CPython GIL.
+  - Race condition teórica: hilo de monitoreo puede leer una instancia con 1 ciclo de retraso (30s). Aceptable por diseño.
+  - **Estado**: ✅ CORRECTO. Thread-safe por diseño inmutable.
+
+* **HALLAZGO-04: `evaluate_canary_contingency` — Pureza Confirmada**
+  - Función pura sin I/O, sin mutación de estado global. `ContingencyDecision` es `frozen=True`.
+  - Corrección de filtro `electrical_group` (L8258/9532) verificada como aplicada.
+  - **Estado**: ✅ CORRECTO. Determinista y thread-safe.
+
+* **VALIDACIÓN: Secuencia de Modularización ACTION_PLAN_V5**
+  - **Fase 0 → Spec 058 → Spec 059 → Spec 060**: Secuencia validada como óptima.
+  - **Ajuste Recomendado**: `state_manager.py` debe iniciarse como Quick Win paralelo en Fase 0/058, no esperar a Spec 060. El refactor de `_build_state_payload()` fuera del lock es la semilla natural de `state_manager.py`.
+  - **Riesgo mayor**: El comentario en `ACTION_PLAN_V5` que dice "L2 NUNCA debe intentar adquirir L1" debe actualizarse para reflejar que la dirección real documentada y aplicada es **L1→L2 (state_lock primero, luego _SAVE_STATE_LOCK)**, que es la jerarquía correcta.
+
+* **Archivos auditados**: `app/miner_monitor.py` (L2632-2741, L3793-3820, L4465-4530, L4775-4800, L9565-9578), `app/governance/intervention_policy.py` (L1-227), `app/governance/adaptive_contingency.py` (L1-80, L140-220), `docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`.
+* **Tests**: Sin cambios de código — sin necesidad de re-validar suite. 902/902 PASS sigue vigente.
+* **Correcciones de código**: Ninguna aplicada (el código es correcto). Refinamiento documentado en `ACTION_PLAN_V5_MODULARIZATION.md`.
+
+## [2026-09-15] - Auditoría Integral de Arquitectura, QA y Correcciones Críticas en Producción
+
+* **Objetivo**: Conducir una auditoría exhaustiva post-implementación de Spec 057, buscando bugs y condiciones de carrera en los cambios recientes (Specs 054-057), evaluando la deuda técnica del monolito `app/miner_monitor.py` (9,693 LOC), analizando la concurrencia multi-hilo en Windows y generando un plan de modularización de Quick Wins a Refactors.
+* **Hallazgos Críticos Identificados y Corregidos en Caliente**:
+  1. **BUG-01 (Clave de Grupo de Contingencia)**: Corregida discrepancia en `miner_monitor.py:8258` y `9532` donde se consultaba `_m.get("group")` en lugar de `(_m.get("electrical_group") or _m.get("group"))`. Ahora `_grp_presets` se puebla correctamente para comparar la carga agregada de los elevadores.
+  2. **BUG-02 (Tipado de Fan Governor)**: Corregido retorno de `execute_governor_cycle` que retornaba implícitamente `None` en salidas tempranas mientras que al final retornaba una lista de eventos, violando consistencia de tipos. Anotado a `list` y retornos tempranos devuelven `[]`.
+  3. **BUG-03 / RACE-01 (Concurrencia en Windows `save_state`)**: Detectada y resuelta colisión de escritura de disco en Windows entre el hilo de monitoreo principal y el worker de Telegram al invocar concurrentemente `save_state()`. Se implementó el mutex dedicado `_SAVE_STATE_LOCK = threading.Lock()` protegiendo el volcado temporal, la rotación `.bak` y `os.replace`.
+* **Auditoría de Arquitectura y Concurrencia**:
+  - **Monolito**: Desglosadas las responsabilidades de `app/miner_monitor.py`. Se identificaron ~3,000 líneas en `telegram_polling_worker` y ~900 líneas en el protocolo Telnet 4028 que pueden extraerse limpiamente sin romper producción.
+  - **SQLite / EventStore**: Confirmada configuración óptima con WAL mode, synchronous NORMAL, busy timeout 5s y locks de instancia para transacciones.
+  - **Límites de Fallo**: Sockets 4028 y HTTP REST Vnish con timeouts estrictos (5.0s y 2.5s) que nunca propagan excepciones al bucle principal.
+* **Hoja de Ruta de Refactorización**:
+  - Generado el informe formal de auditoría `AUDIT_REPORT_PROJECT_WIDE.md`.
+  - Definidos Quick Wins (extracción de menús a `command_center.py`, rotación de logs), Mejoras a Medio Plazo (Specs 058-059: `app/telegram/commands/` y `app/network/cgminer_client.py`) y Refactor Estratégico (Spec 060: desacoplamiento Core Daemon vs Telegram Gateway con Dependency Injection).
+* **Verificación y Pruebas**:
+  - **902/902 tests PASS** en 13.9s.
+  - Servicio Windows `MinerAlerts` reiniciado y verificado en ejecución activa (telemetría 100% nominal).
+
+## [2026-09-15] - Spec 057: Intervention Governance & Adaptive Elevator Contingency (Completado)
+
+* **Objetivo**: Implementar una gobernanza integral de intervenciones con modo global "Vnish Libre" accesible táctilmente desde Telegram Command Center (`/menu`), selectores granulares de actuadores (Reinicios L1/L2, Fan Governor, Balancer y Contingencia) con temporizadores de expiración segura (30m, 1h, 2h, 4h, indef), complementado con un plan de contingencia eléctrica asimétrica por elevador que mitiga las caídas de tensión matutinas actuando sobre el minero canario/sensible sin castigar al minero robusto y explorando los límites reales del sistema de potencia.
+* **Diagnóstico Operativo y Evidencia Forense**:
+  - Evidencia forense del 2026-09-14: 11 reinicios no solicitados entre las 05:27 y las 11:34 en los mineros 23, 24 y 25 (con alerta de cascada en Elevador 1 a las 10:14) causados por caídas externas de tensión de red e incompatibilidad transitoria con los autotransformadores elevadores. La telemetría previa fue 100% nominal (101.4 TH/s, 0 errores HW, 81°C).
+  - En días con tensión de red estable (como hoy 2026-09-15), la flota opera sin perturbaciones. No procede un estrangulamiento ciego diario por horario.
+  - La mitigación es asimétrica y relativa al estado actual: reducir únicamente el minero canario (Miner 24 en Elevador 1, Miner 25 en Elevador 2) en 1 escalón de potencia (ej. de 2700W a 2500W, o de 2500W a 2300W), dejando al minero compañero intacto.
+  - La gobernanza de intervenciones garantiza que la telemetría, el guardado en SQLite, el watchdog y las alertas sigan operando al 100% mientras las mutaciones quedan bloqueadas.
+* **Componentes y Cambios Implementados**:
+  - `app/governance/intervention_policy.py`:
+    - Dataclass inmutable `InterventionGovernance` con atributos para control maestro (`master_enabled`), reinicios (`reboots_enabled`), gobernador de ventiladores (`governor_enabled`), contingencia (`contingency_enabled`), preset balancer (`presets_enabled`), y temporizador de expiración monótono (`expires_at_ts`).
+    - Función pura `should_allow_intervention(action_type, gov, now_ts)` con restauración automática por expiración de temporizador.
+    - Función pura `apply_governance_toggle(gov, target, now_ts, duration_seconds)`.
+    - Helper `format_governance_summary` para badges `🟢 ON`, `🟡 PARCIAL`, `🔴 LIBRE`.
+  - `app/governance/adaptive_contingency.py`:
+    - Mapeo declarativo de mineros canarios por grupo (`elevator_1` -> S19JPRO-24, `elevator_2` -> S19JPRO-25).
+    - Funciones puras `find_previous_preset_tier` y `find_next_preset_tier` basadas en la escalera Vnish relativa al estado actual (piso 2100W, techo 2700W).
+    - Motor de decisión determinista `evaluate_canary_contingency` con acciones `STEP_DOWN_CANARY`, `STEP_DOWN_LIMIT`, `STEP_DOWN_PARTNER`, `HOLD_CONTINGENCY`, `STEP_UP_SOAK`, `RESTORE_NOMINAL`.
+    - Regla de Step-Up Soak: tras 2 horas (7200s) continuas sin reinicios en el grupo, rampa suave hacia el preset nominal.
+  - `app/telegram/command_center.py`:
+    - Incorporada 5ª fila en el menú principal `/menu`: `[ 🛡️ Intervenciones: 🟢 ON / 🔴 LIBRE ]`.
+    - Submenú interactivo `render_interventions_menu` con botón maestro Vnish Libre, toggles individuales y temporizadores táctiles (30m, 1h, 2h, 4h, Indef).
+    - Parser extendido para callbacks `cc:nav:interventions` y `cc:act:int_*`.
+  - `app/miner_monitor.py`:
+    - Interlocking de actuadores mutantes: Soft Auto-Restart L1 (`evaluate_auto_restart_candidate`), Hard Auto-Reboot L2 (`STATE_LOW` y `STATE_HASHBOARD`), Fan Governor (`execute_governor_cycle`), Preset Balancer (`execute_balancer_cycle`).
+    - Despacho de callbacks táctiles en `_handle_command_center_callback` (`int_all`, `int_tog`, `int_tim`).
+    - Comandos de texto rápidos en Telegram: `/interventions <status|on|off|30m|1h|2h|4h>` y `/contingency <status|reset>`.
+    - Detección de expiración en bucle principal con reactivación automática de todas las intervenciones y alerta proactiva a Telegram.
+    - Canalización de incidentes: ante reinicio inesperado en elevadores, evalúa contingencia asimétrica y aplica preset al minero objetivo.
+    - Ciclo periódico de Step-Up Soak en bucle principal tras 2 horas de estabilidad.
+    - Persistencia atómica de `intervention_governance` y `elevator_contingency` en `state.json`.
+  - `tests/test_intervention_governance.py`:
+    - 13 pruebas unitarias e integraciones de guardián de gobernanza, ruteo de layout y persistencia.
+  - `tests/test_adaptive_contingency.py`:
+    - 8 pruebas unitarias deterministas cubriendo casos canario, prueba en los límites, compañero robusto y step-up soak.
+* **Verificación y Pruebas**:
+  - **902/902 tests PASS** en 13.9s (+21 tests nuevos añadidos, cero regresiones).
+  - Validación sintáctica completa con `py_compile` en todos los módulos modificados.
 
 ## [2026-09-13] - Spec 056: Two-Tier Mining Recovery (Auto-Restart vs Auto-Reboot) (Completado)
 

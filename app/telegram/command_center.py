@@ -25,7 +25,12 @@ CC_NAV_SILENT = "cc:nav:silent"
 CC_NAV_SHUTDOWN = "cc:nav:shutdown"
 CC_NAV_RESUME = "cc:nav:resume"
 CC_NAV_CHAINS = "cc:nav:chains"
+CC_NAV_INTERVENTIONS = "cc:nav:interventions"
 CC_ACT_REFRESH = "cc:act:refresh"
+CC_ACT_INT_ALL = "cc:act:int_all"
+CC_ACT_INT_TOGGLE = "cc:act:int_tog"
+CC_ACT_INT_TIMER = "cc:act:int_tim"
+
 
 
 @dataclass(frozen=True)
@@ -100,8 +105,15 @@ def parse_command_center_callback(raw_data: str) -> Optional[CommandCenterAction
             return CommandCenterAction(kind="act", target="sd_clr")
         elif action == "resume" and len(parts) >= 4:
             return CommandCenterAction(kind="act", target="resume", param=parts[3])
+        elif action == "int_all" and len(parts) >= 4:
+            return CommandCenterAction(kind="act", target="int_all", param=parts[3])
+        elif action == "int_tog" and len(parts) >= 4:
+            return CommandCenterAction(kind="act", target="int_tog", param=parts[3])
+        elif action == "int_tim" and len(parts) >= 4:
+            return CommandCenterAction(kind="act", target="int_tim", param=parts[3])
 
     return None
+
 
 
 def build_inline_keyboard(rows: List[List[Dict[str, str]]]) -> Dict[str, Any]:
@@ -151,6 +163,7 @@ def render_main_dashboard(
     states: Dict[str, Any],
     config: Optional[Dict[str, Any]] = None,
     miners: Optional[List[Dict[str, Any]]] = None,
+    gov: Optional[Any] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """Render the executive Command Center main dashboard (/menu)."""
     miners_list = miners or (config.get("miners", []) if config else [])
@@ -220,6 +233,20 @@ def render_main_dashboard(
     text = "\n".join(lines)
 
     from app.telegram.help_center import HELP_NAV_HOME
+    from app.governance.intervention_policy import InterventionGovernance, format_governance_summary
+
+    now_ts = time.time()
+    gov_obj = gov
+    if gov_obj is None:
+        for st in states.values():
+            if hasattr(st, "intervention_gov") and st.intervention_gov is not None:
+                gov_obj = st.intervention_gov
+                break
+    if gov_obj is None:
+        gov_obj = InterventionGovernance()
+
+    badge, _ = format_governance_summary(gov_obj, now_ts)
+    int_btn_text = f"🛡️ Intervenciones [{badge}]"
 
     any_silent = any(getattr(st, "silent_mode_active", False) for st in states.values())
     silent_btn_text = "🔊 Desactivar Silencio" if any_silent else "🔇 Modo Silencio"
@@ -241,9 +268,14 @@ def render_main_dashboard(
             {"text": "🛑 Parada Segura", "callback_data": CC_NAV_SHUTDOWN},
             {"text": "📖 Centro de Ayuda", "callback_data": HELP_NAV_HOME},
         ],
+        [
+            {"text": int_btn_text, "callback_data": CC_NAV_INTERVENTIONS},
+        ],
     ])
 
     return text, keyboard
+
+
 
 
 def render_metrics_view(
@@ -690,4 +722,81 @@ def render_resume_menu(
 
     keyboard = build_inline_keyboard(rows)
     return "\n".join(lines), keyboard
+
+
+def render_interventions_menu(
+    gov: Optional[Any] = None,
+    now_ts: Optional[float] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """Render interactive Intervention Governance & Vnish Libre menu."""
+    from app.governance.intervention_policy import (
+        InterventionGovernance,
+        format_governance_summary,
+    )
+    ts = now_ts or time.time()
+    gov_obj = gov or InterventionGovernance()
+    badge, status_line = format_governance_summary(gov_obj, ts)
+
+    reboots_str = "ACTIVO" if gov_obj.reboots_enabled else "INACTIVO"
+    gov_str = "ACTIVO (82°C)" if gov_obj.governor_enabled else "INACTIVO (Vnish Auto)"
+    cont_str = "ACTIVO" if gov_obj.contingency_enabled else "INACTIVO"
+    presets_str = "ACTIVO" if gov_obj.presets_enabled else "INACTIVO"
+
+    timer_str = "Permanente"
+    if gov_obj.expires_at_ts and not gov_obj.is_expired(ts):
+        rem_m = int(max(0.0, gov_obj.expires_at_ts - ts) // 60)
+        timer_str = f"Restan {rem_m} min para reactivación"
+    elif gov_obj.is_expired(ts):
+        timer_str = "Temporizador vencido (reactivado)"
+
+    lines = [
+        "╔══════════════════════════════════════╗",
+        "║     🛡️ GOBERNANZA DE INTERVENCIONES  ║",
+        "╚══════════════════════════════════════╝",
+        "",
+        f"Régimen: {status_line}",
+        "",
+        "Actuadores Mutantes sobre Mineros:",
+        f"• 🔄 Reinicios (L1 Soft / L2 Hard): [{reboots_str}]",
+        f"• 🌪️ Fan Governor (Control PWM):    [{gov_str}]",
+        f"• ⚡ Contingencia de Elevadores:    [{cont_str}]",
+        f"• ⚙️ Preset Balancer (Overclock):   [{presets_str}]",
+        "",
+        f"⏱️ Temporizador: {timer_str}",
+        "",
+        "ℹ️ *Telemetría, SQLite y alertas siguen 100% activas.*",
+        "👇 *Selecciona una acción táctil:*",
+    ]
+
+    master_btn = (
+        {"text": "🔴 Desactivar TODAS (Vnish Libre)", "callback_data": f"{CC_ACT_PREFIX}int_all:off"}
+        if gov_obj.master_enabled
+        else {"text": "🟢 Reactivar TODAS", "callback_data": f"{CC_ACT_PREFIX}int_all:on"}
+    )
+
+    rows = [
+        [master_btn],
+        [
+            {"text": f"🔄 Reinicios: {'ON' if gov_obj.reboots_enabled else 'OFF'}", "callback_data": f"{CC_ACT_PREFIX}int_tog:reboots"},
+            {"text": f"🌪️ Fans Gov: {'ON' if gov_obj.governor_enabled else 'OFF'}", "callback_data": f"{CC_ACT_PREFIX}int_tog:governor"},
+        ],
+        [
+            {"text": f"⚡ Contingencia: {'ON' if gov_obj.contingency_enabled else 'OFF'}", "callback_data": f"{CC_ACT_PREFIX}int_tog:contingency"},
+            {"text": f"⚙️ Presets: {'ON' if gov_obj.presets_enabled else 'OFF'}", "callback_data": f"{CC_ACT_PREFIX}int_tog:presets"},
+        ],
+        [
+            {"text": "⏱️ 30m", "callback_data": f"{CC_ACT_PREFIX}int_tim:30m"},
+            {"text": "⏱️ 1h", "callback_data": f"{CC_ACT_PREFIX}int_tim:1h"},
+            {"text": "⏱️ 2h", "callback_data": f"{CC_ACT_PREFIX}int_tim:2h"},
+            {"text": "⏱️ 4h", "callback_data": f"{CC_ACT_PREFIX}int_tim:4h"},
+            {"text": "⏱️ Indef", "callback_data": f"{CC_ACT_PREFIX}int_tim:indef"},
+        ],
+        [
+            {"text": "🔙 Menú Principal", "callback_data": CC_NAV_MAIN},
+            {"text": "🔄 Actualizar", "callback_data": f"{CC_ACT_PREFIX}refresh:interventions"},
+        ],
+    ]
+
+    return "\n".join(lines), build_inline_keyboard(rows)
+
 

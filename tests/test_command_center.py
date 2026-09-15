@@ -9,7 +9,9 @@ from unittest.mock import MagicMock, patch
 from app.telegram.command_center import (
     CC_ACT_PREFIX,
     CC_NAV_ALERTS,
+    CC_NAV_INTERVENTIONS,
     CC_NAV_MAIN,
+
     CC_NAV_METRICS,
     CC_NAV_PROFILES,
     CC_NAV_REBOOT,
@@ -151,7 +153,7 @@ class TestCommandCenterUI(unittest.TestCase):
         self.assertIn("81.2°C", text)  # max temp
 
         kb = markup.get("inline_keyboard", [])
-        self.assertEqual(len(kb), 4)
+        self.assertEqual(len(kb), 5)
         # Check callback data in buttons
         row0_cbs = [b["callback_data"] for b in kb[0]]
         self.assertIn(CC_NAV_METRICS, row0_cbs)
@@ -167,6 +169,10 @@ class TestCommandCenterUI(unittest.TestCase):
 
         row3_cbs = [b["callback_data"] for b in kb[3]]
         self.assertIn("help:nav:home", row3_cbs)
+
+        row4_cbs = [b["callback_data"] for b in kb[4]]
+        self.assertIn(CC_NAV_INTERVENTIONS, row4_cbs)
+
 
     def test_render_main_dashboard_canonical_keys(self):
         canonical_states = {

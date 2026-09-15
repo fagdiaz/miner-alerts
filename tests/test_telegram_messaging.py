@@ -165,36 +165,42 @@ class TelegramQueueAdmissionTests(unittest.TestCase):
 
 class TelegramCommandWiringTests(unittest.TestCase):
     def test_command_branches_never_enqueue_deduplicable_replies(self) -> None:
-        source = Path("app/miner_monitor.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        parents: dict[ast.AST, ast.AST] = {}
-        for parent in ast.walk(tree):
-            for child in ast.iter_child_nodes(parent):
-                parents[child] = parent
+        # Check TelegramRequestContext always enforces is_command=True
+        ctx_source = Path("app/telegram/context.py").read_text(encoding="utf-8")
+        self.assertIn("is_command=True", ctx_source)
 
-        command_calls: list[ast.Call] = []
-        for node in ast.walk(tree):
-            if not (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "send_telegram"
-            ):
-                continue
-            ancestor = parents.get(node)
-            while ancestor is not None:
-                if isinstance(ancestor, ast.If) and "cmd_name" in ast.unparse(ancestor.test):
-                    command_calls.append(node)
-                    break
-                ancestor = parents.get(ancestor)
+        # Check all modular command files dispatch replies through context.send_message or send_telegram(is_command=True)
+        command_files = list(Path("app/telegram/commands").glob("*.py"))
+        total_command_replies = 0
+        for p in command_files:
+            source = p.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "send_message":
+                    total_command_replies += 1
+                elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "send_telegram":
+                    keywords = {keyword.arg: keyword.value for keyword in node.keywords}
+                    val = keywords.get("is_command")
+                    self.assertTrue(isinstance(val, ast.Constant) and val.value is True)
+                    total_command_replies += 1
 
-        self.assertGreater(len(command_calls), 30)
-        missing = []
-        for call in command_calls:
-            keywords = {keyword.arg: keyword.value for keyword in call.keywords}
-            value = keywords.get("is_command")
-            if not (isinstance(value, ast.Constant) and value.value is True):
-                missing.append(call.lineno)
-        self.assertEqual([], missing)
+        # Also count any direct send_telegram in miner_monitor.py command branches
+        mm_source = Path("app/miner_monitor.py").read_text(encoding="utf-8")
+        tree_mm = ast.parse(mm_source)
+        parents = {child: parent for parent in ast.walk(tree_mm) for child in ast.iter_child_nodes(parent)}
+        for node in ast.walk(tree_mm):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "send_telegram":
+                ancestor = parents.get(node)
+                while ancestor is not None:
+                    if isinstance(ancestor, ast.If) and "cmd_name" in ast.unparse(ancestor.test):
+                        keywords = {keyword.arg: keyword.value for keyword in node.keywords}
+                        val = keywords.get("is_command")
+                        self.assertTrue(isinstance(val, ast.Constant) and val.value is True)
+                        total_command_replies += 1
+                        break
+                    ancestor = parents.get(ancestor)
+
+        self.assertGreater(total_command_replies, 30)
 
     def test_automatic_notifications_remain_outside_command_delivery(self) -> None:
         source = Path("app/miner_monitor.py").read_text(encoding="utf-8")

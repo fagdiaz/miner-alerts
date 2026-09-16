@@ -3,17 +3,33 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-09-16] - Implementación Spec 067: Gateway Heartbeat & Supresión de Tormentas de Red Local (PROP-005)
+## [2026-09-16] - Implementación Spec 067: Gateway Heartbeat & Supresión de Tormentas de Red Local (PROP-005) + Auditoría QA Completa
 
-* **Objetivo**: Implementar un worker daemon ultraliviano de sondeo de latido TCP (`GatewayHeartbeatWorker`) hacia el router/gateway principal para detectar microcortes y suprimir tormentas de alarmas falsas de desconexión masiva en la flota ASIC.
+* **Objetivo**: 
+  1. Auditoría de seguridad integral de specs 061-066 conforme al ACTION_PLAN_V5_1_HORIZON.md.
+  2. Implementar `GatewayHeartbeatWorker` (Spec 067/PROP-005): hilo daemon ultraliviano de sondeo TCP al router local para detectar microcortes de switch y suprimir tormentas de falsas alarmas de desconexión masiva en la flota ASIC.
+* **Auditoría QA Ejecutada** (pre-implementación):
+  - Verificado: 37 invariantes constitucionales (inspect.getsource) PASS sin alteración.
+  - Verificado: timeouts ≤ 5.0s en Api4028Transport, VnishClient, HashcoreClient.
+  - Verificado: `CREATE_NO_WINDOW` en hashcore_client.py y monitor_watchdog.py.
+  - Verificado: `context.governance` y `context.last_daily_digest_date` sincronizados antes de `execute_tick()`.
+  - **Fix aplicado**: `_async_execute_mining_restart` — envolvimiento total en `try...except Exception` (hilo daemon podía morir silenciosamente ante excepción inesperada).
 * **Componentes Modificados / Creados**:
-  - `app/network/gateway_heartbeat.py`: Módulo daemon con `GatewayHeartbeatWorker` (zero dependencias externas, socket connect con timeout 50ms, fallback de puerto DNS/53, control atómico GIL-safe, cierre explícito de sockets).
-  - `app/network/__init__.py`: Exportado `GatewayHeartbeatWorker`.
-  - `app/miner_monitor.py`: Instanciación y arranque en `main()` de `_gateway_heartbeat` con configuración tolerante y barrera de excepciones.
-  - `tests/test_gateway_heartbeat.py`: Suite completa de 7 pruebas unitarias cubriendo inicialización, estados atómicos, detección de ventanas transitorias y fallback de puerto.
+  - `app/network/gateway_heartbeat.py`: `GatewayHeartbeatWorker` (zero dependencias externas, socket connect con timeout 50ms, fallback de puerto DNS/53, control atómico GIL-safe, cierre explícito de sockets en `finally`, barrera total de excepciones en `_run()`).
+  - `app/network/__init__.py`: Re-exportado `GatewayHeartbeatWorker`.
+  - `app/miner_monitor.py`: 
+    * Instanciación condicional de `_gateway_heartbeat` antes del `while True:` con degradación suave.
+    * Guard `_network_storm_active` antes del despacho de `EPISODE_ALERT` — filtra episodios de `STATE_OFFLINE` durante parpadeos de switch (ventana configurable, default 15s).
+    * `_gateway_heartbeat.stop()` en el `finally` del loop principal.
+    * Fix: barrera de excepción en `_async_execute_mining_restart`.
+  - `app/config.example.json`: Añadidas 6 claves para Spec 067 (`gateway_heartbeat_enabled: false` por defecto, opt-in).
+  - `tests/test_gateway_heartbeat.py`: Suite completa de **27 pruebas** unitarias (7 clases): inicialización, `is_recently_lost`, `gateway_loss_elapsed_s`, socket close safety, fallback de puerto, ciclo de vida start/stop con mocks.
 * **Verificación y Evidencia**:
-  - Suite unitaria: `tests.test_gateway_heartbeat` → **7 / 7 PASS** en 0.002s.
-  - Suite de regresión: **1072 / 1072 tests PASS** en 37.1s (0 fallos, 0 errores).
+  - Suite unitaria Spec 067: **27 / 27 PASS** en 0.76s.
+  - Suite de invariantes (37 tests): **37 PASS** en 0.066s.
+  - Suite de regresión completa: **1072 / 1072 tests PASS** en 38.91s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio Windows `MinerAlerts`: **Running** tras `Restart-Service`, sin errores en logs de inicio.
+  - Commits: `67f0c9b` (fix audit + scaffold) y `b8cdf92` (feat spec-067).
 
 ## [2026-09-16] - Estabilización Operativa: Auto-Restart Warmup Guard & Adaptación Dinámica de Gobernador Térmico en Contingencia
 

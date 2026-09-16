@@ -1,53 +1,53 @@
 # ==============================================================================
-# PROMPT DE HANDOFF & DIRECTIVAS DE AUDITORÍA: HORIZONTE V5.1 (SPECS 067 A 070)
+# PROMPT DE HANDOFF: HORIZONTE V5.1 — POST SPEC 067 (SPECS 068 A 070)
 # ==============================================================================
-# MODELO RECOMENDADO: Claude Sonnet 4.6 (Thinking)
-# Justificación: Auditoría profunda de concurrencia en Windows, hilos daemon,
-# interlocks de red, Named Pipes IPC y diseño de behavioral harness de tests.
+# MODELO RECOMENDADO: Gemini 3.8 Flash High
+# Justificación: Spec 068 (Named Pipes IPC) requiere análisis de concurrencia
+# moderado en Windows; es adecuado para Flash High. Escalar a Claude Sonnet 4.6
+# solo si aparecen race conditions en el watchdog IPC.
 # ==============================================================================
 
-Estimado Claude Sonnet 4.6 (Thinking):
-
-Has sido seleccionado para realizar una AUDITORÍA INTEGRAL DE SEGURIDAD, QA Y CONTINUIDAD OPERATIVA
-sobre la base de código de Miner Alerts antes de continuar con la hoja de ruta de las Specs 067 a 070.
+Estado de entrega: Spec 067 IMPLEMENTADA Y CERTIFICADA
 
 1. LÍNEA BASE ACTUAL DEL SISTEMA:
-- Pruebas unitarias: 1072 tests PASS (0 fallos, 0 errores, 0 regresiones en 37.1s).
-- Servicio Windows 'MinerAlerts': Estado Running, activo y en supervisión en tiempo real de 4 mineros S19j Pro.
-- Git: Rama 'codex/022-adaptive-acquisition' completamente limpia y sincronizada con origin.
-- Últimas implementaciones y fixes operativos verificados:
-  * Spec 066: Cold-Boot Fleet Grace Period de 180s (app/miner_monitor.py).
-  * Spec 067: Gateway Heartbeat & Supresión de Tormentas de Red Local (app/network/gateway_heartbeat.py, 7 pruebas unitarias).
-  * Auto-Restart Warmup Guard: Parámetro elapsed < auto_restart_min_elapsed_seconds (180s) que impide reiniciar mineros por software (Nivel 1) mientras están en booteo de NAND o autotuning tras un reinicio físico o corte eléctrico.
-  * Gobernador Térmico en Contingencia: Derivación dinámica de target_pwr a partir del preset activo real (2300W/2100W) en vez de asumir estáticamente 2700W. Esto permite que durante contingencia eléctrica las turbinas modulen hacia abajo (STEP_DOWN) regulando a 82.0°C sin quedar congeladas en 100% (RECOVERY_MAX_COOLING), y que al salir de contingencia busquen la máxima potencia (2700W/2800W) manteniendo siempre 82.0°C.
-  * Contención de excepciones en hilo daemon _async_execute_mining_restart y sincronización de monitor_ctx.governance.
+- Pruebas unitarias: 1072 tests PASS (0 fallos, 0 errores, 0 regresiones en 38.9s).
+- Servicio Windows 'MinerAlerts': Estado Running, activo supervisando 4 mineros S19j Pro.
+- Git: Rama 'codex/022-adaptive-acquisition' completamente limpia y sincronizada.
+- Auditoría QA V5.1 completada: todos los checkpoints del ACTION_PLAN_V5_1_HORIZON.md verificados.
+- Últimas specs completadas y fixes aplicados:
+  * Spec 065: Pipeline declarativo de hooks en CoreSupervisoryEngine.
+  * Spec 066: Cold-Boot Fleet Grace Period 180s (PROP-001).
+  * Spec 067: Gateway Heartbeat & Network Storm Suppression PROP-005.
+    - GatewayHeartbeatWorker (app/network/gateway_heartbeat.py): hilo daemon TCP probe 50ms, fallback DNS/53, socket close explícito, degradación suave.
+    - Integración aditiva en main(): guard _network_storm_active filtra STATE_OFFLINE durante parpadeos de switch (ventana default 15s, opt-in via gateway_heartbeat_enabled).
+    - 27 tests unitarios PASS.
+  * Fix QA: _async_execute_mining_restart envuelto en try/except Exception.
+  * Fix QA (sesión anterior): PersistenceHook skip guard (_state_persisted), context governance/last_daily_digest_date sincronizados en cada tick.
 
-2. DOCUMENTO MAESTRO DE PLANIFICACIÓN:
-- Lee obligatoriamente: docs/speckit/ACTION_PLAN_V5_1_HORIZON.md.
-  Allí se detallan las especificaciones pendientes, arquitectura, mitigaciones y riesgos:
-  * Spec 067: Latido de Gateway y Supresión de Tormentas por Fallo de Red Local (PROP-005) - Base implementada, auditar supresión en detección de offline.
-  * Spec 068: Canal IPC Alta Frecuencia Monitor <-> Watchdog vía Named Pipes (PROP-007).
-  * Spec 069: Telemetría Profunda por Cadena & Predictive Chain Break (PROP-008).
-  * Spec 070: Modularización Core Fase B — Sustitución segura de inspect.getsource(main).
+2. SPECS PENDIENTES (según ACTION_PLAN_V5_1_HORIZON.md):
 
-3. CHECKLIST DE AUDITORÍA & QA QUE DEBES EJECUTAR:
-A. Auditoría de Concurrencia en app/miner_monitor.py:
-   - Revisar jerarquía de locks: state_lock (L1) -> _SAVE_STATE_LOCK (L2).
-   - Verificar que fsync en state_manager.save() ocurra fuera de state_lock.
-   - Revisar hilos daemon (AutoRestart, TripwireRestore, GatewayHeartbeatWorker, ChainTelemetryReactive)
-     asegurando que cada uno posea try...except Exception con logging defensivo.
-B. Auditoría de Red y Sockets en Windows:
-   - Verificar timeouts (<= 5.0s) en Api4028Transport, VnishClient y HashcoreClient.
-   - Verificar creationflags=subprocess.CREATE_NO_WINDOW en invocaciones subprocess de Windows.
-C. Contención de Excepciones en Hooks (app/core/engine.py):
-   - Verificar que PERSISTENCE y POST_TICK siempre se ejecuten en execute_tick().
-   - Verificar que extra_tick_data transmita _state_persisted, governance y startup_grace_active.
-D. Verificación de Invariantes:
-   - Ejecutar: & ".\.venv\Scripts\python.exe" -m unittest tests.test_t009_t011_invariants tests.test_auto_reboot_signal_gate tests.test_hashboard_auto_reboot tests.test_reboot_safety tests.test_vnish_hashboard_detection -v
-   - Mantener el 100% de los tests de invariantes pasando sin alterar las cadenas literales requeridas en inspect.getsource(main).
+   * Spec 068 (P3): Canal IPC Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (PROP-007).
+     - Módulos: app/ipc/watchdog_pipe.py (nuevo), tools/monitor_watchdog.py.
+     - Protocolo: PING <nonce>\n → PONG <nonce> <tick_sequence> <uptime>\n en < 100ms.
+     - Si 3 fallos consecutivos → diagnóstico forense + Restart-Service.
+     - Riesgo MEDIO: Named Pipes en Windows, permisos ACL, pywin32 vs ctypes.
 
-4. HOJA DE RUTA PARA TU SESIÓN:
-- Paso 1: Realizar tu lectura y auditoría de seguridad sobre los puntos del checklist.
-- Paso 2: Aplicar mejoras o endurecimientos de QA identificados.
-- Paso 3: Correr & ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py" (garantizar >= 1072 tests PASS).
-- Paso 4: Proceder con la consolidación de la Spec 067 y la especificación de la Spec 068 (Named Pipes IPC).
+   * Spec 069 (P1): Telemetría Profunda por Cadena & Predictive Chain Break (PROP-008).
+     - Módulos: app/governance/chain_health.py, app/vnish/chain_collector.py.
+     - Reglas: sensor I2C en fallo > 12h → alerta preventiva; desbalance < 92% → degradación.
+     - Riesgo MEDIO: queries SQL sobre chain_telemetry_samples < 15ms.
+
+   * Spec 070 (P2): Modularización Core Fase B — Desacoplamiento de inspect.getsource(main).
+     - Riesgo ALTO: 4 suites usan inspección textual de main(). Requiere behavioral tests previos.
+
+3. RECOMENDACIÓN DE PRÓXIMO PASO:
+   Implementar Spec 069 (P1, riesgo medio) antes que Spec 068 (P3).
+   Spec 069 tiene mayor impacto operativo: el incidente del 2026-09-12 (Minero 24, Cadena 2,
+   sensor I2C board 39 chip 54 loc 28) sigue activo en producción sin alerta preventiva.
+
+4. COMANDOS DE VALIDACIÓN:
+   & ".venv\Scripts\python.exe" -m py_compile app\miner_monitor.py app\core\engine.py
+   & ".venv\Scripts\python.exe" -m pytest tests/ -q --tb=no
+   & ".venv\Scripts\python.exe" -m unittest tests.test_auto_reboot_signal_gate tests.test_hashboard_auto_reboot tests.test_reboot_safety tests.test_vnish_hashboard_detection -v
+   Get-Service -Name MinerAlerts
+   Get-Content -Path logs\out.log -Tail 30

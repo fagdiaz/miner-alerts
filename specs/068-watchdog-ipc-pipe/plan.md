@@ -24,6 +24,8 @@ class WatchdogIPCServer:
     def stop(self) -> None: ...
     def _run_named_pipe(self) -> None: ...
     def _run_socket_fallback(self) -> None: ...
+    def _wake_up_unblock(self) -> None:
+        """Conexión local efímera para desbloquear ConnectNamedPipe en stop()."""
 
 class WatchdogIPCClient:
     """Cliente utilizado por tools/monitor_watchdog.py para sondear el monitor en <15s."""
@@ -36,7 +38,15 @@ class WatchdogIPCClient:
     def ping(self) -> Tuple[bool, Optional[int], Optional[float], Optional[str]]: ...
 ```
 
-### 1.2 Mecanismo de Volcado Forense (`app/core/forensics.py` o helper en IPC)
+### 1.2 Descriptor de Seguridad en Windows NT (QA-068-01)
+Para compatibilidad total entre el servicio de Windows (`LocalSystem`) y procesos ejecutados por usuarios interactivos o el Programador de Tareas:
+```python
+def create_pipe_security_attributes() -> Optional[ctypes.c_void_p]:
+    """Genera SECURITY_ATTRIBUTES con DACL permisiva para clientes locales (SDDL)."""
+    # SDDL: D:(A;;GRGW;;;WD) -> Discretionary ACL: Allow Generic Read / Generic Write to Everyone
+```
+
+### 1.3 Mecanismo de Volcado Forense (`app/core/forensics.py` o helper en IPC)
 Función pura para capturar el estado interno de todos los hilos en ejecución:
 ```python
 def dump_thread_frames(output_dir: Path) -> Path:
@@ -75,10 +85,11 @@ def dump_thread_frames(output_dir: Path) -> Path:
    - Handshake PING/PONG con nonce dinámico.
    - Manejo de timeout cuando el socket/pipe no responde en 100 ms.
    - Prueba de reconexión y desconexión limpia sin fugas de handles.
+   - Verificación de parada limpia en $<200\text{ ms}$ mediante `_wake_up_unblock()`.
 2. **Pruebas de Fallback**:
-   - Simular fallo en `CreateNamedPipeW` y verificar que el servidor cambia limpiamente a socket TCP loopback `127.0.0.1:4029`.
+   - Simular fallo en `CreateNamedPipeW` y verificar que el servidor cambia limpiamente a socket TCP loopback `127.0.0.1:4029` con `SO_REUSEADDR`.
 3. **Pruebas de Detección de Deadlock**:
    - Simular congelamiento del `tick_sequence` y verificar que el cliente reporta fallo de supervisión.
 4. **Validación Global**:
-   - Ejecutar la suite completa garantizando $\ge 1072$ tests PASS (cero regresiones).
+   - Ejecutar la suite completa garantizando $\ge 1110$ tests PASS (cero regresiones).
    - `py_compile` en todos los archivos modificados.

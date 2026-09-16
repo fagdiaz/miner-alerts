@@ -99,20 +99,26 @@ scheduled before conditional Spec 027.
 | Closed | 065 Supervisory Hooks | P1 | MEDIUM | `app/core/engine.py` | Completed, ST-04 Declarative 7-Stage Hooks Pipeline (`v5.0.2`, 1047 tests PASS). |
 | Closed | 066 Cold-Boot Fleet Grace | P1 | LOW | `app/miner_monitor.py` | Completed, PROP-001 Cold-Boot 180s Fleet Warmup Grace (`v5.0.3`, 1062 tests PASS). |
 
-### Horizon V5.1 Active Planned Packages (Specs 067–070)
+### Horizon V5.1 Packages (Specs 067–073)
 
 | Order | Spec | Priority | Risk | Depends on | Outcome / Objective |
 | --- | --- | --- | --- | --- | --- |
-| Planned | 067 Gateway Heartbeat & Storm Suppression | P2 | LOW | Spec 066 | Worker TCP 50ms hacia router y supresión de tormentas 15s (PROP-005). |
-| Planned | 068 IPC Watchdog Named Pipe | P3 | MEDIUM | Spec 067 | Servidor Named Pipe en monitor y cliente watchdog fuera de proceso <15s (PROP-007). |
-| Planned | 069 Deep Chain Telemetry & Predictive Break | P1 | MEDIUM | Spec 067 | Telemetría profunda por cadena, diagnóstico predictivo bus I2C (PROP-008). |
-| Planned | 070 Core Modularization Phase B | P0 | HIGH | Spec 069 | Sustitución de inspect.getsource(main) por Behavioral Test Harness desacoplado (ST-05). |
+| Closed | 067 Gateway Heartbeat & Storm Suppression | P2 | LOW | Spec 066 | Worker TCP 50ms hacia router y supresión de tormentas 15s (PROP-005, 1072 tests PASS). |
+| Closed | 071 SQLite Pool & Daemon Thread Hardening | P1 | LOW | Spec 067 | Pool multi-lector resiliente y barreras try/except en hilos daemon (1079 tests PASS). |
+| Audited (Planned) | 072 State Serialization Unification | P2 | LOW | Spec 071 | Unificación DRY de serialización de MinerState y helpers seguros (Planificado/Auditado). |
+| Audited (Planned) | 073 Tools Client Reuse & Config Alignment | P3 | LOW | Spec 072 | Reutilización de cgminer_client en tools y validador de config (Planificado/Auditado). |
+| Audited (Planned) | 070 Core Modularization Phase B (Harness) | P0 | HIGH | Spec 073 | Sustitución de inspect.getsource(main) por Behavioral Test Harness (Planificado/Auditado). |
+| Audited (Planned) | 068 IPC Watchdog Named Pipe | P3 | MEDIUM | Spec 070 | Servidor Named Pipe con SDDL y wake-up unblock <15s (Planificado/Auditado). |
+| Audited (Planned) | 069 Deep Chain Telemetry & Predictive Break | P1 | MEDIUM | Spec 070 | Telemetría profunda por cadena, persistencia I2C >=24 muestras (Planificado/Auditado). |
 
 ## Implementation Readiness And Hard Gates
 
-All 66 packages in the program (Specs 001 through 066) have satisfied their planning, implementation,
+All implemented packages (Specs 001 through 067, and Spec 071) have satisfied their planning, implementation,
 validation, and production soak gates. The system is stabilized and certified
-under Release v5.0.3 (1062 tests PASS).
+under Release v5.1.0 (1110 tests PASS).
+
+Specs 068, 069, 070, 072, and 073 are fully specified and audited by QA with all edge-case mitigations,
+and remain paused awaiting explicit implementation trigger.
 
 Documentation and sanitized fixtures may advance in parallel. Runtime code,
 activation or a new long-lived component cannot bypass the hard blocks above.

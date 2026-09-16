@@ -27,8 +27,9 @@ Actualmente, la supervisión de salud del monitor depende de dos mecanismos desa
 ### Componente 1: Servidor IPC Ultraliviano en el Monitor (`app/ipc/watchdog_pipe.py`)
 Un hilo daemon dedicado dentro de `miner_monitor.py` expone un canal de comunicación local de alta frecuencia para que el watchdog sondee el estado del proceso en tiempo real:
 - **Transporte Primario**: Named Pipe nativo en Windows (`\\.\pipe\MinerAlertsWatchdog`) implementado con `ctypes.windll.kernel32` (`CreateNamedPipeW`, `ConnectNamedPipe`, `DisconnectNamedPipe`), evitando requerir la librería binaria externa `pywin32`.
-- **Transporte de Fallback**: Loopback Socket TCP local (`127.0.0.1:4029`) activado automáticamente si la creación del pipe falla por restricciones de permisos de seguridad de Windows NT.
-- **Permisos y Seguridad**: Configuración de `SECURITY_ATTRIBUTES` restringiendo la conexión a procesos locales ejecutados bajo el mismo SID de usuario o `NT AUTHORITY\SYSTEM`.
+- **Transporte de Fallback**: Loopback Socket TCP local (`127.0.0.1:4029`) con `SO_REUSEADDR` activado automáticamente si la creación del pipe falla por restricciones de Windows NT o colisión de puerto.
+- **Permisos y Descriptor de Seguridad (QA-068-01)**: Creación de un `SECURITY_DESCRIPTOR` explícito con SDDL `D:(A;;GRGW;;;WD)` (Allow Read/Write to Everyone local) vía `advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW`. Esto evita terminantemente el fallo `ERROR_ACCESS_DENIED (5)` cuando el servicio corre bajo `NT AUTHORITY\SYSTEM` y el watchdog es ejecutado por un usuario local o tarea programada.
+- **Desbloqueo Limpio en Parada (QA-068-02)**: Para evitar que el hilo servidor quede congelado de forma indefinida en una llamada síncrona a `ConnectNamedPipe` durante el apagado del servicio, el método `server.stop()` realiza una conexión local efímera de desbloqueo ("wake-up connect") que garantiza la liberación inmediata del kernel y la terminación del hilo en $<200\text{ ms}$.
 
 ### Componente 2: Protocolo Ping-Pong Estricto & Detección de Deadlock
 1. El cliente watchdog envía una línea de texto plano:
@@ -62,7 +63,7 @@ El watchdog implementa una máquina de estados de 3 intentos consecutivos con in
 2. **RF-02 (Timeout Acotado $\le 100\text{ ms}$)**: Todas las operaciones de lectura/escritura en el pipe o socket de loopback deben tener un timeout estricto de 100 ms para evitar acumulación de bloqueos.
 3. **RF-03 (Cero Fugas de Handles)**: Cada conexión entrante de sondeo debe cerrarse de forma explícita (`DisconnectNamedPipe` / `CloseHandle` / `socket.close()`) en un bloque `finally`.
 4. **RF-04 (Degradación Suave)**: Si el servidor IPC falla al inicializarse, el monitor continuará funcionando normalmente bajo el mecanismo existente de `data/monitor_heartbeat.json`, registrando un log de advertencia.
-5. **RF-05 (Compatibilidad Invariante)**: La integración en `main()` debe respetar el 100% de los 37 tests constitucionales de `inspect.getsource(main)`.
+5. **RF-05 (Orden de Dependencia y Compatibilidad Invariante)**: La integración en `miner_monitor.py:main()` debe realizarse tras la activación del arnés de comportamiento (Spec 070 Fase A) o de forma puramente aditiva antes del bloque `while True:`, respetando el 100% de los 37 tests constitucionales de `inspect.getsource(main)`.
 
 ---
 

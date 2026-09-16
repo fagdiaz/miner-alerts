@@ -3,6 +3,31 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Auditoría QA Exhaustiva & Mitigaciones de Diseño en Especificaciones Pendientes (Specs 068 a 073)
+
+* **Objetivo**: Auditoría técnica de calidad y control de riesgos sobre las especificaciones pendientes de implementación (Specs 068, 069, 070, 072 y 073), asegurando que todos los planes, especificaciones y listas de tareas incorporen salvaguardas de seguridad, concurrencia, permisos en Windows NT y significancia estadística antes de iniciar cualquier fase de código.
+* **Hallazgos y Mejoras Incorporadas en Artefactos de Diseño**:
+  - **Spec 068 (Canal IPC Monitor ↔ Watchdog - PROP-007)**:
+    * Inclusión de descriptor de seguridad explícito (`SECURITY_DESCRIPTOR` con SDDL `D:(A;;GRGW;;;WD)`) vía `advapi32` para eliminar el fallo `ERROR_ACCESS_DENIED (5)` entre el servicio `LocalSystem` y usuarios interactivos o tareas programadas locales.
+    * Incorporación de conexión efímera de desbloqueo ("wake-up connect") en `server.stop()` para liberar llamadas síncronas de `ConnectNamedPipe` y garantizar parada limpia en $<200\text{ ms}$ sin demorar el shutdown del servicio.
+    * Incorporación de `SO_REUSEADDR` en el socket loopback fallback para evitar colisiones de puerto.
+  - **Spec 069 (Telemetría Profunda por Cadena & Diagnóstico Predictivo - PROP-008)**:
+    * Incorporación de condición de significancia estadística mínima ($N \ge 24$ muestras recolectadas en la ventana de 12h) antes de calcular la persistencia $\ge 90\%$ de fallos I2C, erradicando falsos positivos en arranques o tras caídas de red.
+    * Creación segura de índice compuesto `ix_chain_telemetry_miner_chain_time` protegida con timeout y reintentos ante bloqueos de base de datos.
+    * Fallback seguro en correlación causal eléctrica si los mineros no tienen especificado grupo o elevador en configuración.
+  - **Spec 070 (Modularización del Core Fase B - ST-05)**:
+    * Desacoplamiento estratégico: La Fase 1 (construcción del arnés de comportamiento determinista de 37 invariantes) se habilita como prerrequisito de seguridad no destructivo previo a modificaciones en `miner_monitor.py:main()`.
+    * Extensión de paridad dual reflejando la línea base actual de 1110 tests (meta: 1147 tests PASS).
+  - **Spec 072 (Unificación de Serialización de Estado - P2)**:
+    * Definición formal de paridad cruzada byte-a-byte y consolidación de helpers de resolución y formateo seguro de claves de estado (`format_miner_key`) en `app/telegram/command_center.py` para prevenir importaciones circulares y errores `KeyError` en mineros sin clave `host`.
+  - **Spec 073 (Reutilización de Clientes en Tools & Auditoría de Config - P3)**:
+    * Distinción estricta en el validador entre claves críticas requeridas (`telegram`, `miners`, `poll_seconds`) y claves opcionales con valores predeterminados seguros en runtime.
+    * Flexibilidad de compatibilidad de tipos para valores numéricos (`int` y `float`) y credenciales de Telegram (`chat_id` como `str` o `int`).
+* **Estado de la Suite & Producción**:
+  - Suite de regresión certificada: **1110 tests PASS** en 34.1s (0 fallos, 0 regresiones).
+  - Servicio de Windows `MinerAlerts` activo y en ejecución continua (`Running`).
+  - Implementación de especificaciones en pausa, listas para ejecución aprobada.
+
 ## [2026-09-16] - Implementación Spec 071: Consolidación de Pool SQLite Resiliente & Barrera Defensiva de Hilos Daemon (P0/P1)
 
 * **Objetivo**: 

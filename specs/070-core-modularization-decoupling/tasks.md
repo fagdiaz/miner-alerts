@@ -17,7 +17,7 @@
 ### Fase B: Certificación de Paridad Dual
 
 - [ ] **T006**: Ejecutar suite de comportamiento: `unittest tests.test_supervisory_core_behavioral` (37/37 tests PASS).
-- [ ] **T007**: Ejecutar suite completa de regresión con ambas suites activas simultáneamente: verificar $\ge 1109$ tests PASS (1072 + 37 nuevos, 0 fallos).
+- [ ] **T007**: Ejecutar suite completa de regresión con ambas suites activas simultáneamente: verificar $\ge 1147$ tests PASS (1110 + 37 nuevos, 0 fallos).
 
 ### Fase C: Refactorización Segura a Hooks
 
@@ -29,7 +29,7 @@
 ### Fase D: Validación Final y Documentación
 
 - [ ] **T012**: Sintaxis `py_compile app/miner_monitor.py app/core/engine.py`.
-- [ ] **T013**: Suite completa de regresión: $\ge 1072$ tests PASS, 0 fallos, 0 regresiones.
+- [ ] **T013**: Suite completa de regresión: $\ge 1147$ tests PASS, 0 fallos, 0 regresiones.
 - [ ] **T014**: Registrar comandos y evidencia en `specs/070-core-modularization-decoupling/evidence.md`.
 - [ ] **T015**: Agregar entrada en `docs/audit/DEVELOPMENT_LOG.md`.
 - [ ] **T016**: Actualizar `docs/speckit/ROADMAP.md` y `prompt.txt`.

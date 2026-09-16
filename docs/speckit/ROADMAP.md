@@ -871,9 +871,8 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 ## Governance
 
 - All 68 specifications implemented in the program (Specs 001 through 067, and Spec 071) are complete, verified with evidence, and closed.
-- Version 5.1.0 + Hardening (Release V5.1.0 Gateway Heartbeat & SQLite Pool Hardening) is certified with 1079/1079 tests PASS.
-- Specs 068, 069, and 070 are fully specified end-to-end and paused pending post-cleanup architectural alignment.
-- Specs 071, 072, and 073 establish the immediate repository cleanup and technical debt remediation track.
-- Active implementation target: **Spec 072 (Unificación de Serialización de Estado & Desacoplamiento de Shims)**.
+- Version 5.1.0 + Hardening is certified with 1110/1110 tests PASS (0 failures, 0 regressions, Windows service running).
+- Specs 068, 069, 070, 072, and 073 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
+- Implementation of Specs 068, 069, 070, 072, and 073 remains paused awaiting explicit user approval.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

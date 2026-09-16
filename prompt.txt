@@ -1,21 +1,25 @@
-﻿# ==============================================================================
-# PROMPT DE EJECUCIÓN: SPEC 071 COMPLETADA — PRÓXIMA: SPEC 072
+# ==============================================================================
+# PROMPT DE EJECUCIÓN: AUDITORÍA QA DE SPECS 068 A 073 COMPLETADA
 # ==============================================================================
 # MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Spec 071 (P0/P1 SQLite Pool & Thread Hardening) está finalizada y
-# validada con 1079 tests PASS (+7 tests, 0 fallos). El siguiente paso es Spec 072
-# (P2 Unificación de Serialización de Estado & DRY Cleanups) que se encuentra dentro
-# del alcance óptimo de Gemini Flash High.
+# Justificación: Las especificaciones pendientes (Specs 068, 069, 070, 072 y 073)
+# fueron auditadas y enriquecidas con salvaguardas de seguridad, concurrencia y
+# significancia estadística. La suite se encuentra en 1110 tests PASS (0 fallos).
+# La implementación se encuentra en pausa a la espera de confirmación del usuario.
 # ==============================================================================
 
 1. ESTADO ACTUAL Y LÍNEA BASE DEL SISTEMA:
-- Pruebas unitarias: 1079 tests PASS (0 fallos, 0 errores, 0 regresiones en 32.7s).
+- Pruebas unitarias: 1110 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.1s).
 - Servicio Windows 'MinerAlerts': Running ininterrumpido.
 - Rama: 'codex/022-adaptive-acquisition'.
-- Spec 071 Completada: Pool read-only SQLite centralizado (`open_readonly_connection` + `execute_readonly_with_retry` con backoff exponencial) migrado en los 7 módulos consumidores. Barreras defensivas de hilos daemon implementadas (`RestoreLock_{name}`, `ShutdownPurgeNotify`, `TelegramSender`, `TelegramPolling`).
+- Specs 068 a 073: Completamente auditadas por QA y actualizadas en sus artefactos (spec.md, plan.md, tasks.md).
 
-2. ESPECIFICACIONES PAUSADAS Y SU HORIZONTE:
-- Specs 068, 069, 070: Documentadas end-to-end (`specs/068-*/`, `069-*/`, `070-*/`), en pausa para ajustes post-limpieza arquitectónica.
+2. ESTADO DE SPECS AUDITADAS:
+- Spec 068 (IPC Watchdog): Enriquecida con SDDL de permisos Windows NT y wake-up unblock en shutdown.
+- Spec 069 (Predictive Chain Break): Enriquecida con significancia estadística mínima (N >= 24) y fallback de grupo.
+- Spec 070 (Core Modularization): Arnés de comportamiento (Fase A) posicionado como salvaguarda previa a cambios en main().
+- Spec 072 (State Serialization): Paridad determinista y helpers en command_center.py.
+- Spec 073 (Tools Client Reuse): Validador de configuración con distinción crítica vs opcional.
 
 3. PRÓXIMA ACCIÓN:
-- Implementar Spec 072: Unificación de serialización de estado `MinerState` (`_build_state_payload` delegando en `StateManager._serialize_state()`), extracción del helper `find_assessment_by_target()` y centralización de `_dicts()`.
+- Consultar al usuario qué especificación desea autorizar para implementación primero (orden sugerido: Spec 072 -> Spec 073 -> Spec 070 Fase A -> Spec 068 -> Spec 069).

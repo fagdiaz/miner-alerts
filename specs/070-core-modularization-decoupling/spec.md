@@ -45,20 +45,21 @@ Para eliminar el acoplamiento sin correr el menor riesgo de regresión funcional
 - Ambas suites de pruebas coexisten simultáneamente en el repositorio:
   - 37 tests legados de `inspect.getsource(main)`
   - 37 nuevos tests de comportamiento funcional
-- La suite completa debe reportar $\ge 1109$ tests globales PASS (1072 actuales + 37 nuevos).
+- La suite completa debe reportar $\ge 1147$ tests globales PASS (1110 actuales + 37 nuevos).
 - Se prohíbe tocar `main()` hasta que la paridad sea total y demostrada.
 
 ### Fase 3: Refactorización Hacia Hooks Desacoplados
-- Con la suite de comportamiento protegiendo todas las invariantes funcionales, se refactoriza de forma segura el bucle de `main()` delegando la adquisición, detección y actuación a los hooks formales de `CoreSupervisoryEngine`.
+- Con la suite de comportamiento protegiendo todas las invariantes funcionales, se refactoriza de forma segura el bucle de `main()` delegando la adquisición, detección y actuación a los hooks formales de `CoreSupervisoryEngine` (`AcquisitionHook`, `DetectionHook`, `ActuatorHook`).
 - Los 4 archivos de test legados se actualizan para verificar la lógica a través del arnés o de funciones puras, eliminando la inspección textual de `main()`.
 
 ---
 
 ## 3. Requisitos Inviolables
 
-1. **RI-01 (Invariante de Tests Crecientes)**: `len(tests_pass)` sólo puede aumentar ($\ge 1072 \rightarrow \ge 1109$), jamás decrecer.
+1. **RI-01 (Invariante de Tests Crecientes)**: `len(tests_pass)` sólo puede aumentar ($\ge 1110 \rightarrow \ge 1147$), jamás decrecer.
 2. **RI-02 (Cero Modificaciones a Producción en Fase 1 y 2)**: El archivo `app/miner_monitor.py` no debe modificarse durante la construcción del arnés de comportamiento.
 3. **RI-03 (Preservación Absoluta de Seguridad de Auto-Reboot)**: Ningún interlock, tiempo de cooldown o comprobación de Hashcore Toolkit puede ser alterado o flexibilizado.
+4. **RI-04 (Harness Previo para Specs 068/069)**: La Fase 1 (construcción del arnés) puede activarse de forma previa y no destructiva para blindar cualquier modificación subsiguiente al bucle principal de adquisición.
 
 ---
 

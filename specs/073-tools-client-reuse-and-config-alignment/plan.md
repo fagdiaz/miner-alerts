@@ -1,4 +1,4 @@
-﻿# Plan de Implementación — Spec 073: Reutilización de Clientes en Tools & Alineación de Configuración (P3)
+# Plan de Implementación — Spec 073: Reutilización de Clientes en Tools & Alineación de Configuración (P3)
 
 **ID**: 073  
 **Rama**: `codex/022-adaptive-acquisition`  
@@ -21,11 +21,15 @@
   python tools/audit_config.py --reference app/config.example.json --target app/config.json
   ```
 - Salida estructurada con códigos de salida:
-  - 0: Compatibilidad total o solo advertencias de claves opcionales faltantes.
-  - 1: Errores de tipo o formato JSON inválido.
+  - 0: Compatibilidad total o solo advertencias de claves opcionales con defaults de runtime.
+  - 1: Errores de tipo o claves críticas faltantes (`telegram`, `miners`, `poll_seconds`).
+- Reglas de compatibilidad de tipos (QA-073-01):
+  - Los tipos numéricos (`int` y `float`) son intercambiables.
+  - `chat_id` admite tanto `str` como `int`.
+  - Validación de objetos anidados (`miners`: cada minero debe contener `name` y `host` o `ip`).
 
 ### 1.3 Consolidación de Fixtures de Testing
-- Crear `tests/fixtures_compact_ux.py` con fábricas comunes de estados y muestras de telemetría.
+- Crear `tests/fixtures_compact_ux.py` con fábricas comunes de estados y muestras de telemetría (`make_test_coordinator`, `observe_test_episode`).
 - Importar en `tests/test_compact_format.py` y `tests/test_compact_ux.py`.
 
 ---
@@ -35,7 +39,7 @@
 1. **Test de Diagnósticos (`tests/test_miner_diagnostics_client.py`)**:
    - Simular respuestas de socket con mock y verificar que `tools/miner_diagnostics.py` procesa correctamente `summary`, `stats`, `pools`, `version`.
 2. **Test de Auditor de Configuración (`tests/test_audit_config.py`)**:
-   - Validar detección de tipos incompatibles y claves desconocidas.
+   - Validar detección de tipos incompatibles, claves críticas faltantes y credenciales placeholder.
 3. **Validación Global**:
    - `py_compile` en `tools/miner_diagnostics.py`, `tools/debug_4028.py`, `tools/audit_config.py`.
-   - $\ge 1079$ tests PASS.
+   - $\ge 1110$ tests PASS (0 fallos, 0 regresiones).

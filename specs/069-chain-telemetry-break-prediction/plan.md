@@ -61,7 +61,8 @@ class PredictiveChainEngine:
         self,
         risks: List[PredictiveChainRisk],
         miners_config: List[Dict[str, Any]],
-    ) -> List[PredictiveChainRisk]: ...
+    ) -> List[PredictiveChainRisk]:
+        """Correlaciona perturbaciones eléctricas por elevador con fallback seguro si no está configurado."""
 ```
 
 ---
@@ -85,8 +86,10 @@ class PredictiveChainEngine:
    - Insertar 10.000 registros sintéticos en una base de datos en memoria o temporal.
    - Medir el tiempo de consulta de ventana: debe ejecutar en $< 15\text{ ms}$.
 2. **Pruebas de Reglas Predictivas (`tests/test_chain_predictive_rules.py`)**:
-   - Simular 95% de muestras con fallo I2C en `loc 28` durante 12h $\rightarrow$ emite `PredictiveChainRisk`.
-   - Simular fallo intermitente (30% de muestras) $\rightarrow$ descarta sin emitir alerta (anti-falsas alarmas).
-   - Simular 2 mineros en `elevator_1` cayendo al unísono $\rightarrow$ clasifica como `ELECTRICAL_SAG`.
+   - Simular 95% de muestras con fallo I2C en `loc 28` durante 12h con $N \ge 24$ muestras $\rightarrow$ emite `PredictiveChainRisk`.
+   - Simular muestra insuficiente ($N = 3$) $\rightarrow$ descarta sin emitir alerta (anti-falsas alarmas en arranque).
+   - Simular fallo intermitente (30% de muestras) $\rightarrow$ descarta sin emitir alerta.
+   - Simular 2 mineros en `elevator_1` cayendo al unísono $\rightarrow$ clasifica como `ELECTRICAL_SAG` y suprime alerta de silicio.
+   - Simular minero sin elevador configurado $\rightarrow$ procesa evaluación individual con degradación suave.
 3. **Validación Global**:
-   - `unittest discover tests`: $\ge 1072$ tests PASS.
+   - `unittest discover tests`: $\ge 1110$ tests PASS (0 fallos, 0 regresiones).

@@ -1,27 +1,40 @@
 # ==============================================================================
-# PROMPT DE EJECUCIÓN: IMPLEMENTACIÓN - SPEC 073 (TOOLS CLIENT REUSE)
+# PROMPT DE EJECUCIÓN: PRÓXIMO PASO TRAS SPEC 070 (FASES A Y B CERTIFICADAS)
 # ==============================================================================
-# MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Implementación de Spec 073 (Reutilización de clientes de red en
-# tools auxiliares y auditoría de configuración). Tareas acotadas sobre scripts
-# auxiliares en tools/ y validadores puros, sin riesgo sobre el bucle principal.
-# Línea base: 1113 tests PASS (0 fallos, 0 errores, 0 regresiones en 33.5s).
+# MODELO RECOMENDADO SEGÚN EL PASO A ELEGIR:
+# - Si se avanza con SPEC 068 (Canal IPC Named Pipe Monitor <-> Watchdog):
+#   -> RECOMENDADO: Gemini 3.8 Flash High
+#   Justificación: Implementación de módulo IPC de Named Pipe (servidor y cliente)
+#   con fallbacks y tests exhaustivos sin tocar el bucle principal de producción.
+#
+# - Si se avanza con SPEC 070 FASE C (Refactorización a Hooks de miner_monitor.py:main):
+#   -> RECOMENDADO: Claude Sonnet 4.6 (Thinking)
+#   Justificación: Requiere refactorizar el bucle procedural central de adquisición
+#   y actuación de miner_monitor.py, afectando concurrencia y flujo principal.
+#
+# LÍNEA BASE: 1156 tests PASS (0 fallos, 0 errores, 0 regresiones en 32.3s).
+# SERVICIO WINDOWS: MinerAlerts RUNNING ininterrumpido.
 # ==============================================================================
 
-1. ESTADO ACTUAL Y LÍNEA BASE DEL SISTEMA:
-- Pruebas unitarias: 1113 tests PASS (0 fallos, 0 errores, 0 regresiones en 33.5s).
+1. ESTADO ACTUAL DEL SISTEMA:
+- Pruebas unitarias: 1156 tests PASS (0 fallos, 0 errores, 0 regresiones en 32.3s).
 - Servicio Windows 'MinerAlerts': Running ininterrumpido.
-- Rama: 'codex/022-adaptive-acquisition' (al día con origin, commit 3c40e96).
-- Feature activa: 'specs/073-tools-client-reuse-and-config-alignment'.
+- Rama: 'codex/022-adaptive-acquisition'
+- Feature activa: 'specs/070-core-modularization-decoupling'
 
-2. SPEC 072 COMPLETADA Y CERTIFICADA:
-- 'StateManager.serialize_miner_state(state)' y 'serialize_miner_state(state)' centralizados en 'app/core/state_manager.py'.
-- '_build_state_payload()' delega limpiamente eliminando duplicación de ~45 campos.
-- 'format_miner_key()' y 'find_assessment_by_target()' adoptados en todos los comandos de Telegram ('diagnostics', 'fans', 'reboot', 'maintenance').
-- '_dicts()' centralizado en 'app/core/mining_quality.py' y reutilizado en 'app/vnish/telemetry.py'.
-- 'tests/test_state_serialization_parity.py' y 'tests/test_find_assessment_by_target.py' pasando al 100%.
+2. TRABAJO COMPLETADO EN ESTA SESIÓN:
+- Spec 073 COMPLETADA:
+  * 'tools/debug_4028.py' y 'tools/miner_diagnostics.py' reutilizan 'app.network.cgminer_client.query_cgminer'.
+  * 'tools/audit_config.py' y 'tests/test_audit_config.py' implementados con validación completa.
+  * 'tests/fixtures_compact_ux.py' consolidado.
+  * Commit y push: a0f0568.
+- Spec 070 (Fases A y B) COMPLETADA:
+  * Creado arnés de comportamiento 'tests/test_supervisory_core_behavioral.py' con 'SupervisoryBehavioralHarness'.
+  * 37 nuevos tests de caja negra funcionales cubren exhaustivamente las 37 reglas sin inspect.getsource(main).
+  * Paridad dual certificada: 37 tests legados + 37 tests de comportamiento funcionales pasando juntos.
+  * 1156/1156 tests PASS. 'app/miner_monitor.py' se mantuvo 100% inalterado (RI-02).
+  * Fases A y B marcadas como completadas en tasks.md, evidence.md, DEVELOPMENT_LOG.md y ROADMAP.md.
 
-3. PRÓXIMO PASO (SPEC 073):
-- T001: Migrar 'tools/miner_diagnostics.py' para reutilizar 'app.network.cgminer_client.read_summary'.
-- T002: Crear 'tools/audit_config.py' para validar paridad de esquema entre 'config.example.json' y 'config.json' con distinción de claves críticas vs opcionales.
-- T003: Crear 'tests/test_audit_config.py' y 'tests/test_tools_client_reuse.py'.
+3. OPCIONES PARA EL SIGUIENTE PASO:
+- OPCIÓN 1: Spec 070 (Fase C - Refactorización segura de miner_monitor.py hacia DetectionHook y ActuatorHook, desacoplando los 4 tests legados).
+- OPCIÓN 2: Spec 068 (Canal IPC Monitor <-> Watchdog - PROP-007, comunicación Named Pipe con descriptor de seguridad SDDL 'D:(A;;GRGW;;;WD)' y wake-up connect).

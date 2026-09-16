@@ -3,6 +3,21 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación Spec 070 (Fases A y B): Arnés de Comportamiento Determinista & Certificación de Paridad Dual (ST-05)
+
+* **Objetivo**:
+  1. Construir un arnés de comportamiento supervisorio de caja negra (`tests/test_supervisory_core_behavioral.py`) reproduciendo funcionalmente las 37 reglas e invariantes evaluadas históricamente mediante `inspect.getsource(main)`.
+  2. Certificar la coexistencia y paridad dual de los 37 tests legados junto a los 37 tests de comportamiento funcional sin modificar una sola línea de código en producción (`app/miner_monitor.py` intacto, RI-02).
+  3. Incrementar la suite global de 1119 a 1156 tests PASS (0 fallos, 0 errores, 0 regresiones) con el servicio de producción `MinerAlerts` en estado `Running`.
+* **Componentes Modificados / Creados**:
+  - `tests/test_supervisory_core_behavioral.py`: Arnés `SupervisoryBehavioralHarness` y 37 pruebas deterministas (8 compuertas de señal, 8 auto-reboot por hashboard, 13 interlocks y cooldowns, 8 precedencia de placas vs hashrate).
+  - `specs/070-core-modularization-decoupling/tasks.md`: Fases A y B marcadas como completadas (T001-T007).
+  - `specs/070-core-modularization-decoupling/evidence.md`: Evidencia de certificación y tiempos de ejecución.
+* **Resultados & Verificación**:
+  - Suite de comportamiento: 37/37 tests PASS en 0.002s.
+  - Suite completa de regresión con paridad dual: **1156/1156 tests PASS** en 32.3s.
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+
 ## [2026-09-16] - Implementación Spec 073: Reutilización de Clientes en Tools & Alineación de Configuración (P3)
 
 * **Objetivo**:

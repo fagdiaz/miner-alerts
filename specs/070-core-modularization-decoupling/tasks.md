@@ -8,16 +8,16 @@
 
 ### Fase A: Construcción del Arnés de Comportamiento (`Behavioral Test Harness`)
 
-- [ ] **T001**: Crear `tests/test_supervisory_core_behavioral.py` con el arnés `SupervisoryBehavioralHarness` y fixtures deterministas.
-- [ ] **T002**: Implementar los 8 tests de paridad para compuertas de señal y reseteo de temporizadores (reemplazo funcional de `test_auto_reboot_signal_gate.py`).
-- [ ] **T003**: Implementar los 8 tests de paridad para detección de `STATE_HASHBOARD` y secuencia de 6 interlocks (reemplazo funcional de `test_hashboard_auto_reboot.py`).
-- [ ] **T004**: Implementar los 13 tests de paridad para orden jerárquico de seguridad y cooldowns (reemplazo funcional de `test_reboot_safety.py`).
-- [ ] **T005**: Implementar los 8 tests de paridad para precedencia de placas activas sobre tasa de hashrate (reemplazo funcional de `test_vnish_hashboard_detection.py`).
+- [x] **T001**: Crear `tests/test_supervisory_core_behavioral.py` con el arnés `SupervisoryBehavioralHarness` y fixtures deterministas.
+- [x] **T002**: Implementar los 8 tests de paridad para compuertas de señal y reseteo de temporizadores (reemplazo funcional de `test_auto_reboot_signal_gate.py`).
+- [x] **T003**: Implementar los 8 tests de paridad para detección de `STATE_HASHBOARD` y secuencia de 6 interlocks (reemplazo funcional de `test_hashboard_auto_reboot.py`).
+- [x] **T004**: Implementar los 13 tests de paridad para orden jerárquico de seguridad y cooldowns (reemplazo funcional de `test_reboot_safety.py`).
+- [x] **T005**: Implementar los 8 tests de paridad para precedencia de placas activas sobre tasa de hashrate (reemplazo funcional de `test_vnish_hashboard_detection.py`).
 
 ### Fase B: Certificación de Paridad Dual
 
-- [ ] **T006**: Ejecutar suite de comportamiento: `unittest tests.test_supervisory_core_behavioral` (37/37 tests PASS).
-- [ ] **T007**: Ejecutar suite completa de regresión con ambas suites activas simultáneamente: verificar $\ge 1147$ tests PASS (1110 + 37 nuevos, 0 fallos).
+- [x] **T006**: Ejecutar suite de comportamiento: `unittest tests.test_supervisory_core_behavioral` (37/37 tests PASS).
+- [x] **T007**: Ejecutar suite completa de regresión con ambas suites activas simultáneamente: verificar $\ge 1147$ tests PASS (1156/1156 tests globales PASS, 0 fallos).
 
 ### Fase C: Refactorización Segura a Hooks
 

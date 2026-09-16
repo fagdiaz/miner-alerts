@@ -1,28 +1,51 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD: SPEC 066 COMPLETADA & LÍNEA BASE CERTIFICADA
+# PROMPT DE HANDOFF & DIRECTIVAS DE AUDITORÍA: HORIZONTE V5.1 (SPECS 067 A 070)
 # ==============================================================================
-# MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Lógica pura de dominio, telemetría y pruebas unitarias aisladas.
+# MODELO RECOMENDADO: Claude Sonnet 4.6 (Thinking)
+# Justificación: Auditoría profunda de concurrencia en Windows, hilos daemon,
+# interlocks de red, Named Pipes IPC y diseño de behavioral harness de tests.
 # ==============================================================================
 
-Contexto actual del proyecto:
-1. Línea Base Certificada: 1062 tests PASS (0 errores, 0 fallos, 0 regresiones en 34.4s).
-2. Servicio Windows 'MinerAlerts' en ejecución ininterrumpida (Estado: Running).
-3. Specs 061 a 066 100% completadas y documentadas en docs/audit/DEVELOPMENT_LOG.md:
-   - Spec 061: Resiliencia SQLite WAL Mode & Integrity Check (ST-03).
-   - Spec 062: HW Error Tripwire & Rollback de Overclock (GOV-01).
-   - Spec 063: Gobernador Térmico con Conciencia Estacional (GOV-02).
-   - Spec 064: Telemetría Visual y Gráficos Multi-Miner en Telegram (UX-01).
-   - Spec 065: Pipeline Declarativo de Hooks en CoreSupervisoryEngine (ST-04).
-   - Spec 066: Cold-Boot Fleet Grace Period Post-Arranque (PROP-001).
-4. Auditoría QA y Estabilización:
-   - Sincronización continua de `monitor_ctx.governance = _GLOBAL_INTERVENTION_GOV` y lectura en `GovernanceInterlockHook`.
-   - Eliminación de escrituras duplicadas de `state.json` mediante skip guard en `PersistenceHook`.
-   - Sincronización de `last_daily_digest_date`.
-   - Preservación 100% de contratos `inspect.getsource(main)`.
+Estimado Claude Sonnet 4.6 (Thinking):
 
-Próxima Spec Prioritaria:
-- Spec 067: Telemetría Profunda por Cadena & Diagnóstico Chain Break (PROP-008, Prioridad P1 Alta).
-  * Objetivo: Diagnóstico automatizado de corte o degradación de cadenas de chips ASIC
-    a partir de telemetría de registros Vnish y muestras en EventStore.
-  * Ver detalle técnico en docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md.
+Has sido seleccionado para realizar una AUDITORÍA INTEGRAL DE SEGURIDAD, QA Y CONTINUIDAD OPERATIVA
+sobre la base de código de Miner Alerts antes de iniciar la implementación de las Specs 067 a 070.
+
+1. LÍNEA BASE ACTUAL DEL SISTEMA:
+- Pruebas unitarias: 1062 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.4s).
+- Servicio Windows 'MinerAlerts': Estado Running, activo y en supervisión de 4 mineros S19j Pro.
+- Git: Rama 'codex/022-adaptive-acquisition' completamente limpia y sincronizada.
+- Últimas specs completadas:
+  * Spec 065: Pipeline declarativo de hooks en CoreSupervisoryEngine (app/core/engine.py).
+  * Spec 066: Cold-Boot Fleet Grace Period de 180s (app/miner_monitor.py).
+  * Fix de Gobernanza: monitor_ctx.governance sincronizado con _GLOBAL_INTERVENTION_GOV en cada tick.
+
+2. DOCUMENTO MAESTRO DE PLANIFICACIÓN:
+- Lee obligatoriamente: docs/speckit/ACTION_PLAN_V5_1_HORIZON.md.
+  Allí se detallan las especificaciones pendientes, arquitectura, mitigaciones y riesgos:
+  * Spec 067: Latido de Gateway y Supresión de Tormentas por Fallo de Red Local (PROP-005).
+  * Spec 068: Canal IPC Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (PROP-007).
+  * Spec 069: Telemetría Profunda por Cadena & Predictive Chain Break (PROP-008).
+  * Spec 070: Modularización Core Fase B — Sustitución segura de inspect.getsource(main).
+
+3. CHECKLIST DE AUDITORÍA & QA QUE DEBES EJECUTAR:
+A. Auditoría de Concurrencia en app/miner_monitor.py:
+   - Revisar jerarquía de locks: state_lock (L1) -> _SAVE_STATE_LOCK (L2).
+   - Verificar que fsync en state_manager.save() ocurra fuera de state_lock.
+   - Revisar hilos daemon (AutoRestart, TripwireRestore, ChainTelemetryReactive, etc.)
+     asegurando que cada uno posea try...except Exception con logging defensivo.
+B. Auditoría de Red y Sockets en Windows:
+   - Verificar timeouts (<= 5.0s) en Api4028Transport, VnishClient y HashcoreClient.
+   - Verificar creationflags=subprocess.CREATE_NO_WINDOW en subprocess de Windows.
+C. Contención de Excepciones en Hooks (app/core/engine.py):
+   - Verificar que PERSISTENCE y POST_TICK siempre se ejecuten en execute_tick().
+   - Verificar que extra_tick_data transmita _state_persisted, governance y startup_grace_active.
+D. Verificación de Invariantes:
+   - Ejecutar: & ".\.venv\Scripts\python.exe" -m unittest tests.test_auto_reboot_signal_gate tests.test_hashboard_auto_reboot tests.test_reboot_safety tests.test_vnish_hashboard_detection -v
+   - Mantener el 100% de los 37 tests de invariantes pasando sin alterar las cadenas literales de main().
+
+4. HOJA DE RUTA PARA TU SESIÓN:
+- Paso 1: Realizar tu lectura y auditoría de seguridad sobre los archivos clave.
+- Paso 2: Aplicar cualquier fix preventivo o mejora de QA que identifiques.
+- Paso 3: Correr & ".\.venv\Scripts\python.exe" -m unittest discover tests (garantizar >= 1062 tests PASS).
+- Paso 4: Seleccionar la Spec 067 (PROP-005: Gateway Heartbeat) para su especificación e implementación formal bajo SpecKit.

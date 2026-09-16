@@ -824,4 +824,4 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - Spec 057 (Intervention Governance & Adaptive Contingency) is fully implemented, verified, and operational in production.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
-- Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md` and `docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`.
+- Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`, `docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`, and `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.

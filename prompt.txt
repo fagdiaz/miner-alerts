@@ -22,6 +22,7 @@
 2. COMMITS PUBLICADOS:
 - Commit 0dcf68f: feat(spec-069): implement predictive chain break diagnostics, composite SQLite index, and electrical group correlation
 - Commit f0bb9db: chore: update prompt.txt with latest execution status
+- Commit a95bc3a: docs: reorganize /docs layout, archive historical action plans, create rfcs hub and master README
 
 3. PRÓXIMO OBJETIVO:
 - Monitoreo en producción o inicio de nueva especificación según prioridades del usuario.

@@ -9,24 +9,24 @@
 Estimado Claude Sonnet 4.6 (Thinking):
 
 Has sido seleccionado para realizar una AUDITORÍA INTEGRAL DE SEGURIDAD, QA Y CONTINUIDAD OPERATIVA
-sobre la base de código de Miner Alerts antes de iniciar la implementación de las Specs 067 a 070.
+sobre la base de código de Miner Alerts antes de continuar con la hoja de ruta de las Specs 067 a 070.
 
 1. LÍNEA BASE ACTUAL DEL SISTEMA:
-- Pruebas unitarias: 1064 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.2s).
-- Servicio Windows 'MinerAlerts': Estado Running, activo y en supervisión de 4 mineros S19j Pro.
-- Git: Rama 'codex/022-adaptive-acquisition' completamente limpia y sincronizada.
-- Últimas specs completadas y fixes de estabilidad:
-  * Spec 065: Pipeline declarativo de hooks en CoreSupervisoryEngine (app/core/engine.py).
+- Pruebas unitarias: 1072 tests PASS (0 fallos, 0 errores, 0 regresiones en 37.1s).
+- Servicio Windows 'MinerAlerts': Estado Running, activo y en supervisión en tiempo real de 4 mineros S19j Pro.
+- Git: Rama 'codex/022-adaptive-acquisition' completamente limpia y sincronizada con origin.
+- Últimas implementaciones y fixes operativos verificados:
   * Spec 066: Cold-Boot Fleet Grace Period de 180s (app/miner_monitor.py).
-  * Fix de Gobernanza: monitor_ctx.governance sincronizado con _GLOBAL_INTERVENTION_GOV en cada tick.
-  * Fix de Telegram Context: soporte dedup_key y **kwargs en send_telegram() eliminando warnings en getUpdates.
-  * Fix de Auto-Restart Prematuro: guardia de calentamiento de 180s (elapsed < auto_restart_min_elapsed_seconds) e inhibición ante startup_grace_active y reboot_reason, evitando interrumpir el booteo de mineros tras reinicios físicos o caídas de tensión (evidenciado en evento 1475).
+  * Spec 067: Gateway Heartbeat & Supresión de Tormentas de Red Local (app/network/gateway_heartbeat.py, 7 pruebas unitarias).
+  * Auto-Restart Warmup Guard: Parámetro elapsed < auto_restart_min_elapsed_seconds (180s) que impide reiniciar mineros por software (Nivel 1) mientras están en booteo de NAND o autotuning tras un reinicio físico o corte eléctrico.
+  * Gobernador Térmico en Contingencia: Derivación dinámica de target_pwr a partir del preset activo real (2300W/2100W) en vez de asumir estáticamente 2700W. Esto permite que durante contingencia eléctrica las turbinas modulen hacia abajo (STEP_DOWN) regulando a 82.0°C sin quedar congeladas en 100% (RECOVERY_MAX_COOLING), y que al salir de contingencia busquen la máxima potencia (2700W/2800W) manteniendo siempre 82.0°C.
+  * Contención de excepciones en hilo daemon _async_execute_mining_restart y sincronización de monitor_ctx.governance.
 
 2. DOCUMENTO MAESTRO DE PLANIFICACIÓN:
 - Lee obligatoriamente: docs/speckit/ACTION_PLAN_V5_1_HORIZON.md.
   Allí se detallan las especificaciones pendientes, arquitectura, mitigaciones y riesgos:
-  * Spec 067: Latido de Gateway y Supresión de Tormentas por Fallo de Red Local (PROP-005).
-  * Spec 068: Canal IPC Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (PROP-007).
+  * Spec 067: Latido de Gateway y Supresión de Tormentas por Fallo de Red Local (PROP-005) - Base implementada, auditar supresión en detección de offline.
+  * Spec 068: Canal IPC Alta Frecuencia Monitor <-> Watchdog vía Named Pipes (PROP-007).
   * Spec 069: Telemetría Profunda por Cadena & Predictive Chain Break (PROP-008).
   * Spec 070: Modularización Core Fase B — Sustitución segura de inspect.getsource(main).
 
@@ -34,20 +34,20 @@ sobre la base de código de Miner Alerts antes de iniciar la implementación de 
 A. Auditoría de Concurrencia en app/miner_monitor.py:
    - Revisar jerarquía de locks: state_lock (L1) -> _SAVE_STATE_LOCK (L2).
    - Verificar que fsync en state_manager.save() ocurra fuera de state_lock.
-   - Revisar hilos daemon (AutoRestart, TripwireRestore, ChainTelemetryReactive, etc.)
+   - Revisar hilos daemon (AutoRestart, TripwireRestore, GatewayHeartbeatWorker, ChainTelemetryReactive)
      asegurando que cada uno posea try...except Exception con logging defensivo.
 B. Auditoría de Red y Sockets en Windows:
    - Verificar timeouts (<= 5.0s) en Api4028Transport, VnishClient y HashcoreClient.
-   - Verificar creationflags=subprocess.CREATE_NO_WINDOW en subprocess de Windows.
+   - Verificar creationflags=subprocess.CREATE_NO_WINDOW en invocaciones subprocess de Windows.
 C. Contención de Excepciones en Hooks (app/core/engine.py):
    - Verificar que PERSISTENCE y POST_TICK siempre se ejecuten en execute_tick().
    - Verificar que extra_tick_data transmita _state_persisted, governance y startup_grace_active.
 D. Verificación de Invariantes:
-   - Ejecutar: & ".\.venv\Scripts\python.exe" -m unittest tests.test_auto_reboot_signal_gate tests.test_hashboard_auto_reboot tests.test_reboot_safety tests.test_vnish_hashboard_detection -v
-   - Mantener el 100% de los 37 tests de invariantes pasando sin alterar las cadenas literales de main().
+   - Ejecutar: & ".\.venv\Scripts\python.exe" -m unittest tests.test_t009_t011_invariants tests.test_auto_reboot_signal_gate tests.test_hashboard_auto_reboot tests.test_reboot_safety tests.test_vnish_hashboard_detection -v
+   - Mantener el 100% de los tests de invariantes pasando sin alterar las cadenas literales requeridas en inspect.getsource(main).
 
 4. HOJA DE RUTA PARA TU SESIÓN:
-- Paso 1: Realizar tu lectura y auditoría de seguridad sobre los archivos clave.
-- Paso 2: Aplicar cualquier fix preventivo o mejora de QA que identifiques.
-- Paso 3: Correr & ".\.venv\Scripts\python.exe" -m unittest discover tests (garantizar >= 1064 tests PASS).
-- Paso 4: Seleccionar la Spec 067 (PROP-005: Gateway Heartbeat) para su especificación e implementación formal bajo SpecKit.
+- Paso 1: Realizar tu lectura y auditoría de seguridad sobre los puntos del checklist.
+- Paso 2: Aplicar mejoras o endurecimientos de QA identificados.
+- Paso 3: Correr & ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py" (garantizar >= 1072 tests PASS).
+- Paso 4: Proceder con la consolidación de la Spec 067 y la especificación de la Spec 068 (Named Pipes IPC).

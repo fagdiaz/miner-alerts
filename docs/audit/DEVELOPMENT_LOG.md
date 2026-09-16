@@ -3,6 +3,35 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación Spec 067: Gateway Heartbeat & Supresión de Tormentas de Red Local (PROP-005)
+
+* **Objetivo**: Implementar un worker daemon ultraliviano de sondeo de latido TCP (`GatewayHeartbeatWorker`) hacia el router/gateway principal para detectar microcortes y suprimir tormentas de alarmas falsas de desconexión masiva en la flota ASIC.
+* **Componentes Modificados / Creados**:
+  - `app/network/gateway_heartbeat.py`: Módulo daemon con `GatewayHeartbeatWorker` (zero dependencias externas, socket connect con timeout 50ms, fallback de puerto DNS/53, control atómico GIL-safe, cierre explícito de sockets).
+  - `app/network/__init__.py`: Exportado `GatewayHeartbeatWorker`.
+  - `app/miner_monitor.py`: Instanciación y arranque en `main()` de `_gateway_heartbeat` con configuración tolerante y barrera de excepciones.
+  - `tests/test_gateway_heartbeat.py`: Suite completa de 7 pruebas unitarias cubriendo inicialización, estados atómicos, detección de ventanas transitorias y fallback de puerto.
+* **Verificación y Evidencia**:
+  - Suite unitaria: `tests.test_gateway_heartbeat` → **7 / 7 PASS** en 0.002s.
+  - Suite de regresión: **1072 / 1072 tests PASS** en 37.1s (0 fallos, 0 errores).
+
+## [2026-09-16] - Estabilización Operativa: Auto-Restart Warmup Guard & Adaptación Dinámica de Gobernador Térmico en Contingencia
+
+* **Objetivo**:
+  1. Corregir el reinicio por software prematuro (`Auto-Restart` Nivel 1) tras reinicios físicos o caídas de tensión (`unexpected restart`), evitando interrumpir el autotuning/calibración de frecuencias de los mineros.
+  2. Adaptar la regulación de ventiladores en `FanGovernor` cuando la contingencia eléctrica reduce el consumo (ej. preset a 2100W o 2300W), derivando la potencia objetivo del preset activo real en lugar del máximo teórico estático (2700W) para evitar el bloqueo espurio en 100% PWM (`RECOVERY_MAX_COOLING`).
+* **Componentes Modificados**:
+  - `app/miner_monitor.py`:
+    * En `evaluate_auto_restart_candidate`: agregados parámetros `elapsed: Optional[int] = None`, `min_elapsed_seconds: int = 180`, `startup_grace_active: bool = False`. Bloqueo defensivo con `"miner_warming_up"` si `elapsed < min_elapsed_seconds` y bloqueo si el proceso anfitrión se encuentra en gracia de arranque.
+    * En `execute_governor_cycle`: derivación de `target_pwr` a partir de `state.balancer_preset`, `state.hw_error_locked_preset` o `state.vnish_discovered_preset` (prioridad sobre `target_power_w` fijo de 2700W). Permite que ante contingencia (2300W/2100W) el gobernador regule de inmediato hacia la temperatura consigna de 82.0°C modulando PWM (`STEP_DOWN` desde 100% hacia 85%-67%). Al salir de contingencia, el optimizador eleva la potencia hacia 2700W/2800W manteniendo siempre la consigna térmica de 82.0°C.
+    * En `_async_execute_mining_restart`: envolvimiento completo en `try ... except Exception as _exc:` con logging estructurado para blindar el hilo daemon ante fallos de red.
+  - `app/config.example.json`: Añadido `"auto_restart_min_elapsed_seconds": 180`.
+  - `tests/test_two_tier_recovery.py`: Añadidas 2 pruebas unitarias de guardia de calentamiento e inhibición por gracia de arranque.
+  - `tests/test_fan_governor_concurrency.py`: Añadida prueba `test_contingency_reduced_preset_adapts_fans_to_regulate_temp`.
+* **Verificación y Evidencia**:
+  - Registro de producción en `logs/out.log`: S19JPRO-25 operando a 2299W con preset de contingencia 2300W modula ventiladores en ciclo cerrado descendente: 100% -> 95% -> 90% -> 85% (`STEP_DOWN`), eliminando el bloqueo en 100% PWM.
+  - Suite de regresión: **1065 / 1065 tests PASS** en 35.0s.
+
 ## [2026-09-15] - Implementación Spec 066: Cold-Boot Fleet Grace Period Post-Arranque (PROP-001)
 
 * **Objetivo**: Implementar un período de gracia y calentamiento post-arranque (`WARMING_UP`) para la flota de mineros ASIC, eliminando las falsas alarmas de `STARTUP`, `OFFLINE` y `LOW` que ocurren durante el booteo de NAND y la calibración por autotuning de frecuencias/voltajes de los equipos tras cortes de energía o reinicios de servicio.

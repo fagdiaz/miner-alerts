@@ -347,6 +347,51 @@ class TestEvaluateAutoRestartCandidate(unittest.TestCase):
         self.assertFalse(cand)
         self.assertEqual(reason, "max_retries_exceeded")
 
+    def test_miner_warming_up_blocked_by_elapsed(self) -> None:
+        cand, reason, cd = evaluate_auto_restart_candidate(
+            now_ts=1000.0,
+            responded=True,
+            rate_ths=0.0,
+            threshold_ths=60.0,
+            active_boards=0,
+            expected_boards=3,
+            miner_state="stopped",
+            restart_required=False,
+            reboot_required=False,
+            auto_restart_enabled=True,
+            last_auto_restart_ts=None,
+            auto_restart_cooldown_seconds=300.0,
+            auto_restart_count=0,
+            max_retries_before_reboot=2,
+            elapsed=30,
+            min_elapsed_seconds=180,
+        )
+        self.assertFalse(cand)
+        self.assertEqual(reason, "miner_warming_up")
+        self.assertIsNone(cd)
+
+    def test_startup_grace_active_blocks_soft_restart(self) -> None:
+        cand, reason, cd = evaluate_auto_restart_candidate(
+            now_ts=1000.0,
+            responded=True,
+            rate_ths=0.0,
+            threshold_ths=60.0,
+            active_boards=0,
+            expected_boards=3,
+            miner_state="stopped",
+            restart_required=False,
+            reboot_required=False,
+            auto_restart_enabled=True,
+            last_auto_restart_ts=None,
+            auto_restart_cooldown_seconds=300.0,
+            auto_restart_count=0,
+            max_retries_before_reboot=2,
+            startup_grace_active=True,
+        )
+        self.assertFalse(cand)
+        self.assertEqual(reason, "startup_grace_active")
+        self.assertIsNone(cd)
+
     def test_unresponsive_or_disabled(self) -> None:
         cand, reason, _ = evaluate_auto_restart_candidate(
             now_ts=1000.0,

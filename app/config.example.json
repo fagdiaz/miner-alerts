@@ -104,6 +104,7 @@
   "auto_restart_mining_enabled": true,
   "auto_restart_cooldown_seconds": 300,
   "auto_restart_max_retries_before_reboot": 2,
+  "auto_restart_min_elapsed_seconds": 180,
   "offline_is_actionable": true,
   "qa_mode": false,
   "qa_notify": false,

@@ -12,14 +12,15 @@ Has sido seleccionado para realizar una AUDITORÍA INTEGRAL DE SEGURIDAD, QA Y C
 sobre la base de código de Miner Alerts antes de iniciar la implementación de las Specs 067 a 070.
 
 1. LÍNEA BASE ACTUAL DEL SISTEMA:
-- Pruebas unitarias: 1062 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.4s).
+- Pruebas unitarias: 1064 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.2s).
 - Servicio Windows 'MinerAlerts': Estado Running, activo y en supervisión de 4 mineros S19j Pro.
 - Git: Rama 'codex/022-adaptive-acquisition' completamente limpia y sincronizada.
-- Últimas specs completadas:
+- Últimas specs completadas y fixes de estabilidad:
   * Spec 065: Pipeline declarativo de hooks en CoreSupervisoryEngine (app/core/engine.py).
   * Spec 066: Cold-Boot Fleet Grace Period de 180s (app/miner_monitor.py).
   * Fix de Gobernanza: monitor_ctx.governance sincronizado con _GLOBAL_INTERVENTION_GOV en cada tick.
   * Fix de Telegram Context: soporte dedup_key y **kwargs en send_telegram() eliminando warnings en getUpdates.
+  * Fix de Auto-Restart Prematuro: guardia de calentamiento de 180s (elapsed < auto_restart_min_elapsed_seconds) e inhibición ante startup_grace_active y reboot_reason, evitando interrumpir el booteo de mineros tras reinicios físicos o caídas de tensión (evidenciado en evento 1475).
 
 2. DOCUMENTO MAESTRO DE PLANIFICACIÓN:
 - Lee obligatoriamente: docs/speckit/ACTION_PLAN_V5_1_HORIZON.md.
@@ -48,5 +49,5 @@ D. Verificación de Invariantes:
 4. HOJA DE RUTA PARA TU SESIÓN:
 - Paso 1: Realizar tu lectura y auditoría de seguridad sobre los archivos clave.
 - Paso 2: Aplicar cualquier fix preventivo o mejora de QA que identifiques.
-- Paso 3: Correr & ".\.venv\Scripts\python.exe" -m unittest discover tests (garantizar >= 1062 tests PASS).
+- Paso 3: Correr & ".\.venv\Scripts\python.exe" -m unittest discover tests (garantizar >= 1064 tests PASS).
 - Paso 4: Seleccionar la Spec 067 (PROP-005: Gateway Heartbeat) para su especificación e implementación formal bajo SpecKit.

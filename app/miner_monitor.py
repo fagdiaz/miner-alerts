@@ -1126,6 +1126,9 @@ def evaluate_auto_restart_candidate(
     in_maintenance: bool = False,
     is_snoozed: bool = False,
     gov: Optional[Any] = None,
+    elapsed: Optional[int] = None,
+    min_elapsed_seconds: int = 180,
+    startup_grace_active: bool = False,
 ) -> Tuple[bool, Optional[str], Optional[float]]:
     """
     Evaluates whether a miner qualifies for a Soft Auto-Restart of mining (Level 1).
@@ -1133,6 +1136,9 @@ def evaluate_auto_restart_candidate(
     """
     if not auto_restart_enabled:
         return False, "disabled", None
+
+    if startup_grace_active:
+        return False, "startup_grace_active", None
 
     # Spec 057: Intervention Governance Guard
     from app.governance.intervention_policy import ACTION_REBOOT_L1, should_allow_intervention
@@ -1149,9 +1155,22 @@ def evaluate_auto_restart_candidate(
     if reboot_required:
         return False, "hardware_reboot_required", None
 
+    # Individual Miner Warmup Guard: give miner at least min_elapsed_seconds (default 180s) post-boot
+    if elapsed is not None and elapsed < min_elapsed_seconds:
+        return False, "miner_warming_up", None
 
     norm_state = (miner_state or "").strip().lower()
-    if norm_state in ("starting", "init", "initializing", "benchmarking", "rebooting", "booting"):
+    if norm_state in (
+        "starting",
+        "init",
+        "initializing",
+        "benchmarking",
+        "rebooting",
+        "booting",
+        "tuning",
+        "warmup",
+        "warming_up",
+    ):
         return False, "transient_starting", None
 
     # Check degradation triggers
@@ -5139,6 +5158,7 @@ def main() -> None:
     auto_restart_mining_enabled = bool(config.get("auto_restart_mining_enabled", True))
     auto_restart_cooldown_seconds = int(config.get("auto_restart_cooldown_seconds", 300))
     auto_restart_max_retries_before_reboot = int(config.get("auto_restart_max_retries_before_reboot", 2))
+    auto_restart_min_elapsed_seconds = int(config.get("auto_restart_min_elapsed_seconds", 180))
     if qa_mode:
         poll_seconds = int(config.get("qa_poll_seconds", 2))
         reboot_cooldown_seconds = int(config.get("qa_reboot_cooldown_seconds", 120))
@@ -5147,6 +5167,7 @@ def main() -> None:
         auto_reboot_hashboard_sustained_seconds = int(config.get("qa_hashboard_seconds", 60))
         auto_reboot_window_seconds = int(config.get("qa_auto_reboot_window_seconds", 600))
         auto_restart_cooldown_seconds = int(config.get("qa_auto_restart_cooldown_seconds", 30))
+        auto_restart_min_elapsed_seconds = int(config.get("qa_auto_restart_min_elapsed_seconds", 0))
     auto_reboot_fleet_snapshot_max_age_seconds = max(60.0, float(poll_seconds * 2))
     offline_is_actionable = bool(config.get("offline_is_actionable", True))
     hashcore_cfg = config.get("hashcore", {})
@@ -5154,7 +5175,8 @@ def main() -> None:
         "Two-tier mining recovery: "
         f"auto_restart_enabled={str(auto_restart_mining_enabled).lower()} "
         f"cooldown={auto_restart_cooldown_seconds}s "
-        f"max_retries={auto_restart_max_retries_before_reboot}"
+        f"max_retries={auto_restart_max_retries_before_reboot} "
+        f"min_elapsed={auto_restart_min_elapsed_seconds}s"
     )
     log(
         "Auto-reboot interlocks: "
@@ -5975,6 +5997,8 @@ def main() -> None:
                     auto_restart_mining_enabled
                     and responded
                     and not first_tick
+                    and not startup_grace_active
+                    and not reboot_reason
                     and (
                         new_state in (STATE_LOW, STATE_HASHBOARD)
                         or (rate_ths is not None and rate_ths <= 0.0)
@@ -6000,6 +6024,9 @@ def main() -> None:
                         max_retries_before_reboot=auto_restart_max_retries_before_reboot,
                         in_maintenance=getattr(state, "is_shutdown_maintenance", False),
                         is_snoozed=(state.snooze_until_ts is not None and now_ts < state.snooze_until_ts),
+                        elapsed=elapsed,
+                        min_elapsed_seconds=auto_restart_min_elapsed_seconds,
+                        startup_grace_active=startup_grace_active,
                     )
                     if _is_restart_cand:
                         if qa_mode and not qa_allow_actions:
@@ -6036,6 +6063,8 @@ def main() -> None:
                             ).start()
                     elif _restart_reason == "cooldown":
                         log(f"[AUTO-RESTART] blocked_by=cooldown miner={name_display} cooldown_remaining={_restart_cd:.0f}s")
+                    elif _restart_reason == "miner_warming_up":
+                        log(f"[AUTO-RESTART] blocked_by=miner_warming_up miner={name_display} elapsed={elapsed}s < {auto_restart_min_elapsed_seconds}s")
                     elif _restart_reason == "max_retries_exceeded":
                         log(f"[AUTO-RESTART] blocked_by=max_retries_exceeded miner={name_display} attempts={state.auto_restart_count}/{auto_restart_max_retries_before_reboot} -> escalando a Nivel 2 (auto-reboot)")
 

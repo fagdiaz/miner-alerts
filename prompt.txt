@@ -1,53 +1,63 @@
 # ==============================================================================
-# PROMPT DE HANDOFF: HORIZONTE V5.1 — POST SPEC 067 (SPECS 068 A 070)
+# PROMPT DE AUDITORÍA ARQUITECTÓNICA & QA: HORIZONTE V5.1 (SPECS 068 A 070)
 # ==============================================================================
-# MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Spec 068 (Named Pipes IPC) requiere análisis de concurrencia
-# moderado en Windows; es adecuado para Flash High. Escalar a Claude Sonnet 4.6
-# solo si aparecen race conditions en el watchdog IPC.
+# MODELO REQUERIDO: Claude Sonnet 4.6 (Thinking)
+# MISIÓN ESTRICTA: AUDITAR, ANALIZAR RIESGOS Y MEJORAR EL PLAN DE ACCIÓN.
+# NO IMPLEMENTAR CÓDIGO NI CREAR NUEVAS FUNCIONALIDADES EN ESTA SESIÓN.
 # ==============================================================================
 
-Estado de entrega: Spec 067 IMPLEMENTADA Y CERTIFICADA
+Estimado Claude Sonnet 4.6 (Thinking):
 
-1. LÍNEA BASE ACTUAL DEL SISTEMA:
-- Pruebas unitarias: 1072 tests PASS (0 fallos, 0 errores, 0 regresiones en 38.9s).
+El usuario ha ordenado una pausa estricta en la escritura de código para realizar una
+AUDITORÍA INTEGRAL Y ENRIQUECIMIENTO TÉCNICO de las especificaciones pendientes
+hasta la Spec 070. Tu objetivo NO es programar, sino AUDITAR EL PLAN, IDENTIFICAR
+VULNERABILIDADES ARQUITECTÓNICAS Y MEJORAR LA DOCUMENTACIÓN TÉCNICA.
+
+1. CONTEXTO Y LÍNEA BASE ACTUAL:
+- Pruebas unitarias: 1072 tests PASS (0 fallos, 0 errores, 0 regresiones en 37s).
 - Servicio Windows 'MinerAlerts': Estado Running, activo supervisando 4 mineros S19j Pro.
-- Git: Rama 'codex/022-adaptive-acquisition' completamente limpia y sincronizada.
-- Auditoría QA V5.1 completada: todos los checkpoints del ACTION_PLAN_V5_1_HORIZON.md verificados.
-- Últimas specs completadas y fixes aplicados:
-  * Spec 065: Pipeline declarativo de hooks en CoreSupervisoryEngine.
-  * Spec 066: Cold-Boot Fleet Grace Period 180s (PROP-001).
-  * Spec 067: Gateway Heartbeat & Network Storm Suppression PROP-005.
-    - GatewayHeartbeatWorker (app/network/gateway_heartbeat.py): hilo daemon TCP probe 50ms, fallback DNS/53, socket close explícito, degradación suave.
-    - Integración aditiva en main(): guard _network_storm_active filtra STATE_OFFLINE durante parpadeos de switch (ventana default 15s, opt-in via gateway_heartbeat_enabled).
-    - 27 tests unitarios PASS.
-  * Fix QA: _async_execute_mining_restart envuelto en try/except Exception.
-  * Fix QA (sesión anterior): PersistenceHook skip guard (_state_persisted), context governance/last_daily_digest_date sincronizados en cada tick.
+- Spec 066 (Cold-Boot Grace) y Spec 067 (Gateway Heartbeat) ya están implementadas y operativas.
+- Documento central a auditar y mejorar: docs/speckit/ACTION_PLAN_V5_1_HORIZON.md.
 
-2. SPECS PENDIENTES (según ACTION_PLAN_V5_1_HORIZON.md):
+2. TAREAS OBLIGATORIAS DE AUDITORÍA (SPECS 068 A 070):
 
-   * Spec 068 (P3): Canal IPC Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (PROP-007).
-     - Módulos: app/ipc/watchdog_pipe.py (nuevo), tools/monitor_watchdog.py.
-     - Protocolo: PING <nonce>\n → PONG <nonce> <tick_sequence> <uptime>\n en < 100ms.
-     - Si 3 fallos consecutivos → diagnóstico forense + Restart-Service.
-     - Riesgo MEDIO: Named Pipes en Windows, permisos ACL, pywin32 vs ctypes.
+--------------------------------------------------------------------------------
+A. AUDITORÍA DE LA SPEC 068: CANAL IPC MONITOR <-> WATCHDOG (PROP-007)
+--------------------------------------------------------------------------------
+Problema: El watchdog actual depende de data/monitor_heartbeat.json y sc.exe con latencia de 2 a 5 minutos.
+Propuesta: Canal de alta frecuencia (<15s) entre el monitor (Windows Service) y el watchdog independiente.
 
-   * Spec 069 (P1): Telemetría Profunda por Cadena & Predictive Chain Break (PROP-008).
-     - Módulos: app/governance/chain_health.py, app/vnish/chain_collector.py.
-     - Reglas: sensor I2C en fallo > 12h → alerta preventiva; desbalance < 92% → degradación.
-     - Riesgo MEDIO: queries SQL sobre chain_telemetry_samples < 15ms.
+Preguntas críticas que debes auditar y plasmar en docs/speckit/ACTION_PLAN_V5_1_HORIZON.md:
+1. Mecanismo de IPC en Windows: ¿Named Pipes nativos (ctypes / CreateNamedPipeW) vs pywin32 vs Loopback Socket TCP 127.0.0.1?
+   - Analiza portabilidad: ¿el venv de producción tiene pywin32 instalado? Si no, ¿es preferible ctypes o socket TCP loopback para cero dependencias externas?
+2. Seguridad y Permisos: ¿Qué ACLs o controles de token se requieren si el Servicio corre como LocalSystem o usuario con privilegios y el Watchdog corre bajo otra sesión?
+3. Resiliencia anti-deadlock: Si el hilo del Named Pipe en el monitor se bloquea, ¿cómo evita el watchdog falsos positivos sin matar el servicio erróneamente? Define la máquina de estados de fallo (1 fallo -> warning, 2 fallos -> dump stack, 3 fallos -> restart).
+4. Forense: Detalla el mecanismo para capturar sys._current_frames() de todos los hilos en disco antes de matar el proceso colgado.
 
-   * Spec 070 (P2): Modularización Core Fase B — Desacoplamiento de inspect.getsource(main).
-     - Riesgo ALTO: 4 suites usan inspección textual de main(). Requiere behavioral tests previos.
+--------------------------------------------------------------------------------
+B. AUDITORÍA DE LA SPEC 069: TELEMETRÍA POR CADENA & PREDICTIVE CHAIN BREAK (PROP-008)
+--------------------------------------------------------------------------------
+Problema: En el incidente del 2026-09-12 (Minero 24, Cadena 2), un sensor I2C en error persistente por días antecedió a un reinicio abrupto por chain_break en Vnish.
 
-3. RECOMENDACIÓN DE PRÓXIMO PASO:
-   Implementar Spec 069 (P1, riesgo medio) antes que Spec 068 (P3).
-   Spec 069 tiene mayor impacto operativo: el incidente del 2026-09-12 (Minero 24, Cadena 2,
-   sensor I2C board 39 chip 54 loc 28) sigue activo en producción sin alerta preventiva.
+Preguntas críticas que debes auditar y plasmar en el plan:
+1. Performance SQLite WAL: Las consultas sobre chain_telemetry_samples no deben tardar >15ms para no saturar el pool de lectura. ¿Qué índices específicos en SQLite se necesitan (ej. (miner_name, chain_id, timestamp))?
+2. Umbrales y Ventana Deslizante: ¿Cómo evitar falsas alarmas si un sensor I2C parpadea transitoriamente? Define los umbrales matemáticos: persistencia mínima (>12h), porcentaje de muestras erróneas (>90%), o desbalance de hashrate (<92% nominal).
+3. Discriminación Eléctrica vs Silicio: ¿Cómo correlacionar matemáticamente un fallo de cadena con perturbaciones del grupo de elevadores (elevator_1 vs elevator_2) para no culpar al ASIC cuando hay una caída de tensión externa?
 
-4. COMANDOS DE VALIDACIÓN:
-   & ".venv\Scripts\python.exe" -m py_compile app\miner_monitor.py app\core\engine.py
-   & ".venv\Scripts\python.exe" -m pytest tests/ -q --tb=no
-   & ".venv\Scripts\python.exe" -m unittest tests.test_auto_reboot_signal_gate tests.test_hashboard_auto_reboot tests.test_reboot_safety tests.test_vnish_hashboard_detection -v
-   Get-Service -Name MinerAlerts
-   Get-Content -Path logs\out.log -Tail 30
+--------------------------------------------------------------------------------
+C. AUDITORÍA DE LA SPEC 070: MODULARIZACIÓN CORE FASE B (ST-05)
+--------------------------------------------------------------------------------
+Problema: Cuatro suites de tests verifican la estructura de main() mediante inspect.getsource(main) (37 tests invariantes), lo que bloquea modularizar el código procedural a hooks.
+
+Preguntas críticas que debes auditar y plasmar en el plan:
+1. Behavioral Test Harness: Diseña la especificación del arnés de pruebas de comportamiento que debe construirse antes de tocar una sola línea de main().
+2. Matriz de Equivalencia: Mapea exactamente cómo cada una de las 37 aserciones de inspect.getsource(main) será reemplazada por una aserción de comportamiento de caja negra en CoreSupervisoryEngine.
+3. Protocolo de Transición de Riesgo Cero: Define el procedimiento de dos pasos donde coexisten ambas suites y sólo se deprecian los inspect textuales cuando la paridad funcional esté 100% probada.
+
+--------------------------------------------------------------------------------
+3. ENTREGABLES REQUERIDOS DE TU SESIÓN:
+--------------------------------------------------------------------------------
+1. Actualizar y profundizar docs/speckit/ACTION_PLAN_V5_1_HORIZON.md con tus análisis, diagramas, pseudocódigo y mitigaciones detalladas para las Specs 068, 069 y 070.
+2. Actualizar docs/speckit/ROADMAP.md y docs/speckit/DELIVERY_PLAN.md reflejando el estado auditado.
+3. Registrar tu informe de auditoría en docs/audit/DEVELOPMENT_LOG.md.
+4. Dejar el repositorio limpio y el archivo prompt.txt actualizado para la etapa posterior de implementación.

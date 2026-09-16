@@ -467,6 +467,8 @@ class EventStore:
 
                 CREATE INDEX IF NOT EXISTS ix_chain_telemetry_miner_time
                     ON chain_telemetry_samples(miner_key, observed_ts DESC);
+                CREATE INDEX IF NOT EXISTS ix_chain_telemetry_miner_chain_time
+                    ON chain_telemetry_samples(miner_key, chain_id, observed_ts DESC);
                 CREATE INDEX IF NOT EXISTS ix_chain_telemetry_chain_error
                     ON chain_telemetry_samples(chain_id, sensors_error_count);
                 CREATE INDEX IF NOT EXISTS ix_chain_telemetry_time
@@ -1550,6 +1552,31 @@ class EventStore:
                 return [dict(r) for r in rows]
         except sqlite3.Error as exc:
             self._report_error("get_chain_error_history", exc)
+    def fetch_chain_samples_window(
+        self,
+        miner_key: str,
+        chain_id: int,
+        since_ts: float,
+    ) -> List[Dict[str, Any]]:
+        """Consulta de solo lectura acotada en <15ms con reintento ante busy (Spec 069)."""
+        connection = self._connection
+        if connection is None:
+            return []
+        try:
+            with self._lock:
+                cursor = execute_readonly_with_retry(
+                    connection,
+                    """
+                    SELECT observed_ts, sensors_error_count, sensors_json, hr_deficit_pct, chips_error_count
+                    FROM chain_telemetry_samples
+                    WHERE miner_key = ? AND chain_id = ? AND observed_ts >= ?
+                    ORDER BY observed_ts ASC
+                    """,
+                    (str(miner_key), int(chain_id), float(since_ts)),
+                )
+                return _cursor_rows_to_dicts(cursor)
+        except sqlite3.Error as exc:
+            self._report_error("fetch_chain_samples_window", exc)
             return []
 
 
@@ -1844,6 +1871,22 @@ def open_readonly_connection(
         return None
 
 
+def _cursor_rows_to_dicts(cursor: sqlite3.Cursor) -> List[Dict[str, Any]]:
+    """Convert cursor fetchall results to list of dicts, supporting Row, tuple, and dict."""
+    rows = cursor.fetchall()
+    if not rows:
+        return []
+    first = rows[0]
+    if isinstance(first, dict):
+        return rows
+    if hasattr(first, "keys"):
+        return [dict(r) for r in rows]
+    cols = [c[0] for c in cursor.description] if cursor.description else []
+    if cols:
+        return [dict(zip(cols, r)) for r in rows]
+    return []
+
+
 def execute_readonly_with_retry(
     cursor_or_conn: Union[sqlite3.Cursor, sqlite3.Connection],
     sql: str,
@@ -1864,3 +1907,46 @@ def execute_readonly_with_retry(
                 attempt += 1
                 continue
             raise
+
+
+def fetch_chain_samples_window(
+    target: Union[EventStore, sqlite3.Connection, sqlite3.Cursor, str, Path],
+    miner_key: str,
+    chain_id: int,
+    since_ts: float,
+) -> List[Dict[str, Any]]:
+    """Helper de consulta en solo lectura para muestras por cadena con reintentos (Spec 069)."""
+    if isinstance(target, EventStore):
+        return target.fetch_chain_samples_window(miner_key, chain_id, since_ts)
+    if isinstance(target, (str, Path)):
+        conn = open_readonly_connection(target)
+        if conn is None:
+            return []
+        try:
+            cur = execute_readonly_with_retry(
+                conn,
+                """
+                SELECT observed_ts, sensors_error_count, sensors_json, hr_deficit_pct, chips_error_count
+                FROM chain_telemetry_samples
+                WHERE miner_key = ? AND chain_id = ? AND observed_ts >= ?
+                ORDER BY observed_ts ASC
+                """,
+                (str(miner_key), int(chain_id), float(since_ts)),
+            )
+            return _cursor_rows_to_dicts(cur)
+        finally:
+            conn.close()
+    if isinstance(target, (sqlite3.Connection, sqlite3.Cursor)):
+        cur = execute_readonly_with_retry(
+            target,
+            """
+            SELECT observed_ts, sensors_error_count, sensors_json, hr_deficit_pct, chips_error_count
+            FROM chain_telemetry_samples
+            WHERE miner_key = ? AND chain_id = ? AND observed_ts >= ?
+            ORDER BY observed_ts ASC
+            """,
+            (str(miner_key), int(chain_id), float(since_ts)),
+        )
+        return _cursor_rows_to_dicts(cur)
+    return []
+

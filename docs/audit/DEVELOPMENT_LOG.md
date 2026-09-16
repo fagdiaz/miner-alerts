@@ -3,6 +3,38 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación & Certificación Spec 069: Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (PROP-008)
+
+* **Objetivo**:
+  1. Diseñar e implementar el motor predictivo de salud por cadena en `app/governance/chain_health.py` (`PredictiveChainEngine` y `PredictiveChainRisk`) para anticipar paradas abruptas por `chain_break` en firmwares Vnish tras degradaciones continuas de bus I2C o silicio (incidente S19JPRO-24 Cadena 2).
+  2. Optimizar consultas de series temporales en SQLite WAL agregando el índice compuesto `ix_chain_telemetry_miner_chain_time` sobre `(miner_key, chain_id, observed_ts DESC)` en `app/core/event_store.py`, garantizando tiempos de ejecución $< 15\text{ ms}$ (promedio medido: $< 1\text{ ms}$).
+  3. Implementar helper tolerante a bloqueos `fetch_chain_samples_window(miner_key, chain_id, since_ts)` con reintentos exponenciales ante `SQLITE_BUSY_SNAPSHOT` y conversión universal de filas vía `_cursor_rows_to_dicts`.
+  4. Implementar Regla 1 (QA-069-01): Fallo persistente de sensor I2C en ventana deslizante de 12h requiriendo significancia estadística mínima ($N \ge 24$ muestras) y $\ge 90\%$ de fallos concentrados en una ubicación física idéntica (`faulty_sensor_locs`), suprimiendo falsas alarmas durante arranques o fluctuaciones transitorias.
+  5. Implementar Regla 2: Detección de déficit de hashrate localizado ($\ge 10\%$ sostenido por $\ge 3\text{h}$) con validación cruzada de placas adyacentes nominales ($\le 2\%$) para aislar degradación física de chips.
+  6. Implementar Regla 3 (QA-069-02): Discriminador de grupo eléctrico (`correlate_electrical_group`) que clasifica perturbaciones colectivas (`POWER_DISTURBANCE`) cuando $\ge 2$ mineros del mismo circuito eléctrico (`elevator_1` vs `elevator_2`) caen simultáneamente ($\le 60\text{s}$), inhibiendo falsos reportes de daño de silicio individual con fallback seguro ante configuraciones sin grupo y soporte de claves compuestas.
+  7. Formatear tarjetas móviles compactas en Telegram ($\le 32$ columnas) mediante `build_predictive_chain_risk_card()`, soportando explícitamente Cadena 0 (Board 0).
+  8. Integrar ciclo de evaluación periódica horaria en `app/miner_monitor.py` desacoplado en hilo daemon (`name="PredictiveChainBreakScheduled"`), con deduplicación estricta por cadena mediante enfriamiento de 24 horas (`state.chain_warnings_ts`) y preservación intacta de invariantes de supervisión de `main()`.
+  9. Auditoría QA especialista & quick wins: corrección de `NameError` en hilo de evaluación en `main()`, resolución de claves compuestas de estado, aislamiento de cooldowns por elevador, mitigación de fallos de cursor SQLite y blindaje con `_safe_float`.
+  10. Incorporar 23 nuevas pruebas unitarias y de rendimiento en `tests/test_chain_predictive_rules.py` (20 tests) y `tests/test_chain_query_performance.py` (3 tests), elevando la suite global del proyecto a **1204 tests PASS**.
+* **Componentes Modificados / Creados**:
+  - `app/core/event_store.py`: Índice compuesto `ix_chain_telemetry_miner_chain_time`, `_cursor_rows_to_dicts` y helper `fetch_chain_samples_window()`.
+  - `app/core/__init__.py`: Exportación de `fetch_chain_samples_window`.
+  - `app/governance/chain_health.py`: `PredictiveChainEngine`, `PredictiveChainRisk`, constantes de tipo y severidad, helper `extract_faulty_sensor_locs`, `_safe_float`, correlador de grupos eléctricos y formateador de tarjeta Telegram.
+  - `app/governance/__init__.py`: Exportación de clases, dataclasses y formateadores predictivos.
+  - `app/core/state_manager.py`: Serialización y deserialización de `chain_warnings_ts`.
+  - `app/miner_monitor.py`: Campo `chain_warnings_ts` en `@dataclass MinerState`, deserialización en `load_state()`, worker `_async_evaluate_predictive_chain_break()` y programación horaria en `main()`.
+  - `app/config.example.json`: Parámetros `predictive_chain_break_enabled`, `chain_sensor_error_persistence_hours`, `chain_sensor_error_min_samples`, `chain_sensor_error_sample_pct`, `chain_deficit_threshold_pct`, `chain_deficit_duration_hours`, `chain_warning_cooldown_hours`.
+  - `tests/test_chain_predictive_rules.py`: 20 pruebas unitarias exhaustivas para reglas I2C, déficit, supresión eléctrica, deduplicación y QA de robustez.
+  - `tests/test_chain_query_performance.py`: 3 pruebas de benchmark de latencia (<15ms) y verificación de `EXPLAIN QUERY PLAN` sobre 10.000 registros.
+  - `tests/test_state_serialization_parity.py`: Verificación de paridad de serialización para `chain_warnings_ts`.
+  - `specs/069-chain-telemetry-break-prediction/tasks.md` & `evidence.md`: Tareas completadas y certificación registrada.
+* **Resultados & Verificación**:
+  - Pruebas unitarias de reglas predictivas: 20/20 tests PASS en 0.56s.
+  - Pruebas de rendimiento SQLite: 3/3 tests PASS en 0.72s.
+  - Paridad de serialización de estado: 3/3 tests PASS en 0.53s.
+  - Suite completa del proyecto: **1204/1204 tests PASS** en 36.4s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+
 ## [2026-09-16] - Auditoría Especialista de QA & Saneamiento de Resiliencia (Specs 068, 070, 071, 072, 073)
 
 * **Objetivo**:

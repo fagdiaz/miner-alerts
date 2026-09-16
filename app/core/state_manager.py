@@ -219,6 +219,7 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "last_efficiency_warning_ts": getattr(state, "last_efficiency_warning_ts", None),
         "baseline_frequency_mhz": getattr(state, "baseline_frequency_mhz", None),
         "last_preset_warning_ts": getattr(state, "last_preset_warning_ts", None),
+        "chain_warnings_ts": dict(getattr(state, "chain_warnings_ts", None) or {}),
         # Spec 039: Fan Governor
         "governor_duty": getattr(state, "governor_duty", None),
         "governor_holds": getattr(state, "governor_holds", 0),

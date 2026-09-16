@@ -1,44 +1,35 @@
 # ==============================================================================
-# PROMPT DE EJECUCIÓN: PRÓXIMO PASO TRAS AUDITORÍA QA & SANEAMIENTO DE RESILIENCIA
+# PROMPT DE EJECUCIÓN: PRÓXIMO PASO TRAS QA & FIXES DE ESTABILIZACIÓN
 # ==============================================================================
 # MODELO RECOMENDADO: Gemini 3.8 Flash High (o Gemini 3.7 Flash High)
-# Justificación: Implementación de Spec 069 (Telemetría Profunda por Cadena & Diagnóstico
-# Predictivo Chain Break - PROP-008). Dominio puro de datos, modelos SQLite WAL,
-# reglas estadísticas y tests exhaustivos sin alteraciones concurrentes críticas.
+# Justificación: Auditoría final, normalización de documentación técnica,
+# sincronización de DEVELOPMENT_LOG.md, ROADMAP.md, evidence.md y preparación
+# de commit manual acotado. Dominio documental y consistencia de SpecKit.
 #
-# LÍNEA BASE: 1181 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.3s).
+# LÍNEA BASE: 1204 tests PASS (0 fallos, 0 errores, 0 regresiones en 36.4s).
 # SERVICIO WINDOWS: MinerAlerts RUNNING ininterrumpido.
 # ==============================================================================
 
 1. ESTADO ACTUAL DEL SISTEMA:
-- Pruebas unitarias: 1181 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.3s).
+- Pruebas unitarias: 1204 tests PASS (0 fallos, 0 errores, 0 regresiones en 36.4s).
 - Servicio Windows 'MinerAlerts': Running ininterrumpido.
 - Rama: 'codex/022-adaptive-acquisition'
-- Feature activa: 'specs/069-chain-telemetry-break-prediction'
+- Fase de QA, Búsqueda de Bugs & Quick Wins: COMPLETADA al 100%.
 
-2. TRABAJO COMPLETADO EN ESTA SESIÓN:
-- Spec 070 (Fases C y D) COMPLETADA:
-  * Extracción de DetectionHook y ActuatorHook en app/core/engine.py.
-  * Desacoplamiento total de inspect.getsource(main) en los 4 tests legados.
-  * 1160 tests PASS certificados.
-- Spec 068 COMPLETADA & CERTIFICADA:
-  * Servidor y cliente IPC nativo en app/ipc/watchdog_pipe.py vía Named Pipe (Windows NT) con SDDL 'D:(A;;GRGW;;;WD)'.
-  * Fallback automático a TCP loopback socket 127.0.0.1:4029.
-  * Helper de diagnóstico forense dump_thread_frames() con captura de trazas activas de hilos.
-  * Integración en app/miner_monitor.py:main() en hilo daemon desacoplado con wake-up connect (<200ms shutdown).
-  * Actualización de tools/monitor_watchdog.py con sondeo de alta frecuencia (<15s), máquina de 3 intentos, discriminador de deadlock supervisory y auto-recuperación de servicio.
-- AUDITORÍA ESPECIALISTA QA & FIXES RESILIENTES:
-  * Fix crítico para bug de kernel Windows NT ERROR_NO_DATA (232) mediante DisconnectNamedPipe() automático.
-  * Salvaguarda de uptime contra falsos positivos de deadlock post-reinicio.
-  * Blindaje defensivo con try/except logging en probe_ipc_and_recover().
-  * Soporte de alias --config/-c en tools/audit_config.py.
-  * 5 nuevas pruebas unitarias (total 1181 tests PASS).
+2. FIXES Y ESTABILIZACIÓN APLICADOS (QA):
+- Bug 1 (main thread): Corregido NameError en llamada a _async_evaluate_predictive_chain_break pasando 'states'.
+- Bug 2 (Deduplicación): Soporte de claves compuestas 'name|host:port' en matching de miner_states para registrar enfriamiento.
+- Bug 3 (Elevadores): Cooldowns aislados por elevador ('group_<grp>') evitando acoplamiento entre elevator_1 y elevator_2.
+- Bug 4 (Cadena 0): Renderizado explícito de Cadena 0 (Board 0) en build_predictive_chain_risk_card, omitiéndolo exclusivamente para perturbaciones de grupo.
+- Bug 5 (Row Factory SQLite): Helper _cursor_rows_to_dicts tolerante a tuplas, dicts y sqlite3.Row en fetch_chain_samples_window (clase y standalone).
+- Bug 6 (Lookup compuesto): Resuelto matching de nombres con pipe en correlate_electrical_group (.split("|")[0]).
+- Hardening: Blindaje con _safe_float ante None, NaN, inf y parseo resiliente de locs float string ("28.0" -> 28).
+- 5 nuevas pruebas unitarias exhaustivas en tests/test_chain_predictive_rules.py (total: 20 tests).
 
-3. PRÓXIMO OBJETIVO:
-- Spec 069: Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (PROP-008).
-  * Feature path: specs/069-chain-telemetry-break-prediction
-  * Conexión directa al pool SQLite consolidado en Spec 071.
-  * Índice compuesto 'ix_chain_telemetry_miner_chain_time'.
-  * Regla de alerta preventiva de bus I2C (sensors_error_count > 0 por > 12h).
-  * Discriminador de perturbación eléctrica vs fallo de silicio.
-
+3. PRÓXIMO OBJETIVO (PRÓXIMA ITERACIÓN SOLICITADA POR EL USUARIO):
+- Ejecutar la auditoría de consistencia y normalización de documentación:
+  * Actualizar 'docs/audit/DEVELOPMENT_LOG.md' con el registro cronológico más reciente arriba.
+  * Actualizar 'docs/speckit/ROADMAP.md' reflejando el estado de Spec 069 y QA completado.
+  * Completar 'specs/069-chain-telemetry-break-prediction/evidence.md' con las ejecuciones de 1204 tests y latencia < 15ms.
+  * Revisar y actualizar 'specs/069-chain-telemetry-break-prediction/tasks.md'.
+  * Preparar el commit manual y acotado para Spec 069 tras confirmación del usuario.

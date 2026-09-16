@@ -8,6 +8,7 @@ before catastrophic hardware failures or abrupt miner reboots occur.
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
@@ -478,3 +479,352 @@ def build_chains_fleet_summary_text(assessments: List[MinerChainsAssessment]) ->
     lines.append(MOBILE_CARD_SEPARATOR)
 
     return "\n".join(lines)
+
+
+# =============================================================================
+# Spec 069: Deep Chain Telemetry & Predictive Chain Break Diagnostics (PROP-008)
+# =============================================================================
+
+RISK_TYPE_I2C_PERSISTENT_ERROR = "I2C_PERSISTENT_ERROR"
+RISK_TYPE_CHIP_DEGRADATION = "CHIP_DEGRADATION"
+RISK_TYPE_POWER_DISTURBANCE = "POWER_DISTURBANCE"
+RISK_TYPE_ELECTRICAL_SAG = "ELECTRICAL_SAG"
+
+SEVERITY_WARNING = "WARNING"
+SEVERITY_CRITICAL = "CRITICAL"
+
+
+@dataclass(frozen=True)
+class PredictiveChainRisk:
+    """Predictive hardware risk assessment for a hashboard chain (Spec 069)."""
+    miner_name: str
+    chain_id: int
+    risk_type: str  # "I2C_PERSISTENT_ERROR", "CHIP_DEGRADATION", "ELECTRICAL_SAG", "POWER_DISTURBANCE"
+    severity: str   # "WARNING", "CRITICAL"
+    persistence_hours: float
+    error_sample_pct: float
+    faulty_locs: Tuple[int, ...]
+    message: str
+    observed_ts: float = 0.0
+
+
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert any value to float, shielding against None and non-finite values."""
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        return f if math.isfinite(f) else default
+    except (ValueError, TypeError):
+        return default
+
+
+def extract_faulty_sensor_locs(sensors_raw: Any, is_mining: bool = True) -> Tuple[int, ...]:
+    """Extract faulty I2C sensor locations (loc) from sensors JSON or objects."""
+    faulty_locs_list: List[int] = []
+    if isinstance(sensors_raw, str):
+        try:
+            sensors_list = json.loads(sensors_raw)
+        except Exception:
+            sensors_list = []
+    elif isinstance(sensors_raw, list):
+        sensors_list = sensors_raw
+    elif hasattr(sensors_raw, "__iter__"):
+        sensors_list = list(sensors_raw)
+    else:
+        sensors_list = []
+
+    for s in sensors_list:
+        if isinstance(s, dict):
+            s_state = str(s.get("state", "")).lower()
+            is_err = False
+            if s_state in ("error", "err", "fault", "failed", "broken", "offline"):
+                is_err = True
+            elif is_mining and s_state != "measure":
+                is_err = True
+            if is_err and s.get("loc") is not None:
+                try:
+                    faulty_locs_list.append(int(float(s["loc"])))
+                except (ValueError, TypeError):
+                    pass
+        elif hasattr(s, "state"):
+            s_state = str(getattr(s, "state", "")).lower()
+            is_err = False
+            if s_state in ("error", "err", "fault", "failed", "broken", "offline"):
+                is_err = True
+            elif is_mining and s_state != "measure":
+                is_err = True
+            if is_err and hasattr(s, "loc") and getattr(s, "loc") is not None:
+                try:
+                    faulty_locs_list.append(int(float(getattr(s, "loc"))))
+                except (ValueError, TypeError):
+                    pass
+    return tuple(sorted(set(faulty_locs_list)))
+
+
+class PredictiveChainEngine:
+    """Motor de evaluación predictiva de salud de cadenas y placas ASIC (Spec 069)."""
+
+    def evaluate_chain_history(
+        self,
+        samples: List[Dict[str, Any]],
+        now_ts: Optional[float] = None,
+        config: Optional[Dict[str, Any]] = None,
+        miner_name: Optional[str] = None,
+        chain_id: Optional[int] = None,
+        sibling_chains_samples: Optional[Dict[int, List[Dict[str, Any]]]] = None,
+    ) -> Optional[PredictiveChainRisk]:
+        """Evalúa el historial de muestras de una cadena bajo las reglas de la Spec 069."""
+        if not samples:
+            return None
+
+        cfg = config or {}
+        now = float(now_ts) if now_ts is not None else time.time()
+
+        # Derive miner name and chain id if not explicitly passed
+        m_name = miner_name or str(samples[0].get("miner_name", samples[0].get("miner_key", "unknown")))
+        c_id = chain_id if chain_id is not None else int(samples[0].get("chain_id", 0))
+
+        # -----------------------------------------------------------------
+        # Regla 1 — Fallo Persistente de Sensor Térmico I2C (QA-069-01)
+        # -----------------------------------------------------------------
+        min_samples_i2c = int(cfg.get("chain_sensor_error_min_samples", 24))
+        persistence_hours_i2c = float(cfg.get("chain_sensor_error_persistence_hours", 12.0))
+        error_pct_threshold = float(cfg.get("chain_sensor_error_sample_pct", 90.0))
+        window_seconds_i2c = persistence_hours_i2c * 3600.0
+
+        # Filter samples within the 12h window if timestamps are present
+        samples_with_ts = [s for s in samples if s.get("observed_ts") is not None]
+        if samples_with_ts:
+            window_samples_i2c = [
+                s for s in samples if _safe_float(s.get("observed_ts")) >= (now - window_seconds_i2c)
+            ]
+        else:
+            window_samples_i2c = samples
+
+        n_samples_i2c = len(window_samples_i2c)
+        if n_samples_i2c >= min_samples_i2c:
+            err_samples = []
+            loc_counts: Dict[int, int] = {}
+
+            for s in window_samples_i2c:
+                c_err = int(_safe_float(s.get("sensors_error_count"), 0))
+                s_json = s.get("sensors_json", "[]")
+                f_locs = extract_faulty_sensor_locs(s_json)
+                if c_err > 0 or f_locs:
+                    err_samples.append(s)
+                    for loc in f_locs:
+                        loc_counts[loc] = loc_counts.get(loc, 0) + 1
+
+            err_pct = (len(err_samples) / n_samples_i2c) * 100.0
+            if err_pct >= error_pct_threshold:
+                # Check for persistent physical sensor location (>= 80% of error samples)
+                common_locs_list = [
+                    loc for loc, count in loc_counts.items()
+                    if (count / len(err_samples)) >= 0.80
+                ]
+                if not common_locs_list and loc_counts:
+                    top_loc, top_cnt = max(loc_counts.items(), key=lambda x: x[1])
+                    if top_cnt / len(err_samples) >= 0.70:
+                        common_locs_list = [top_loc]
+
+                common_locs = tuple(sorted(common_locs_list))
+                loc_str = f"loc {', '.join(map(str, common_locs))}" if common_locs else "I2C"
+
+                # Calculate actual observed persistence duration
+                if samples_with_ts and len(err_samples) >= 2:
+                    t_min = min(_safe_float(s.get("observed_ts")) for s in err_samples)
+                    t_max = max(_safe_float(s.get("observed_ts")) for s in err_samples)
+                    duration_h = max(round((t_max - t_min) / 3600.0, 1), round(persistence_hours_i2c, 1))
+                else:
+                    duration_h = round(persistence_hours_i2c, 1)
+
+                msg = (
+                    f"Sensor térmico I2C ({loc_str}) en fallo continuo por "
+                    f">{persistence_hours_i2c:.0f}h ({len(err_samples)}/{n_samples_i2c} muestras)."
+                )
+                return PredictiveChainRisk(
+                    miner_name=m_name,
+                    chain_id=c_id,
+                    risk_type=RISK_TYPE_I2C_PERSISTENT_ERROR,
+                    severity=SEVERITY_WARNING,
+                    persistence_hours=duration_h,
+                    error_sample_pct=round(err_pct, 1),
+                    faulty_locs=common_locs,
+                    message=msg,
+                    observed_ts=now,
+                )
+
+        # -----------------------------------------------------------------
+        # Regla 2 — Detección de Déficit de Hashrate Localizado
+        # -----------------------------------------------------------------
+        deficit_threshold_pct = float(cfg.get("chain_deficit_threshold_pct", 10.0))
+        deficit_duration_hours = float(cfg.get("chain_deficit_duration_hours", 3.0))
+        deficit_window_seconds = deficit_duration_hours * 3600.0
+        min_samples_deficit = int(cfg.get("chain_deficit_min_samples", 4))
+
+        if samples_with_ts:
+            window_samples_def = [
+                s for s in samples if _safe_float(s.get("observed_ts")) >= (now - deficit_window_seconds)
+            ]
+        else:
+            window_samples_def = samples
+
+        n_def = len(window_samples_def)
+        if n_def >= min_samples_deficit:
+            deficit_hits = [
+                s for s in window_samples_def
+                if _safe_float(s.get("hr_deficit_pct")) >= deficit_threshold_pct
+            ]
+            deficit_sample_pct = (len(deficit_hits) / n_def) * 100.0
+            if deficit_sample_pct >= 80.0:
+                # Verify sibling chains nominal (hr_deficit_pct <= 2.0%)
+                sibling_nominal = True
+                if sibling_chains_samples:
+                    for sib_id, sib_samples in sibling_chains_samples.items():
+                        if sib_id == c_id or not sib_samples:
+                            continue
+                        recent_sib = [
+                            s for s in sib_samples
+                            if _safe_float(s.get("observed_ts")) >= (now - deficit_window_seconds)
+                        ] or sib_samples[-n_def:]
+                        if recent_sib:
+                            avg_sib_deficit = sum(_safe_float(s.get("hr_deficit_pct")) for s in recent_sib) / len(recent_sib)
+                            if avg_sib_deficit > 2.0:
+                                sibling_nominal = False
+                                break
+
+                if sibling_nominal:
+                    avg_chain_deficit = sum(_safe_float(s.get("hr_deficit_pct")) for s in deficit_hits) / len(deficit_hits)
+                    msg = (
+                        f"Déficit sostenido de hashrate ({avg_chain_deficit:.1f}% >= {deficit_threshold_pct:.1f}%) "
+                        f"durante >={deficit_duration_hours:.0f}h con placas adyacentes nominales (<=2.0%)."
+                    )
+                    return PredictiveChainRisk(
+                        miner_name=m_name,
+                        chain_id=c_id,
+                        risk_type=RISK_TYPE_CHIP_DEGRADATION,
+                        severity=SEVERITY_WARNING,
+                        persistence_hours=round(deficit_duration_hours, 1),
+                        error_sample_pct=round(deficit_sample_pct, 1),
+                        faulty_locs=(),
+                        message=msg,
+                        observed_ts=now,
+                    )
+
+        return None
+
+    def correlate_electrical_group(
+        self,
+        risks: List[PredictiveChainRisk],
+        miners_config: Optional[List[Dict[str, Any]]] = None,
+        now_ts: Optional[float] = None,
+        group_time_window_s: float = 60.0,
+    ) -> List[PredictiveChainRisk]:
+        """Correlaciona perturbaciones eléctricas por elevador con fallback seguro (Spec 069 QA-069-02)."""
+        if not risks:
+            return []
+        if not miners_config:
+            return list(risks)
+
+        now = float(now_ts) if now_ts is not None else time.time()
+
+        # Build map of miner name / host -> electrical group
+        miner_to_group: Dict[str, str] = {}
+        for m in miners_config:
+            grp = str(m.get("electrical_group") or m.get("group") or m.get("elevator") or "").strip()
+            if grp and grp.lower() != "default":
+                if m.get("name"):
+                    miner_to_group[str(m["name"])] = grp
+                if m.get("host"):
+                    miner_to_group[str(m["host"])] = grp
+
+        # Separate silicon degradation risks (subject to electrical group correlation)
+        # from other risks (e.g. I2C persistent errors which are hardware sensor faults)
+        group_candidates: Dict[str, List[PredictiveChainRisk]] = {}
+        preserved_risks: List[PredictiveChainRisk] = []
+
+        for r in risks:
+            if r.risk_type in (RISK_TYPE_CHIP_DEGRADATION, "DEFICIT", "HASH_DROP"):
+                grp = miner_to_group.get(r.miner_name) or miner_to_group.get(r.miner_name.split("|")[0])
+                if grp:
+                    group_candidates.setdefault(grp, []).append(r)
+                else:
+                    preserved_risks.append(r)
+            else:
+                preserved_risks.append(r)
+
+        # For each group, check if >= 2 distinct miners are affected
+        for grp, grp_risks in group_candidates.items():
+            distinct_miners = sorted(set(r.miner_name for r in grp_risks))
+            if len(distinct_miners) >= 2:
+                # Check timing: within group_time_window_s
+                timestamps = [r.observed_ts for r in grp_risks if r.observed_ts > 0.0]
+                is_simultaneous = True
+                if len(timestamps) >= 2:
+                    if (max(timestamps) - min(timestamps)) > group_time_window_s:
+                        is_simultaneous = False
+
+                if is_simultaneous:
+                    # Classify as POWER_DISTURBANCE (Spec 069: QA-069-02)
+                    # Suppress individual chip degradation alerts
+                    dist_risk = PredictiveChainRisk(
+                        miner_name=f"Grupo {grp}",
+                        chain_id=0,
+                        risk_type=RISK_TYPE_POWER_DISTURBANCE,
+                        severity=SEVERITY_WARNING,
+                        persistence_hours=0.0,
+                        error_sample_pct=100.0,
+                        faulty_locs=(),
+                        message=(
+                            f"Perturbación eléctrica en {grp} afectando a "
+                            f"{len(distinct_miners)} mineros ({', '.join(distinct_miners)}) simultáneamente. "
+                            "Alerta de silicio individual suprimida."
+                        ),
+                        observed_ts=now,
+                    )
+                    preserved_risks.append(dist_risk)
+                    continue
+
+            # Fallback: keep individual risks intact
+            preserved_risks.extend(grp_risks)
+
+        return preserved_risks
+
+
+def build_predictive_chain_risk_card(risk: PredictiveChainRisk) -> str:
+    """Format a Mobile-First card (width <= 32 cols) for predictive chain break risk alerts (Spec 069)."""
+    lines = [
+        "⚠️ *RIESGO CHAIN BREAK*",
+        MOBILE_CARD_SEPARATOR,
+        f"• Minero: {risk.miner_name}",
+    ]
+    is_group = risk.miner_name.startswith("Grupo ") or risk.risk_type in (
+        RISK_TYPE_POWER_DISTURBANCE,
+        RISK_TYPE_ELECTRICAL_SAG,
+    )
+    if not is_group and risk.chain_id is not None and risk.chain_id >= 0:
+        lines.append(f"• Cadena: {risk.chain_id} (Board {risk.chain_id})")
+
+    sev_badge = "🔴" if risk.severity.upper() == "CRITICAL" else "⚠️"
+    lines.append(f"• Severidad: {sev_badge} {risk.severity.upper()}")
+    lines.append(MOBILE_CARD_SEPARATOR)
+
+    lines.append("💡 *Diagnóstico:*")
+    lines.extend(wrap_mobile_lines(risk.message, width=MOBILE_LINE_WIDTH_LIMIT))
+    lines.append(MOBILE_CARD_SEPARATOR)
+
+    lines.append("🛠 *Recomendación:*")
+    if risk.risk_type == RISK_TYPE_I2C_PERSISTENT_ERROR:
+        rec = "Programar inspección física para evitar parada abrupta por firmware."
+    elif risk.risk_type == RISK_TYPE_CHIP_DEGRADATION:
+        rec = "Revisar dominio de tensión y chips estrangulados en la placa."
+    elif risk.risk_type in (RISK_TYPE_POWER_DISTURBANCE, RISK_TYPE_ELECTRICAL_SAG):
+        rec = "Verificar caída de fase o estabilidad de tensión en el elevador."
+    else:
+        rec = "Monitorear telemetría y programar revisión técnica."
+    lines.extend(wrap_mobile_lines(rec, width=MOBILE_LINE_WIDTH_LIMIT))
+    lines.append(MOBILE_CARD_SEPARATOR)
+
+    return "\n".join(lines)
+

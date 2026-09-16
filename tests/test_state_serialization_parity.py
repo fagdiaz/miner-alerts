@@ -109,6 +109,7 @@ class TestStateSerializationParity(unittest.TestCase):
         st.last_efficiency_j_th = 27.1
         st.last_responded = True
         st.inlet_temp_c = 24.5
+        st.chain_warnings_ts = {"2": 1700001000.0}
 
         serialized = StateManager.serialize_miner_state(st)
         encoded_json = json.dumps(serialized)
@@ -121,6 +122,7 @@ class TestStateSerializationParity(unittest.TestCase):
         self.assertEqual(decoded["balancer_preset"], "2800W")
         self.assertEqual(decoded["inlet_temp_c"], 24.5)
         self.assertEqual(decoded["auto_reboot_timestamps"], [1699985000.0])
+        self.assertEqual(decoded["chain_warnings_ts"], {"2": 1700001000.0})
 
 
 if __name__ == "__main__":

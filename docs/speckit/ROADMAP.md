@@ -830,12 +830,15 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Protocolo Ping-Pong (`PING <nonce>` -> `PONG <nonce> <seq> <uptime>`) con timeout de 100ms y detección de deadlocks en el bucle principal (`tick_sequence` congelado).
 - [x] Máquina de estados de 3 etapas y volcado forense automático de trazas de hilos (`sys._current_frames()`) antes de `Restart-Service`.
 
-### Iniciativa 21 — Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (Spec 069 - PROP-008 - Especificada / Pausada para Ajuste)
-- Documento de Plan y Especificación: [`specs/069-chain-telemetry-break-prediction/spec.md`](../../specs/069-chain-telemetry-break-prediction/spec.md)
-- **Estado**: Especificada end-to-end, en pausa para ajuste tras Spec 071 (se conectará directamente al nuevo pool SQLite sin conexiones ad-hoc).
-- [ ] Índice compuesto optimizado `ix_chain_telemetry_miner_chain_time` en SQLite WAL para consultas de evaluación en $< 15\text{ ms}$.
-- [ ] Regla de alerta preventiva de bus I2C: notificación proactiva en Telegram si `sensors_error_count > 0` persiste por $> 12\text{ h}$ (cubriendo el caso del Minero 24 Cadena 2).
-- [ ] Discriminador de perturbación eléctrica de grupo (`elevator_1` vs `elevator_2`) vs degradación física de silicio para evitar falsas alarmas de hardware.
+### Iniciativa 21 — Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (Spec 069 - PROP-008 - Completada & Certificada)
+- Documento de Plan y Especificación: [`specs/069-chain-telemetry-break-prediction/spec.md`](../../specs/069-chain-telemetry-break-prediction/spec.md) | Evidencia: [`specs/069-chain-telemetry-break-prediction/evidence.md`](../../specs/069-chain-telemetry-break-prediction/evidence.md)
+- **Estado**: Completada & Certificada tras auditoría QA especialista y hardening de robustez. Motor predictivo `PredictiveChainEngine` implementado, índice compuesto WAL creado, reglas I2C/déficit/eléctricas certificadas con 23 nuevas pruebas y 1204 tests globales PASS.
+- [x] Índice compuesto optimizado `ix_chain_telemetry_miner_chain_time` en SQLite WAL para consultas de evaluación en $< 15\text{ ms}$ (medido $< 1\text{ ms}$).
+- [x] Helper resiliente `fetch_chain_samples_window` con reintentos ante `SQLITE_BUSY_SNAPSHOT` y `_cursor_rows_to_dicts` universal.
+- [x] Regla de alerta preventiva de bus I2C: notificación proactiva en Telegram si `sensors_error_count > 0` persiste por $> 12\text{ h}$ con significancia $N \ge 24$ (cubriendo el caso del Minero 24 Cadena 2).
+- [x] Discriminador de perturbación eléctrica de grupo (`elevator_1` vs `elevator_2`) vs degradación física de silicio suprimiendo alertas falsas individuales ante caídas simultáneas con soporte de claves compuestas.
+- [x] Formateador de alertas móviles Telegram ($\le 32$ columnas), soporte explícito de Cadena 0 (Board 0) y deduplicación con cooldown de 24h (`state.chain_warnings_ts`).
+- [x] Suite de pruebas unitarias (`tests/test_chain_predictive_rules.py`, 20 tests) y benchmark de rendimiento (`tests/test_chain_query_performance.py`, 3 tests). Total 1204 tests PASS.
 
 ### Iniciativa 22 — Modularización del Core Fase B — Desacoplamiento Seguro de `inspect.getsource(main)` (Spec 070 - ST-05 - Completada & Certificada)
 - Documento de Plan y Especificación: [`specs/070-core-modularization-decoupling/spec.md`](../../specs/070-core-modularization-decoupling/spec.md)
@@ -873,9 +876,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 
 ## Governance
 
-- All 72 specifications implemented in the program (Specs 001 through 068, Spec 070, Spec 071, Spec 072, and Spec 073) are complete, verified with evidence, and closed.
-- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling + Watchdog Named Pipe IPC + QA Hardening is certified with 1181/1181 tests PASS (0 failures, 0 regressions, Windows service running).
-- Spec 069 is fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
-- Next implementation target: Spec 069 (Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break - PROP-008).
+- All 73 specifications implemented in the program (Specs 001 through 073) are complete, verified with evidence, and closed.
+- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling + Watchdog Named Pipe IPC + Predictive Chain Break Diagnostics (Spec 069) is certified with 1204/1204 tests PASS (0 failures, 0 regressions, Windows service running).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

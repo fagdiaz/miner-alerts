@@ -123,6 +123,13 @@ from app.governance.chain_health import (
     build_chains_fleet_summary_text,
     evaluate_chain_health_streak,
     find_culprit_chain_for_restart,
+    RISK_TYPE_I2C_PERSISTENT_ERROR,
+    RISK_TYPE_CHIP_DEGRADATION,
+    RISK_TYPE_POWER_DISTURBANCE,
+    RISK_TYPE_ELECTRICAL_SAG,
+    PredictiveChainRisk,
+    PredictiveChainEngine,
+    build_predictive_chain_risk_card,
 )
 from app.governance.preset_balancer import (
 
@@ -282,5 +289,12 @@ __all__ = [
     "build_chains_fleet_summary_text",
     "evaluate_chain_health_streak",
     "find_culprit_chain_for_restart",
+    "RISK_TYPE_I2C_PERSISTENT_ERROR",
+    "RISK_TYPE_CHIP_DEGRADATION",
+    "RISK_TYPE_POWER_DISTURBANCE",
+    "RISK_TYPE_ELECTRICAL_SAG",
+    "PredictiveChainRisk",
+    "PredictiveChainEngine",
+    "build_predictive_chain_risk_card",
     "toggle_selection_bitmask",
 ]

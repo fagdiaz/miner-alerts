@@ -865,6 +865,8 @@ class MinerState:
     last_efficiency_warning_ts: Optional[float] = None
     baseline_frequency_mhz: Optional[float] = None
     last_preset_warning_ts: Optional[float] = None
+    # Spec 069: Deep Chain Telemetry & Predictive Chain Break Diagnostics (PROP-008)
+    chain_warnings_ts: Dict[str, float] = field(default_factory=dict)
     # Spec 039: Fan Governor per-miner persistent state
     governor_duty: Optional[int] = None          # Last commanded duty %
     governor_holds: int = 0                       # Consecutive HOLD ticks
@@ -2406,6 +2408,7 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("last_preset_warning_ts") is not None
                     else None
                 ),
+                chain_warnings_ts=dict(data.get("chain_warnings_ts") or {}),
                 # Spec 039: Fan Governor
                 governor_duty=(
                     int(data.get("governor_duty"))
@@ -2716,6 +2719,169 @@ def _async_collect_chain_telemetry(
                 log(f"[CHAIN_TELEMETRY] miner={m_name} host={m_host} error={err}")
     except Exception as exc:
         log(f"[CHAIN_TELEMETRY] worker error: {type(exc).__name__}: {exc}")
+
+
+def _async_evaluate_predictive_chain_break(
+    miners_list: list,
+    event_store_inst: Optional[Any],
+    miner_states: Dict[str, Any],
+    state_lock: threading.Lock,
+    config: Optional[dict] = None,
+    bot_token: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    qa_mode: bool = False,
+    qa_notify: bool = False,
+    now_ts: Optional[float] = None,
+) -> None:
+    """Hourly deep telemetry evaluation & predictive chain break alerting (Spec 069 / PROP-008)."""
+    if event_store_inst is None or not event_store_inst.available:
+        return
+    cfg = config or {}
+    if not bool(cfg.get("predictive_chain_break_enabled", True)):
+        return
+
+    try:
+        from app.governance.chain_health import (
+            PredictiveChainEngine,
+            PredictiveChainRisk,
+            build_predictive_chain_risk_card,
+        )
+
+        engine = PredictiveChainEngine()
+        now = float(now_ts) if now_ts is not None else time.time()
+        cooldown_s = float(cfg.get("chain_warning_cooldown_hours", 24.0)) * 3600.0
+        persistence_hours = float(cfg.get("chain_sensor_error_persistence_hours", 12.0))
+        since_ts = now - (persistence_hours * 3600.0)
+
+        raw_risks: List[PredictiveChainRisk] = []
+
+        for m in miners_list:
+            m_name = str(m.get("name", ""))
+            m_host = str(m.get("host", ""))
+            if not m_name and not m_host:
+                continue
+
+            candidate_keys = [m_name]
+            if m_name and m_host:
+                candidate_keys.append(f"{m_name}|{m_host}")
+            if m_host:
+                candidate_keys.append(m_host)
+
+            latest = None
+            for ck in candidate_keys:
+                latest = event_store_inst.get_latest_chain_samples(ck)
+                if latest:
+                    break
+
+            chain_ids = [int(r["chain_id"]) for r in latest] if latest else [0, 1, 2]
+
+            chain_samples_map: Dict[int, list] = {}
+            for cid in chain_ids:
+                samples: list = []
+                for ck in candidate_keys:
+                    samples = event_store_inst.fetch_chain_samples_window(ck, cid, since_ts)
+                    if samples:
+                        break
+                chain_samples_map[cid] = samples
+
+            for cid in chain_ids:
+                c_samples = chain_samples_map.get(cid, [])
+                if not c_samples:
+                    continue
+                sib_map = {sid: s_list for sid, s_list in chain_samples_map.items() if sid != cid}
+                risk = engine.evaluate_chain_history(
+                    samples=c_samples,
+                    now_ts=now,
+                    config=cfg,
+                    miner_name=m_name,
+                    chain_id=cid,
+                    sibling_chains_samples=sib_map,
+                )
+                if risk is not None:
+                    raw_risks.append(risk)
+
+        correlated_risks = engine.correlate_electrical_group(
+            raw_risks,
+            miners_config=miners_list,
+            now_ts=now,
+        )
+
+        for risk in correlated_risks:
+            chain_key = str(risk.chain_id)
+            target_miner_name = risk.miner_name
+
+            should_alert = False
+            with state_lock:
+                st = None
+                if target_miner_name.startswith("Grupo "):
+                    grp_name = target_miner_name[6:].strip()
+                    grp_key = f"group_{grp_name}"
+                    member_names = {
+                        str(m.get("name")) for m in miners_list
+                        if str(m.get("electrical_group") or m.get("group") or m.get("elevator") or "").strip() == grp_name
+                    }
+                    member_states = [
+                        s for k, s in miner_states.items()
+                        if any(k == m_nm or k.startswith(f"{m_nm}|") or k.split("|")[0] == m_nm for m_nm in member_names)
+                    ]
+                    if member_states:
+                        last_ts = max(float(s.chain_warnings_ts.get(grp_key, 0.0)) for s in member_states)
+                        if (now - last_ts) >= cooldown_s:
+                            for s in member_states:
+                                s.chain_warnings_ts[grp_key] = now
+                            should_alert = True
+                    else:
+                        should_alert = True
+                else:
+                    for k, s in miner_states.items():
+                        if (
+                            k == target_miner_name
+                            or k.startswith(f"{target_miner_name}|")
+                            or k.split("|")[0] == target_miner_name
+                        ):
+                            st = s
+                            break
+
+                    if st is not None:
+                        last_ts = float(st.chain_warnings_ts.get(chain_key, 0.0))
+                        if (now - last_ts) >= cooldown_s:
+                            st.chain_warnings_ts[chain_key] = now
+                            should_alert = True
+                    else:
+                        should_alert = True
+
+            if should_alert:
+                alert_card = build_predictive_chain_risk_card(risk)
+                if bot_token and chat_id and ((not qa_mode) or qa_notify):
+                    send_telegram(
+                        bot_token,
+                        str(chat_id),
+                        alert_card,
+                        "CHAIN_PREDICTIVE",
+                        "predictive_chain_break_warning",
+                    )
+                if event_store_inst and event_store_inst.available:
+                    event_store_inst.record_event(
+                        occurred_ts=now,
+                        miner_key=risk.miner_name,
+                        miner_name=risk.miner_name,
+                        host="",
+                        event_type="predictive_chain_break_warning",
+                        severity=risk.severity.lower(),
+                        summary=risk.message,
+                        details={
+                            "risk_type": risk.risk_type,
+                            "chain_id": risk.chain_id,
+                            "persistence_hours": risk.persistence_hours,
+                            "error_sample_pct": risk.error_sample_pct,
+                            "faulty_locs": list(risk.faulty_locs),
+                        },
+                    )
+                log(f"[PREDICTIVE_CHAIN] Alert sent for miner={risk.miner_name} chain={risk.chain_id} risk={risk.risk_type}")
+
+    except Exception as exc:
+        log(f"[PREDICTIVE_CHAIN_ERR] worker failed: {type(exc).__name__}: {exc}")
+
 
 
 
@@ -5335,6 +5501,10 @@ def main() -> None:
         last_chain_collection_ts = 0.0
         chain_telemetry_enabled = bool(config.get("chain_telemetry_enabled", True))
         chain_telemetry_interval_s = float(config.get("chain_telemetry_interval_s", 900.0))
+        # Spec 069: Predictive Chain Break Alerting (PROP-008)
+        last_predictive_chain_eval_ts = 0.0
+        predictive_chain_enabled = bool(config.get("predictive_chain_break_enabled", True))
+        predictive_chain_eval_interval_s = float(config.get("predictive_chain_eval_interval_s", 3600.0))
         vnish_api_password = str(config.get("vnish_api_password", "admin"))
         previous_tick_signals: Dict[str, str] = {}
 
@@ -7453,6 +7623,17 @@ def main() -> None:
                                 args=(valid_miners, event_store, vnish_api_password, None, config, bot_token, chat_id, qa_mode, qa_notify),
                                 daemon=True,
                                 name="ChainTelemetryScheduled",
+                            ).start()
+
+                    # Spec 069: Periodic Predictive Chain Break Evaluation (PROP-008)
+                    if predictive_chain_enabled and event_store is not None and event_store.available:
+                        if (completed_ts - last_predictive_chain_eval_ts) >= predictive_chain_eval_interval_s:
+                            last_predictive_chain_eval_ts = completed_ts
+                            threading.Thread(
+                                target=_async_evaluate_predictive_chain_break,
+                                args=(valid_miners, event_store, states, state_lock, config, bot_token, chat_id, qa_mode, qa_notify),
+                                daemon=True,
+                                name="PredictiveChainBreakScheduled",
                             ).start()
 
                     # Spec 061: Periodic SQLite WAL Checkpoint Maintenance

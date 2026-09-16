@@ -1,10 +1,11 @@
 # ==============================================================================
-# PROMPT DE EJECUCIÓN: PRÓXIMO PASO TRAS QA & FIXES DE ESTABILIZACIÓN
+# PROMPT DE EJECUCIÓN: SISTEMA CERTIFICADO & COMMIT REALIZADO (SPEC 069)
 # ==============================================================================
 # MODELO RECOMENDADO: Gemini 3.8 Flash High (o Gemini 3.7 Flash High)
-# Justificación: Auditoría final, normalización de documentación técnica,
-# sincronización de DEVELOPMENT_LOG.md, ROADMAP.md, evidence.md y preparación
-# de commit manual acotado. Dominio documental y consistencia de SpecKit.
+# Justificación: Todas las specs del programa (Specs 001 a 073) están 100%
+# implementadas, auditadas, certificadas y commiteadas. El modelo primario
+# Flash High es óptimo para consultar backlog, monitorear telemetría o iniciar
+# una nueva propuesta/especificación del programa.
 #
 # LÍNEA BASE: 1204 tests PASS (0 fallos, 0 errores, 0 regresiones en 36.4s).
 # SERVICIO WINDOWS: MinerAlerts RUNNING ininterrumpido.
@@ -13,23 +14,17 @@
 1. ESTADO ACTUAL DEL SISTEMA:
 - Pruebas unitarias: 1204 tests PASS (0 fallos, 0 errores, 0 regresiones en 36.4s).
 - Servicio Windows 'MinerAlerts': Running ininterrumpido.
-- Rama: 'codex/022-adaptive-acquisition'
-- Fase de QA, Búsqueda de Bugs & Quick Wins: COMPLETADA al 100%.
+- Rama: 'codex/022-adaptive-acquisition' (adelantada por 1 commit: 0dcf68f).
+- Árbol de trabajo: Limpio (nothing to commit, working tree clean).
+- Todas las especificaciones del programa (Specs 001 a 073) implementadas y certificadas al 100%.
 
-2. FIXES Y ESTABILIZACIÓN APLICADOS (QA):
-- Bug 1 (main thread): Corregido NameError en llamada a _async_evaluate_predictive_chain_break pasando 'states'.
-- Bug 2 (Deduplicación): Soporte de claves compuestas 'name|host:port' en matching de miner_states para registrar enfriamiento.
-- Bug 3 (Elevadores): Cooldowns aislados por elevador ('group_<grp>') evitando acoplamiento entre elevator_1 y elevator_2.
-- Bug 4 (Cadena 0): Renderizado explícito de Cadena 0 (Board 0) en build_predictive_chain_risk_card, omitiéndolo exclusivamente para perturbaciones de grupo.
-- Bug 5 (Row Factory SQLite): Helper _cursor_rows_to_dicts tolerante a tuplas, dicts y sqlite3.Row en fetch_chain_samples_window (clase y standalone).
-- Bug 6 (Lookup compuesto): Resuelto matching de nombres con pipe en correlate_electrical_group (.split("|")[0]).
-- Hardening: Blindaje con _safe_float ante None, NaN, inf y parseo resiliente de locs float string ("28.0" -> 28).
-- 5 nuevas pruebas unitarias exhaustivas en tests/test_chain_predictive_rules.py (total: 20 tests).
+2. COMMIT REALIZADO:
+- Hash: 0dcf68f
+- Mensaje: feat(spec-069): implement predictive chain break diagnostics, composite SQLite index, and electrical group correlation
+- Archivos commiteados: 15 archivos modificados/creados (+1603 / -57).
+- QA, estabilización y documentación auditada al 100%.
 
-3. PRÓXIMO OBJETIVO (PRÓXIMA ITERACIÓN SOLICITADA POR EL USUARIO):
-- Ejecutar la auditoría de consistencia y normalización de documentación:
-  * Actualizar 'docs/audit/DEVELOPMENT_LOG.md' con el registro cronológico más reciente arriba.
-  * Actualizar 'docs/speckit/ROADMAP.md' reflejando el estado de Spec 069 y QA completado.
-  * Completar 'specs/069-chain-telemetry-break-prediction/evidence.md' con las ejecuciones de 1204 tests y latencia < 15ms.
-  * Revisar y actualizar 'specs/069-chain-telemetry-break-prediction/tasks.md'.
-  * Preparar el commit manual y acotado para Spec 069 tras confirmación del usuario.
+3. PRÓXIMO OBJETIVO:
+- Consultar al usuario sobre los siguientes pasos:
+  * Publicar cambios al repositorio remoto (`git push origin codex/022-adaptive-acquisition`).
+  * Iniciar nueva propuesta/especificación del programa o monitoreo operativo del servicio.

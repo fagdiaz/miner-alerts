@@ -1,3 +1,1 @@
-{
-  "feature_directory": "specs/071-sqlite-pool-and-thread-hardening"
-}
+﻿{"feature_directory": "specs/072-state-serialization-unification"}

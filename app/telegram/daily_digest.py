@@ -163,13 +163,18 @@ def fetch_daily_digest_metrics(
     if not db_p.exists():
         return res
 
-    conn = None
+    from app.core.event_store import open_readonly_connection, execute_readonly_with_retry
+    # mode=ro timeout=2.0 via open_readonly_connection
+    conn = open_readonly_connection(db_p)
+    if conn is None:
+        return res
+
     try:
-        conn = sqlite3.connect(f"file:{db_p.resolve()}?mode=ro", uri=True, timeout=2.0)
         cursor = conn.cursor()
 
         # 1. Total samples & Uptime
-        cursor.execute(
+        execute_readonly_with_retry(
+            cursor,
             """
             SELECT count(id),
                    count(CASE WHEN state = 'OK' OR (responded = 1 AND rate_ths >= threshold_ths) THEN 1 END)
@@ -185,7 +190,8 @@ def fetch_daily_digest_metrics(
             res["fleet_uptime_pct"] = (ok_samples / row[0]) * 100.0
 
         # 2. Average hashrate per miner in 24h
-        cursor.execute(
+        execute_readonly_with_retry(
+            cursor,
             """
             SELECT miner_name, avg(rate_ths)
             FROM telemetry_samples
@@ -200,7 +206,8 @@ def fetch_daily_digest_metrics(
             res["active_miners_count"] = len(miner_avgs)
 
         # 3. Energy efficiency (J/TH = Watts / TH/s)
-        cursor.execute(
+        execute_readonly_with_retry(
+            cursor,
             """
             SELECT avg(chain_power_w_total / rate_ths)
             FROM telemetry_samples
@@ -215,7 +222,8 @@ def fetch_daily_digest_metrics(
             res["avg_efficiency_j_th"] = float(eff_row[0])
 
         # 4. Shares delta in 24h
-        cursor.execute(
+        execute_readonly_with_retry(
+            cursor,
             """
             SELECT miner_name,
                    max(accepted_shares_total) - min(accepted_shares_total),
@@ -239,7 +247,8 @@ def fetch_daily_digest_metrics(
             res["shares_rejected_pct"] = (total_rej / (total_acc + total_rej)) * 100.0
 
         # 5. Operational incidents in 24h (warning/critical events)
-        cursor.execute(
+        execute_readonly_with_retry(
+            cursor,
             """
             SELECT count(id)
             FROM operational_events
@@ -253,7 +262,8 @@ def fetch_daily_digest_metrics(
             res["incidents_24h"] = inc_row[0]
 
         # 6. Reboots executed in 24h
-        cursor.execute(
+        execute_readonly_with_retry(
+            cursor,
             """
             SELECT count(id)
             FROM operational_events
@@ -266,7 +276,8 @@ def fetch_daily_digest_metrics(
         reboots = rb_row[0] if rb_row else 0
 
         # Also check reboot_decisions if available
-        cursor.execute(
+        execute_readonly_with_retry(
+            cursor,
             """
             SELECT count(id)
             FROM reboot_decisions

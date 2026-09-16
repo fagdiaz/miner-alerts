@@ -215,18 +215,19 @@ def fetch_latest_preset_assessments(
     db_samples: Dict[str, dict] = {}
     firmware_events_by_miner: Dict[str, list] = {}
 
-    if db_file.exists():
-        uri = f"file:{db_file.resolve().as_posix()}?mode=ro"
-        conn = None
+    from app.core.event_store import open_readonly_connection, execute_readonly_with_retry
+    # mode=ro via open_readonly_connection
+    conn = open_readonly_connection(db_file)
+    if conn is not None:
         try:
-            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
             # Check if firmware_events exists
-            has_fw = cursor.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='firmware_events'"
-            ).fetchone() is not None
+            execute_readonly_with_retry(
+                cursor,
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='firmware_events'",
+            )
+            has_fw = cursor.fetchone() is not None
 
             for miner in miners:
                 m_name = miner.get("name")
@@ -244,7 +245,8 @@ def fetch_latest_preset_assessments(
 
                 placeholders = ",".join("?" for _ in candidate_keys)
                 try:
-                    cursor.execute(
+                    execute_readonly_with_retry(
+                        cursor,
                         f"""
                         SELECT rate_ths, frequency_mhz_avg, chain_voltage_mv_avg, chain_power_w_total, chains_transitioning_count
                         FROM telemetry_samples
@@ -268,7 +270,8 @@ def fetch_latest_preset_assessments(
 
                 if has_fw:
                     try:
-                        cursor.execute(
+                        execute_readonly_with_retry(
+                            cursor,
                             f"""
                             SELECT summary FROM firmware_events
                             WHERE miner_key IN ({placeholders}) OR miner_name = ? OR host = ?

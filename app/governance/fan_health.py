@@ -293,12 +293,11 @@ def fetch_latest_cooling_assessments(
     saturate_rpm = int(cfg.get("cooling_saturate_rpm", 5800))
 
     db_samples: Dict[str, dict] = {}
-    if db_file.exists():
-        uri = f"file:{db_file.resolve().as_posix()}?mode=ro"
-        conn = None
+    from app.core.event_store import open_readonly_connection, execute_readonly_with_retry
+    # mode=ro via open_readonly_connection
+    conn = open_readonly_connection(db_file)
+    if conn is not None:
         try:
-            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             for miner in miners:
                 m_name = miner.get("name")
@@ -316,7 +315,8 @@ def fetch_latest_cooling_assessments(
 
                 placeholders = ",".join("?" for _ in candidate_keys)
                 try:
-                    cursor.execute(
+                    execute_readonly_with_retry(
+                        cursor,
                         f"""
                         SELECT max_temp_c, fan_rpm_max, fan_pwm_percent, diagnostic_flags_json, rate_ths
                         FROM telemetry_samples

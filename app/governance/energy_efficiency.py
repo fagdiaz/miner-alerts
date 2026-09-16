@@ -182,12 +182,11 @@ def fetch_latest_efficiency_assessments(
     degraded_thresh = float(cfg.get("efficiency_degraded_threshold_j_th", 35.0))
 
     db_samples: Dict[str, dict] = {}
-    if db_file.exists():
-        uri = f"file:{db_file.resolve().as_posix()}?mode=ro"
-        conn = None
+    from app.core.event_store import open_readonly_connection, execute_readonly_with_retry
+    # mode=ro via open_readonly_connection
+    conn = open_readonly_connection(db_file)
+    if conn is not None:
         try:
-            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             for miner in miners:
                 m_name = miner.get("name")
@@ -205,7 +204,8 @@ def fetch_latest_efficiency_assessments(
 
                 placeholders = ",".join("?" for _ in candidate_keys)
                 try:
-                    cursor.execute(
+                    execute_readonly_with_retry(
+                        cursor,
                         f"""
                         SELECT rate_ths, chain_power_w_total
                         FROM telemetry_samples

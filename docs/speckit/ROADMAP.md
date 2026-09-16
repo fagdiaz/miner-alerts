@@ -844,13 +844,14 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [ ] Certificación de paridad dual: validación de 37 tests legados + 37 tests de comportamiento (total $\ge 1109$ tests PASS).
 - [ ] Extracción segura del bucle procedural de `main()` hacia `AcquisitionHook`, `DetectionHook` y `ActuatorHook`.
 
-### Iniciativa 23 — Consolidación de Pool SQLite Resiliente & Barrera de Hilos Daemon (Spec 071 - P0/P1 - En Curso)
+### Iniciativa 23 — Consolidación de Pool SQLite Resiliente & Barrera de Hilos Daemon (Spec 071 - P0/P1 - Completada)
 - Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
-- Especificación: [`specs/071-sqlite-pool-and-thread-hardening/spec.md`](../../specs/071-sqlite-pool-and-thread-hardening/spec.md)
-- [ ] Función defensiva `_async_restore_locked_preset_tripwire` en `miner_monitor.py` para blindar el hilo `RestoreLock_{name}` con captura total de excepciones y logging estructurado (P0).
-- [ ] Exposición formal de `open_readonly_connection(db_path)` en `app/core/event_store.py` (P1).
-- [ ] Migración de las 7 conexiones directas ad-hoc a SQLite (`energy_efficiency`, `fan_health`, `preset_balancer`, `charts`, `daily_digest`, `presets`) hacia el pool resiliente con reintento automático ante `SQLITE_BUSY_SNAPSHOT`.
-- [ ] Suite de pruebas unitarias en `tests/test_sqlite_readonly_consolidation.py` certificando la no-regresión y el cumplimiento de invariantes ($\ge 1072$ tests PASS).
+- Especificación: [`specs/071-sqlite-pool-and-thread-hardening/spec.md`](../../specs/071-sqlite-pool-and-thread-hardening/spec.md) | Evidencia: [`specs/071-sqlite-pool-and-thread-hardening/evidence.md`](../../specs/071-sqlite-pool-and-thread-hardening/evidence.md)
+- [x] Función defensiva `_async_restore_locked_preset_tripwire` en `miner_monitor.py` para blindar el hilo `RestoreLock_{name}` con captura total de excepciones y logging estructurado (P0).
+- [x] Exposición formal de `open_readonly_connection(db_path)` en `app/core/event_store.py` con fallback y pragmas resilientes (P1).
+- [x] Migración de las 7 conexiones directas ad-hoc a SQLite (`energy_efficiency`, `fan_health`, `preset_balancer`, `charts`, `daily_digest`, `presets`) hacia el pool resiliente con reintento automático ante `SQLITE_BUSY_SNAPSHOT`.
+- [x] Barrera defensiva en `ShutdownPurgeNotify` y nombres descriptivos en hilos de mensajería (`TelegramSender`, `TelegramPolling`).
+- [x] Suites de pruebas en `tests/test_sqlite_readonly_consolidation.py` y `tests/test_tripwire_thread_hardening.py`. **1079/1079 tests globales PASS** (+7 nuevos, 0 regresiones).
 
 ### Iniciativa 24 — Unificación de Serialización de Estado & Desacoplamiento de Shims (Spec 072 - P2 - Planificada)
 - Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
@@ -869,10 +870,10 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 
 ## Governance
 
-- All 67 specifications in the current program (Specs 001 through 067) are complete, verified with evidence, and closed.
-- Version 5.1.0 (Release V5.1.0 Gateway Heartbeat & Network Storm Suppression) is certified with 1072/1072 tests PASS.
+- All 68 specifications implemented in the program (Specs 001 through 067, and Spec 071) are complete, verified with evidence, and closed.
+- Version 5.1.0 + Hardening (Release V5.1.0 Gateway Heartbeat & SQLite Pool Hardening) is certified with 1079/1079 tests PASS.
 - Specs 068, 069, and 070 are fully specified end-to-end and paused pending post-cleanup architectural alignment.
 - Specs 071, 072, and 073 establish the immediate repository cleanup and technical debt remediation track.
-- Active implementation target: **Spec 071 (Consolidación de Pool SQLite Resiliente & Barrera de Hilos Daemon)**.
+- Active implementation target: **Spec 072 (Unificación de Serialización de Estado & Desacoplamiento de Shims)**.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

@@ -1815,7 +1815,33 @@ def create_readonly_connection(
         connection.execute("PRAGMA query_only = ON")
     except sqlite3.Error:
         pass
+    try:
+        connection.execute("PRAGMA synchronous = NORMAL")
+    except sqlite3.Error:
+        pass
     return connection
+
+
+def open_readonly_connection(
+    db_path: Union[str, Path],
+    timeout: float = 3.0,
+) -> Optional[sqlite3.Connection]:
+    """Abre conexion SQLite en modo solo lectura de manera tolerante.
+
+    Retorna la conexion configurada con PRAGMA query_only=ON, o None si el archivo no existe.
+    """
+    try:
+        p = Path(db_path).expanduser()
+        if not p.is_absolute() and not p.exists():
+            repo_root = Path(__file__).resolve().parent.parent.parent
+            if (repo_root / p).exists():
+                p = repo_root / p
+        resolved_path = p.resolve()
+        if not resolved_path.exists():
+            return None
+        return create_readonly_connection(resolved_path, timeout=timeout)
+    except Exception:
+        return None
 
 
 def execute_readonly_with_retry(

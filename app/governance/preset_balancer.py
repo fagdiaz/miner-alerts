@@ -382,18 +382,18 @@ def extract_miner_stability_metrics(
     db_samples_10m: Dict[str, dict] = {}
     restarts_by_miner: Dict[str, dict] = {}
 
-    if db_file.exists():
-        uri = f"file:{db_file.resolve().as_posix()}?mode=ro"
-        conn = None
+    from app.core.event_store import open_readonly_connection, execute_readonly_with_retry
+    # mode=ro via open_readonly_connection
+    conn = open_readonly_connection(db_file)
+    if conn is not None:
         try:
-            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
             ts_24h = now - 86400.0
             ts_72h = now - 259200.0
 
-            cursor.execute(
+            execute_readonly_with_retry(
+                cursor,
                 """
                 SELECT miner_key, miner_name, host, occurred_ts
                 FROM operational_events
@@ -433,7 +433,8 @@ def extract_miner_stability_metrics(
                     candidate_keys.append(str(m_name))
 
                 placeholders = ",".join("?" for _ in candidate_keys)
-                cursor.execute(
+                execute_readonly_with_retry(
+                    cursor,
                     f"""
                     SELECT rate_ths, max_temp_c, chain_power_w_total, elapsed_seconds,
                            hw_errors_total, accepted_shares_total, observed_ts
@@ -449,7 +450,8 @@ def extract_miner_stability_metrics(
                     db_samples[str(m_name or m_host)] = dict(sample_row)
 
                 # Query sample from 10m ago (T - 10m) to calculate non-volatile delta
-                cursor.execute(
+                execute_readonly_with_retry(
+                    cursor,
                     f"""
                     SELECT hw_errors_total, accepted_shares_total, observed_ts
                     FROM telemetry_samples
@@ -754,15 +756,15 @@ def analyze_elevator_sensitivity(
         if (repo_root / db_file).exists():
             db_file = repo_root / db_file
 
-    if db_file.exists():
-        uri = f"file:{db_file.resolve().as_posix()}?mode=ro"
-        conn = None
+    from app.core.event_store import open_readonly_connection, execute_readonly_with_retry
+    # mode=ro via open_readonly_connection
+    conn = open_readonly_connection(db_file)
+    if conn is not None:
         try:
-            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             seven_days_ago = now - 604800.0
-            cursor.execute(
+            execute_readonly_with_retry(
+                cursor,
                 """
                 SELECT summary, details_json
                 FROM operational_events

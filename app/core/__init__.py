@@ -48,6 +48,7 @@ from app.core.event_store import (
     SCHEMA_VERSION,
     EventStore,
     create_readonly_connection,
+    open_readonly_connection,
     execute_readonly_with_retry,
     render_event_detail,
     render_event_list,

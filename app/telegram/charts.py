@@ -25,6 +25,7 @@ COLOR_PALETTE = ["#10b981", "#3b82f6", "#a855f7", "#f59e0b", "#ec4899", "#06b6d4
 
 
 def _connect_ro(db_path: Path | str) -> sqlite3.Connection:
+    # mode=ro timeout=2.0 via create_readonly_connection
     p = Path(db_path).expanduser()
     if not p.is_absolute() and not p.exists():
         repo_root = Path(__file__).resolve().parent.parent.parent
@@ -33,9 +34,8 @@ def _connect_ro(db_path: Path | str) -> sqlite3.Connection:
     resolved = p.resolve()
     if not resolved.exists():
         raise FileNotFoundError(f"Database not found: {resolved}")
-    conn = sqlite3.connect(f"file:{resolved.as_posix()}?mode=ro", uri=True, timeout=2.0)
-    conn.row_factory = sqlite3.Row
-    return conn
+    from app.core.event_store import create_readonly_connection
+    return create_readonly_connection(resolved, timeout=3.0)
 
 
 def fetch_miner_chart_data(

@@ -3223,10 +3223,24 @@ def refresh_vnish_overclock_settings(
                                             f"[TRIPWIRE_INTERLOCK] miner={m_name} detecto preset superior ({st.vnish_discovered_preset}) "
                                             f"a candado ({st.hw_error_locked_preset}). Forzando restauracion defensiva."
                                         )
+                                        def _async_restore_tripwire_preset(
+                                            _h=m_host,
+                                            _pw=vnish_pw,
+                                            _pr=st.hw_error_locked_preset,
+                                            _to=timeout,
+                                            _nm=m_name,
+                                        ):
+                                            try:
+                                                ok_r, err_r = safe_set_miner_preset(_h, _pw, _pr, timeout=_to)
+                                                if ok_r:
+                                                    log(f"[TRIPWIRE_INTERLOCK_RESTORE_OK] miner={_nm} preset restaurado defensivamente a {_pr}")
+                                                else:
+                                                    log(f"[TRIPWIRE_INTERLOCK_RESTORE_FAIL] miner={_nm} fallo restaurando a {_pr}: {err_r}")
+                                            except Exception as _th_exc:
+                                                log(f"[TRIPWIRE_INTERLOCK_RESTORE_ERR] miner={_nm} excepcion en hilo de restauracion: {type(_th_exc).__name__}: {_th_exc}")
+
                                         threading.Thread(
-                                            target=safe_set_miner_preset,
-                                            args=(m_host, vnish_pw, st.hw_error_locked_preset),
-                                            kwargs={"timeout": timeout},
+                                            target=_async_restore_tripwire_preset,
                                             daemon=True,
                                             name=f"RestoreLock_{m_name}",
                                         ).start()
@@ -3734,33 +3748,36 @@ def _handle_command_center_callback(
                 if success_ids:
                     target_miners_for_purge = list(stopped_miners)
                     def _purge_and_notify(targets=list(success_ids), target_miners=target_miners_for_purge, chat=cb_chat_id, pw=vnish_pw):
-                        time.sleep(DEFAULT_PURGE_SECONDS)
-                        if target_miners:
-                            # Spec 049: Acoustic contrast drop to idle floor (40% PWM)
-                            idle_res = execute_parallel_fan_duty(target_miners, DEFAULT_IDLE_FAN_DUTY, pw)
-                            for tm in target_miners:
-                                tm_id = extract_miner_identifier(tm)
-                                r_idle = idle_res.get(tm_id)
-                                f_ok = r_idle.success if r_idle else False
-                                log(f"[SHUTDOWN_PURGE] Miner {tm_id} acoustic drop to idle floor 40% {'OK' if f_ok else 'FAILED'}")
-                                record_action_outcome(
-                                    event_store,
-                                    occurred_ts=time.time(),
-                                    miner=tm,
-                                    action="purge_idle_drop",
-                                    source="acoustic_contrast",
-                                    ok=f_ok,
-                                    message="Caída a reposo acústico 40% exitosa" if f_ok else "Fallo al modular coolers a reposo",
-                                )
-                        safe_card = render_safe_area_card(targets, snooze_hours=DEFAULT_MAINTENANCE_SNOOZE_HOURS, idle_duty=DEFAULT_IDLE_FAN_DUTY)
-                        send_telegram(
-                            bot_token,
-                            str(chat),
-                            safe_card,
-                            "SHUTDOWN_SAFE",
-                            "shutdown_safe_purge",
-                            is_command=True,
-                        )
+                        try:
+                            time.sleep(DEFAULT_PURGE_SECONDS)
+                            if target_miners:
+                                # Spec 049: Acoustic contrast drop to idle floor (40% PWM)
+                                idle_res = execute_parallel_fan_duty(target_miners, DEFAULT_IDLE_FAN_DUTY, pw)
+                                for tm in target_miners:
+                                    tm_id = extract_miner_identifier(tm)
+                                    r_idle = idle_res.get(tm_id)
+                                    f_ok = r_idle.success if r_idle else False
+                                    log(f"[SHUTDOWN_PURGE] Miner {tm_id} acoustic drop to idle floor 40% {'OK' if f_ok else 'FAILED'}")
+                                    record_action_outcome(
+                                        event_store,
+                                        occurred_ts=time.time(),
+                                        miner=tm,
+                                        action="purge_idle_drop",
+                                        source="acoustic_contrast",
+                                        ok=f_ok,
+                                        message="Caída a reposo acústico 40% exitosa" if f_ok else "Fallo al modular coolers a reposo",
+                                    )
+                            safe_card = render_safe_area_card(targets, snooze_hours=DEFAULT_MAINTENANCE_SNOOZE_HOURS, idle_duty=DEFAULT_IDLE_FAN_DUTY)
+                            send_telegram(
+                                bot_token,
+                                str(chat),
+                                safe_card,
+                                "SHUTDOWN_SAFE",
+                                "shutdown_safe_purge",
+                                is_command=True,
+                            )
+                        except Exception as _th_exc:
+                            log(f"[SHUTDOWN_PURGE_ERR] Excepcion en hilo ShutdownPurgeNotify: {type(_th_exc).__name__}: {_th_exc}")
                     t = threading.Thread(target=_purge_and_notify, daemon=True, name="ShutdownPurgeNotify")
                     t.start()
         elif action.target == "resume":
@@ -5334,6 +5351,7 @@ def main() -> None:
         target=telegram_sender_worker,
         args=(bot_token, _TELEGRAM_QUEUE, qa_mode),
         daemon=True,
+        name="TelegramSender",
     )
     sender_thread.start()
 
@@ -5359,6 +5377,7 @@ def main() -> None:
             event_store,
         ),
         daemon=True,
+        name="TelegramPolling",
     )
     telegram_thread.start()
 

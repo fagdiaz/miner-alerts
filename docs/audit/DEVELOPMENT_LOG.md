@@ -3,6 +3,36 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación Spec 071: Consolidación de Pool SQLite Resiliente & Barrera Defensiva de Hilos Daemon (P0/P1)
+
+* **Objetivo**: 
+  1. Corregir vulnerabilidad P0: hilo daemon `RestoreLock_{name}` en `app/miner_monitor.py:3226` ejecutando `safe_set_miner_preset` sin captura de excepciones, y auditar todos los demás hilos daemon agregando barreras `try ... except` completas y nombres descriptivos (`ShutdownPurgeNotify`, `TelegramSender`, `TelegramPolling`).
+  2. Corregir deuda técnica P1: consolidar llamadas directas ad-hoc `sqlite3.connect(f"file:...mode=ro")` repartidas en 7 módulos hacia la función centralizada tolerante `open_readonly_connection` y `execute_readonly_with_retry` con backoff exponencial, eliminando bloqueos intermitentes de base de datos durante checkpoints WAL.
+* **Componentes Modificados / Creados**:
+  - `app/miner_monitor.py`:
+    * Función interna `_async_restore_tripwire_preset` con barrera de excepción completa y logging estructurado `[TRIPWIRE_INTERLOCK_RESTORE_OK/FAIL/ERR]`.
+    * Envolvimiento de `_purge_and_notify` (`ShutdownPurgeNotify`) en barrera `try ... except Exception as _th_exc: log(f"[SHUTDOWN_PURGE_ERR] ...")`.
+    * Asignación explícita de nombres descriptivos a hilos de mensajería: `TelegramSender` y `TelegramPolling`.
+  - `app/core/event_store.py`:
+    * Exposición de `open_readonly_connection(db_path, timeout=3.0)` con resolución tolerante de rutas relativas con fallback a `repo_root`, `mode=ro`, `PRAGMA query_only = ON` y `PRAGMA synchronous = NORMAL`.
+    * `create_readonly_connection` reforzada con `PRAGMA synchronous = NORMAL`.
+  - `app/core/__init__.py`:
+    * Exportación pública de `open_readonly_connection`.
+  - Consumidores SQLite Migrados:
+    * `app/governance/energy_efficiency.py`: migrado a `open_readonly_connection` y `execute_readonly_with_retry`.
+    * `app/governance/fan_health.py`: migrado a `open_readonly_connection` y `execute_readonly_with_retry`.
+    * `app/governance/preset_balancer.py`: migradas consultas de telemetría histórica y sensibilidad de cascada a `open_readonly_connection` y `execute_readonly_with_retry`.
+    * `app/telegram/charts.py`: `_connect_ro` conectado a `create_readonly_connection`.
+    * `app/telegram/daily_digest.py`: migrado a `open_readonly_connection` y `execute_readonly_with_retry` en todas las consultas del resumen diario.
+    * `app/vnish/presets.py`: migrado a `open_readonly_connection` y `execute_readonly_with_retry`.
+  - Suites de Pruebas Agregadas:
+    * `tests/test_sqlite_readonly_consolidation.py`: valida pragmas, reintentos de consulta bajo contención y tolerancia a archivos inexistentes en todos los módulos consumidores.
+    * `tests/test_tripwire_thread_hardening.py`: valida contención de excepciones y logs defensivos ante fallas de red o excepciones runtime en hilos daemon.
+* **Validación & Cobertura**:
+  - Sintaxis: `py_compile` en los 9 módulos modificado PASS.
+  - Regresión total: **1079 tests PASS** en 32.7s (+7 tests sobre la línea base de 1072, 0 fallas, 0 regresiones).
+  - Servicio de Windows: `MinerAlerts` se mantuvo en estado `Running`.
+
 ## [2026-09-16] - Auditoría Arquitectónica Exhaustiva & Enriquecimiento del Horizonte V5.1 (Specs 068 a 070)
 
 * **Objetivo**: Auditoría técnica y blindaje arquitectónico integral de las especificaciones pendientes (Spec 068, Spec 069 y Spec 070) sin escritura de código prematuro, resolviendo riesgos de concurrencia Windows, límites de latencia SQLite WAL y desacoplamiento de tests de inspección textual.

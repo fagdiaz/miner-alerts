@@ -3,6 +3,28 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Auditoría Especialista de QA & Saneamiento de Resiliencia (Specs 068, 070, 071, 072, 073)
+
+* **Objetivo**:
+  1. Ejecutar auditoría exhaustiva con rol de especialista sobre las especificaciones recientemente implementadas (068, 070, 071, 072, 073) analizando manejo de handles de kernel, estados de error en named pipes de Windows NT, prevención de falsas alarmas de deadlock, contención de excepciones en watchdog y ergonomía de herramientas CLI.
+  2. Subsanar bug crítico de Windows Named Pipes en `app/ipc/watchdog_pipe.py`: cuando un cliente se desconecta anticipadamente provocando `ERROR_NO_DATA (232)` en `ConnectNamedPipe()`, invocar explícitamente `DisconnectNamedPipe(h_pipe)` para resetear el handle del kernel y prevenir que el servidor quede atrapado en un bucle infinito rechazando futuros clientes.
+  3. Incorporar salvaguarda de uptime en `tools/monitor_watchdog.py`: exigir que el uptime del monitor supere el umbral de deadlock (`uptime_s >= max_deadlock_tick_age_s`) antes de evaluar congelamiento, evitando falsos reinicios durante arranques recientes o lecturas de heartbeats anteriores.
+  4. Blindar el sondeo IPC en `tools/monitor_watchdog.py:main()` mediante bloque `try/except` que capture cualquier excepción inesperada y asegure la degradación suave hacia la evaluación por latido (`RF-04: Degradación Suave`).
+  5. Mejorar ergonomía de CLI en `tools/audit_config.py` admitiendo el alias `--config` / `-c` para el parámetro `--target`.
+  6. Fortalecer el analizador de comandos IPC sanitizando bytes nulos y delimitadores `\r\n`.
+  7. Incorporar 5 nuevas pruebas unitarias exhaustivas en `tests/test_watchdog_ipc.py` y `tests/test_audit_config.py`, elevando la suite global a 1181 tests PASS.
+* **Componentes Modificados**:
+  - `app/ipc/watchdog_pipe.py`: Reset de handle con `DisconnectNamedPipe` ante fallo de conexión, parsing robusto con `math.isfinite()` y sanitización de comandos.
+  - `tools/monitor_watchdog.py`: Salvaguarda de uptime contra falsos deadlocks y blindaje defensivo con logging en `main()`.
+  - `tools/audit_config.py`: Alias `--config` / `-c` para `--target`.
+  - `tests/test_watchdog_ipc.py`: 4 nuevos tests de auditoría (recuperación ante `ERROR_NO_DATA`, uptime guard, comandos multilinea, contención de fallos). Total 20 tests.
+  - `tests/test_audit_config.py`: 1 nuevo test para `--config`. Total 13 tests.
+* **Resultados & Verificación**:
+  - Pruebas unitarias de IPC: 20/20 tests PASS en 0.89s.
+  - Pruebas unitarias de auditoría de config: 13/13 tests PASS en 0.05s.
+  - Suite completa del proyecto: **1181/1181 tests PASS** en 34.3s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+
 ## [2026-09-16] - Implementación Spec 068: Canal IPC Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (PROP-007)
 
 * **Objetivo**:

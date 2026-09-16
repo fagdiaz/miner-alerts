@@ -10,6 +10,7 @@ import ctypes
 from ctypes import wintypes
 from datetime import datetime
 import logging
+import math
 import os
 from pathlib import Path
 import socket
@@ -261,9 +262,11 @@ class WatchdogIPCServer:
         return f"PONG {nonce} {tick_seq} {uptime_s:.2f} {last_tick_s:.3f}\n"
 
     def _handle_command(self, raw_line: str) -> str:
-        line = raw_line.strip()
-        if not line:
+        clean = raw_line.replace("\x00", "").strip()
+        lines = [ln.strip() for ln in clean.splitlines() if ln.strip()]
+        if not lines:
             return "ERR empty_command\n"
+        line = lines[0]
         parts = line.split()
         cmd = parts[0].upper()
         if cmd == "PING":
@@ -304,6 +307,8 @@ class WatchdogIPCServer:
                 if not connected:
                     err = kernel32.GetLastError()
                     if err != ERROR_PIPE_CONNECTED:
+                        # Reset pipe handle in case of ERROR_NO_DATA or client aborted early
+                        kernel32.DisconnectNamedPipe(h_pipe)
                         if self._stopped.is_set():
                             break
                         time.sleep(0.01)
@@ -507,13 +512,21 @@ class WatchdogIPCClient:
         if resp_nonce != expected_nonce:
             return IPCPingResult(ok=False, nonce=expected_nonce, transport=transport, error=f"nonce_mismatch:{resp_nonce}!={expected_nonce}")
 
-        tick_seq = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+        tick_seq = (
+            int(parts[2])
+            if len(parts) > 2 and (parts[2].isdigit() or parts[2].lstrip("-").isdigit())
+            else 0
+        )
         try:
             uptime_s = float(parts[3]) if len(parts) > 3 else 0.0
+            if not math.isfinite(uptime_s):
+                uptime_s = 0.0
         except ValueError:
             uptime_s = 0.0
         try:
             last_tick_s = float(parts[4]) if len(parts) > 4 else 0.0
+            if not math.isfinite(last_tick_s):
+                last_tick_s = 0.0
         except ValueError:
             last_tick_s = 0.0
 

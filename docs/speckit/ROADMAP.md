@@ -874,7 +874,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 ## Governance
 
 - All 72 specifications implemented in the program (Specs 001 through 068, Spec 070, Spec 071, Spec 072, and Spec 073) are complete, verified with evidence, and closed.
-- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling + Watchdog Named Pipe IPC is certified with 1176/1176 tests PASS (0 failures, 0 regressions, Windows service running).
+- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling + Watchdog Named Pipe IPC + QA Hardening is certified with 1181/1181 tests PASS (0 failures, 0 regressions, Windows service running).
 - Spec 069 is fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
 - Next implementation target: Spec 069 (Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break - PROP-008).
 - Production action authority remains strictly centralized in the Windows monitor.

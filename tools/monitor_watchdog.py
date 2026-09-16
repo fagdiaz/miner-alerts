@@ -106,24 +106,27 @@ def main() -> int:
         )
 
     if ipc_enabled:
-        ipc_outcome, ipc_detail = probe_ipc_and_recover(
-            config=config,
-            log_path=log_path,
-            service_name=service_name,
-            service_pid=service_pid,
-            heartbeat_tick_sequence=heartbeat.tick_sequence if heartbeat else None,
-            heartbeat_last_tick_ts=heartbeat.last_tick_completed_ts
-            if heartbeat
-            else None,
-            no_notify=args.no_notify,
-            now_ts=now_ts,
-        )
-        if ipc_outcome in (
-            "deadlock_recovered",
-            "unresponsive_restarted",
-            "missing_started",
-        ):
-            return 0
+        try:
+            ipc_outcome, ipc_detail = probe_ipc_and_recover(
+                config=config,
+                log_path=log_path,
+                service_name=service_name,
+                service_pid=service_pid,
+                heartbeat_tick_sequence=heartbeat.tick_sequence if heartbeat else None,
+                heartbeat_last_tick_ts=heartbeat.last_tick_completed_ts
+                if heartbeat
+                else None,
+                no_notify=args.no_notify,
+                now_ts=now_ts,
+            )
+            if ipc_outcome in (
+                "deadlock_recovered",
+                "unresponsive_restarted",
+                "missing_started",
+            ):
+                return 0
+        except Exception as _ipc_err:
+            _append_log(log_path, f"WATCHDOG ipc_probe_exception error={_ipc_err}")
     process_alive = bool(heartbeat and process_exists(heartbeat.pid))
     maintenance = load_maintenance_lease(maintenance_path)
     assessment = assess_liveness(
@@ -255,6 +258,8 @@ def probe_ipc_and_recover(
                 if (
                     res.tick_sequence == heartbeat_tick_sequence
                     and tick_age > max_deadlock_tick_age_s
+                    and res.uptime_s is not None
+                    and res.uptime_s >= max_deadlock_tick_age_s
                 ):
                     _append_log(
                         log_path,

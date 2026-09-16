@@ -380,6 +380,123 @@ class TestWatchdogIPC(unittest.TestCase):
             self.assertFalse(monitor_watchdog.restart_service("MinerAlerts"))
             self.assertFalse(monitor_watchdog.start_service("MinerAlerts"))
 
+    def test_deadlock_detection_safeguard_low_uptime(self) -> None:
+        from unittest import mock
+        from tools.monitor_watchdog import probe_ipc_and_recover
+        # Uptime is only 15.0s, while max_deadlock_tick_age_s is 60.0s
+        self.server = WatchdogIPCServer(
+            pipe_name=self.test_pipe,
+            fallback_port=self.test_port,
+            timeout_s=0.2,
+            get_status_callback=lambda: (5, 15.0, 0.02),
+        )
+        self.server._run = self.server._run_socket_fallback
+        self.server.start()
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            log_p = Path(tmp_dir) / "watchdog.log"
+            cfg = {
+                "watchdog_ipc_pipe_name": self.test_pipe,
+                "watchdog_ipc_fallback_port": self.test_port,
+                "watchdog_ipc_timeout_ms": 200,
+                "watchdog_ipc_max_deadlock_tick_age_s": 60.0,
+            }
+            with mock.patch("tools.monitor_watchdog.restart_service") as mock_restart:
+                outcome, detail = probe_ipc_and_recover(
+                    config=cfg,
+                    log_path=log_p,
+                    service_name="TestService",
+                    service_pid=1234,
+                    heartbeat_tick_sequence=5,
+                    heartbeat_last_tick_ts=time.time() - 100.0,  # Old heartbeat file
+                    no_notify=True,
+                )
+                # Safeguard: must NOT restart because process uptime is only 15s
+                self.assertEqual(outcome, "ok")
+                mock_restart.assert_not_called()
+
+    def test_ipc_multiline_and_carriage_return_parsing(self) -> None:
+        self.server = WatchdogIPCServer(
+            pipe_name=self.test_pipe,
+            fallback_port=self.test_port,
+            timeout_s=0.2,
+            get_status_callback=lambda: (99, 200.0, 0.01),
+        )
+        self.server._run = self.server._run_socket_fallback
+        self.server.start()
+
+        client = WatchdogIPCClient(
+            pipe_name=self.test_pipe,
+            fallback_port=self.test_port,
+            timeout_s=0.5,
+            force_transport="socket",
+        )
+        # Send PING with \r\n and extra trailing text
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            s.connect(("127.0.0.1", self.test_port))
+            s.sendall(b"PING custom_nonce\r\nIGNORED_SECOND_LINE\r\n")
+            resp = s.recv(1024).decode("utf-8")
+            self.assertTrue(resp.startswith("PONG custom_nonce 99 200.00"))
+
+    def test_watchdog_main_shields_against_ipc_exception(self) -> None:
+        from unittest import mock
+        from tools import monitor_watchdog
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            cfg_path = root / "config.json"
+            cfg_path.write_text(
+                '{"telegram": {"bot_token": "tk", "chat_id": "1"}, "watchdog_ipc_enabled": true, "liveness": {}}',
+                encoding="utf-8",
+            )
+            argv = ["monitor_watchdog.py", "--config", str(cfg_path), "--no-notify"]
+            with (
+                mock.patch.object(monitor_watchdog.sys, "argv", argv),
+                mock.patch.object(monitor_watchdog, "query_service", return_value=("running", 1234)),
+                mock.patch.object(monitor_watchdog, "probe_ipc_and_recover", side_effect=RuntimeError("simulated IPC failure")),
+                mock.patch.object(monitor_watchdog, "assess_liveness") as mock_assess,
+            ):
+                # Should not crash; must log warning and fall through to assess_liveness
+                res = monitor_watchdog.main()
+                self.assertEqual(res, 0)
+                mock_assess.assert_called_once()
+
+    @unittest.skipUnless(os.name == "nt", "Named pipes require Windows NT")
+    def test_named_pipe_error_no_data_recovery(self) -> None:
+        import ctypes
+        from ctypes import wintypes
+        ticks = [10]
+
+        self.server = WatchdogIPCServer(
+            pipe_name=self.test_pipe,
+            fallback_port=self.test_port,
+            timeout_s=0.2,
+            get_status_callback=lambda: (ticks[0], 50.0, 0.01),
+        )
+        self.server.start()
+        self.assertEqual(self.server.active_transport, "pipe")
+
+        # Client 1: connect and close immediately without sending data (triggers ERROR_NO_DATA in server)
+        h = ctypes.windll.kernel32.CreateFileW(
+            self.test_pipe, 0xC0000000, 0, None, 3, 0, None
+        )
+        if h != -1:
+            ctypes.windll.kernel32.CloseHandle(h)
+
+        time.sleep(0.05)
+
+        # Client 2: regular ping must succeed due to DisconnectNamedPipe recovery
+        client = WatchdogIPCClient(
+            pipe_name=self.test_pipe,
+            fallback_port=self.test_port,
+            timeout_s=0.5,
+            force_transport="pipe",
+        )
+        res = client.ping("recovered")
+        self.assertTrue(res.ok, f"Recovery ping failed: {res.error}")
+        self.assertEqual(res.nonce, "recovered")
+
 
 if __name__ == "__main__":
     unittest.main()

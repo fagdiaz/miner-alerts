@@ -177,6 +177,8 @@ def main() -> int:
     parser.add_argument(
         "--target",
         "-t",
+        "--config",
+        "-c",
         type=Path,
         default=Path("app/config.json"),
         help="Path to target configuration (default: app/config.json)",

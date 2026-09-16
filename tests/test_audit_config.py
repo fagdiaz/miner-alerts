@@ -109,6 +109,20 @@ class TestAuditConfig(unittest.TestCase):
             ok, errors, warnings = audit_config_files(ref_path, tgt_path)
             self.assertTrue(ok)
 
+    def test_audit_config_main_with_config_alias(self) -> None:
+        from unittest import mock
+        from tools import audit_config
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            ref_path = Path(tmp_dir) / "ref.json"
+            tgt_path = Path(tmp_dir) / "tgt.json"
+            ref_path.write_text(json.dumps({"poll_seconds": 30}), encoding="utf-8")
+            tgt_path.write_text(json.dumps({"poll_seconds": 30}), encoding="utf-8")
+
+            argv = ["audit_config.py", "--reference", str(ref_path), "--config", str(tgt_path)]
+            with mock.patch.object(audit_config.sys, "argv", argv):
+                exit_code = audit_config.main()
+                self.assertEqual(exit_code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

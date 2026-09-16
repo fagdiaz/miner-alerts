@@ -1214,50 +1214,53 @@ def _async_execute_mining_restart(
     qa_notify: bool,
     event_store: Optional[EventStore],
 ) -> None:
-    ts = time.time()
-    disp_name = display_name(miner_name)
-    log(f"[AUTO-RESTART] {disp_name} ({host}) iniciando soft restart de minado (intento {attempt}/{max_attempts}, razon={trigger_reason})...")
-    ok, err = safe_restart_mining(host, password)
-    if ok:
-        log(f"[AUTO-RESTART] {disp_name} ({host}) soft mining restart enviado exitosamente (intento {attempt}/{max_attempts}).")
-        if (not qa_mode) or qa_notify:
-            send_telegram(
-                bot_token,
-                str(chat_id),
-                f"[AUTO-RESTART] {disp_name} hasheo detenido ({trigger_reason}) -> reinicio rapido de minado enviado (Nivel 1, intento {attempt}/{max_attempts})\n"
-                f"Diagnostico: /why",
-                "REBOOT",
-                "auto_restart",
+    try:
+        ts = time.time()
+        disp_name = display_name(miner_name)
+        log(f"[AUTO-RESTART] {disp_name} ({host}) iniciando soft restart de minado (intento {attempt}/{max_attempts}, razon={trigger_reason})...")
+        ok, err = safe_restart_mining(host, password)
+        if ok:
+            log(f"[AUTO-RESTART] {disp_name} ({host}) soft mining restart enviado exitosamente (intento {attempt}/{max_attempts}).")
+            if (not qa_mode) or qa_notify:
+                send_telegram(
+                    bot_token,
+                    str(chat_id),
+                    f"[AUTO-RESTART] {disp_name} hasheo detenido ({trigger_reason}) -> reinicio rapido de minado enviado (Nivel 1, intento {attempt}/{max_attempts})\n"
+                    f"Diagnostico: /why",
+                    "REBOOT",
+                    "auto_restart",
+                )
+            record_action_outcome(
+                event_store,
+                occurred_ts=ts,
+                miner=miner_dict,
+                action="restart_mining",
+                source="auto",
+                ok=True,
+                message=f"Soft restart sent ({trigger_reason})",
             )
-        record_action_outcome(
-            event_store,
-            occurred_ts=ts,
-            miner=miner_dict,
-            action="restart_mining",
-            source="auto",
-            ok=True,
-            message=f"Soft restart sent ({trigger_reason})",
-        )
-    else:
-        log(f"[WARN] [AUTO-RESTART] {disp_name} ({host}) fallo soft restart de minado: {err}")
-        if (not qa_mode) or qa_notify:
-            send_telegram(
-                bot_token,
-                str(chat_id),
-                f"[AUTO-RESTART FAILED] {disp_name}: fallo al reiniciar minado: {err}\n"
-                f"Diagnostico: /why",
-                "ERROR",
-                "auto_restart_failed",
+        else:
+            log(f"[WARN] [AUTO-RESTART] {disp_name} ({host}) fallo soft restart de minado: {err}")
+            if (not qa_mode) or qa_notify:
+                send_telegram(
+                    bot_token,
+                    str(chat_id),
+                    f"[AUTO-RESTART FAILED] {disp_name}: fallo al reiniciar minado: {err}\n"
+                    f"Diagnostico: /why",
+                    "ERROR",
+                    "auto_restart_failed",
+                )
+            record_action_outcome(
+                event_store,
+                occurred_ts=ts,
+                miner=miner_dict,
+                action="restart_mining",
+                source="auto",
+                ok=False,
+                message=str(err),
             )
-        record_action_outcome(
-            event_store,
-            occurred_ts=ts,
-            miner=miner_dict,
-            action="restart_mining",
-            source="auto",
-            ok=False,
-            message=str(err),
-        )
+    except Exception as _exc:
+        log(f"[WARN] [AUTO-RESTART] {miner_name} excepcion no esperada en hilo AutoRestart: {type(_exc).__name__}: {_exc}")
 
 
 def send_telegram(
@@ -2887,15 +2890,35 @@ def execute_governor_cycle(
             seconds_since = now_ts - (state.governor_last_change_ts or 0.0)
 
             # Determine target_power_w for autoswitch recovery cooling
-            target_pwr = getattr(state, "vnish_discovered_target_power_w", None)
+            # Priority:
+            # 1. Dynamically assigned balancer preset (contingency or dynamic balancer)
+            # 2. Hardware error locked preset (tripwire)
+            # 3. Discovered active preset from Vnish
+            # 4. Discovered target power from Vnish
+            # 5. Configured target_power_w or max_preset in miner definition
+            # 6. Global default fan_governor_target_power_w (2700.0)
+            def _parse_preset_w(val: Any) -> Optional[float]:
+                if val is None:
+                    return None
+                s = str(val).upper().replace("W", "").strip()
+                try:
+                    p = float(s)
+                    return p if p > 0 else None
+                except ValueError:
+                    return None
+
+            active_preset_str = (
+                getattr(state, "balancer_preset", None)
+                or getattr(state, "hw_error_locked_preset", None)
+                or getattr(state, "vnish_discovered_preset", None)
+            )
+            target_pwr = _parse_preset_w(active_preset_str)
+            if target_pwr is None:
+                target_pwr = getattr(state, "vnish_discovered_target_power_w", None)
             if target_pwr is None:
                 target_pwr = miner.get("target_power_w")
             if target_pwr is None:
-                max_pre = str(miner.get("max_preset", "")).upper().rstrip("W").strip()
-                try:
-                    target_pwr = float(max_pre) if max_pre else None
-                except ValueError:
-                    target_pwr = None
+                target_pwr = _parse_preset_w(miner.get("max_preset"))
             if target_pwr is None:
                 target_pwr = float(config.get("fan_governor_target_power_w", 2700.0))
 

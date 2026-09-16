@@ -256,3 +256,7 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "last_responded": getattr(state, "last_responded", False),
         "inlet_temp_c": getattr(state, "inlet_temp_c", None),
     }
+
+
+# Public alias for unified serialization across the application
+serialize_miner_state = _serialise_miner_state

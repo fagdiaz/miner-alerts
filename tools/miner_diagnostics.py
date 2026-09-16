@@ -19,6 +19,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from app.network.cgminer_client import query_cgminer
 
 COMMANDS = ("summary", "stats", "pools", "version")
 SENSITIVE_KEY_PARTS = ("token", "password", "passwd", "pass", "secret", "chat_id", "bot_token")
@@ -65,35 +70,15 @@ def miner_id(miner: dict[str, Any]) -> str:
 
 
 def read_command(host: str, port: int, command: str, timeout: float) -> tuple[dict[str, Any] | None, str | None]:
-    payload = json.dumps({"command": command}).encode("utf-8") + b"\n"
     try:
-        with socket.create_connection((host, port), timeout=timeout) as sock:
-            sock.settimeout(timeout)
-            sock.sendall(payload)
-            chunks: list[bytes] = []
-            while True:
-                try:
-                    data = sock.recv(4096)
-                except socket.timeout:
-                    break
-                if not data:
-                    break
-                chunks.append(data)
+        parsed = query_cgminer(host=host, port=port, command=command, timeout=timeout)
+        if parsed is None:
+            return None, "empty or failed response"
+        if not isinstance(parsed, dict):
+            return None, "response root is not an object"
+        return parsed, None
     except Exception as exc:
         return None, f"{type(exc).__name__}: {exc}"
-
-    raw = b"".join(chunks).replace(b"\x00", b"")
-    if not raw:
-        return None, "empty response"
-
-    try:
-        parsed = json.loads(raw.decode("utf-8", errors="ignore"))
-    except Exception as exc:
-        return None, f"json parse error: {type(exc).__name__}: {exc}"
-
-    if not isinstance(parsed, dict):
-        return None, "response root is not an object"
-    return parsed, None
 
 
 def first_dict(value: Any) -> dict[str, Any]:

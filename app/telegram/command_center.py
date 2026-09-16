@@ -159,6 +159,41 @@ def _resolve_miner_state(states: Dict[str, Any], miner: Dict[str, Any]) -> Optio
     return None
 
 
+def find_assessment_by_target(
+    assessments: Any,
+    target_arg: str,
+    miners: Optional[Any] = None,
+) -> Optional[Any]:
+    """Find the diagnostic assessment matching a target identifier or miner name."""
+    if not target_arg or str(target_arg).strip().lower() in ("all", "*"):
+        return None
+    cleaned = str(target_arg).strip().lower()
+
+    if miners:
+        from app.miner_monitor import resolve_miner
+        matched_miner = resolve_miner(cleaned, list(miners))
+        if not matched_miner:
+            for m in miners:
+                m_host = str(m.get("host") or m.get("ip") or "").lower()
+                if cleaned == m_host:
+                    matched_miner = m
+                    break
+        if matched_miner:
+            m_name = matched_miner.get("name")
+            m_ip = matched_miner.get("host") or matched_miner.get("ip")
+            for ass in assessments:
+                ass_name = getattr(ass, "miner_name", "") or ""
+                if ass_name in (m_name, m_ip) or (m_name and m_name in ass_name):
+                    return ass
+
+    for ass in assessments:
+        ass_name = str(getattr(ass, "miner_name", "") or "").lower()
+        if cleaned in ass_name or ass_name in cleaned:
+            return ass
+
+    return None
+
+
 def render_main_dashboard(
     states: Dict[str, Any],
     config: Optional[Dict[str, Any]] = None,

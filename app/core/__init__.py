@@ -8,7 +8,7 @@ Prometheus metrics snapshots, mining quality evaluation, and reboot safety inter
 from __future__ import annotations
 
 # Spec 060: Core Daemon architecture — state manager, dependency container, engine
-from app.core.state_manager import StateManager, _serialise_miner_state
+from app.core.state_manager import StateManager, _serialise_miner_state, serialize_miner_state
 from app.core.context import MonitorContext, build_monitor_context
 from app.core.engine import CoreSupervisoryEngine, TickResult
 

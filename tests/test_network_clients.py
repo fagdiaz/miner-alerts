@@ -46,6 +46,21 @@ class CGMinerClientTests(unittest.TestCase):
             result = query_cgminer("192.168.1.100", 4028, command="summary")
         self.assertIsNone(result)
 
+    def test_query_cgminer_keepalive_timeout_with_valid_data(self) -> None:
+        fake_payload = json.dumps({"STATUS": [{"STATUS": "S"}], "SUMMARY": [{"GHS 5s": 95000.0, "Elapsed": 3600}]})
+        fake_bytes = (fake_payload + "\x00").encode("utf-8")
+
+        mock_sock = MagicMock()
+        # First call returns payload, second call times out due to keep-alive
+        mock_sock.recv.side_effect = [fake_bytes, TimeoutError("Keepalive timeout")]
+
+        with patch("socket.create_connection") as mock_conn:
+            mock_conn.return_value.__enter__.return_value = mock_sock
+            result = query_cgminer("192.168.1.100", 4028, command="summary")
+
+        self.assertIsNotNone(result)
+        self.assertIn("SUMMARY", result)
+
     def test_query_cgminer_invalid_json(self) -> None:
         mock_sock = MagicMock()
         mock_sock.recv.side_effect = [b"NOT_A_JSON\n", b""]
@@ -207,6 +222,27 @@ class HashcoreClientTests(unittest.TestCase):
             )
         self.assertFalse(ok)
         self.assertIn("timeout", msg.lower())
+
+    def test_hashcore_miner_ip_fallback(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.return_value = subprocess.CompletedProcess(args=["cli.bat"], returncode=0, stdout="OK", stderr="")
+        with patch("pathlib.Path.exists", return_value=True):
+            ok, msg = run_hashcore_cli(
+                hashcore_cfg={
+                    "enabled": True,
+                    "cli_path": "C:/fake/cli.bat",
+                    "reboot_args_template": ["reboot", "{host}"],
+                },
+                miner={"name": "S19-23", "ip": "192.168.1.99"},  # "ip" instead of "host"
+                action="reboot",
+                config={},
+                qa_mode=False,
+                qa_allow_actions=True,
+                runner=mock_runner,
+            )
+        self.assertTrue(ok)
+        called_cmd = mock_runner.call_args[0][0]
+        self.assertIn("192.168.1.99", called_cmd)
 
 
 class VnishClientTests(unittest.TestCase):

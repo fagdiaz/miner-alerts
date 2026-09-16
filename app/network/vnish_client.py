@@ -91,12 +91,23 @@ class VnishClient:
             ok, _, err = self.unlock()
             if not ok:
                 return False, None, f"unlock_failed: {err}"
-        return get_cooling_settings(
+        ok, res, err = get_cooling_settings(
             host=self.host,
             token=self._token or "",
             timeout=self.timeout,
             session=self._session,
         )
+        if not ok and err and ("401" in err or "unauthorized" in err.lower()):
+            self._token = None
+            ok_u, _, _ = self.unlock()
+            if ok_u and self._token:
+                return get_cooling_settings(
+                    host=self.host,
+                    token=self._token,
+                    timeout=self.timeout,
+                    session=self._session,
+                )
+        return ok, res, err
 
     def set_fan_duty(self, duty: int) -> Tuple[bool, Optional[str]]:
         """Safely set manual fan duty percentage (auto-unlocks and locks)."""
@@ -123,12 +134,23 @@ class VnishClient:
             ok, _, err = self.unlock()
             if not ok:
                 return False, None, f"unlock_failed: {err}"
-        return get_miner_status(
+        ok, res, err = get_miner_status(
             host=self.host,
             token=self._token or "",
             timeout=self.timeout,
             session=self._session,
         )
+        if not ok and err and ("401" in err or "unauthorized" in err.lower()):
+            self._token = None
+            ok_u, _, _ = self.unlock()
+            if ok_u and self._token:
+                return get_miner_status(
+                    host=self.host,
+                    token=self._token,
+                    timeout=self.timeout,
+                    session=self._session,
+                )
+        return ok, res, err
 
     def get_overclock_settings(self) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """Safely query active overclock preset and target power."""

@@ -190,8 +190,10 @@ def run_hashcore_cli(
     if not settings_exists and settings_path:
         log("[WARN] settings_path no encontrado, usando defaults del toolkit.")
     template_uses_settings = any("{settings_path}" in str(p) for p in args_template)
+    m_host = str(miner.get("host") or miner.get("ip") or "")
+    m_name = str(miner.get("name") or "")
     for part in args_template:
-        part = str(part).replace("{host}", miner["host"]).replace("{name}", miner["name"])
+        part = str(part).replace("{host}", m_host).replace("{name}", m_name)
         if "{settings_path}" in part:
             if settings_exists:
                 part = part.replace("{settings_path}", settings_path)
@@ -223,7 +225,7 @@ def run_hashcore_cli(
             creationflags=_NO_WINDOW_CREATION_FLAGS,
         )
         duration = time.monotonic() - start
-        log(f"[HASHCORE] action={action} host={miner['host']} rc={result.returncode} duration={duration:.3f}s")
+        log(f"[HASHCORE] action={action} host={m_host} rc={result.returncode} duration={duration:.3f}s")
         if result.returncode != 0 and result.stderr:
             log(f"[HASHCORE] stderr: {result.stderr.strip()[:300]}")
         if qa_verbose_enabled(config):
@@ -233,7 +235,7 @@ def run_hashcore_cli(
             return False, f"Hashcore CLI fallo (code {result.returncode})."
         return True, "OK"
     except subprocess.TimeoutExpired:
-        log(f"[HASHCORE] timeout ejecutando {action} para {miner['host']}")
+        log(f"[HASHCORE] timeout ejecutando {action} para {m_host}")
         return False, "Timeout ejecutando Hashcore CLI (30s)."
     except Exception as exc:
         log(f"[HASHCORE] error inesperado ejecutando {action}: {exc}")

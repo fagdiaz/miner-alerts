@@ -64,16 +64,7 @@ def _numbers(value: Any) -> list[float]:
     return [number] if number is not None else []
 
 
-def _dicts(value: Any) -> Iterable[dict[str, Any]]:
-    if isinstance(value, dict):
-        yield value
-        for nested in value.values():
-            if isinstance(nested, (dict, list, tuple)):
-                yield from _dicts(nested)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            if isinstance(item, (dict, list, tuple)):
-                yield from _dicts(item)
+from app.core.mining_quality import _dicts
 
 
 def _average(values: list[float]) -> Optional[float]:

@@ -44,20 +44,8 @@ class FansCommand(BaseCommandHandler):
         target_arg = args[0].strip().lower() if args else None
         fans_kb = None
         if target_arg and target_arg != "all":
-            matched_ass = None
-            matched_miner = resolve_miner(target_arg, context.miners)
-            if matched_miner:
-                m_name = matched_miner.get("name")
-                m_ip = matched_miner.get("host") or matched_miner.get("ip")
-                for ass in assessments:
-                    if ass.miner_name in (m_name, m_ip) or (m_name and m_name in ass.miner_name):
-                        matched_ass = ass
-                        break
-            if not matched_ass:
-                for ass in assessments:
-                    if target_arg in ass.miner_name.lower():
-                        matched_ass = ass
-                        break
+            from app.telegram.command_center import find_assessment_by_target
+            matched_ass = find_assessment_by_target(assessments, target_arg, context.miners)
             if matched_ass:
                 fans_msg = build_miner_fan_detail_text(matched_ass)
             else:

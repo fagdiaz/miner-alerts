@@ -105,13 +105,24 @@ def query_cgminer(
 
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
             sock.sendall(payload)
             chunks: List[bytes] = []
+            total_bytes = 0
             while True:
-                data = sock.recv(4096)
+                try:
+                    data = sock.recv(4096)
+                except (socket.timeout, TimeoutError):
+                    # If data was already received, parse what we have (some ASICs keep TCP connection open)
+                    if chunks:
+                        break
+                    raise
                 if not data:
                     break
                 chunks.append(data)
+                total_bytes += len(data)
+                if total_bytes > 10 * 1024 * 1024:  # 10MB memory safety ceiling
+                    break
     except Exception as exc:
         _log_warn(f"[WARN] No se pudo leer {host}:{port} ({exc})")
         return None

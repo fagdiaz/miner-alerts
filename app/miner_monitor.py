@@ -2592,77 +2592,9 @@ def _build_state_payload(
         "states": {},
     }
 
+    from app.core.state_manager import serialize_miner_state
     for key, state in list(states.items()):
-        payload["states"][key] = {
-            "state": state.state,
-            "low_streak": state.low_streak,
-            "offline_streak": state.offline_streak,
-            "ok_streak": state.ok_streak,
-            "initialized": state.initialized,
-            "last_elapsed": state.last_elapsed,
-            "last_seen_ts": state.last_seen_ts,
-            "reboot_pending_until": state.reboot_pending_until,
-            "reboot_pending_reason": state.reboot_pending_reason,
-            "reboot_pending_elapsed": state.reboot_pending_elapsed,
-            "last_reboot_ts": state.last_reboot_ts,
-            "low_since_ts": state.low_since_ts,
-            "hashboard_since_ts": getattr(state, "hashboard_since_ts", None),
-            "last_manual_reboot_ts": state.last_manual_reboot_ts,
-            "last_auto_reboot_ts": state.last_auto_reboot_ts,
-            "last_auto_restart_ts": getattr(state, "last_auto_restart_ts", None),
-            "auto_restart_count": getattr(state, "auto_restart_count", 0),
-            "auto_reboot_timestamps": list(getattr(state, "auto_reboot_timestamps", None) or []),
-            "degraded_mode": state.degraded_mode,
-            "last_hourly_status_ts": state.last_hourly_status_ts,
-            "snooze_until_ts": state.snooze_until_ts,
-            "cooling_streak": getattr(state, "cooling_streak", 0),
-            "last_cooling_warning_ts": getattr(state, "last_cooling_warning_ts", None),
-            "efficiency_streak": getattr(state, "efficiency_streak", 0),
-            "last_efficiency_warning_ts": getattr(state, "last_efficiency_warning_ts", None),
-            "baseline_frequency_mhz": getattr(state, "baseline_frequency_mhz", None),
-            "last_preset_warning_ts": getattr(state, "last_preset_warning_ts", None),
-            # Spec 039: Fan Governor
-            "governor_duty": getattr(state, "governor_duty", None),
-            "governor_holds": getattr(state, "governor_holds", 0),
-            "governor_last_change_ts": getattr(state, "governor_last_change_ts", 0.0),
-            "governor_failures": getattr(state, "governor_failures", 0),
-            "governor_last_action": getattr(state, "governor_last_action", ""),
-            "governor_last_temp_c": getattr(state, "governor_last_temp_c", None),
-            "governor_last_power_w": getattr(state, "governor_last_power_w", None),
-            # Spec 040: Dynamic Preset Balancer
-            "balancer_preset": getattr(state, "balancer_preset", None),
-            "balancer_last_change_ts": getattr(state, "balancer_last_change_ts", 0.0),
-            "balancer_last_action": getattr(state, "balancer_last_action", ""),
-            "balancer_last_reason": getattr(state, "balancer_last_reason", ""),
-            # Spec 062: HW Error Tripwire & Anti-Cascade Lock
-            "hw_error_lock_until_ts": getattr(state, "hw_error_lock_until_ts", None),
-            "hw_error_locked_preset": getattr(state, "hw_error_locked_preset", None),
-            # Dynamic Vnish Overclock & Autoswitch State Discovery
-            "vnish_discovered_target_power_w": getattr(state, "vnish_discovered_target_power_w", None),
-            "vnish_discovered_preset": getattr(state, "vnish_discovered_preset", None),
-            "vnish_discovered_top_preset": getattr(state, "vnish_discovered_top_preset", None),
-            "vnish_discovered_switcher_enabled": getattr(state, "vnish_discovered_switcher_enabled", None),
-            "vnish_discovered_ts": getattr(state, "vnish_discovered_ts", 0.0),
-            # Spec 044: Silent Mode (C2 — hardware FSM, separate from snooze)
-            "silent_mode_active": getattr(state, "silent_mode_active", False),
-            "silent_mode_revert_ts": getattr(state, "silent_mode_revert_ts", None),
-            "silent_mode_prev_duty": getattr(state, "silent_mode_prev_duty", None),
-            "silent_mode_prev_preset": getattr(state, "silent_mode_prev_preset", None),
-            "silent_mode_target_max_duty": getattr(state, "silent_mode_target_max_duty", 50),
-            # Spec 048: Safe Fleet Shutdown & Maintenance Mode
-            "is_shutdown_maintenance": getattr(state, "is_shutdown_maintenance", False),
-            "shutdown_maintenance_ts": getattr(state, "shutdown_maintenance_ts", 0.0),
-            # Spec 046: Live Telemetry Snapshot for /status & mobile fleet cards
-            "last_rate_ths": getattr(state, "last_rate_ths", None),
-            "last_active_boards": getattr(state, "last_active_boards", None),
-            "last_expected_boards": getattr(state, "last_expected_boards", None),
-            "last_max_chip_temp": getattr(state, "last_max_chip_temp", None),
-            "last_fan_duty_percent": getattr(state, "last_fan_duty_percent", None),
-            "last_power_w": getattr(state, "last_power_w", None),
-            "last_efficiency_j_th": getattr(state, "last_efficiency_j_th", None),
-            "last_responded": getattr(state, "last_responded", False),
-            "inlet_temp_c": getattr(state, "inlet_temp_c", None),
-        }
+        payload["states"][key] = serialize_miner_state(state)
     return payload
 
 

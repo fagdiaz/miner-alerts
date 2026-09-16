@@ -1,25 +1,27 @@
 # ==============================================================================
-# PROMPT DE EJECUCIÓN: AUDITORÍA QA DE SPECS 068 A 073 COMPLETADA
+# PROMPT DE EJECUCIÓN: IMPLEMENTACIÓN - SPEC 073 (TOOLS CLIENT REUSE)
 # ==============================================================================
 # MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Las especificaciones pendientes (Specs 068, 069, 070, 072 y 073)
-# fueron auditadas y enriquecidas con salvaguardas de seguridad, concurrencia y
-# significancia estadística. La suite se encuentra en 1110 tests PASS (0 fallos).
-# La implementación se encuentra en pausa a la espera de confirmación del usuario.
+# Justificación: Implementación de Spec 073 (Reutilización de clientes de red en
+# tools auxiliares y auditoría de configuración). Tareas acotadas sobre scripts
+# auxiliares en tools/ y validadores puros, sin riesgo sobre el bucle principal.
+# Línea base: 1113 tests PASS (0 fallos, 0 errores, 0 regresiones en 33.5s).
 # ==============================================================================
 
 1. ESTADO ACTUAL Y LÍNEA BASE DEL SISTEMA:
-- Pruebas unitarias: 1110 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.1s).
+- Pruebas unitarias: 1113 tests PASS (0 fallos, 0 errores, 0 regresiones en 33.5s).
 - Servicio Windows 'MinerAlerts': Running ininterrumpido.
-- Rama: 'codex/022-adaptive-acquisition'.
-- Specs 068 a 073: Completamente auditadas por QA y actualizadas en sus artefactos (spec.md, plan.md, tasks.md).
+- Rama: 'codex/022-adaptive-acquisition' (al día con origin, commit 3c40e96).
+- Feature activa: 'specs/073-tools-client-reuse-and-config-alignment'.
 
-2. ESTADO DE SPECS AUDITADAS:
-- Spec 068 (IPC Watchdog): Enriquecida con SDDL de permisos Windows NT y wake-up unblock en shutdown.
-- Spec 069 (Predictive Chain Break): Enriquecida con significancia estadística mínima (N >= 24) y fallback de grupo.
-- Spec 070 (Core Modularization): Arnés de comportamiento (Fase A) posicionado como salvaguarda previa a cambios en main().
-- Spec 072 (State Serialization): Paridad determinista y helpers en command_center.py.
-- Spec 073 (Tools Client Reuse): Validador de configuración con distinción crítica vs opcional.
+2. SPEC 072 COMPLETADA Y CERTIFICADA:
+- 'StateManager.serialize_miner_state(state)' y 'serialize_miner_state(state)' centralizados en 'app/core/state_manager.py'.
+- '_build_state_payload()' delega limpiamente eliminando duplicación de ~45 campos.
+- 'format_miner_key()' y 'find_assessment_by_target()' adoptados en todos los comandos de Telegram ('diagnostics', 'fans', 'reboot', 'maintenance').
+- '_dicts()' centralizado en 'app/core/mining_quality.py' y reutilizado en 'app/vnish/telemetry.py'.
+- 'tests/test_state_serialization_parity.py' y 'tests/test_find_assessment_by_target.py' pasando al 100%.
 
-3. PRÓXIMA ACCIÓN:
-- Consultar al usuario qué especificación desea autorizar para implementación primero (orden sugerido: Spec 072 -> Spec 073 -> Spec 070 Fase A -> Spec 068 -> Spec 069).
+3. PRÓXIMO PASO (SPEC 073):
+- T001: Migrar 'tools/miner_diagnostics.py' para reutilizar 'app.network.cgminer_client.read_summary'.
+- T002: Crear 'tools/audit_config.py' para validar paridad de esquema entre 'config.example.json' y 'config.json' con distinción de claves críticas vs opcionales.
+- T003: Crear 'tests/test_audit_config.py' y 'tests/test_tools_client_reuse.py'.

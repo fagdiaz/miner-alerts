@@ -1,40 +1,40 @@
 # ==============================================================================
-# PROMPT DE EJECUCIÓN: PRÓXIMO PASO TRAS SPEC 070 (FASES A Y B CERTIFICADAS)
+# PROMPT DE EJECUCIÓN: PRÓXIMO PASO TRAS SPEC 068 (CANAL IPC MONITOR <-> WATCHDOG)
 # ==============================================================================
-# MODELO RECOMENDADO SEGÚN EL PASO A ELEGIR:
-# - Si se avanza con SPEC 068 (Canal IPC Named Pipe Monitor <-> Watchdog):
-#   -> RECOMENDADO: Gemini 3.8 Flash High
-#   Justificación: Implementación de módulo IPC de Named Pipe (servidor y cliente)
-#   con fallbacks y tests exhaustivos sin tocar el bucle principal de producción.
+# MODELO RECOMENDADO: Gemini 3.8 Flash High (o Gemini 3.7 Flash High)
+# Justificación: Implementación de Spec 069 (Telemetría Profunda por Cadena & Diagnóstico
+# Predictivo Chain Break - PROP-008). Dominio puro de datos, modelos SQLite WAL,
+# reglas estadísticas y tests exhaustivos sin alteraciones concurrentes críticas.
 #
-# - Si se avanza con SPEC 070 FASE C (Refactorización a Hooks de miner_monitor.py:main):
-#   -> RECOMENDADO: Claude Sonnet 4.6 (Thinking)
-#   Justificación: Requiere refactorizar el bucle procedural central de adquisición
-#   y actuación de miner_monitor.py, afectando concurrencia y flujo principal.
-#
-# LÍNEA BASE: 1156 tests PASS (0 fallos, 0 errores, 0 regresiones en 32.3s).
+# LÍNEA BASE: 1176 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.4s).
 # SERVICIO WINDOWS: MinerAlerts RUNNING ininterrumpido.
 # ==============================================================================
 
 1. ESTADO ACTUAL DEL SISTEMA:
-- Pruebas unitarias: 1156 tests PASS (0 fallos, 0 errores, 0 regresiones en 32.3s).
+- Pruebas unitarias: 1176 tests PASS (0 fallos, 0 errores, 0 regresiones en 34.4s).
 - Servicio Windows 'MinerAlerts': Running ininterrumpido.
 - Rama: 'codex/022-adaptive-acquisition'
-- Feature activa: 'specs/070-core-modularization-decoupling'
+- Feature activa: 'specs/069-chain-telemetry-break-prediction'
 
 2. TRABAJO COMPLETADO EN ESTA SESIÓN:
-- Spec 073 COMPLETADA:
-  * 'tools/debug_4028.py' y 'tools/miner_diagnostics.py' reutilizan 'app.network.cgminer_client.query_cgminer'.
-  * 'tools/audit_config.py' y 'tests/test_audit_config.py' implementados con validación completa.
-  * 'tests/fixtures_compact_ux.py' consolidado.
-  * Commit y push: a0f0568.
-- Spec 070 (Fases A y B) COMPLETADA:
-  * Creado arnés de comportamiento 'tests/test_supervisory_core_behavioral.py' con 'SupervisoryBehavioralHarness'.
-  * 37 nuevos tests de caja negra funcionales cubren exhaustivamente las 37 reglas sin inspect.getsource(main).
-  * Paridad dual certificada: 37 tests legados + 37 tests de comportamiento funcionales pasando juntos.
-  * 1156/1156 tests PASS. 'app/miner_monitor.py' se mantuvo 100% inalterado (RI-02).
-  * Fases A y B marcadas como completadas en tasks.md, evidence.md, DEVELOPMENT_LOG.md y ROADMAP.md.
+- Spec 070 (Fases C y D) COMPLETADA:
+  * Extracción de DetectionHook y ActuatorHook en app/core/engine.py.
+  * Desacoplamiento total de inspect.getsource(main) en los 4 tests legados.
+  * 1160 tests PASS certificados.
+- Spec 068 COMPLETADA & CERTIFICADA:
+  * Servidor y cliente IPC nativo en app/ipc/watchdog_pipe.py vía Named Pipe (Windows NT) con SDDL 'D:(A;;GRGW;;;WD)'.
+  * Fallback automático a TCP loopback socket 127.0.0.1:4029.
+  * Helper de diagnóstico forense dump_thread_frames() con captura de trazas activas de hilos.
+  * Integración en app/miner_monitor.py:main() en hilo daemon desacoplado con wake-up connect (<200ms shutdown).
+  * Actualización de tools/monitor_watchdog.py con sondeo de alta frecuencia (<15s), máquina de 3 intentos, discriminador de deadlock supervisory y auto-recuperación de servicio.
+  * 16 pruebas unitarias en tests/test_watchdog_ipc.py.
+  * 1176 tests PASS globales (0 fallos, 0 errores, 0 regresiones).
 
-3. OPCIONES PARA EL SIGUIENTE PASO:
-- OPCIÓN 1: Spec 070 (Fase C - Refactorización segura de miner_monitor.py hacia DetectionHook y ActuatorHook, desacoplando los 4 tests legados).
-- OPCIÓN 2: Spec 068 (Canal IPC Monitor <-> Watchdog - PROP-007, comunicación Named Pipe con descriptor de seguridad SDDL 'D:(A;;GRGW;;;WD)' y wake-up connect).
+3. PRÓXIMO OBJETIVO:
+- Spec 069: Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (PROP-008).
+  * Feature path: specs/069-chain-telemetry-break-prediction
+  * Conexión directa al pool SQLite consolidado en Spec 071.
+  * Índice compuesto 'ix_chain_telemetry_miner_chain_time'.
+  * Regla de alerta preventiva de bus I2C (sensors_error_count > 0 por > 12h).
+  * Discriminador de perturbación eléctrica vs fallo de silicio.
+

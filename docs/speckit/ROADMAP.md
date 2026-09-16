@@ -823,12 +823,12 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Supresión de falsos conatos de desconexión masiva (`STATE_OFFLINE`) durante parpadeos de switch Ethernet o microcortes de router local (ventana default 15s).
 - [x] Suite de 7 pruebas unitarias en `tests/test_gateway_heartbeat.py`. **1072/1072 tests globales PASS** (0 fallos, 0 regresiones).
 
-### Iniciativa 20 — Canal IPC de Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (Spec 068 - PROP-007 - Especificada / Pausada para Ajuste)
-- Documento de Plan y Especificación: [`specs/068-watchdog-ipc-pipe/spec.md`](../../specs/068-watchdog-ipc-pipe/spec.md)
-- **Estado**: Especificada end-to-end, en pausa para ajuste de ciclo de hilos daemon tras la Spec 071.
-- [ ] Servidor Named Pipe nativo en Windows (`\\.\pipe\MinerAlertsWatchdog`) vía `ctypes` (sin dependencias `pywin32`) con fallback a Loopback TCP (`127.0.0.1:4029`).
-- [ ] Protocolo Ping-Pong (`PING <nonce>` -> `PONG <nonce> <seq> <uptime>`) con timeout de 100ms y detección de deadlocks en el bucle principal (`tick_sequence` congelado).
-- [ ] Máquina de estados de 3 etapas y volcado forense automático de trazas de hilos (`sys._current_frames()`) antes de `Restart-Service`.
+### Iniciativa 20 — Canal IPC de Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (Spec 068 - PROP-007 - Completada & Certificada)
+- Documento de Plan y Especificación: [`specs/068-watchdog-ipc-pipe/spec.md`](../../specs/068-watchdog-ipc-pipe/spec.md) | Evidencia: [`specs/068-watchdog-ipc-pipe/evidence.md`](../../specs/068-watchdog-ipc-pipe/evidence.md)
+- **Estado**: Completada & Certificada. Servidor y cliente IPC nativo en Windows NT con SDDL `D:(A;;GRGW;;;WD)` y fallback a socket loopback `127.0.0.1:4029`. Total **1176 tests PASS**.
+- [x] Servidor Named Pipe nativo en Windows (`\\.\pipe\MinerAlertsWatchdog`) vía `ctypes` (sin dependencias `pywin32`) con fallback a Loopback TCP (`127.0.0.1:4029`).
+- [x] Protocolo Ping-Pong (`PING <nonce>` -> `PONG <nonce> <seq> <uptime>`) con timeout de 100ms y detección de deadlocks en el bucle principal (`tick_sequence` congelado).
+- [x] Máquina de estados de 3 etapas y volcado forense automático de trazas de hilos (`sys._current_frames()`) antes de `Restart-Service`.
 
 ### Iniciativa 21 — Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (Spec 069 - PROP-008 - Especificada / Pausada para Ajuste)
 - Documento de Plan y Especificación: [`specs/069-chain-telemetry-break-prediction/spec.md`](../../specs/069-chain-telemetry-break-prediction/spec.md)
@@ -873,9 +873,9 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 
 ## Governance
 
-- All 71 specifications implemented in the program (Specs 001 through 067, Spec 070, Spec 071, Spec 072, and Spec 073) are complete, verified with evidence, and closed.
-- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling is certified with 1160/1160 tests PASS (0 failures, 0 regressions, Windows service running).
-- Specs 068 and 069 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
-- Next implementation target: Spec 068 (Canal IPC Monitor ↔ Watchdog - PROP-007).
+- All 72 specifications implemented in the program (Specs 001 through 068, Spec 070, Spec 071, Spec 072, and Spec 073) are complete, verified with evidence, and closed.
+- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling + Watchdog Named Pipe IPC is certified with 1176/1176 tests PASS (0 failures, 0 regressions, Windows service running).
+- Spec 069 is fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
+- Next implementation target: Spec 069 (Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break - PROP-008).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

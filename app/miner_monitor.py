@@ -5416,6 +5416,48 @@ def main() -> None:
                 log(f"[WARN] GATEWAY_HEARTBEAT failed to start: {type(_gw_exc).__name__}: {_gw_exc}. Operating without storm suppression.")
                 _gateway_heartbeat = None
 
+        # Spec 068: Canal IPC Alta Frecuencia Monitor <-> Watchdog (PROP-007)
+        _watchdog_ipc_server = None
+        _last_tick_duration = 0.0
+        if config.get("watchdog_ipc_enabled", True):
+            try:
+                from app.ipc.watchdog_pipe import WatchdogIPCServer
+
+                def _get_ipc_status() -> tuple[int, float, float]:
+                    return (tick_sequence, process_start_ts, _last_tick_duration)
+
+                _ipc_pipe_name = str(
+                    config.get("watchdog_ipc_pipe_name", r"\\.\pipe\MinerAlertsWatchdog")
+                )
+                _ipc_fallback_port = int(config.get("watchdog_ipc_fallback_port", 4029))
+                _ipc_timeout_s = (
+                    float(config.get("watchdog_ipc_timeout_ms", 100)) / 1000.0
+                )
+                _ipc_forensics_dir = (
+                    Path(config["log_file_path"]).parent
+                    if config.get("log_file_path")
+                    else Path("logs")
+                )
+
+                _watchdog_ipc_server = WatchdogIPCServer(
+                    pipe_name=_ipc_pipe_name,
+                    fallback_port=_ipc_fallback_port,
+                    timeout_s=_ipc_timeout_s,
+                    get_status_callback=_get_ipc_status,
+                    forensics_dir=_ipc_forensics_dir,
+                )
+                _watchdog_ipc_server.start()
+                log(
+                    f"WATCHDOG_IPC started pipe={_ipc_pipe_name} "
+                    f"port={_ipc_fallback_port} "
+                    f"transport={_watchdog_ipc_server.active_transport}"
+                )
+            except Exception as _ipc_exc:
+                log(
+                    f"[WARN] WATCHDOG_IPC failed to start: {type(_ipc_exc).__name__}: {_ipc_exc}"
+                )
+                _watchdog_ipc_server = None
+
         while True:
             tick_start = time.monotonic()
             now_ts = time.time()
@@ -7518,11 +7560,17 @@ def main() -> None:
                 log(f"[WARN] SUPERVISORY_HOOKS execute_tick failed: {type(_hook_exc).__name__}: {_hook_exc}")
             # Modelo monotónico: poll_seconds es el sleep restante del intervalo configurado.
             # _poll_interval_seconds guarda el valor de configuración para el cálculo.
+            _last_tick_duration = max(0.0, time.monotonic() - tick_start)
             poll_seconds = max(0.0, _poll_interval_seconds - (time.monotonic() - tick_start))
             time.sleep(poll_seconds)
     except KeyboardInterrupt:
         log("Detenido por usuario")
     finally:
+        if _watchdog_ipc_server is not None:
+            try:
+                _watchdog_ipc_server.stop()
+            except Exception:
+                pass
         if acquirer is not None:
             acquirer.close()
         if event_store is not None:

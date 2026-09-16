@@ -3,6 +3,27 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación Spec 068: Canal IPC Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (PROP-007)
+
+* **Objetivo**:
+  1. Diseñar e implementar el módulo de comunicación inter-proceso de alta frecuencia `app/ipc/watchdog_pipe.py` con `WatchdogIPCServer` y `WatchdogIPCClient`, soportando Named Pipes nativos en Windows NT con descriptor de seguridad permisivo SDDL `D:(A;;GRGW;;;WD)` y fallback automático a loopback socket TCP `127.0.0.1:4029` con `SO_REUSEADDR`.
+  2. Implementar helper de diagnóstico forense de hilos `dump_thread_frames()` capturando los tracebacks de todos los hilos activos vía `sys._current_frames()` enriquecido con nombres de hilos y flags daemon.
+  3. Integrar `WatchdogIPCServer` en `app/miner_monitor.py:main()` de forma aditiva y desacoplada en un hilo daemon dedicado (`name="WatchdogIPCServer"`), suministrando `(tick_sequence, process_start_ts, last_tick_duration)` sin retener locks y con parada limpia en $<200\text{ ms}$ vía wake-up connect.
+  4. Actualizar `tools/monitor_watchdog.py` incorporando sondeo de alta frecuencia (<15s) con máquina de estados de 3 intentos ante fallos, detección determinista de deadlock del bucle principal (`tick_sequence` congelado tras 60s), captura forense y recuperación automática mediante `Restart-Service -Name MinerAlerts -Force` o `Start-Service`.
+  5. Documentar configuración en `app/config.example.json` y certificar la suite global sin regresiones.
+* **Componentes Modificados / Creados**:
+  - `app/ipc/__init__.py` & `app/ipc/watchdog_pipe.py`: Servidor y cliente IPC, protocolo `PING`/`PONG`/`DUMP`, gestión de seguridad SDDL y sockets.
+  - `app/miner_monitor.py`: Instanciación y parada aditiva de `WatchdogIPCServer` y tracking de `_last_tick_duration`.
+  - `tools/monitor_watchdog.py`: Integración de `probe_ipc_and_recover`, `restart_service`, `start_service` y flags `--ipc`/`--no-ipc`.
+  - `app/config.example.json`: Incorporación de bloque `watchdog_ipc_*`.
+  - `tests/test_watchdog_ipc.py`: 16 pruebas unitarias integrales de transporte pipe/socket, timeouts, parada limpia, deadlocks y recuperación de servicio.
+  - `specs/068-watchdog-ipc-pipe/tasks.md` & `evidence.md`: Marcado completo de T001-T011 y reporte de evidencia técnica.
+* **Resultados & Verificación**:
+  - Suite unitaria Spec 068: 16/16 tests PASS en 0.83s.
+  - Suite de regresión liveness: 28/28 tests PASS en 0.09s.
+  - Suite completa del proyecto: **1176/1176 tests PASS** en 34.4s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+
 ## [2026-09-16] - Implementación Spec 070 (Fases C y D): Extracción de Hooks y Desacoplamiento Total de `inspect.getsource(main)` (ST-05)
 
 * **Objetivo**:

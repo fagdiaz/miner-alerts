@@ -212,5 +212,11 @@
   "gateway_fallback_port": 53,
   "gateway_heartbeat_interval_s": 5,
   "gateway_connect_timeout_ms": 50,
-  "network_storm_suppression_seconds": 15
+  "network_storm_suppression_seconds": 15,
+  "_comment_watchdog_ipc": "Spec 068: Canal IPC Alta Frecuencia Monitor <-> Watchdog (PROP-007). Servidor Named Pipe nativo en Windows con SDDL D:(A;;GRGW;;;WD) y fallback a socket TCP 127.0.0.1:4029 para sondeo de vida, diagnóstico forense y reinicio automático de servicio ante congelamiento del bucle principal.",
+  "watchdog_ipc_enabled": true,
+  "watchdog_ipc_pipe_name": "\\\\.\\pipe\\MinerAlertsWatchdog",
+  "watchdog_ipc_fallback_port": 4029,
+  "watchdog_ipc_timeout_ms": 100,
+  "watchdog_ipc_max_deadlock_tick_age_s": 60.0
 }

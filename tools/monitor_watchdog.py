@@ -31,6 +31,10 @@ from app.core.liveness import (  # noqa: E402
     write_incident_state,
     write_maintenance_lease,
 )
+from app.ipc.watchdog_pipe import (  # noqa: E402
+    WatchdogIPCClient,
+    dump_thread_frames,
+)
 
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -43,6 +47,12 @@ def main() -> int:
     parser.add_argument("--maintenance-seconds", type=int, default=0)
     parser.add_argument("--maintenance-reason", default="operator maintenance")
     parser.add_argument("--clear-maintenance", action="store_true")
+    parser.add_argument(
+        "--ipc", action="store_true", default=None, help="Enable IPC health polling"
+    )
+    parser.add_argument(
+        "--no-ipc", action="store_true", help="Disable IPC health polling"
+    )
     args = parser.parse_args()
 
     config_path = Path(args.config).expanduser().resolve()
@@ -84,6 +94,36 @@ def main() -> int:
     heartbeat, heartbeat_error = load_heartbeat(paths["heartbeat"])
     service_name = str(cfg.get("service_name", "MinerAlerts"))
     service_state, service_pid = query_service(service_name)
+
+    if args.no_ipc:
+        ipc_enabled = False
+    elif args.ipc:
+        ipc_enabled = True
+    else:
+        ipc_enabled = bool(
+            config.get("watchdog_ipc_enabled", False)
+            or cfg.get("watchdog_ipc_enabled", False)
+        )
+
+    if ipc_enabled:
+        ipc_outcome, ipc_detail = probe_ipc_and_recover(
+            config=config,
+            log_path=log_path,
+            service_name=service_name,
+            service_pid=service_pid,
+            heartbeat_tick_sequence=heartbeat.tick_sequence if heartbeat else None,
+            heartbeat_last_tick_ts=heartbeat.last_tick_completed_ts
+            if heartbeat
+            else None,
+            no_notify=args.no_notify,
+            now_ts=now_ts,
+        )
+        if ipc_outcome in (
+            "deadlock_recovered",
+            "unresponsive_restarted",
+            "missing_started",
+        ):
+            return 0
     process_alive = bool(heartbeat and process_exists(heartbeat.pid))
     maintenance = load_maintenance_lease(maintenance_path)
     assessment = assess_liveness(
@@ -138,6 +178,162 @@ def main() -> int:
     if not args.no_notify:
         write_incident_state(paths["state"], new_state)
     return 0
+
+
+def restart_service(service_name: str = "MinerAlerts") -> bool:
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"Restart-Service -Name '{service_name}' -Force",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def start_service(service_name: str = "MinerAlerts") -> bool:
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"Start-Service -Name '{service_name}'",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=CREATE_NO_WINDOW,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def probe_ipc_and_recover(
+    config: dict[str, Any],
+    log_path: Path,
+    service_name: str,
+    service_pid: Optional[int],
+    *,
+    heartbeat_tick_sequence: Optional[int] = None,
+    heartbeat_last_tick_ts: Optional[float] = None,
+    no_notify: bool = False,
+    now_ts: Optional[float] = None,
+    max_retries: int = 3,
+    retry_interval_s: float = 2.0,
+) -> tuple[str, Optional[str]]:
+    """High-frequency IPC health probe with 3-attempt state machine and deadlock recovery."""
+    now = time.time() if now_ts is None else now_ts
+    pipe_name = str(config.get("watchdog_ipc_pipe_name", r"\\.\pipe\MinerAlertsWatchdog"))
+    fallback_port = int(config.get("watchdog_ipc_fallback_port", 4029))
+    timeout_s = float(config.get("watchdog_ipc_timeout_ms", 100)) / 1000.0
+    max_deadlock_tick_age_s = float(
+        config.get("watchdog_ipc_max_deadlock_tick_age_s", 60.0)
+    )
+
+    client = WatchdogIPCClient(
+        pipe_name=pipe_name, fallback_port=fallback_port, timeout_s=timeout_s
+    )
+
+    for attempt in range(1, max_retries + 1):
+        res = client.ping()
+        if res.ok:
+            if (
+                heartbeat_tick_sequence is not None
+                and heartbeat_last_tick_ts is not None
+            ):
+                tick_age = now - heartbeat_last_tick_ts
+                if (
+                    res.tick_sequence == heartbeat_tick_sequence
+                    and tick_age > max_deadlock_tick_age_s
+                ):
+                    _append_log(
+                        log_path,
+                        f"WATCHDOG deadlock_detected seq={res.tick_sequence} age={tick_age:.1f}s threshold={max_deadlock_tick_age_s:.1f}s",
+                    )
+                    ok_dump, dump_path = client.request_forensics_dump()
+                    _append_log(
+                        log_path,
+                        f"WATCHDOG forensics_dump requested ok={ok_dump} path={dump_path}",
+                    )
+                    restarted = restart_service(service_name)
+                    _append_log(
+                        log_path,
+                        f"WATCHDOG restart_service action=deadlock_recovered success={restarted}",
+                    )
+                    if not no_notify:
+                        msg = (
+                            f"🚨 *WATCHDOG: Miner Alerts colgado en deadlock*\n"
+                            f"El canal IPC respondió pero el bucle de supervisión lleva {tick_age:.0f}s congelado en tick {res.tick_sequence}.\n"
+                            f"Volcado forense: `{dump_path or 'no_capturado'}`\n"
+                            f"Servicio `{service_name}` reiniciado: {'Éxito' if restarted else 'Fallo'}."
+                        )
+                        send_notification(
+                            config, msg, log_path=log_path, event="deadlock_recovered"
+                        )
+                    return (
+                        "deadlock_recovered",
+                        f"seq={res.tick_sequence} age={tick_age:.1f}s",
+                    )
+
+            _append_log(
+                log_path,
+                f"WATCHDOG ipc_ok seq={res.tick_sequence} uptime={res.uptime_s:.1f}s last_tick={res.last_tick_elapsed_s:.3f}s transport={res.transport}",
+            )
+            return "ok", None
+
+        _append_log(
+            log_path,
+            f"WATCHDOG ipc_attempt_failed attempt={attempt}/{max_retries} error={res.error}",
+        )
+        if attempt < max_retries:
+            time.sleep(retry_interval_s)
+
+    proc_alive = bool(service_pid and process_exists(service_pid))
+    if proc_alive:
+        try:
+            forensics_log = dump_thread_frames(ROOT / "logs")
+            _append_log(log_path, f"WATCHDOG local_forensics_dump path={forensics_log}")
+        except Exception as exc:
+            _append_log(log_path, f"WATCHDOG local_forensics_dump_failed error={exc}")
+
+        restarted = restart_service(service_name)
+        _append_log(
+            log_path,
+            f"WATCHDOG restart_service action=unresponsive_restarted pid={service_pid} success={restarted}",
+        )
+        if not no_notify:
+            msg = (
+                f"🚨 *WATCHDOG: Miner Alerts no responde al canal IPC*\n"
+                f"El proceso PID {service_pid} existe pero no respondió tras {max_retries} intentos.\n"
+                f"Servicio `{service_name}` reiniciado: {'Éxito' if restarted else 'Fallo'}."
+            )
+            send_notification(
+                config, msg, log_path=log_path, event="unresponsive_restarted"
+            )
+        return "unresponsive_restarted", f"pid={service_pid}"
+    else:
+        started = start_service(service_name)
+        _append_log(
+            log_path, f"WATCHDOG start_service action=missing_started success={started}"
+        )
+        if not no_notify:
+            msg = (
+                f"🚨 *WATCHDOG: Proceso de Miner Alerts caído*\n"
+                f"No se detectó PID activo para el servicio `{service_name}`.\n"
+                f"Servicio iniciado: {'Éxito' if started else 'Fallo'}."
+            )
+            send_notification(config, msg, log_path=log_path, event="missing_started")
+        return "missing_started", "process_missing"
 
 
 def query_service(service_name: str) -> tuple[str, Optional[int]]:

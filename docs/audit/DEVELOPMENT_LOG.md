@@ -2,6 +2,249 @@
 
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
+
+## [2026-09-15] - QA Audit & Estabilización Post-Implementación Specs 061 a 065
+
+* **Objetivo**: Auditoría exhaustiva de calidad (QA) y robustez operativa sobre las implementaciones Specs 061 a 065 (SQLite WAL, HW Error Tripwire, Gobernador Estacional, Gráficos Multi-Miner y Pipeline Declarativo de Hooks), resolución de defectos sutiles de ordenamiento y contención, y certificación de la suite global de 1043 pruebas unitarias.
+* **Defectos Detectados y Corregidos**:
+  - **BUG-01 (Inversión de Orden de Etapas en `CoreSupervisoryEngine.execute_tick`)**:
+    * En `app/core/engine.py`, la separación entre `other_hooks` y `persistence_hooks` provocaba que los hooks de etapa `POST_TICK` (etapa 70) se ejecutaran antes de los hooks de `PERSISTENCE` (etapa 60).
+    * Se unificó el bucle de despacho en orden estricto de `HookStage` con contención defensiva individual por hook (`try ... except Exception:`), garantizando que `PERSISTENCE` se ejecute siempre antes de `POST_TICK` y que ambas etapas se ejecuten de manera incondicional incluso ante fallos en etapas precedentes.
+    * Actualizada la aserción en `tests/test_supervisory_hooks.py` reflejando el orden canónico: `["pre", "detect", "gov", "persist", "post"]`.
+  - **BUG-02 (Ausencia de Barrera de Excepciones en Hilo Asíncrono de Restauración de Preset)**:
+    * En `app/miner_monitor.py:5442` (`_async_restore_locked_preset`), un fallo de red o socket inesperado durante `safe_set_miner_preset` podía generar trazas sin capturar en el hilo daemon.
+    * Se envolvió el cuerpo del hilo en un bloque defensivo `try ... except Exception as _th_exc:` con registro estructurado en logs (`[TRIPWIRE_INTERLOCK_ERR]`).
+  - **BUG-03 (Propagación de `tick_sequence` a `CoreSupervisoryEngine`)**:
+    * `execute_tick()` no aceptaba el número de secuencia de tick desde el bucle principal de `miner_monitor.py`, manteniendo el contador en 0.
+    * Se agregó el parámetro `tick_sequence: Optional[int] = None` y se propagó el `tick_sequence` actual desde el bucle de supervisión en `miner_monitor.py`.
+  - **BUG-04 (Protección contra `SQLITE_BUSY_SNAPSHOT` en Consultas de Gráficos Telegram)**:
+    * En `app/telegram/charts.py:fetch_miner_chart_data()`, las consultas directas sobre SQLite durante checkpoints `TRUNCATE` concurrentes podían recibir excepciones de bloqueo.
+    * Se integró la función `execute_readonly_with_retry` de `app.core.event_store`, absorbiendo transitorios de checkpoint con reintentos y retroceso exponencial automático.
+  - **QA-01 (Saneamiento Integral de Espacios en Blanco y Saltos de Línea)**:
+    * Se purgaron espacios finales en `app/miner_monitor.py`, `app/core/event_store.py`, `app/governance/preset_balancer.py`, etc., logrando que `git diff --check` y el script de preflight `preflight.ps1 -RunBuilds` pasen con salida 0 (PASS).
+* **Verificación y Evidencia**:
+  - `preflight.ps1 -RunBuilds` → **PASS** (ExitCode: 0, py_compile limpio, git-diff-check limpio).
+  - Suite completa: `unittest discover -s tests` → **1043 / 1043 tests PASS** en 34.6s (0 fallos, 0 errores, 0 regresiones).
+  - Verificación de contratos `inspect.getsource(main)` y literales críticos: 100% preservados.
+  - Servicio Windows `MinerAlerts` validado y reiniciado con las actualizaciones.
+
+## [2026-09-15] - Implementación Spec 065: Pipeline Declarativo de Hooks en CoreSupervisoryEngine (ST-04)
+
+* **Objetivo**: Evolucionar `CoreSupervisoryEngine` hacia un pipeline declarativo de hooks estructurado por etapas (`HookStage`), con contención defensiva de fallos por hook, modelo de tiempo monotónico garantizado y preservación del 100% de los contratos de tests de introspección de `main()`.
+* **Componentes Modificados / Creados**:
+  - `app/core/engine.py`:
+    * Implementado `HookStage` (enum `IntEnum` con 7 etapas ordenadas: `PRE_TICK=10`, `ACQUISITION=20`, `DETECTION=30`, `GOVERNANCE=40`, `ACTUATOR=50`, `PERSISTENCE=60`, `POST_TICK=70`).
+    * Implementada clase base `SupervisoryHook` con interfaz `execute(context, tick_sequence, now_ts, tick_data) -> Optional[Dict]`.
+    * Implementado dataclass `HookResult` (hook_name, stage, ok, duration_seconds, data, error).
+    * Extendido `CoreSupervisoryEngine` con `register_hook(hook)` (ordenamiento determinista por `HookStage`) y `execute_tick(states, last_update_id_ref, now_ts) -> TickResult` con contención defensiva por hook y garantía de ejecución de etapa `PERSISTENCE` incluso si todas las etapas previas fallan.
+    * Implementados hooks canónicos: `PersistenceHook` (etapa `PERSISTENCE`, delega en `StateManager.save()` fuera de locks), `GovernanceInterlockHook` (etapa `GOVERNANCE`, evalúa expiración de temporizadores) y `TimingGuardHook` (etapa `PRE_TICK`, registra `_timing_guard_start` en `tick_data` y emite warning si el intervalo supera umbral configurable).
+  - `app/miner_monitor.py`:
+    * Instanciación aditiva de `CoreSupervisoryEngine` con los 3 hooks canónicos antes del `while True:`, con `_poll_interval_seconds` como referencia inmutable del intervalo de configuración.
+    * Reemplazado `time.sleep(poll_seconds)` por el modelo monotónico: `poll_seconds = max(0.0, _poll_interval_seconds - (time.monotonic() - tick_start)); time.sleep(poll_seconds)`, garantizando que `poll_seconds` es el intervalo mínimo entre `tick_start`s sin deriva acumulativa.
+    * Sin modificación de ningún literal verificado por los tests de `inspect.getsource(main)`.
+  - `tests/test_supervisory_hooks.py` (nuevo):
+    * 47 tests nuevos en 13 clases cubriendo: orden de etapas, contrato de clase base, registro y ordenamiento, `execute_tick` con `tick_data` flow, contención defensiva de errores, garantía de `PERSISTENCE`, modelo monotónico de timing, hooks canónicos (`TimingGuardHook`, `GovernanceInterlockHook`, `PersistenceHook`), pipeline E2E y validación de integración aditiva en `miner_monitor.py`.
+* **Verificación y Evidencia**:
+  - `py_compile app/core/engine.py app/core/context.py app/miner_monitor.py` → SYNTAX OK.
+  - `pytest tests/test_supervisory_hooks.py` → **47 passed**.
+  - `pytest tests/` → **1043 passed** (996 originales + 47 nuevos), 0 regresiones.
+  - `test_monitor_liveness::test_monitor_publishes_heartbeat_after_state_persistence` → PASSED (literal `time.sleep(poll_seconds)` preservado).
+  - Servicio Windows `MinerAlerts` activo e ininterrumpido durante toda la implementación.
+* **Invariantes Cumplidas**:
+  - `len(tests_pass) >= 996` → ✅ 1043 tests PASS.
+  - Contratos `inspect.getsource(main)` y `time.sleep(poll_seconds)` literales intactos.
+  - Etapa `PERSISTENCE` siempre se ejecuta (3 tests de garantía dedicados).
+  - Modelo monotónico aplicado: sleep = max(0, interval - elapsed).
+  - Zero peticiones HTTP extras a mineros.
+
+## [2026-09-15] - Implementación Spec 064: Telemetría Visual y Gráficos Comparativos Multi-Miner en Telegram (UX-01)
+
+* **Objetivo**: Desarrollar visualización gráfica multi-miner agrupada por elevador eléctrico y flota, selector interactivo de horizonte temporal (1h, 6h, 24h, 7d) con actualización in-place sin spam mediante `editMessageMedia`, y blindaje estricto de memoria en `matplotlib` para entornos desatendidos de Windows.
+* **Componentes Modificados / Creados**:
+  - `app/telegram/charts.py`:
+    * Implementado `fetch_group_chart_data(db_path, group_name, configured_miners, hours, now_ts)` para consultar muestras de telemetría de todos los mineros de un elevador eléctrico.
+    * Implementado `render_group_chart_png(group_data, hours)` con diseño dual en memoria (subplot superior: Hashrate individual con colores consistentes y línea de umbral; subplot inferior: Temperatura individual de chip con la misma paleta por minero).
+    * Implementado `build_chart_range_keyboard(target, current_hours)` generando teclado inline interactivo `[ 1h ] [ 6h ] [ 24h ] [ 7d ]` con marcador visual de rango activo (`• 1h •`).
+    * Blindaje mandatorio de memoria con `try ... finally: plt.close(fig)` en todos los paths de renderizado.
+  - `app/telegram/callbacks.py`:
+    * Soporte para gramática de acción `chart_range:<target>:<hours>` en `parse_callback_data()` y `build_callback_data()`, garantizando payload acotado <= 64 bytes.
+  - `app/telegram/commands/diagnostics.py`:
+    * Extendido `ChartCommand` para resolver objetivos de grupo eléctrico (ej. `elevator_1`, `elevator_2`) y adjuntar automáticamente el teclado inline de rangos temporales en `/chart <objetivo> [horas]`.
+    * Soporte de horizontes temporales de hasta 168h (7 días).
+  - `app/miner_monitor.py`:
+    * Extendido `send_telegram_photo()` con parámetro opcional `reply_markup`.
+    * Implementado `edit_telegram_photo(bot_token, chat_id, message_id, photo_bytes, caption, reply_markup)` utilizando la API `editMessageMedia` de Telegram con multipart/form-data y `attach://file_0`.
+    * Integrado manejador de callbacks `chart_range` en `_handle_callback_query()`, actualizando imágenes in-place y respondiendo con toasts informativos sin polución de chat.
+  - `app/telegram/__init__.py`:
+    * Re-exportación de `build_chart_range_keyboard`, `fetch_group_chart_data` y `render_group_chart_png`.
+  - `app/telegram/help_center.py`:
+    * Actualizada la definición del comando `/chart` documentando el soporte para grupos y selector interactivo.
+  - `tests/test_multi_miner_charts.py`:
+    * Suite dedicada de 11 pruebas unitarias y de integración cubriendo consultas de grupo, teclado inline, `editMessageMedia`, dispatch de callbacks y prueba de estabilidad de memoria (100 renders consecutivos con verificación de cero fugas en `plt.get_fignums()`).
+* **Verificación y Evidencia**:
+  - Compilación limpia con `py_compile` en todos los módulos.
+  - 11 pruebas dedicadas en `tests/test_multi_miner_charts.py` PASS en 17.7s.
+  - 996 pruebas globales en `tests/` PASS en 33.7s (0 fallos, 0 regresiones).
+  - Servicio Windows `MinerAlerts` verificado en estado `Running`.
+  - Certificado en `specs/064-multi-miner-charts/evidence.md`.
+
+## [2026-09-15] - Implementación Spec 063: Gobernador Térmico con Conciencia Estacional (Ambient-Aware Thermal PID) (GOV-02)
+
+* **Objetivo**: Implementar la adaptación estacional en el gobernador térmico de lazo cerrado mediante inferencia de temperatura ambiente a partir de los sensores de entrada ya sondeados en la telemetría Vnish (`stats_response`), ajustando dinámicamente objetivos y pisos térmicos según la temporada climática (invierno/estándar/verano) sin sobrecarga de red HTTP y preservando 3 guardarraíles inviolables de hardware.
+* **Componentes Modificados / Creados**:
+  - `app/vnish/telemetry.py`:
+    * Añadido `inlet_temp_c: Optional[float] = None` a dataclass `VnishTelemetry` y a `as_dict()`.
+    * Extracción regex de sensores de entrada (`_INLET_TEMP_RE`) para claves como `temp_in`, `temp_pcb_in`, `temp_inlet` con filtro de validez $[-10.0, 60.0]^\circ\text{C}$ en `normalize_vnish_stats()`.
+  - `app/governance/fan_governor.py`:
+    * Extensión de `GovernorConfig` con parámetros estacionales (`seasonal_enabled`, `winter_ambient_threshold_c = 18.0`, `summer_ambient_threshold_c = 28.0`, `winter_target_temp_c = 76.0`, `winter_min_duty_percent = 45`, `summer_target_temp_c = 80.0`, `summer_min_duty_percent = 65`, `summer_step_up_percent = 5`).
+    * Implementación de la dataclass `SeasonalGovernorParams` y de la función pura `resolve_seasonal_parameters(ambient_temp_c, config)`.
+    * Garantía matemática de los 3 guardarraíles inviolables: techo máx target 82.0°C, piso mín 30% PWM y Thermal Guard/Emergency Spike siempre a 100% PWM.
+    * Integración de `ambient_temp_c` y `seasonal_mode` en `compute_governor_step()`, adaptando target, deadband, min_duty y step-up estacionalmente con clamping defensivo ante Silent Mode.
+  - `app/governance/__init__.py`:
+    * Re-exportación de `SeasonalGovernorParams`, `resolve_seasonal_parameters`, `SEASONAL_MODE_WINTER`, `SEASONAL_MODE_STANDARD`, `SEASONAL_MODE_SUMMER` en `__all__`.
+  - `app/miner_monitor.py`:
+    * Extensión de `MinerState` con `inlet_temp_c` y asignación en el ciclo de muestreo.
+    * Persistencia no volátil en `load_state` y `_build_state_payload`.
+    * Agregación de $T_{\text{amb}}$ por grupo eléctrico y a nivel flota en `execute_governor_cycle()`, resolviendo `ambient_temp_c` para cada minero.
+    * Inclusión de `season={dec.seasonal_mode}` en el registro estructurado de `execute_governor_cycle()`.
+  - `app/core/state_manager.py`:
+    * Serialización atómica de `inlet_temp_c` en `_serialise_miner_state`.
+  - `app/config.example.json`:
+    * Documentadas las claves de configuración estacionales con valores seguros por defecto.
+  - `tests/test_fan_governor_seasonal.py`:
+    * Suite dedicada de 26 pruebas unitarias y de integración cubriendo transiciones de modos, guardarraíles inviolables, interacción con Silent Mode, fallbacks y agregación grupal.
+* **Verificación y Evidencia**:
+  - Compilación limpia con `py_compile` en todos los módulos modificados.
+  - 26 tests en `tests/test_fan_governor_seasonal.py` PASS en 0.001s.
+  - 82 tests en suites combinadas de fan governor y telemetría PASS.
+  - 985 tests globales PASS en 15.214s (0 regresiones, 0 fallos).
+  - Servicio Windows `MinerAlerts` en estado `Running`.
+  - Certificado en `specs/063-ambient-thermal-pid/evidence.md`.
+
+## [2026-09-15] - Formalización Spec 063: Gobernador Térmico con Conciencia Estacional (Ambient-Aware Thermal PID) (GOV-02)
+
+* **Objetivo**: Formalizar la especificación técnica (`spec.md`, `plan.md`, `tasks.md`) para la Spec 063 incorporando las correcciones de auditoría de Claude Sonnet 4.6 (inferencia de $T_{\text{amb}}$ mediante promediado de `inlet_temp_c` ya disponible en `stats_response` sin peticiones HTTP extras, curvas estacionales de invierno/verano y 3 guardarraíles inviolables: techo máx target 82°C, piso mín 30% PWM y Thermal Guard de 85°C siempre forzando 100% PWM).
+* **Artefactos Creados**:
+  - `specs/063-ambient-thermal-pid/spec.md`: Historias de usuario, requerimientos funcionales, guardarraíles inviolables y casos de borde.
+  - `specs/063-ambient-thermal-pid/plan.md`: Plan de implementación en 3 fases (Fase A: Extracción de telemetría de entrada, Fase B: Dominio puro y guardarraíles invariantes, Fase C: Integración en monitor y suite de tests).
+  - `specs/063-ambient-thermal-pid/tasks.md`: 7 tareas estructuradas.
+* **Seguimiento**:
+  - Actualizado `.specify/feature.json` a `specs/063-ambient-thermal-pid`.
+  - Actualizado `AGENTS.md` con plan activo `specs/063-ambient-thermal-pid/plan.md`.
+  - Actualizado `docs/speckit/ROADMAP.md` registrando la Iniciativa 15 (Spec 063) como "En Progreso".
+
+## [2026-09-15] - Implementación Spec 062: HW Error Tripwire & Rollback Automático de Overclock (GOV-01)
+
+* **Objetivo**: Implementar el mecanismo de protección física de silicio ante degradación o overclock excesivo mediante un tripwire que monitorea el incremento y la tasa porcentual de Hardware Errors en ventanas de 10 minutos consultando `EventStore`, aplicando desescalada automática de potencia y un candado de seguridad de 48 horas persistido en `state.json` con interlock anti-cascada post-reboot.
+* **Componentes Modificados / Creados**:
+  - `app/governance/preset_balancer.py`:
+    * Definición de `ACTION_STEP_DOWN_HW_ERRORS = "STEP_DOWN_HW_ERRORS"`.
+    * Extensión de `StabilityMetrics` con `hw_errors_delta_10m`, `hw_error_rate_pct`, `hw_error_lock_until_ts`, `hw_error_locked_preset`.
+    * Extensión de `BalancerConfig` con umbrales `hw_error_rate_threshold_pct = 0.5`, `hw_error_delta_threshold = 200`, `hw_error_lock_hours = 48.0`.
+    * Regla de disparo en `evaluate_balancer_step()` con compuerta AND (`hw_error_rate_pct >= 0.5%` Y `hw_errors_delta_10m >= 200`).
+    * Forzado defensivo ante violación de candado post-reboot (paso 0.2) e inhibición estricta de step-up (`ACTION_STEP_UP_OPTIMIZE`) mientras el candado esté activo.
+    * Tarjeta Mobile-First `render_hw_error_tripwire_card()` con ancho `<= 32` columnas.
+    * Extracción no volátil en `extract_miner_stability_metrics()` comparando muestra $T$ contra muestra $T - 10\text{m}$ en `telemetry_samples` de SQLite.
+  - `app/governance/__init__.py`:
+    * Re-exportación de `ACTION_STEP_DOWN_HW_ERRORS` y `render_hw_error_tripwire_card` en `__all__`.
+  - `app/miner_monitor.py`:
+    * Extensión de `MinerState` con `hw_error_lock_until_ts` y `hw_error_locked_preset`.
+    * Persistencia no volátil en `load_state` y `_build_state_payload`.
+    * Integración en `execute_balancer_cycle()` activando el candado de 48 horas y despachando alertas a Telegram vía `render_hw_error_tripwire_card()`.
+    * Interlock anti-cascada post-reboot en `refresh_vnish_overclock_settings` y en la detección de reinicio de minero (`reboot_reason`) restaurando el preset defensivo en background sin bloquear `state_lock`.
+    * Preservación intacta del auto-reboot por `STATE_LOW` o `STATE_HASHBOARD`.
+  - `app/core/state_manager.py`:
+    * Serialización atómica de `hw_error_lock_until_ts` y `hw_error_locked_preset` en `_serialise_miner_state`.
+  - `app/config.example.json`:
+    * Documentadas las opciones `preset_balancer_hw_error_rate_threshold_pct`, `preset_balancer_hw_error_delta_threshold`, `preset_balancer_hw_error_lock_hours`.
+  - `tests/test_hw_error_tripwire.py`:
+    * Suite exhaustiva de 13 pruebas unitarias e integración con 100% de éxito.
+* **Validación**:
+  - `py_compile`: 100% OK en todos los módulos modificados.
+  - Tests Spec 062: 13/13 PASS en 0.143s.
+  - Suite completa del proyecto: 959/959 PASS en 15.671s (cero fallos, cero regresiones).
+  - Servicio Windows `MinerAlerts`: Estado `Running` verificado.
+
+## [2026-09-15] - Formalización Spec 062: HW Error Tripwire & Rollback Automático de Overclock (GOV-01)
+
+* **Objetivo**: Formalizar la especificación técnica (`spec.md`, `plan.md`, `tasks.md`) para la Spec 062 incorporando las correcciones de auditoría de Claude Sonnet 4.6 (métrica no volátil desde `EventStore`, umbral combinado de tasa y delta absoluto, candado de 48 horas persistido en `state.json` e interlock anti-cascada adversarial post-reboot).
+* **Artefactos Creados**:
+  - `specs/062-hw-error-tripwire/spec.md`: Historias de usuario, requerimientos funcionales y escenarios defensivos.
+  - `specs/062-hw-error-tripwire/plan.md`: Plan de implementación en 3 fases (Fase A: Dominio puro y regla de tripwire, Fase B: Persistencia de candado y extracción SQLite, Fase C: Anti-cascada en monitor y suite de tests).
+  - `specs/062-hw-error-tripwire/tasks.md`: 7 tareas ejecutables estructuradas.
+* **Seguimiento**:
+  - Actualizado `.specify/feature.json` a `specs/062-hw-error-tripwire`.
+  - Actualizado `AGENTS.md` con plan activo `specs/062-hw-error-tripwire/plan.md`.
+  - Actualizado `docs/speckit/ROADMAP.md` registrando la Iniciativa 14 (Spec 062) como "En Progreso".
+
+## [2026-09-15] - Implementación Spec 061: Resiliencia SQLite WAL Mode & Integrity Check (ST-03)
+
+* **Objetivo**: Implementar de punta a punta la Spec 061 blindando `EventStore` contra corrupciones de disco tras apagones intempestivos, previniendo saturación de espacio en Windows NTFS y habilitando lectura externa concurrente sin bloqueos de snapshot.
+* **Componentes Modificados**:
+  - `app/core/event_store.py`:
+    * Hilo daemon asíncrono `_integrity_check_worker` con `PRAGMA quick_check;` en conexión de solo lectura aislada (0 ms de impacto en el arranque del monitor y Startup Guard).
+    * Auto-cuarentena atómica a `miner_alerts_corrupt_<epoch>.db` (`.db`, `.db-wal`, `.db-shm`) y recreación limpia de esquema v7 con emisión de alertas críticas.
+    * Techo blando de almacenamiento: `PRAGMA max_page_count = 262144;` (~1 GB) en `_initialize()`.
+    * Método público `EventStore.checkpoint_wal(mode: str = "PASSIVE") -> Tuple[int, int, int]` soportando `PASSIVE`, `FULL`, `RESTART` y `TRUNCATE`.
+    * Cierre defensivo de handles de conexión ante excepciones de inicialización y soporte de context manager `__enter__` / `__exit__`.
+    * Helpers públicos `create_readonly_connection(db_path, timeout=3.0)` y `execute_readonly_with_retry` con retroceso exponencial (100ms, 200ms, 400ms) ante `SQLITE_BUSY_SNAPSHOT`.
+  - `app/core/__init__.py`: Re-exportación de `create_readonly_connection` y `execute_readonly_with_retry` en `__all__`.
+  - `app/miner_monitor.py`:
+    * Conexión de checkpoint horario `PASSIVE` y checkpoint diario `TRUNCATE` en horario valle (03:00 - 05:00 UTC) dentro del bucle de supervisión principal.
+  - `tests/test_event_store_wal_resilience.py`:
+    * Suite dedicada de 11 tests cubriendo quick-check asíncrono, detección de corrupción de cabecera y páginas internas, modos de checkpointing, creación de conexión de solo lectura, reintentos BUSY_SNAPSHOT y concurrencia multi-lector bajo escrituras continuas y truncamiento en caliente.
+* **Validación**:
+  - `py_compile`: 100% OK en todos los módulos modificados.
+  - Tests de resiliencia WAL: 11/11 PASS en 0.900s.
+  - Suite completa del proyecto: 946/946 PASS en 15.427s (0 fallos, 0 errores, 0 regresiones sobre 935 base).
+  - Servicio Windows `MinerAlerts`: `Running` continuo verificado.
+
+## [2026-09-15] - Formalización Spec 061: Resiliencia SQLite WAL Mode & Integrity Check (ST-03)
+
+* **Objetivo**: Diagramar y generar los artefactos formales de especificación (`spec.md`, `plan.md`, `tasks.md`) para la Spec 061 incorporando las 3 correcciones críticas auditadas por Claude Sonnet 4.6 (quick_check asíncrono, checkpointing TRUNCATE diario fuera de pico en Windows NTFS y pool multi-lector defensivo ante `SQLITE_BUSY_SNAPSHOT`).
+* **Artefactos Creados**:
+  - `specs/061-sqlite-wal-integrity/spec.md`: Requerimientos funcionales, historias de usuario, casos de borde y contratos de interfaz.
+  - `specs/061-sqlite-wal-integrity/plan.md`: Plan de implementación en 3 fases (Fase A: Integridad Asíncrona & Límite de Espacio, Fase B: Checkpointing en Windows NTFS, Fase C: Pool de Lectura y Suite de Tests).
+  - `specs/061-sqlite-wal-integrity/tasks.md`: 7 tareas ejecutables estructuradas con dependencias binarias.
+* **Seguimiento**:
+  - Actualizado `.specify/feature.json` a `specs/061-sqlite-wal-integrity`.
+  - Actualizado `AGENTS.md` con el plan activo y gate de observación.
+  - Actualizado `docs/speckit/ROADMAP.md` registrando la Iniciativa 13 (Spec 061) como "En Planificación".
+
+## [2026-09-15] - Auditoría Técnica ACTION_PLAN_POST_V5: Specs 061–065 (Claude Sonnet 4.6 Thinking)
+
+* **Objetivo**: Auditar el plan de las iniciativas Specs 061 a 065 del horizonte post-V5.0, identificar riesgos arquitectónicos no previstos y refinar el diseño de cada spec antes de que Gemini genere las especificaciones formales.
+
+* **Correcciones aplicadas a `docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`**:
+
+  **Spec 061 (SQLite WAL & Integrity)**:
+  - `PRAGMA quick_check` movido de `_initialize()` sincrónico a hilo daemon asíncrono — evita retraso de 100-500ms en startup de Telegram.
+  - Agregado `PRAGMA wal_checkpoint(TRUNCATE)` en ciclo de mantenimiento diario (03:00-05:00): el PASSIVE no trunca el WAL en Windows con lectores externos activos.
+  - Pool de lectura: documentado manejo de `SQLITE_BUSY_SNAPSHOT` (código 5) con backoff 100ms/200ms/400ms y máx 3 reintentos.
+
+  **Spec 062 (HW Error Tripwire)**:
+  - Threshold corregido: `≥50 errors en 10m` es demasiado sensible para S19j Pro (~90 TH/s). Umbral correcto: `hw_error_rate_pct > 0.5% AND hw_errors_delta_10m >= 200`.
+  - Delta de HW errors debe calcularse desde el EventStore (sample T vs T-10m), no en memoria — se pierde en reboot.
+  - Introducido interlock anti-cascada: `hw_error_locked_preset` debe persistir en `state.json` y restaurarse post-reboot L1/L2 (impide que el firmware restaure 2700W y reactive el silicio estresado).
+
+  **Spec 063 (Thermal PID Estacional)**:
+  - `temp_in` ya disponible en `stats_response` existente del ciclo de 30s (campo `temp_pcb_in` / `temp_in` en Vnish `/api/v1/summary`). Cero requests HTTP adicionales.
+  - Guardarraíl 85°C explicitado como invariante de diseño: el modo estacional NUNCA puede elevar el objetivo más allá de 82°C, ni reducir el piso global por debajo del 30% definido en `GovernorConfig.min_fan_duty_percent`.
+
+  **Spec 064 (Gráficos Multi-Miner)**:
+  - `editMessageMedia` requiere multipart/form-data `attach://file_0` — no es un POST JSON estándar. Documentado en el spec.
+  - Requisito obligatorio de backend `Agg` + `plt.close(fig)` explícito post-render. Sin esto, matplotlib acumula figuras hasta OOM en Windows.
+  - Nuevo test de leak: 100 renders consecutivos con verificación de RSS < +5%.
+
+  **Spec 065 (Hooks Declarativos)**:
+  - Estrategia de migración corregida: hooks como decoradores en Fase A (código permanece en `main()`, tests siguen pasando), migración Fase A→B conservadora con paridad de tests documentada antes de mover cada bloque.
+  - Riesgo de timing identificado: `poll_seconds` debe ser tiempo mínimo entre `tick_start` (no sleep puro). Modelo monotónico ya en `engine.py` — verificar preservación en Fase B.
+  - Orden de extracción recomendado: PersistenceHook → GovernanceInterlockHook → ActuatorHook → AcquisitionHook/IncidentDetectionHook.
+
+* **Código modificado**: Sólo documentación — `docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md` (plan auditado y corregido in-place).
+* **Tests**: Sin cambios de código. 935/935 PASS vigente.
+* **Servicio Windows**: `MinerAlerts` Running (no se tocó).
+
 ## [2026-09-15] - Spec 060 Phase B: Integración de StateManager y MonitorContext en Daemon Principal (Milestone V5.0)
 
 * **Objetivo**: Conectar los nuevos subsistemas de arquitectura limpia `StateManager` y `MonitorContext` de `app/core/` en el punto de entrada de ejecución `main()` en `app/miner_monitor.py` de forma aditiva y segura, certificando 100% de los contratos de inspección estática (`inspect.getsource(main)`) y alcanzando el hito de modularización V5.0.

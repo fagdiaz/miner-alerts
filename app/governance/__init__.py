@@ -85,9 +85,14 @@ from app.governance.fan_governor import (
     ACTION_RECOVERY_MAX_COOLING,
     ACTION_STEP_DOWN,
     ACTION_STEP_UP,
+    SEASONAL_MODE_STANDARD,
+    SEASONAL_MODE_SUMMER,
+    SEASONAL_MODE_WINTER,
     GovernorConfig,
     GovernorDecision,
+    SeasonalGovernorParams,
     compute_governor_step,
+    resolve_seasonal_parameters,
 )
 from app.governance.fan_health import (
     STATUS_CRITICAL_HEAT,
@@ -125,6 +130,7 @@ from app.governance.preset_balancer import (
     ACTION_LOCKED_MAX,
     ACTION_LOCKED_MIN,
     ACTION_STEP_DOWN_CASCADE,
+    ACTION_STEP_DOWN_HW_ERRORS,
     ACTION_STEP_DOWN_RESTARTS,
     ACTION_STEP_DOWN_THERMAL,
     ACTION_STEP_UP_OPTIMIZE,
@@ -145,6 +151,7 @@ from app.governance.preset_balancer import (
     find_preset_index,
     infer_preset_name_from_power,
     record_elevator_restart_circumstance,
+    render_hw_error_tripwire_card,
 )
 
 __all__ = [
@@ -158,6 +165,7 @@ __all__ = [
     "ACTION_RECOVERY_MAX_COOLING",
     "ACTION_STEP_DOWN",
     "ACTION_STEP_DOWN_CASCADE",
+    "ACTION_STEP_DOWN_HW_ERRORS",
     "ACTION_STEP_DOWN_RESTARTS",
     "ACTION_STEP_DOWN_THERMAL",
     "ACTION_STEP_UP",
@@ -195,6 +203,11 @@ __all__ = [
     "calculate_thermal_headroom",
     "compute_effective_hashrate",
     "compute_governor_step",
+    "resolve_seasonal_parameters",
+    "SeasonalGovernorParams",
+    "SEASONAL_MODE_STANDARD",
+    "SEASONAL_MODE_SUMMER",
+    "SEASONAL_MODE_WINTER",
     "DEFAULT_CONFIRM_TICKS",
     "DEFAULT_GRACE_PERIOD_SECONDS",
     "DEFAULT_MAX_CHIP_TEMP_C",
@@ -235,6 +248,7 @@ __all__ = [
     "PostBlackoutTracker",
     "process_post_blackout_callback",
     "record_elevator_restart_circumstance",
+    "render_hw_error_tripwire_card",
     "render_post_blackout_alert",
     "render_recovery_action_card",
     "render_resume_success_card",

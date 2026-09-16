@@ -282,8 +282,11 @@ class ChartCommand(BaseCommandHandler):
         from app.telegram.charts import (
             fetch_miner_chart_data,
             fetch_fleet_chart_data,
+            fetch_group_chart_data,
             render_miner_chart_png,
             render_fleet_chart_png,
+            render_group_chart_png,
+            build_chart_range_keyboard,
         )
 
         sub_target = args[0].lower() if args else "fleet"
@@ -291,12 +294,12 @@ class ChartCommand(BaseCommandHandler):
         if len(args) >= 2:
             try:
                 val = args[1].lower().replace("h", "")
-                hours = max(0.25, min(72.0, float(val)))
+                hours = max(0.25, min(168.0, float(val)))
             except ValueError:
                 hours = 1.0
         elif sub_target.endswith("h") and sub_target[:-1].isdigit():
             try:
-                hours = max(0.25, min(72.0, float(sub_target[:-1])))
+                hours = max(0.25, min(168.0, float(sub_target[:-1])))
                 sub_target = "fleet"
             except ValueError:
                 hours = 1.0
@@ -316,36 +319,69 @@ class ChartCommand(BaseCommandHandler):
                 else:
                     png_bytes = render_fleet_chart_png(fleet_data, hours=hours)
                     caption = f"📊 Flota completa ({hours:.0f}h) — {fleet_data['count']} mineros activos"
-                    send_telegram_photo(context.bot_token, str(context.chat_id), png_bytes, caption=caption)
+                    kb = build_chart_range_keyboard("fleet", current_hours=hours)
+                    send_telegram_photo(context.bot_token, str(context.chat_id), png_bytes, caption=caption, reply_markup=kb)
             else:
-                miner = resolve_miner(sub_target, context.miners)
-                if not miner:
-                    avail = ", ".join(display_name(m["name"]) for m in context.miners)
-                    context.send_message(
-                        f"Gráfico: minero '{sub_target}' no encontrado.\nMineros disponibles: {avail}",
-                        msg_type="CHART",
-                        dedup_key="chart_miner_not_found",
-                        dbg_cmd="chart",
-                        dbg_update_id=update_id,
-                    )
-                else:
-                    chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=hours)
-                    if chart_data["count"] == 0:
+                groups = {
+                    (_m.get("electrical_group") or _m.get("group") or "").strip().lower()
+                    for _m in context.miners
+                }
+                groups.discard("")
+                matched_group = None
+                for grp in groups:
+                    if sub_target == grp or sub_target == grp.replace("_", "") or sub_target in grp:
+                        matched_group = grp
+                        break
+
+                if matched_group:
+                    group_data = fetch_group_chart_data(db_path, matched_group, context.miners, hours=hours)
+                    if group_data["count"] == 0:
                         context.send_message(
-                            f"Gráfico: no hay muestras disponibles para {miner['name']} en las últimas {hours:.0f}h.",
+                            f"Gráfico: no hay muestras disponibles para el grupo '{matched_group}' en las últimas {hours:.0f}h.",
                             msg_type="CHART",
-                            dedup_key="chart_empty",
+                            dedup_key="chart_group_empty",
                             dbg_cmd="chart",
                             dbg_update_id=update_id,
                         )
                     else:
-                        png_bytes = render_miner_chart_png(chart_data, hours=hours)
+                        png_bytes = render_group_chart_png(group_data, hours=hours)
                         caption = (
-                            f"📊 {chart_data['miner_name']} ({hours:.0f}h) | "
-                            f"Actual: {chart_data['rates'][-1]:.1f} TH/s | "
-                            f"Max Temp: {chart_data['max_temp']:.0f}°C"
+                            f"📊 Grupo {matched_group.upper()} ({hours:.0f}h) — "
+                            f"{group_data['count']}/{group_data['total_miners']} mineros activos"
                         )
-                        send_telegram_photo(context.bot_token, str(context.chat_id), png_bytes, caption=caption)
+                        kb = build_chart_range_keyboard(matched_group, current_hours=hours)
+                        send_telegram_photo(context.bot_token, str(context.chat_id), png_bytes, caption=caption, reply_markup=kb)
+                else:
+                    miner = resolve_miner(sub_target, context.miners)
+                    if not miner:
+                        avail_miners = ", ".join(display_name(m["name"]) for m in context.miners)
+                        avail_groups = ", ".join(sorted(groups)) if groups else "ninguno"
+                        context.send_message(
+                            f"Gráfico: objetivo '{sub_target}' no encontrado.\nMineros: {avail_miners}\nGrupos: {avail_groups}",
+                            msg_type="CHART",
+                            dedup_key="chart_miner_not_found",
+                            dbg_cmd="chart",
+                            dbg_update_id=update_id,
+                        )
+                    else:
+                        chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=hours)
+                        if chart_data["count"] == 0:
+                            context.send_message(
+                                f"Gráfico: no hay muestras disponibles para {miner['name']} en las últimas {hours:.0f}h.",
+                                msg_type="CHART",
+                                dedup_key="chart_empty",
+                                dbg_cmd="chart",
+                                dbg_update_id=update_id,
+                            )
+                        else:
+                            png_bytes = render_miner_chart_png(chart_data, hours=hours)
+                            caption = (
+                                f"📊 {chart_data['miner_name']} ({hours:.0f}h) | "
+                                f"Actual: {chart_data['rates'][-1]:.1f} TH/s | "
+                                f"Max Temp: {chart_data['max_temp']:.0f}°C"
+                            )
+                            kb = build_chart_range_keyboard(chart_data["miner_id"], current_hours=hours)
+                            send_telegram_photo(context.bot_token, str(context.chat_id), png_bytes, caption=caption, reply_markup=kb)
         except Exception as exc:
             log(f"CMD_CHART_ERR exc={exc}")
             context.send_message(

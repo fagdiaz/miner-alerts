@@ -81,13 +81,14 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
     "chart": CommandDefinition(
         name="chart",
         summary="Gráficos PNG de telemetría.",
-        usage="/chart [id|fleet] [horas]",
+        usage="/chart [id|grupo|fleet] [horas]",
         category="mon",
         detail=[
             "Genera curvas de hashrate, umbrales y temperaturas desde SQLite.",
+            "Soporta grupos eléctricos (ej. elevator_1) y botones inline de rango.",
         ],
-        examples=["/chart", "/chart 23", "/chart fleet 24h"],
-        notes=["Renderizado visual 100% en memoria."],
+        examples=["/chart", "/chart 23", "/chart elevator_1", "/chart fleet 24h"],
+        notes=["Renderizado visual 100% en memoria con selector inline 1h/6h/24h/7d."],
         danger_level="safe",
     ),
     "digest": CommandDefinition(
@@ -519,7 +520,7 @@ def lookup_command(needle: str) -> Optional[CommandDefinition]:
 
 def parse_help_callback(raw_data: str) -> Optional[HelpAction]:
     """Parse callback_data starting with 'help:' into a structured HelpAction.
-    
+
     Enforces strict grammar and maximum 64 bytes UTF-8 payload limit.
     Supported grammars:
     - help:nav:home

@@ -16,7 +16,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 # Ensure repository root is in sys.path so 'import app.xxx' works from both root and app/ directory
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -91,6 +91,7 @@ from app.governance import (
     ACTION_HOLD_TARGET,
     ACTION_RECOVERY_MAX_COOLING,
     ACTION_STEP_DOWN,
+    ACTION_STEP_DOWN_HW_ERRORS,
     ACTION_STEP_UP,
     BalancerConfig,
     BalancerDecision,
@@ -117,6 +118,7 @@ from app.governance import (
     fetch_latest_cooling_assessments,
     fetch_latest_efficiency_assessments,
     record_elevator_restart_circumstance,
+    render_hw_error_tripwire_card,
 )
 
 STATE_OK = "OK"
@@ -876,6 +878,9 @@ class MinerState:
     balancer_last_change_ts: float = 0.0          # Timestamp of last preset adjustment
     balancer_last_action: str = ""                # Last decision action string
     balancer_last_reason: str = ""                # Last decision reason
+    # Spec 062: HW Error Tripwire & Anti-Cascade Lock
+    hw_error_lock_until_ts: Optional[float] = None
+    hw_error_locked_preset: Optional[str] = None
     # Dynamic Vnish Overclock & Autoswitch State Discovery
     vnish_discovered_target_power_w: Optional[float] = None
     vnish_discovered_preset: Optional[str] = None
@@ -901,6 +906,8 @@ class MinerState:
     last_power_w: Optional[float] = None
     last_efficiency_j_th: Optional[float] = None
     last_responded: bool = False
+    # Spec 063: Ambient-Aware Thermal PID (GOV-02)
+    inlet_temp_c: Optional[float] = None
     # Spec 057: Intervention Governance & Vnish Libre Mode
     intervention_gov: Optional[Any] = None
 
@@ -1126,7 +1133,7 @@ def evaluate_auto_restart_candidate(
     """
     if not auto_restart_enabled:
         return False, "disabled", None
-    
+
     # Spec 057: Intervention Governance Guard
     from app.governance.intervention_policy import ACTION_REBOOT_L1, should_allow_intervention
     gov_check = gov if gov is not None else globals().get("_GLOBAL_INTERVENTION_GOV")
@@ -1524,6 +1531,7 @@ def send_telegram_photo(
     chat_id: str,
     photo_bytes: bytes,
     caption: Optional[str] = None,
+    reply_markup: Optional[Dict[str, Any]] = None,
     timeout: float = 15.0,
 ) -> bool:
     """Send a binary PNG image directly to Telegram via sendPhoto."""
@@ -1531,6 +1539,8 @@ def send_telegram_photo(
     data: Dict[str, Any] = {"chat_id": str(chat_id)}
     if caption:
         data["caption"] = caption
+    if reply_markup is not None:
+        data["reply_markup"] = json.dumps(reply_markup)
     files = {"photo": ("chart.png", photo_bytes, "image/png")}
     t0 = time.perf_counter()
     try:
@@ -1547,6 +1557,53 @@ def send_telegram_photo(
     except Exception as exc:
         ms = int((time.perf_counter() - t0) * 1000)
         log(f"TG SEND_PHOTO exc ms={ms} err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}")
+        return False
+
+
+def edit_telegram_photo(
+    bot_token: str,
+    chat_id: str,
+    message_id: int,
+    photo_bytes: bytes,
+    caption: Optional[str] = None,
+    reply_markup: Optional[Dict[str, Any]] = None,
+    timeout: float = 15.0,
+) -> bool:
+    """Edit an existing photo message in-place using editMessageMedia."""
+    url = f"https://api.telegram.org/bot{bot_token}/editMessageMedia"
+    media_obj: Dict[str, Any] = {
+        "type": "photo",
+        "media": "attach://file_0",
+    }
+    if caption:
+        media_obj["caption"] = caption
+    data: Dict[str, Any] = {
+        "chat_id": str(chat_id),
+        "message_id": int(message_id),
+        "media": json.dumps(media_obj),
+    }
+    if reply_markup is not None:
+        data["reply_markup"] = json.dumps(reply_markup)
+    files = {"file_0": ("chart.png", photo_bytes, "image/png")}
+    t0 = time.perf_counter()
+    try:
+        session = _HTTP_SESSION or requests.Session()
+        resp = session.post(url, data=data, files=files, timeout=timeout)
+        ms = int((time.perf_counter() - t0) * 1000)
+        if resp.status_code != 200:
+            body = _redact_telegram_token(resp.text or "", bot_token)[:200]
+            if "message is not modified" in body.lower():
+                if DBG_TELEGRAM:
+                    log(f"TG EDIT_PHOTO not modified ms={ms}")
+                return True
+            log(f"TG EDIT_PHOTO err http={resp.status_code} ms={ms} body=\"{body}\"")
+            return False
+        if DBG_TELEGRAM:
+            log(f"TG EDIT_PHOTO ok ms={ms}")
+        return True
+    except Exception as exc:
+        ms = int((time.perf_counter() - t0) * 1000)
+        log(f"TG EDIT_PHOTO exc ms={ms} err={type(exc).__name__}:{_redact_telegram_token(exc, bot_token)}")
         return False
 
 
@@ -2312,6 +2369,17 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                 balancer_last_change_ts=float(data.get("balancer_last_change_ts", 0.0)),
                 balancer_last_action=str(data.get("balancer_last_action", "")),
                 balancer_last_reason=str(data.get("balancer_last_reason", "")),
+                # Spec 062: HW Error Tripwire & Anti-Cascade Lock
+                hw_error_lock_until_ts=(
+                    float(data.get("hw_error_lock_until_ts"))
+                    if data.get("hw_error_lock_until_ts") is not None
+                    else None
+                ),
+                hw_error_locked_preset=(
+                    str(data.get("hw_error_locked_preset"))
+                    if data.get("hw_error_locked_preset") is not None
+                    else None
+                ),
                 # Dynamic Vnish Overclock & Autoswitch State Discovery
                 vnish_discovered_target_power_w=(
                     float(data.get("vnish_discovered_target_power_w"))
@@ -2392,6 +2460,11 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     else None
                 ),
                 last_responded=bool(data.get("last_responded", False)),
+                inlet_temp_c=(
+                    float(data.get("inlet_temp_c"))
+                    if data.get("inlet_temp_c") is not None
+                    else None
+                ),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2499,6 +2572,9 @@ def _build_state_payload(
             "balancer_last_change_ts": getattr(state, "balancer_last_change_ts", 0.0),
             "balancer_last_action": getattr(state, "balancer_last_action", ""),
             "balancer_last_reason": getattr(state, "balancer_last_reason", ""),
+            # Spec 062: HW Error Tripwire & Anti-Cascade Lock
+            "hw_error_lock_until_ts": getattr(state, "hw_error_lock_until_ts", None),
+            "hw_error_locked_preset": getattr(state, "hw_error_locked_preset", None),
             # Dynamic Vnish Overclock & Autoswitch State Discovery
             "vnish_discovered_target_power_w": getattr(state, "vnish_discovered_target_power_w", None),
             "vnish_discovered_preset": getattr(state, "vnish_discovered_preset", None),
@@ -2523,6 +2599,7 @@ def _build_state_payload(
             "last_power_w": getattr(state, "last_power_w", None),
             "last_efficiency_j_th": getattr(state, "last_efficiency_j_th", None),
             "last_responded": getattr(state, "last_responded", False),
+            "inlet_temp_c": getattr(state, "inlet_temp_c", None),
         }
     return payload
 
@@ -2709,11 +2786,35 @@ def execute_governor_cycle(
         fleet_timeout_seconds=float(config.get("fan_governor_fleet_timeout", 5.0)),
         max_consecutive_failures=int(config.get("fan_governor_max_failures", 3)),
         power_margin_w=float(config.get("fan_governor_power_margin_w", 120.0)),
+        # Spec 063: Ambient-Aware Thermal PID (GOV-02)
+        seasonal_enabled=bool(config.get("fan_governor_seasonal_enabled", True)),
+        winter_ambient_threshold_c=float(config.get("fan_governor_winter_ambient_threshold_c", 18.0)),
+        summer_ambient_threshold_c=float(config.get("fan_governor_summer_ambient_threshold_c", 28.0)),
+        winter_target_temp_c=float(config.get("fan_governor_winter_target_temp_c", 76.0)),
+        winter_min_duty_percent=int(config.get("fan_governor_winter_min_duty_pct", 45)),
+        summer_target_temp_c=float(config.get("fan_governor_summer_target_temp_c", 80.0)),
+        summer_min_duty_percent=int(config.get("fan_governor_summer_min_duty_pct", 65)),
+        summer_step_up_percent=int(config.get("fan_governor_summer_step_up_pct", 5)),
     )
 
     # Build (miner, state, decision) triples
     miner_decisions: list = []
     with state_lock:
+        # Spec 063: Ambient temperature aggregation across electrical groups and fleet
+        group_inlet_temps: Dict[str, list[float]] = {}
+        fleet_inlet_temps: list[float] = []
+        for m in miners:
+            m_name = m.get("name", "")
+            m_host = m.get("host", "")
+            m_port = m.get("port", 4028)
+            st = states.get(f"{m_name}|{m_host}:{m_port}")
+            inlet = getattr(st, "inlet_temp_c", None) if st else None
+            if inlet is not None and -10.0 <= inlet <= 60.0:
+                grp = m.get("electrical_group") or m.get("group")
+                if grp:
+                    group_inlet_temps.setdefault(str(grp), []).append(inlet)
+                fleet_inlet_temps.append(inlet)
+
         for miner in miners:
             name = miner.get("name", "")
             host = miner.get("host", "")
@@ -2760,6 +2861,14 @@ def execute_governor_cycle(
                     fleet_timeout_seconds=gov_cfg.fleet_timeout_seconds,
                     max_consecutive_failures=gov_cfg.max_consecutive_failures,
                     power_margin_w=float(miner.get("power_margin_w", gov_cfg.power_margin_w)),
+                    seasonal_enabled=gov_cfg.seasonal_enabled,
+                    winter_ambient_threshold_c=gov_cfg.winter_ambient_threshold_c,
+                    summer_ambient_threshold_c=gov_cfg.summer_ambient_threshold_c,
+                    winter_target_temp_c=gov_cfg.winter_target_temp_c,
+                    winter_min_duty_percent=gov_cfg.winter_min_duty_percent,
+                    summer_target_temp_c=gov_cfg.summer_target_temp_c,
+                    summer_min_duty_percent=gov_cfg.summer_min_duty_percent,
+                    summer_step_up_percent=gov_cfg.summer_step_up_percent,
                 )
 
             # Spec 044 C3: If silent mode active for this miner, constrain the Governor to
@@ -2788,7 +2897,27 @@ def execute_governor_cycle(
                     fleet_timeout_seconds=miner_gov_cfg.fleet_timeout_seconds,
                     max_consecutive_failures=miner_gov_cfg.max_consecutive_failures,
                     power_margin_w=miner_gov_cfg.power_margin_w,
+                    seasonal_enabled=miner_gov_cfg.seasonal_enabled,
+                    winter_ambient_threshold_c=miner_gov_cfg.winter_ambient_threshold_c,
+                    summer_ambient_threshold_c=miner_gov_cfg.summer_ambient_threshold_c,
+                    winter_target_temp_c=miner_gov_cfg.winter_target_temp_c,
+                    winter_min_duty_percent=miner_gov_cfg.winter_min_duty_percent,
+                    summer_target_temp_c=miner_gov_cfg.summer_target_temp_c,
+                    summer_min_duty_percent=miner_gov_cfg.summer_min_duty_percent,
+                    summer_step_up_percent=miner_gov_cfg.summer_step_up_percent,
                 )
+
+            # Spec 063: Determine effective ambient temperature for this miner
+            miner_grp = miner.get("electrical_group") or miner.get("group")
+            amb_temp: Optional[float] = None
+            if miner_grp and str(miner_grp) in group_inlet_temps and group_inlet_temps[str(miner_grp)]:
+                amb_temp = round(sum(group_inlet_temps[str(miner_grp)]) / len(group_inlet_temps[str(miner_grp)]), 2)
+            else:
+                own_inlet = getattr(state, "inlet_temp_c", None)
+                if own_inlet is not None and -10.0 <= own_inlet <= 60.0:
+                    amb_temp = own_inlet
+                elif fleet_inlet_temps:
+                    amb_temp = round(sum(fleet_inlet_temps) / len(fleet_inlet_temps), 2)
 
             gov_target_pwr = None if getattr(state, "silent_mode_active", False) else target_pwr
             decision = compute_governor_step(
@@ -2800,6 +2929,7 @@ def execute_governor_cycle(
                 config=miner_gov_cfg,
                 current_power_w=getattr(state, "governor_last_power_w", None),
                 target_power_w=gov_target_pwr,
+                ambient_temp_c=amb_temp,
             )
             miner_decisions.append((miner, state_key, decision))
 
@@ -2914,10 +3044,11 @@ def execute_governor_cycle(
                 pwr_tag = f" pwr={pwr_val:.0f}W"
             else:
                 pwr_tag = ""
+            season_tag = f" season={dec.seasonal_mode}" if getattr(dec, "seasonal_mode", None) else ""
             log(
                 f"[GOV{dr_tag}] miner={name_display} action={action} "
                 f"{duty_tag} target={new_duty}% "
-                f"holds={state.governor_holds} fails={state.governor_failures}{pwr_tag}{err_tag}"
+                f"holds={state.governor_holds} fails={state.governor_failures}{pwr_tag}{season_tag}{err_tag}"
             )
 
     return thermal_guard_events
@@ -2994,6 +3125,29 @@ def refresh_vnish_overclock_settings(
                                         f"preset={st.vnish_discovered_preset} top_preset={st.vnish_discovered_top_preset} "
                                         f"target_pwr={st.vnish_discovered_target_power_w}W switcher={st.vnish_discovered_switcher_enabled}"
                                     )
+                                # Spec 062: Anti-Cascade Post-Reboot Interlock
+                                # Enforce locked preset if firmware booted or switched to a higher preset
+                                if (
+                                    st.hw_error_lock_until_ts
+                                    and current_ts < st.hw_error_lock_until_ts
+                                    and st.hw_error_locked_preset
+                                    and st.vnish_discovered_preset
+                                ):
+                                    from app.governance.preset_balancer import find_preset_index
+                                    curr_p_idx = find_preset_index(st.vnish_discovered_preset)
+                                    lock_p_idx = find_preset_index(st.hw_error_locked_preset)
+                                    if curr_p_idx >= 0 and lock_p_idx >= 0 and curr_p_idx > lock_p_idx:
+                                        log(
+                                            f"[TRIPWIRE_INTERLOCK] miner={m_name} detecto preset superior ({st.vnish_discovered_preset}) "
+                                            f"a candado ({st.hw_error_locked_preset}). Forzando restauracion defensiva."
+                                        )
+                                        threading.Thread(
+                                            target=safe_set_miner_preset,
+                                            args=(m_host, vnish_pw, st.hw_error_locked_preset),
+                                            kwargs={"timeout": timeout},
+                                            daemon=True,
+                                            name=f"RestoreLock_{m_name}",
+                                        ).start()
                 except Exception as exc:
                     log(f"[WARN] Error procesando overclock de {m_name}: {exc}")
         except concurrent.futures.TimeoutError:
@@ -3057,6 +3211,9 @@ def execute_balancer_cycle(
     qa_mode: bool,
     db_path: str = "data/miner_alerts.db",
     force: bool = False,
+    send_telegram_fn: Optional[Callable] = None,
+    bot_token: str = "",
+    chat_id: str = "",
 ) -> List[Tuple[StabilityMetrics, BalancerDecision]]:
     """
     Spec 040: Dynamic Power & Preset Balancer execution cycle.
@@ -3099,6 +3256,9 @@ def execute_balancer_cycle(
         group_cascade_threshold=int(config.get("preset_balancer_group_cascade_threshold", 2)),
         group_cascade_window_s=float(config.get("preset_balancer_group_cascade_window_s", 1800.0)),
         min_thermal_headroom_c=float(config.get("preset_balancer_min_thermal_headroom_c", 4.0)),
+        hw_error_rate_threshold_pct=float(config.get("preset_balancer_hw_error_rate_threshold_pct", 0.5)),
+        hw_error_delta_threshold=int(config.get("preset_balancer_hw_error_delta_threshold", 200)),
+        hw_error_lock_hours=float(config.get("preset_balancer_hw_error_lock_hours", 48.0)),
     )
 
     vnish_pw = str(config.get("vnish_api_password", "admin"))
@@ -3140,6 +3300,7 @@ def execute_balancer_cycle(
             config=bal_cfg,
             group_metrics=metrics_list,
             max_preset_override=max_override,
+            current_time=now_ts,
         )
         decisions.append((m_metrics, decision))
 
@@ -3203,8 +3364,32 @@ def execute_balancer_cycle(
                 if decision.requires_write and (dry_run or write_ok):
                     st.balancer_preset = decision.target_preset
                     st.balancer_last_change_ts = now_ts
+                    if decision.action == ACTION_STEP_DOWN_HW_ERRORS:
+                        if not st.hw_error_lock_until_ts or st.hw_error_lock_until_ts <= now_ts:
+                            st.hw_error_lock_until_ts = now_ts + (bal_cfg.hw_error_lock_hours * 3600.0)
+                        st.hw_error_locked_preset = decision.target_preset
                 elif not st.balancer_preset:
                     st.balancer_preset = decision.current_preset
+
+            if decision.action == ACTION_STEP_DOWN_HW_ERRORS and (dry_run or write_ok):
+                try:
+                    card_msg = render_hw_error_tripwire_card(
+                        miner_name=m_name,
+                        electrical_group=m_metrics.electrical_group,
+                        hw_errors_10m=m_metrics.hw_errors_delta_10m,
+                        hw_error_rate_pct=m_metrics.hw_error_rate_pct,
+                        current_preset=decision.current_preset,
+                        target_preset=decision.target_preset,
+                        lock_hours=bal_cfg.hw_error_lock_hours,
+                    )
+                    tg_fn = send_telegram_fn or globals().get("send_telegram")
+                    b_tok = bot_token or str(config.get("telegram_bot_token", ""))
+                    c_id = chat_id or str(config.get("telegram_chat_id", ""))
+                    if tg_fn and b_tok and c_id and not qa_mode:
+                        tg_fn(b_tok, c_id, card_msg, "BALANCER", "hw_error_tripwire")
+                        log(f"[BALANCER] Telegram tripwire card sent for miner={m_name}")
+                except Exception as _tg_exc:
+                    log(f"[BALANCER_ERR] Failed sending tripwire telegram card: {_tg_exc}")
 
             dr_tag = " DRY" if dry_run else ""
             err_tag = f" err={write_err}" if write_err else ""
@@ -4170,7 +4355,11 @@ def _handle_callback_query(
             )
             return
         try:
-            from app.telegram.charts import fetch_miner_chart_data, render_miner_chart_png
+            from app.telegram.charts import (
+                fetch_miner_chart_data,
+                render_miner_chart_png,
+                build_chart_range_keyboard,
+            )
             db_path = resolve_db_path(config)
             chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=1.0)
             if chart_data["count"] == 0:
@@ -4185,7 +4374,8 @@ def _handle_callback_query(
                 return
             png_bytes = render_miner_chart_png(chart_data, hours=1.0)
             caption = f"📊 {chart_data['miner_name']} (1h) | Actual: {chart_data['rates'][-1]:.1f} TH/s | Max Temp: {chart_data['max_temp']:.0f}°C"
-            send_telegram_photo(bot_token, str(cb_chat_id), png_bytes, caption=caption)
+            kb = build_chart_range_keyboard(chart_data["miner_id"], current_hours=1.0)
+            send_telegram_photo(bot_token, str(cb_chat_id), png_bytes, caption=caption, reply_markup=kb)
         except Exception as exc:
             log(f"CB_CHART_ERR miner={action.miner_id} exc={exc}")
             send_telegram(
@@ -4360,6 +4550,117 @@ def _handle_callback_query(
                 build_settled_keyboard(f"🔕 Silenciado ({int(minutes)}m)"),
             )
         log(f"CB_SNOOZE miner={disp_name} minutes={minutes} until={snooze_until}")
+        return
+
+    # --- chart_range:<target>:<hours>: update chart in-place ---
+    if action.action_type == "chart_range":
+        if message_id is None:
+            answer_callback_query(bot_token, cb_id, text="⚠️ No se puede editar el gráfico.")
+            return
+
+        try:
+            hours = max(0.25, min(168.0, float(action.param or "1.0")))
+        except ValueError:
+            hours = 1.0
+
+        target = action.miner_id.strip()
+        target_lower = target.lower()
+
+        try:
+            from app.telegram.charts import (
+                fetch_miner_chart_data,
+                fetch_fleet_chart_data,
+                fetch_group_chart_data,
+                render_miner_chart_png,
+                render_fleet_chart_png,
+                render_group_chart_png,
+                build_chart_range_keyboard,
+            )
+            db_path = resolve_db_path(config)
+
+            if target_lower in ("fleet", "all"):
+                fleet_data = fetch_fleet_chart_data(db_path, miners, hours=hours)
+                if fleet_data["count"] == 0:
+                    answer_callback_query(
+                        bot_token, cb_id, text=f"No hay muestras de flota en {hours:.0f}h.", show_alert=True
+                    )
+                    return
+                png_bytes = render_fleet_chart_png(fleet_data, hours=hours)
+                caption = f"📊 Flota completa ({hours:.0f}h) — {fleet_data['count']} mineros activos"
+                kb = build_chart_range_keyboard("fleet", current_hours=hours)
+            else:
+                groups = {
+                    (_m.get("electrical_group") or _m.get("group") or "").strip().lower()
+                    for _m in miners
+                }
+                groups.discard("")
+                matched_group = None
+                for grp in groups:
+                    if target_lower == grp or target_lower == grp.replace("_", "") or target_lower in grp:
+                        matched_group = grp
+                        break
+
+                if matched_group:
+                    group_data = fetch_group_chart_data(db_path, matched_group, miners, hours=hours)
+                    if group_data["count"] == 0:
+                        answer_callback_query(
+                            bot_token,
+                            cb_id,
+                            text=f"No hay muestras para grupo {matched_group} en {hours:.0f}h.",
+                            show_alert=True,
+                        )
+                        return
+                    png_bytes = render_group_chart_png(group_data, hours=hours)
+                    caption = (
+                        f"📊 Grupo {matched_group.upper()} ({hours:.0f}h) — "
+                        f"{group_data['count']}/{group_data['total_miners']} mineros activos"
+                    )
+                    kb = build_chart_range_keyboard(matched_group, current_hours=hours)
+                else:
+                    miner = resolve_miner(target, miners)
+                    if not miner:
+                        answer_callback_query(
+                            bot_token, cb_id, text=f"Minero '{target}' no encontrado.", show_alert=True
+                        )
+                        return
+                    chart_data = fetch_miner_chart_data(db_path, miner["name"], hours=hours)
+                    if chart_data["count"] == 0:
+                        answer_callback_query(
+                            bot_token,
+                            cb_id,
+                            text=f"No hay muestras para {miner['name']} en {hours:.0f}h.",
+                            show_alert=True,
+                        )
+                        return
+                    png_bytes = render_miner_chart_png(chart_data, hours=hours)
+                    caption = (
+                        f"📊 {chart_data['miner_name']} ({hours:.0f}h) | "
+                        f"Actual: {chart_data['rates'][-1]:.1f} TH/s | "
+                        f"Max Temp: {chart_data['max_temp']:.0f}°C"
+                    )
+                    kb = build_chart_range_keyboard(chart_data["miner_id"], current_hours=hours)
+
+            ok = edit_telegram_photo(
+                bot_token,
+                str(cb_chat_id),
+                message_id,
+                png_bytes,
+                caption=caption,
+                reply_markup=kb,
+            )
+            if ok:
+                range_map = {1.0: "1h", 6.0: "6h", 24.0: "24h", 168.0: "7d"}
+                range_label = range_map.get(hours, f"{int(hours)}h" if hours < 24 else f"{int(hours / 24)}d")
+                answer_callback_query(bot_token, cb_id, text=f"Rango actualizado: {range_label}")
+            else:
+                answer_callback_query(
+                    bot_token, cb_id, text="Error al actualizar gráfico.", show_alert=True
+                )
+        except Exception as exc:
+            log(f"CB_CHART_RANGE_ERR target={target} exc={exc}")
+            answer_callback_query(
+                bot_token, cb_id, text=f"Error: {exc}", show_alert=True
+            )
         return
 
     # Unknown action type (forward-compat: just ack)
@@ -4976,6 +5277,8 @@ def main() -> None:
         )
         last_sample_ts: Dict[str, float] = {}
         last_retention_ts = process_start_ts
+        last_wal_passive_ts = process_start_ts
+        last_wal_truncate_date: Optional[str] = None
         last_chain_collection_ts = 0.0
         chain_telemetry_enabled = bool(config.get("chain_telemetry_enabled", True))
         chain_telemetry_interval_s = float(config.get("chain_telemetry_interval_s", 900.0))
@@ -5006,6 +5309,28 @@ def main() -> None:
                 f"endpoints={len(acq_endpoints)} "
                 f"workers={acq_config.workers}"
             )
+
+        # Spec 065: Pipeline declarativo de hooks — instanciación aditiva
+        # _poll_interval_seconds: valor inmutable del intervalo de configuración,
+        # usado como referencia en el modelo monotónico (time.sleep(poll_seconds) donde
+        # poll_seconds = max(0, _poll_interval_seconds - elapsed)).
+        _poll_interval_seconds: float = float(poll_seconds)
+        from app.core.engine import (
+            CoreSupervisoryEngine,
+            GovernanceInterlockHook,
+            PersistenceHook,
+            TimingGuardHook,
+        )
+        _supervisory_engine = CoreSupervisoryEngine(monitor_ctx)
+        _supervisory_engine.register_hook(TimingGuardHook(warn_threshold_seconds=25.0))
+        _supervisory_engine.register_hook(GovernanceInterlockHook())
+        _supervisory_engine.register_hook(PersistenceHook())
+        log(
+            f"SUPERVISORY_HOOKS pipeline_ready=true "
+            f"hooks={len(_supervisory_engine.registered_hooks)} "
+            f"stages=[PRE_TICK,GOVERNANCE,PERSISTENCE]"
+        )
+
         while True:
             tick_start = time.monotonic()
             now_ts = time.time()
@@ -5103,6 +5428,38 @@ def main() -> None:
                     if reboot_reason:
                         state.low_since_ts = None
                         state.hashboard_since_ts = None
+                        # Spec 062: Anti-Cascade Post-Reboot Interlock
+                        if (
+                            state.hw_error_lock_until_ts
+                            and now_ts < state.hw_error_lock_until_ts
+                            and state.hw_error_locked_preset
+                        ):
+                            log(
+                                f"[TRIPWIRE_INTERLOCK] miner={name} reinicio detectado ({reboot_reason}) "
+                                f"con candado activo hasta {state.hw_error_lock_until_ts:.0f} (objetivo={state.hw_error_locked_preset}). "
+                                "Programando restauracion defensiva de preset post-reboot."
+                            )
+                            def _async_restore_locked_preset(
+                                h=host,
+                                pw=vnish_api_password,
+                                pr=state.hw_error_locked_preset,
+                                nm=name,
+                            ):
+                                try:
+                                    time.sleep(15.0)
+                                    ok_p, err_p = safe_set_miner_preset(h, pw, pr)
+                                    if ok_p:
+                                        log(f"[TRIPWIRE_INTERLOCK] miner={nm} preset defensivo restaurado con exito a {pr}")
+                                    else:
+                                        log(f"[TRIPWIRE_INTERLOCK_ERR] miner={nm} fallo restaurando a {pr}: {err_p}")
+                                except Exception as _th_exc:
+                                    log(f"[TRIPWIRE_INTERLOCK_ERR] miner={nm} excepcion restaurando preset a {pr}: {_th_exc}")
+
+                            threading.Thread(
+                                target=_async_restore_locked_preset,
+                                daemon=True,
+                                name=f"TripwireRestore_{name}",
+                            ).start()
                         if chain_telemetry_enabled and event_store is not None and event_store.available:
                             threading.Thread(
                                 target=_async_collect_chain_telemetry,
@@ -5231,6 +5588,7 @@ def main() -> None:
                         state.last_fan_duty_percent = vnish_telemetry.fan_pwm_percent
                         state.last_power_w = vnish_telemetry.chain_power_w_total
                         state.last_efficiency_j_th = eff_j_th
+                        state.inlet_temp_c = vnish_telemetry.inlet_temp_c
                     else:
                         state.last_rate_ths = 0.0
                         state.last_active_boards = 0
@@ -5239,6 +5597,7 @@ def main() -> None:
                         state.last_fan_duty_percent = None
                         state.last_power_w = 0.0
                         state.last_efficiency_j_th = None
+                        state.inlet_temp_c = None
 
                 # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
                 cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
@@ -6633,6 +6992,9 @@ def main() -> None:
                     now_ts=now_ts,
                     qa_mode=qa_mode,
                     db_path=resolve_db_path(config),
+                    send_telegram_fn=send_telegram,
+                    bot_token=bot_token,
+                    chat_id=str(chat_id),
                 )
             except Exception as _bal_exc:
                 log(f"[BALANCER_ERR] Balancer cycle failed: {type(_bal_exc).__name__}: {_bal_exc}")
@@ -6821,6 +7183,33 @@ def main() -> None:
                                 name="ChainTelemetryScheduled",
                             ).start()
 
+                    # Spec 061: Periodic SQLite WAL Checkpoint Maintenance
+                    if event_store is not None and event_store.available:
+                        # Hourly PASSIVE checkpoint
+                        if (completed_ts - last_wal_passive_ts) >= 3600.0:
+                            last_wal_passive_ts = completed_ts
+                            try:
+                                cp_busy, cp_log, cp_done = event_store.checkpoint_wal("PASSIVE")
+                                log(
+                                    f"[EVENT_STORE] wal_checkpoint mode=PASSIVE "
+                                    f"busy={cp_busy} log={cp_log} checkpointed={cp_done}"
+                                )
+                            except Exception as _wal_exc:
+                                log(f"[EVENT_STORE_ERR] wal_checkpoint PASSIVE failed: {_wal_exc}")
+
+                        # Daily TRUNCATE checkpoint during off-peak window (03:00 - 05:00 UTC)
+                        now_utc = datetime.now(timezone.utc)
+                        today_utc_str = now_utc.strftime("%Y-%m-%d")
+                        if 3 <= now_utc.hour < 5 and last_wal_truncate_date != today_utc_str:
+                            last_wal_truncate_date = today_utc_str
+                            try:
+                                cp_busy, cp_log, cp_done = event_store.checkpoint_wal("TRUNCATE")
+                                log(
+                                    f"[EVENT_STORE] wal_checkpoint mode=TRUNCATE "
+                                    f"busy={cp_busy} log={cp_log} checkpointed={cp_done}"
+                                )
+                            except Exception as _wal_exc:
+                                log(f"[EVENT_STORE_ERR] wal_checkpoint TRUNCATE failed: {_wal_exc}")
 
                     if config.get("metrics_snapshot_enabled", False):
 
@@ -6876,6 +7265,22 @@ def main() -> None:
             first_tick = False
             if qa_mode or qa_verbose:
                 log_pid(f"[TICK] duration={time.monotonic() - tick_start:.3f}s qsize={_TELEGRAM_QUEUE.qsize()}")
+            # Spec 065: Pipeline de hooks + modelo monotónico de tiempo
+            # execute_tick() invoca PersistenceHook, GovernanceInterlockHook y TimingGuardHook.
+            # La persistencia de estado real (save_state) ya ocurrió en el loop; el PersistenceHook
+            # opera sobre el context.state_manager para telemetría del pipeline.
+            try:
+                _supervisory_engine.execute_tick(
+                    states=states,
+                    last_update_id_ref=last_update_id_ref,
+                    now_ts=now_ts,
+                    tick_sequence=tick_sequence,
+                )
+            except Exception as _hook_exc:
+                log(f"[WARN] SUPERVISORY_HOOKS execute_tick failed: {type(_hook_exc).__name__}: {_hook_exc}")
+            # Modelo monotónico: poll_seconds es el sleep restante del intervalo configurado.
+            # _poll_interval_seconds guarda el valor de configuración para el cálculo.
+            poll_seconds = max(0.0, _poll_interval_seconds - (time.monotonic() - tick_start))
             time.sleep(poll_seconds)
     except KeyboardInterrupt:
         log("Detenido por usuario")

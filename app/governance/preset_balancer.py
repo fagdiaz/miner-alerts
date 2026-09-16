@@ -14,6 +14,7 @@ ACTION_HOLD_STABLE = "HOLD_STABLE"
 ACTION_STEP_DOWN_RESTARTS = "STEP_DOWN_RESTARTS"
 ACTION_STEP_DOWN_CASCADE = "STEP_DOWN_CASCADE"
 ACTION_STEP_DOWN_THERMAL = "STEP_DOWN_THERMAL"
+ACTION_STEP_DOWN_HW_ERRORS = "STEP_DOWN_HW_ERRORS"
 ACTION_STEP_UP_OPTIMIZE = "STEP_UP_OPTIMIZE"
 ACTION_LOCKED_MAX = "LOCKED_MAX"
 ACTION_LOCKED_MIN = "LOCKED_MIN"
@@ -49,12 +50,17 @@ class StabilityMetrics:
     restarts_24h: int                  # Restarts in last 24 hours
     restarts_72h: int                  # Restarts in last 72 hours
     hours_since_last_restart: float    # Continuous uptime hours without restart
-    avg_hashrate_24h_ths: float        # Observed 24h average hashrate
-    downtime_minutes_24h: float        # Total downtime minutes in 24h
-    thermal_headroom_c: float          # Distance to 85.0°C thermal limit
+    avg_hashrate_24h_ths: float = 0.0        # Observed 24h average hashrate
+    downtime_minutes_24h: float = 0.0        # Total downtime minutes in 24h
+    thermal_headroom_c: float = 10.0          # Distance to 85.0°C thermal limit
     last_restart_epoch_s: float = 0.0  # Timestamp of most recent restart
     current_power_w: float = 0.0       # Current observed chain power in Watts
     current_temp_c: float = 0.0        # Current observed temperature in °C
+    # Spec 062: Hardware error tracking & tripwire state
+    hw_errors_delta_10m: int = 0       # HW errors accumulated in last 10m
+    hw_error_rate_pct: float = 0.0     # Percentage rate of HW errors
+    hw_error_lock_until_ts: Optional[float] = None  # Lockout timestamp against step-up
+    hw_error_locked_preset: Optional[str] = None    # Target preset locked by tripwire
 
 
 @dataclass(frozen=True)
@@ -68,6 +74,10 @@ class BalancerConfig:
     min_thermal_headroom_c: float = 4.0       # Minimum headroom below 85°C to allow step up
     default_max_preset: str = "2700W"         # Global default ceiling
     reboot_penalty_ths: float = 2.0           # Penalty per reboot in cost/benefit model
+    # Spec 062: HW error tripwire configuration
+    hw_error_rate_threshold_pct: float = 0.5  # HW error rate > 0.5% triggers tripwire
+    hw_error_delta_threshold: int = 200       # Min 200 HW errors in 10m to trigger tripwire
+    hw_error_lock_hours: float = 48.0         # Lockout duration in hours post-tripwire
 
 
 @dataclass(frozen=True)
@@ -116,11 +126,13 @@ def evaluate_balancer_step(
     ladder: Optional[List[PresetTier]] = None,
     group_metrics: Optional[List[StabilityMetrics]] = None,
     max_preset_override: Optional[str] = None,
+    now_ts: Optional[float] = None,
+    current_time: Optional[float] = None,
 ) -> BalancerDecision:
     """
     Pure mathematical decision engine for Dynamic Power & Preset Balancer.
     Calculates whether to step down, step up, or hold current preset based on
-    voltage sensitivity, restart frequency, and thermal headroom.
+    voltage sensitivity, restart frequency, thermal headroom, and hardware errors.
     Zero side-effects, zero I/O, 100% testable.
     """
     cfg = config or BalancerConfig()
@@ -151,6 +163,12 @@ def evaluate_balancer_step(
         reboot_penalty_ths=cfg.reboot_penalty_ths,
     )
 
+    current_time = current_time if current_time is not None else (now_ts if now_ts is not None else time.time())
+    is_hw_error_locked = (
+        metrics.hw_error_lock_until_ts is not None
+        and metrics.hw_error_lock_until_ts > current_time
+    )
+
     # 0. Thermal Overload Step-Down: if operating at or above 84.0°C (headroom <= 1.0°C)
     if metrics.thermal_headroom_c <= 1.0:
         if curr_idx > 0:
@@ -174,6 +192,60 @@ def evaluate_balancer_step(
                 target_preset=current_tier.name,
                 reason=f"Preset mínimo ({current_tier.name}) alcanzado pese a temperatura límite (>=84.0°C)",
                 requires_write=False,
+                estimated_effective_hashrate=eff_current,
+            )
+
+    # 0.1. Spec 062: HW Error Tripwire Step-Down (excessive errors in 10m window)
+    if (
+        metrics.hw_error_rate_pct >= cfg.hw_error_rate_threshold_pct
+        and metrics.hw_errors_delta_10m >= cfg.hw_error_delta_threshold
+    ):
+        if curr_idx > 0:
+            target_tier = tiers[curr_idx - 1]
+            return BalancerDecision(
+                action=ACTION_STEP_DOWN_HW_ERRORS,
+                miner_name=metrics.miner_name,
+                electrical_group=metrics.electrical_group,
+                current_preset=current_tier.name,
+                target_preset=target_tier.name,
+                reason=(
+                    f"Tripwire errores HW ({metrics.hw_errors_delta_10m} en 10m, "
+                    f"{metrics.hw_error_rate_pct:.2f}% >= {cfg.hw_error_rate_threshold_pct}%): "
+                    f"desescalando a {target_tier.name} con bloqueo de {cfg.hw_error_lock_hours:.0f}h"
+                ),
+                requires_write=True,
+                estimated_effective_hashrate=eff_current,
+            )
+        else:
+            return BalancerDecision(
+                action=ACTION_LOCKED_MIN,
+                miner_name=metrics.miner_name,
+                electrical_group=metrics.electrical_group,
+                current_preset=current_tier.name,
+                target_preset=current_tier.name,
+                reason=(
+                    f"Preset mínimo ({current_tier.name}) alcanzado pese a ráfaga de errores HW "
+                    f"({metrics.hw_errors_delta_10m} en 10m, {metrics.hw_error_rate_pct:.2f}%)"
+                ),
+                requires_write=False,
+                estimated_effective_hashrate=eff_current,
+            )
+
+    # 0.2. Spec 062: Lockout Enforcement against post-reboot firmware override
+    if is_hw_error_locked:
+        locked_preset_name = metrics.hw_error_locked_preset or current_tier.name
+        locked_idx = find_preset_index(locked_preset_name, tiers)
+        remaining_h = max(0.0, (metrics.hw_error_lock_until_ts - current_time) / 3600.0)
+        if locked_idx >= 0 and curr_idx > locked_idx:
+            target_tier = tiers[locked_idx]
+            return BalancerDecision(
+                action=ACTION_STEP_DOWN_HW_ERRORS,
+                miner_name=metrics.miner_name,
+                electrical_group=metrics.electrical_group,
+                current_preset=current_tier.name,
+                target_preset=target_tier.name,
+                reason=f"Candado errores HW activo ({remaining_h:.1f}h restantes): forzando retorno a {target_tier.name}",
+                requires_write=True,
                 estimated_effective_hashrate=eff_current,
             )
 
@@ -227,9 +299,10 @@ def evaluate_balancer_step(
                 estimated_effective_hashrate=eff_current,
             )
 
-    # 3. Individual Step-Up: long soak stability, zero restarts, comfortable thermal headroom
+    # 3. Individual Step-Up: long soak stability, zero restarts, comfortable thermal headroom, not under tripwire lock
     if (
-        metrics.hours_since_last_restart >= cfg.soak_hours_step_up
+        not is_hw_error_locked
+        and metrics.hours_since_last_restart >= cfg.soak_hours_step_up
         and metrics.restarts_72h == 0
         and metrics.thermal_headroom_c >= cfg.min_thermal_headroom_c
     ):
@@ -258,13 +331,19 @@ def evaluate_balancer_step(
             )
 
     # 4. Hold Stable: currently in balance
+    if is_hw_error_locked:
+        remaining_h = max(0.0, (metrics.hw_error_lock_until_ts - current_time) / 3600.0)
+        reason_msg = f"Operación retenida en {current_tier.name} por candado errores HW ({remaining_h:.1f}h restantes)"
+    else:
+        reason_msg = f"Operación estable en {current_tier.name} ({metrics.hours_since_last_restart:.0f}h uptime, {metrics.restarts_24h} reinicios 24h)"
+
     return BalancerDecision(
         action=ACTION_HOLD_STABLE,
         miner_name=metrics.miner_name,
         electrical_group=metrics.electrical_group,
         current_preset=current_tier.name,
         target_preset=current_tier.name,
-        reason=f"Operación estable en {current_tier.name} ({metrics.hours_since_last_restart:.0f}h uptime, {metrics.restarts_24h} reinicios 24h)",
+        reason=reason_msg,
         requires_write=False,
         estimated_effective_hashrate=eff_current,
     )
@@ -300,6 +379,7 @@ def extract_miner_stability_metrics(
     metrics_list: List[StabilityMetrics] = []
 
     db_samples: Dict[str, dict] = {}
+    db_samples_10m: Dict[str, dict] = {}
     restarts_by_miner: Dict[str, dict] = {}
 
     if db_file.exists():
@@ -355,7 +435,8 @@ def extract_miner_stability_metrics(
                 placeholders = ",".join("?" for _ in candidate_keys)
                 cursor.execute(
                     f"""
-                    SELECT rate_ths, max_temp_c, chain_power_w_total, elapsed_seconds
+                    SELECT rate_ths, max_temp_c, chain_power_w_total, elapsed_seconds,
+                           hw_errors_total, accepted_shares_total, observed_ts
                     FROM telemetry_samples
                     WHERE miner_key IN ({placeholders}) OR miner_name = ? OR host = ?
                     ORDER BY observed_ts DESC
@@ -366,6 +447,22 @@ def extract_miner_stability_metrics(
                 sample_row = cursor.fetchone()
                 if sample_row:
                     db_samples[str(m_name or m_host)] = dict(sample_row)
+
+                # Query sample from 10m ago (T - 10m) to calculate non-volatile delta
+                cursor.execute(
+                    f"""
+                    SELECT hw_errors_total, accepted_shares_total, observed_ts
+                    FROM telemetry_samples
+                    WHERE (miner_key IN ({placeholders}) OR miner_name = ? OR host = ?)
+                      AND observed_ts <= ?
+                    ORDER BY observed_ts DESC
+                    LIMIT 1
+                    """,
+                    (*candidate_keys, str(m_name or ""), str(m_host or ""), now - 600.0),
+                )
+                past_row = cursor.fetchone()
+                if past_row:
+                    db_samples_10m[str(m_name or m_host)] = dict(past_row)
 
         except Exception:
             pass
@@ -388,12 +485,41 @@ def extract_miner_stability_metrics(
                 break
 
         sample = db_samples.get(m_name) or db_samples.get(m_host) or {}
+        past_sample = db_samples_10m.get(m_name) or db_samples_10m.get(m_host) or {}
+
         max_temp = sample.get("max_temp_c")
         rate = float(sample.get("rate_ths") or 0.0)
         power = sample.get("chain_power_w_total")
         elapsed = sample.get("elapsed_seconds")
 
+        # Spec 062: Calculate 10m HW error delta and error rate from EventStore
+        hw_now = sample.get("hw_errors_total")
+        hw_past = past_sample.get("hw_errors_total")
+        acc_now = sample.get("accepted_shares_total")
+        acc_past = past_sample.get("accepted_shares_total")
+
+        hw_delta = 0
+        if hw_now is not None and hw_past is not None:
+            if hw_now >= hw_past:
+                hw_delta = int(hw_now - hw_past)
+            else:
+                hw_delta = int(hw_now)
+        elif hw_now is not None:
+            hw_delta = 0
+
+        acc_delta = 0
+        if acc_now is not None and acc_past is not None:
+            if acc_now >= acc_past:
+                acc_delta = int(acc_now - acc_past)
+            else:
+                acc_delta = int(acc_now)
+
+        total_work = acc_delta + hw_delta
+        hw_rate_pct = (hw_delta / total_work * 100.0) if total_work > 0 else 0.0
+
         # Fallback to in-memory state if db sample does not yet contain power, temp, or elapsed
+        hw_lock_ts = None
+        hw_locked_pr = None
         if states:
             for sk, st in states.items():
                 if m_name in sk or (m_host and m_host in sk):
@@ -403,6 +529,8 @@ def extract_miner_stability_metrics(
                         power = st.governor_last_power_w
                     if elapsed is None and getattr(st, "last_elapsed", None) is not None:
                         elapsed = st.last_elapsed
+                    hw_lock_ts = getattr(st, "hw_error_lock_until_ts", None)
+                    hw_locked_pr = getattr(st, "hw_error_locked_preset", None)
                     break
 
         headroom = max(0.0, 85.0 - max_temp) if max_temp is not None else 10.0
@@ -441,6 +569,10 @@ def extract_miner_stability_metrics(
                 last_restart_epoch_s=r_info["latest_ts"],
                 current_power_w=float(power or 0.0),
                 current_temp_c=float(max_temp or 0.0),
+                hw_errors_delta_10m=hw_delta,
+                hw_error_rate_pct=round(hw_rate_pct, 4),
+                hw_error_lock_until_ts=hw_lock_ts,
+                hw_error_locked_preset=hw_locked_pr,
             )
         )
 
@@ -742,3 +874,26 @@ def build_elevator_sensitivity_text(summaries: Dict[str, ElevatorSensitivitySumm
     return "\n".join(lines)
 
 
+def render_hw_error_tripwire_card(
+    miner_name: str,
+    electrical_group: str,
+    hw_errors_10m: int,
+    hw_error_rate_pct: float,
+    current_preset: str,
+    target_preset: str,
+    lock_hours: float = 48.0,
+) -> str:
+    """Render a Mobile-First vertical notification card for HW error tripwire (width <= 32 cols)."""
+    lines = [
+        "⚠️ *TRIPWIRE ERRORES HW*",
+        MOBILE_CARD_SEPARATOR,
+        f"• Minero: {miner_name}",
+        f"• Grupo: {electrical_group}",
+        f"• Errores 10m: {hw_errors_10m}",
+        f"• Tasa error: {hw_error_rate_pct:.2f}%",
+        f"• Ajuste: {current_preset} -> {target_preset}",
+        f"• Candado: {lock_hours:.0f}h activo",
+        "• Causa: Proteccion silicio",
+        MOBILE_CARD_SEPARATOR,
+    ]
+    return "\n".join(lines)

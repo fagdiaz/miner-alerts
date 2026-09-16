@@ -757,6 +757,53 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
   - [x] Conexión aditiva de `StateManager` y `MonitorContext` en `main()` de `miner_monitor.py` preservando el 100% de contratos `inspect.getsource(main)`.
   - [x] Suite de 7 pruebas unitarias en `tests/test_core_daemon.py` con **935/935 tests globales PASS** (cero fallos, cero regresiones). Milestone V5.0 certificado.
 
+### Iniciativa 13 — Resiliencia de Almacenamiento SQLite WAL Mode & Integrity Check (Spec 061 - Completada)
+- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Especificación: [`specs/061-sqlite-wal-integrity/spec.md`](../../specs/061-sqlite-wal-integrity/spec.md)
+- Evidencia: [`specs/061-sqlite-wal-integrity/evidence.md`](../../specs/061-sqlite-wal-integrity/evidence.md)
+- [x] Verificación de integridad asíncrona (`_integrity_check_worker`) en arranque sin retrasar el booteo ni el Startup Guard.
+- [x] Aislamiento automático de base corrupta a `data/miner_alerts_corrupt_<epoch>.db` y auto-recreación limpia del esquema v7 ante fallo de sectores tras apagón.
+- [x] Checkpointing determinista en Windows NTFS: `PRAGMA wal_checkpoint(PASSIVE)` horario y `PRAGMA wal_checkpoint(TRUNCATE)` diario fuera de horas pico.
+- [x] Techo blando de tamaño con `PRAGMA max_page_count = 262144` (~1 GB) para evitar saturación de disco.
+- [x] Pool de lectura multi-lector `create_readonly_connection` con manejo defensivo de `SQLITE_BUSY_SNAPSHOT` y reintentos con backoff exponencial (11 tests en `tests/test_event_store_wal_resilience.py`, 946/946 tests PASS).
+
+### Iniciativa 14 — HW Error Tripwire & Rollback Automático de Overclock (Spec 062 - Completado)
+- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Especificación: [`specs/062-hw-error-tripwire/spec.md`](../../specs/062-hw-error-tripwire/spec.md) | Evidencia: [`specs/062-hw-error-tripwire/evidence.md`](../../specs/062-hw-error-tripwire/evidence.md)
+- [x] Métrica de errores de hardware no volátil en `StabilityMetrics` (`hw_errors_delta_10m`, `hw_error_rate_pct`) calculada vía `EventStore`.
+- [x] Regla de disparo `ACTION_STEP_DOWN_HW_ERRORS` en `evaluate_balancer_step()` con umbral combinado (`hw_error_rate_pct >= 0.5%` AND `hw_errors_delta_10m >= 200`).
+- [x] Candado de 48 horas (`hw_error_lock_until_ts`, `hw_error_locked_preset`) persistido en `state.json` bloqueando re-escalado optimista.
+- [x] Interlock anti-cascada post-reboot L1/L2 impidiendo que el firmware restablezca 2700W por defecto.
+- [x] Tarjeta de notificación móvil en Telegram `<= 32` columnas (`render_hw_error_tripwire_card()`).
+### Iniciativa 15 — Gobernador Térmico con Conciencia Estacional (Spec 063 - Completado)
+- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Especificación: [`specs/063-ambient-thermal-pid/spec.md`](../../specs/063-ambient-thermal-pid/spec.md) | Evidencia: [`specs/063-ambient-thermal-pid/evidence.md`](../../specs/063-ambient-thermal-pid/evidence.md)
+- [x] Extracción de `inlet_temp_c` en `VnishTelemetry` y `normalize_vnish_stats()` desde `stats_response` existente sin requests HTTP adicionales.
+- [x] Extensión de `GovernorConfig` con parámetros estacionales (`winter_target_temp_c`, `summer_min_duty_percent`, etc.).
+- [x] Función pura `resolve_seasonal_parameters()` en `app/governance/fan_governor.py` con 3 guardarraíles inviolables.
+- [x] Adaptación dinámica de curvas en `compute_governor_step(..., ambient_temp_c=...)`.
+- [x] Agregación grupal de $T_{\text{amb}}$ y orquestación en `execute_governor_cycle()`.
+- [x] Suite completa de tests en `tests/test_fan_governor_seasonal.py`.
+### Iniciativa 16 — Telemetría Visual y Gráficos Multi-Miner en Telegram (Spec 064 - Completado)
+- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Especificación Activa: [`specs/064-multi-miner-charts/spec.md`](../../specs/064-multi-miner-charts/spec.md) | Evidencia: [`specs/064-multi-miner-charts/evidence.md`](../../specs/064-multi-miner-charts/evidence.md)
+- [x] Consultas y renderizado de gráficos por grupo eléctrico (`fetch_group_chart_data`, `render_group_chart_png`) en `charts.py`.
+- [x] Soporte para comandos `/chart elevator_1`, `/chart elevator_2`, `/chart fleet` en `ChartCommand`.
+- [x] Selector interactivo de rango con teclado inline `[ 1h ] [ 6h ] [ 24h ] [ 7d ]` (`build_chart_range_keyboard`).
+- [x] Acción `chart_range` en `parse_callback_data()` y dispatcher en `_handle_callback_query()`.
+- [x] Actualización in-place mediante `edit_telegram_photo()` con `editMessageMedia` y `attach://file_0`.
+- [x] Gestión estricta de memoria `matplotlib` (`Agg`, `plt.close(fig)`) y suite de pruebas de estrés (11 tests en `tests/test_multi_miner_charts.py`, 996/996 tests PASS).
+
+### Iniciativa 17 — Pipeline Declarativo de Hooks en CoreSupervisoryEngine (Spec 065 - ST-04 - Completado)
+- Especificación: [`specs/065-supervisory-hooks/spec.md`](../../specs/065-supervisory-hooks/spec.md) | Evidencia: [`specs/065-supervisory-hooks/evidence.md`](../../specs/065-supervisory-hooks/evidence.md)
+- [x] `HookStage` (enum `IntEnum` con 7 etapas ordenadas: PRE_TICK < ACQUISITION < DETECTION < GOVERNANCE < ACTUATOR < PERSISTENCE < POST_TICK).
+- [x] Clase base `SupervisoryHook` y dataclass `HookResult` (ok, duration_seconds, error).
+- [x] `CoreSupervisoryEngine.register_hook()` con ordenamiento determinista y `execute_tick()` con contención defensiva por hook individual.
+- [x] Garantía invariante: etapa `PERSISTENCE` siempre se ejecuta incluso si todas las etapas previas fallan.
+- [x] Hooks canónicos: `PersistenceHook` (PERSISTENCE), `GovernanceInterlockHook` (GOVERNANCE), `TimingGuardHook` (PRE_TICK).
+- [x] Integración aditiva en `main()` de `miner_monitor.py` con `_poll_interval_seconds` y modelo monotónico `poll_seconds = max(0.0, interval - elapsed); time.sleep(poll_seconds)`.
+- [x] Suite `tests/test_supervisory_hooks.py` con 47 tests (13 clases) cubriendo orden de etapas, contención, timing monotónico y hooks canónicos. **1043/1043 tests PASS** (0 regresiones).
+
 ---
 
 ## Governance

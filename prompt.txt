@@ -1,58 +1,31 @@
 # ==============================================================================
-# MINER ALERTS — HANDOFF POST SPEC 060 (MILESTONE V5.0 MODULARIZATION)
-# Modelo Recomendado: Gemini 3.8 Flash High (o Gemini 3.7 Flash High)
+# PROMPT DE CONTINUIDAD: INICIO SPEC 066 — COLD-BOOT FLEET GRACE PERIOD (PROP-001)
+# ==============================================================================
+# MODELO RECOMENDADO: Gemini 3.8 Flash High
+# Justificación: Lógica pura de dominio, temporizadores monotónicos, configuración
+# y pruebas unitarias aisladas sin riesgos de concurrencia de bajo nivel.
 # ==============================================================================
 
-## ESTADO ACTUAL DEL PROYECTO (2026-09-15)
+Contexto actual del proyecto:
+1. Línea Base Certificada: 1043 tests PASS (0 errores, 0 fallos, 0 regresiones en 33.9s).
+2. Servicio Windows 'MinerAlerts' en ejecución ininterrumpida (Estado: Running).
+3. Specs 061 a 065 100% completadas y documentadas en docs/audit/DEVELOPMENT_LOG.md:
+   - Spec 061: Resiliencia SQLite WAL Mode & Integrity Check (ST-03).
+   - Spec 062: HW Error Tripwire & Rollback de Overclock (GOV-01).
+   - Spec 063: Gobernador Térmico con Conciencia Estacional (GOV-02).
+   - Spec 064: Telemetría Visual y Gráficos Multi-Miner en Telegram (UX-01).
+   - Spec 065: Pipeline Declarativo de Hooks en CoreSupervisoryEngine (ST-04).
 
-**Milestone V5.0 Arquitectura y Modularización COMPLETADO Y CERTIFICADO.**
-- **935/935 tests PASS** en ~12.7s (0 fallos, 0 errores, 0 regresiones).
-- Servicio Windows `MinerAlerts` → **Running** (PID activo, StartType Automatic).
-- Sintaxis verificada en todos los módulos con `py_compile`.
-- Jerarquía estricta anti-deadlock L1 (`state_lock` en memoria) -> L2 (`_SAVE_STATE_LOCK` I/O disco con fsync fuera de L1).
+Próxima Spec Prioritaria:
+- Spec 066: Cold-Boot Fleet Grace Period Post-Arranque (PROP-001, Prioridad P1 Alta).
+  * Objetivo: Suprimir falsas alarmas OFFLINE / LOW y postergar la tarjeta de STARTUP
+    durante el booteo y autotuning de los mineros ASIC tras reinicio del host o retorno de energía.
+  * Parámetro: "startup_fleet_grace_period_seconds": 180 (por defecto 180s).
+  * Consolidación: La tarjeta STARTUP se emite cuando toda la flota alcanza >= 50 TH/s o tras 180s.
+  * Preservar estrictamente los contratos inspect.getsource(main) en app/miner_monitor.py.
 
----
-
-## RESUMEN DE COMPONENTES IMPLEMENTADOS EN LA MODULARIZACIÓN V5.0
-
-1. **Fase 0 — Quick Wins (QW-01 a QW-04)**:
-   - Rotación automática de logs (`logs/out.log`) con `RotatingFileHandler` (50 MB / 3 backups).
-   - Purga de wrappers legados de ayuda delegando en `app/telegram/help_center.py`.
-   - Extracción de serialización atómica en `_build_state_payload()` fuera de `state_lock`.
-
-2. **Fase 1 — Spec 058: Desacoplamiento de Telegram Command Center & Dispatcher (MT-01)**:
-   - Extracción del despachador procedural (-2,669 LOC).
-   - Paquete `app/telegram/`: `router.py`, `poller.py`, `context.py`, y `commands/` (`status`, `fans`, `reboot`, `interventions`, `diagnostics`, `maintenance`, `help`).
-   - Suite `tests/test_telegram_dispatcher.py` (+8 tests, 910 PASS).
-
-3. **Fase 2 — Spec 059: Protocolos de Red y Clientes de Hardware (MT-02)**:
-   - Extracción del protocolo TCP Socket 4028 (`app/network/cgminer_client.py`).
-   - Extracción de Hashcore Toolkit CLI (`app/network/hashcore_client.py`) con flags windowless (`CREATE_NO_WINDOW`) y guardas QA.
-   - Formalización de API REST de Vnish (`app/network/vnish_client.py`) con context manager y timeouts de 2.5s.
-   - Exportador unificado `app/network/__init__.py`.
-   - Suite `tests/test_network_clients.py` (+18 tests, 928 PASS).
-
-4. **Fase 3 — Spec 060: Core Daemon & State Architecture (ST-01 / ST-02 - V5.0)**:
-   - `app/core/state_manager.py`: `StateManager` con jerarquía L1->L2 y fsync aislado.
-   - `app/core/context.py`: `MonitorContext` contenedor de inyección de dependencias (DI).
-   - `app/core/engine.py`: `CoreSupervisoryEngine` con hooks secuenciales por tick y `TickResult`.
-   - Conexión aditiva en `main()` de `app/miner_monitor.py` preservando el 100% de contratos `inspect.getsource(main)`.
-   - Suite `tests/test_core_daemon.py` (+7 tests, 935 PASS).
-
----
-
-## PRÓXIMAS ACCIONES DISPONIBLES
-
-1. **Gestión de Commits y Release**:
-   - Organizar y comitear los cambios modulares agrupados por spec (`Spec 058`, `Spec 059`, `Spec 060` y mejoras de estabilización) siguiendo las normas del repositorio.
-   - Nota: NUNCA agregar `app/config.json` ni `app/state.json`.
-
-2. **Próximas Iniciativas del Backlog / Roadmap**:
-   - Consultar `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md` y `docs/speckit/ROADMAP.md` para prioridades post-V5.0:
-     - Réplicas de lectura SQLite (`event_store` WAL mode o réplica para Grafana).
-     - Exportador Prometheus / métricas OpenTelemetry desacopladas.
-     - Dashboard Web ligero o integración de alarmas multi-canal.
-
-3. **Instrucciones para la siguiente sesión**:
-   - Para tareas estándar de código, tests, commits o documentación: usar **Gemini 3.8 Flash High**.
-   - Si se requiere modificar concurrencia en tiempo real de hilos de background en producción o FSM críticas: escalar a **Claude Sonnet 4.6 (Thinking)**.
+Instrucciones de Arranque:
+1. Actualizar .specify/feature.json apuntando a "specs/066-cold-boot-grace".
+2. Crear specs/066-cold-boot-grace/ con spec.md, plan.md y tasks.md.
+3. Implementar en app/miner_monitor.py y app/config.example.json.
+4. Crear suite tests/test_startup_grace_period.py y verificar 1043+ tests PASS.

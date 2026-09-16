@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/060-core-daemon-state-architecture/plan.md` (Release V5.0 Architecture Milestone Complete; Core Daemon & State Architecture)
+`specs/065-supervisory-hooks/plan.md` (Spec 065: Pipeline Declarativo de Hooks en CoreSupervisoryEngine ST-04)
 
 Active production observation gate:
-`specs/060-core-daemon-state-architecture/plan.md` (Release Gate APPROVED; 935 tests PASS, Windows Service RUNNING)
+`specs/065-supervisory-hooks/plan.md` (Implementation Stage; Baseline 996 tests PASS, Windows Service RUNNING)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

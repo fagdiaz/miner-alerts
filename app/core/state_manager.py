@@ -227,6 +227,9 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "balancer_last_change_ts": getattr(state, "balancer_last_change_ts", 0.0),
         "balancer_last_action": getattr(state, "balancer_last_action", ""),
         "balancer_last_reason": getattr(state, "balancer_last_reason", ""),
+        # Spec 062: HW Error Tripwire & Anti-Cascade Lock
+        "hw_error_lock_until_ts": getattr(state, "hw_error_lock_until_ts", None),
+        "hw_error_locked_preset": getattr(state, "hw_error_locked_preset", None),
         # Dynamic Vnish Overclock & Autoswitch State Discovery
         "vnish_discovered_target_power_w": getattr(state, "vnish_discovered_target_power_w", None),
         "vnish_discovered_preset": getattr(state, "vnish_discovered_preset", None),
@@ -251,4 +254,5 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "last_power_w": getattr(state, "last_power_w", None),
         "last_efficiency_j_th": getattr(state, "last_efficiency_j_th", None),
         "last_responded": getattr(state, "last_responded", False),
+        "inlet_temp_c": getattr(state, "inlet_temp_c", None),
     }

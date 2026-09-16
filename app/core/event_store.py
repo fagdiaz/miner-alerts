@@ -1,10 +1,11 @@
 import json
+import shutil
 import sqlite3
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Mapping, Optional
+from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 from app.telegram.help_center import visible_line_width, wrap_mobile_lines
 
@@ -47,6 +48,7 @@ class EventStore:
         db_path: Path,
         *,
         on_error: Optional[Callable[[str], None]] = None,
+        async_check: bool = True,
     ) -> None:
         self.path = Path(db_path).resolve()
         self._on_error = on_error
@@ -54,7 +56,11 @@ class EventStore:
         self._connection: Optional[sqlite3.Connection] = None
         self._last_error: Optional[str] = None
         self._last_error_log_ts: Dict[str, float] = {}
-        self._initialize()
+        self._integrity_checked: bool = False
+        self._integrity_failed: bool = False
+        self._integrity_quarantine_path: Optional[Path] = None
+        self._integrity_thread: Optional[threading.Thread] = None
+        self._initialize(spawn_check=async_check)
 
     @property
     def available(self) -> bool:
@@ -73,6 +79,29 @@ class EventStore:
             row = connection.execute("PRAGMA user_version").fetchone()
         return int(row[0]) if row else 0
 
+    @property
+    def integrity_checked(self) -> bool:
+        return self._integrity_checked
+
+    @property
+    def integrity_failed(self) -> bool:
+        return self._integrity_failed
+
+    @property
+    def integrity_quarantine_path(self) -> Optional[Path]:
+        return self._integrity_quarantine_path
+
+    def wait_for_integrity_check(self, timeout: float = 5.0) -> bool:
+        """Wait for the asynchronous integrity check thread to complete.
+
+        Returns True if the check completed within the timeout, False otherwise.
+        """
+        thread = self._integrity_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=timeout)
+            return not thread.is_alive()
+        return True
+
     def _report_error(self, operation: str, exc: BaseException) -> None:
         message = f"EVENT_STORE operation={operation} error={type(exc).__name__}:{exc}"
         self._last_error = message
@@ -82,9 +111,11 @@ class EventStore:
             self._last_error_log_ts[operation] = now
             self._on_error(message)
 
-    def _initialize(self) -> None:
+    def _initialize(self, spawn_check: bool = True) -> None:
+        connection = None
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if str(self.path) != ":memory:" and self.path.name != ":memory:":
+                self.path.parent.mkdir(parents=True, exist_ok=True)
             connection = sqlite3.connect(
                 str(self.path),
                 timeout=5.0,
@@ -95,12 +126,111 @@ class EventStore:
             connection.execute("PRAGMA synchronous=NORMAL")
             connection.execute("PRAGMA busy_timeout=5000")
             connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA max_page_count=262144")
             self._connection = connection
             self._create_schema()
-            self._last_error = None
+            if not self._integrity_failed:
+                self._last_error = None
+            if spawn_check:
+                self._start_async_integrity_check()
         except (OSError, sqlite3.Error) as exc:
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            if self._connection is not None:
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
             self._connection = None
             self._report_error("initialize", exc)
+            if self.path.exists() and spawn_check and isinstance(exc, sqlite3.DatabaseError):
+                try:
+                    self._handle_corruption(f"Startup initialization error: {type(exc).__name__}: {exc}")
+                except Exception:
+                    pass
+
+    def _start_async_integrity_check(self) -> None:
+        if str(self.path) == ":memory:" or self.path.name == ":memory:":
+            self._integrity_checked = True
+            self._integrity_failed = False
+            return
+        thread = threading.Thread(
+            target=self._run_integrity_check,
+            name="EventStoreIntegrityWorker",
+            daemon=True,
+        )
+        self._integrity_thread = thread
+        thread.start()
+
+    def _run_integrity_check(self) -> None:
+        corrupted = False
+        reason = ""
+        ro_conn = None
+        try:
+            resolved = self.path.resolve()
+            if not resolved.exists():
+                self._integrity_checked = True
+                return
+            uri = f"file:{resolved.as_posix()}?mode=ro"
+            ro_conn = sqlite3.connect(uri, uri=True, timeout=5.0)
+            cursor = ro_conn.execute("PRAGMA quick_check")
+            rows = cursor.fetchall()
+            if not rows or len(rows) != 1 or rows[0][0] != "ok":
+                corrupted = True
+                reason = "; ".join(str(r[0]) for r in rows) if rows else "empty quick_check result"
+        except (sqlite3.DatabaseError, sqlite3.OperationalError, OSError) as exc:
+            corrupted = True
+            reason = f"{type(exc).__name__}: {exc}"
+        finally:
+            if ro_conn is not None:
+                try:
+                    ro_conn.close()
+                except Exception:
+                    pass
+
+        if corrupted:
+            self._handle_corruption(reason)
+        else:
+            self._integrity_checked = True
+            self._integrity_failed = False
+
+    def _handle_corruption(self, reason: str) -> None:
+        with self._lock:
+            if self._connection is not None:
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
+                self._connection = None
+
+            epoch = int(time.time())
+            quarantine_path = self.path.parent / f"{self.path.stem}_corrupt_{epoch}{self.path.suffix}"
+            try:
+                if self.path.exists():
+                    shutil.move(str(self.path), str(quarantine_path))
+                wal_path = Path(str(self.path) + "-wal")
+                if wal_path.exists():
+                    shutil.move(str(wal_path), str(quarantine_path) + "-wal")
+                shm_path = Path(str(self.path) + "-shm")
+                if shm_path.exists():
+                    shutil.move(str(shm_path), str(quarantine_path) + "-shm")
+            except OSError as move_exc:
+                self._report_error("quarantine_move", move_exc)
+
+            self._integrity_failed = True
+            self._integrity_quarantine_path = quarantine_path
+            self._integrity_checked = True
+
+            err = RuntimeError(
+                f"DATABASE CORRUPTION DETECTED: {reason}. "
+                f"Quarantined to {quarantine_path}. Recreating clean database."
+            )
+            self._report_error("integrity_corruption", err)
+
+            self._initialize(spawn_check=False)
 
     def _create_schema(self) -> None:
         connection = self._connection
@@ -1090,12 +1220,49 @@ class EventStore:
             row = connection.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()
         return int(row["count"])
 
+    def checkpoint_wal(self, mode: str = "PASSIVE") -> Tuple[int, int, int]:
+        """Execute PRAGMA wal_checkpoint(<mode>) under instance lock.
+
+        Supported modes: PASSIVE, FULL, RESTART, TRUNCATE.
+        Returns: (busy, log_frames, checkpointed_frames).
+        """
+        valid_modes = {"PASSIVE", "FULL", "RESTART", "TRUNCATE"}
+        mode_upper = mode.strip().upper()
+        if mode_upper not in valid_modes:
+            raise ValueError(f"Invalid wal_checkpoint mode: {mode}. Must be one of {valid_modes}")
+
+        connection = self._connection
+        if connection is None:
+            return (1, 0, 0)
+
+        with self._lock:
+            try:
+                cursor = connection.execute(f"PRAGMA wal_checkpoint({mode_upper})")
+                row = cursor.fetchone()
+                if row:
+                    return (int(row[0]), int(row[1]), int(row[2]))
+                return (0, 0, 0)
+            except sqlite3.OperationalError as exc:
+                self._report_error(f"checkpoint_wal_{mode_upper.lower()}", exc)
+                return (1, -1, -1)
+
     def close(self) -> None:
+        if self._integrity_thread is not None and self._integrity_thread.is_alive():
+            self._integrity_thread.join(timeout=1.0)
         connection = self._connection
         self._connection = None
         if connection is not None:
             with self._lock:
-                connection.close()
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    def __enter__(self) -> "EventStore":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # Spec 023 T012 — Assessment persistence (idempotent by replay key)
@@ -1610,3 +1777,64 @@ def render_reboot_decision(decision: Optional[Dict[str, Any]]) -> str:
     lines.append(f"• Fecha: {evaluated}")
     lines.append(MOBILE_CARD_SEPARATOR)
     return "\n".join(lines)
+
+
+def _is_busy_or_snapshot_error(exc: sqlite3.OperationalError) -> bool:
+    """Determine whether an OperationalError is caused by database lock or snapshot conflict."""
+    error_name = getattr(exc, "sqlite_errorname", "") or ""
+    error_code = getattr(exc, "sqlite_errorcode", None)
+    err_str = str(exc).lower()
+    if "snapshot" in err_str:
+        return True
+    if error_name in ("SQLITE_BUSY", "SQLITE_BUSY_SNAPSHOT", "SQLITE_LOCKED"):
+        return True
+    if error_code in (5, 517, 6):
+        return True
+    if "locked" in err_str or "busy" in err_str:
+        return True
+    return False
+
+
+def create_readonly_connection(
+    db_path: Union[str, Path],
+    timeout: float = 3.0,
+) -> sqlite3.Connection:
+    """Create an isolated read-only SQLite connection using URI mode=ro."""
+    resolved_path = Path(db_path).resolve()
+    if not resolved_path.exists():
+        raise FileNotFoundError(f"Database file does not exist: {resolved_path}")
+    uri = f"file:{resolved_path.as_posix()}?mode=ro"
+    connection = sqlite3.connect(
+        uri,
+        uri=True,
+        timeout=timeout,
+        check_same_thread=False,
+    )
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA query_only = ON")
+    except sqlite3.Error:
+        pass
+    return connection
+
+
+def execute_readonly_with_retry(
+    cursor_or_conn: Union[sqlite3.Cursor, sqlite3.Connection],
+    sql: str,
+    params: Sequence[Any] = (),
+    *,
+    max_retries: int = 3,
+    initial_backoff: float = 0.1,
+) -> sqlite3.Cursor:
+    """Execute a read-only query with exponential backoff retries on SQLITE_BUSY_SNAPSHOT / locks."""
+    attempt = 0
+    while True:
+        try:
+            return cursor_or_conn.execute(sql, params)
+        except sqlite3.OperationalError as exc:
+            if _is_busy_or_snapshot_error(exc) and attempt < max_retries:
+                sleep_sec = initial_backoff * (2 ** attempt)
+                time.sleep(sleep_sec)
+                attempt += 1
+                continue
+            raise

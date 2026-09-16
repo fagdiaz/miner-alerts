@@ -72,9 +72,12 @@ from app.telegram.fleet_cards import (
 )
 
 from app.telegram.charts import (
+    build_chart_range_keyboard,
     fetch_fleet_chart_data,
+    fetch_group_chart_data,
     fetch_miner_chart_data,
     render_fleet_chart_png,
+    render_group_chart_png,
     render_miner_chart_png,
 )
 from app.telegram.daily_digest import (
@@ -145,6 +148,7 @@ __all__ = [
     "build_alert_action_buttons",
     "build_alert_keyboard",
     "build_callback_data",
+    "build_chart_range_keyboard",
     "build_confirmation_keyboard",
     "build_diagnostic_keyboard",
     "build_inline_keyboard",
@@ -155,6 +159,7 @@ __all__ = [
     "escape_markdown",
     "fetch_daily_digest_metrics",
     "fetch_fleet_chart_data",
+    "fetch_group_chart_data",
     "fetch_miner_chart_data",
     "format_daily_digest",
     "format_snooze_expiry_time",
@@ -175,6 +180,7 @@ __all__ = [
     "render_alerts_view",
     "render_fleet_chart_png",
     "render_fleet_status_card",
+    "render_group_chart_png",
     "render_help_category",
 
     "render_help_command_detail",

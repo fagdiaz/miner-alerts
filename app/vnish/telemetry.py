@@ -11,11 +11,13 @@ _CHAIN_CONSUMPTION_RE = re.compile(r"^chain_consumption(\d+)$", re.IGNORECASE)
 _CHAIN_FREQUENCY_RE = re.compile(r"^freq_avg(\d+)$", re.IGNORECASE)
 _CHAIN_HW_RE = re.compile(r"^chain_hw(\d+)$", re.IGNORECASE)
 _FAN_RPM_RE = re.compile(r"^fan(\d+)$", re.IGNORECASE)
+_INLET_TEMP_RE = re.compile(r"^temp(?:_pcb)?_in(?:let)?(?:_?\d+)?$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
 class VnishTelemetry:
     max_temp_c: Optional[float] = None
+    inlet_temp_c: Optional[float] = None
     chain_voltage_mv_avg: Optional[float] = None
     chain_power_w_total: Optional[float] = None
     frequency_mhz_avg: Optional[float] = None
@@ -28,6 +30,7 @@ class VnishTelemetry:
     def as_dict(self) -> dict[str, Any]:
         return {
             "max_temp_c": self.max_temp_c,
+            "inlet_temp_c": self.inlet_temp_c,
             "chain_voltage_mv_avg": self.chain_voltage_mv_avg,
             "chain_power_w_total": self.chain_power_w_total,
             "frequency_mhz_avg": self.frequency_mhz_avg,
@@ -87,6 +90,7 @@ def normalize_vnish_stats(
     """Extract bounded board-level evidence from a cgminer/Vnish stats response."""
     root = response.get("STATS") if isinstance(response, dict) and "STATS" in response else response
     temperatures: list[float] = []
+    inlet_temps: list[float] = []
     voltages: dict[str, float] = {}
     consumption: dict[str, float] = {}
     frequencies: dict[str, float] = {}
@@ -117,6 +121,10 @@ def normalize_vnish_stats(
             if not values:
                 continue
 
+            if _INLET_TEMP_RE.fullmatch(key):
+                inlet_temps.extend(value for value in values if -10.0 <= value <= 60.0)
+                continue
+
             if "temp" in key:
                 temperatures.extend(value for value in values if 0.0 < value < 250.0)
 
@@ -145,7 +153,7 @@ def normalize_vnish_stats(
 
     flags: list[str] = []
     telemetry_fields_found = any(
-        (temperatures, voltages, consumption, frequencies, hw_errors, fan_rpms, fan_pwm_values)
+        (temperatures, voltages, consumption, frequencies, hw_errors, fan_rpms, fan_pwm_values, inlet_temps)
     )
     if not telemetry_fields_found:
         flags.append("telemetry_incomplete")
@@ -163,6 +171,7 @@ def normalize_vnish_stats(
 
     return VnishTelemetry(
         max_temp_c=round(max_temp, 2) if max_temp is not None else None,
+        inlet_temp_c=_average(inlet_temps),
         chain_voltage_mv_avg=_average(list(voltages.values())),
         chain_power_w_total=round(sum(consumption.values()), 3) if consumption else None,
         frequency_mhz_avg=_average(list(frequencies.values())),

@@ -94,7 +94,7 @@ class MonitorContextTests(unittest.TestCase):
     """Unit tests for MonitorContext container and factory."""
 
     def test_build_monitor_context_valid(self) -> None:
-        state_path = Path("state.json")
+        state_path = Path(tempfile.gettempdir()) / "test_state.json"
         lock = threading.RLock()
         sm = StateManager(state_path, lock)
         q = queue.Queue(maxsize=10)
@@ -117,7 +117,7 @@ class MonitorContextTests(unittest.TestCase):
         self.assertEqual("admin", ctx.vnish_api_password)
 
     def test_build_monitor_context_requires_fields(self) -> None:
-        state_path = Path("state.json")
+        state_path = Path(tempfile.gettempdir()) / "test_state.json"
         lock = threading.RLock()
         sm = StateManager(state_path, lock)
         q = queue.Queue(maxsize=10)
@@ -139,7 +139,7 @@ class CoreSupervisoryEngineTests(unittest.TestCase):
     """Unit tests for CoreSupervisoryEngine orchestrator and hooks."""
 
     def test_engine_registers_and_runs_hook(self) -> None:
-        state_path = Path("state.json")
+        state_path = Path(tempfile.gettempdir()) / "test_state.json"
         lock = threading.RLock()
         sm = StateManager(state_path, lock)
         q = queue.Queue(maxsize=10)

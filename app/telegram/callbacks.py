@@ -27,7 +27,7 @@ class CallbackAction:
 
 def parse_callback_data(raw_data: str) -> Optional[CallbackAction]:
     """Parse a callback_data string into a structured CallbackAction.
-    
+
     Supported formats:
     - diag:<miner_id>
     - chart:<miner_id>
@@ -39,7 +39,7 @@ def parse_callback_data(raw_data: str) -> Optional[CallbackAction]:
     """
     if not raw_data or not isinstance(raw_data, str):
         return None
-    
+
     parts = raw_data.strip().split(":")
     tag = parts[0]
 
@@ -49,9 +49,9 @@ def parse_callback_data(raw_data: str) -> Optional[CallbackAction]:
         if len(parts) == 2 and parts[1]:
             return CallbackAction(action_type=tag, miner_id=parts[1])
         return None
-    elif tag == "snz":
+    elif tag in ("snz", "chart_range"):
         if len(parts) == 3 and parts[1] and parts[2]:
-            return CallbackAction(action_type="snz", miner_id=parts[1], param=parts[2])
+            return CallbackAction(action_type=tag, miner_id=parts[1], param=parts[2])
         return None
     elif tag == "rb_cfm":
         if len(parts) == 3 and parts[1] and parts[2]:
@@ -74,6 +74,8 @@ def build_callback_data(
         res = f"{action_type}:{miner_id}"
     elif action_type == "snz":
         res = f"snz:{miner_id}:{param or '60'}"
+    elif action_type == "chart_range":
+        res = f"chart_range:{miner_id}:{param or '1'}"
     elif action_type == "rb_cfm":
         res = f"rb_cfm:{token or ''}:{miner_id}"
     else:

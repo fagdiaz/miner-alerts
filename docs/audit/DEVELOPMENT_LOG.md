@@ -3,6 +3,28 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Auditoría Arquitectónica Exhaustiva & Enriquecimiento del Horizonte V5.1 (Specs 068 a 070)
+
+* **Objetivo**: Auditoría técnica y blindaje arquitectónico integral de las especificaciones pendientes (Spec 068, Spec 069 y Spec 070) sin escritura de código prematuro, resolviendo riesgos de concurrencia Windows, límites de latencia SQLite WAL y desacoplamiento de tests de inspección textual.
+* **Análisis y Mejoras Arquitectónicas Plasmadas**:
+  - **Spec 068 (Canal IPC Monitor ↔ Watchdog en Windows - PROP-007)**:
+    * Evaluación comparativa de transporte: Named Pipes nativos de Windows (`\\.\pipe\MinerAlertsWatchdog`) vía `ctypes.windll.kernel32` (para cero dependencias de paquetes binarios en el venv) con arquitectura dual de fallback a Socket TCP Loopback (`127.0.0.1:4029`).
+    * Protocolo Ping-Pong (`PING <nonce>` $\rightarrow$ `PONG <nonce> <seq> <uptime>`) con timeout de $100\text{ ms}$.
+    * Diferenciador de bloqueo de loop principal: Si el IPC responde pero `tick_sequence` permanece congelado por $> 60\text{ s}$, se diagnostica cuelgue de `state_lock` o bloqueo socket en el hilo principal.
+    * Protocolo de volcado forense automático: Captura de trazas de todos los hilos (`sys._current_frames()`) en `logs/deadlock_forensics_<timestamp>.log` antes de ordenar `Restart-Service -Name MinerAlerts -Force`.
+  - **Spec 069 (Telemetría Profunda por Cadena & Predictive Chain Break - PROP-008)**:
+    * Definición de índice compuesto en SQLite WAL: `CREATE INDEX IF NOT EXISTS ix_chain_telemetry_miner_chain_time ON chain_telemetry_samples(miner_key, chain_id, observed_ts DESC)` para consultas agregadas en $< 8\text{ ms}$ vía `execute_readonly_with_retry`.
+    * Regla de persistencia de error I2C: Detección en ventana de 12 horas con $\ge 90\%$ de muestras en fallo (`sensors_error_count > 0` en misma ubicación de silicio), emitiendo alerta preventiva deduplicada en Telegram para evitar paradas catastróficas por `chain_break` (caso Minero 24 Cadena 2).
+    * Aislamiento causal eléctrico: Correlación cruzada entre elevadores (`elevator_1` vs `elevator_2`) para clasificar caídas múltiples simultáneas como `POWER_DISTURBANCE` y suprimir falsos diagnósticos de fallo físico en chips.
+  - **Spec 070 (Modularización Core Fase B - Desacoplamiento de `inspect.getsource(main)` - ST-05)**:
+    * Análisis de las 4 suites de tests acopladas textualmente (37 tests de invariantes).
+    * Estrategia de migración de riesgo cero: Construcción previa de `tests/test_supervisory_core_behavioral.py` reproduciendo los 37 escenarios de interlocks, compuertas de reinicio y estados de falla sobre `CoreSupervisoryEngine` con mocks de caja negra.
+    * Fase de paridad dual: Coexistencia de 37 tests originales + 37 tests de comportamiento ($\ge 1109$ tests globales PASS) antes de refactorizar el bucle procedural de `main()` hacia hooks independientes.
+* **Documentación Sincronizada**:
+  - `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`: Especificaciones y mitigaciones de riesgo profundizadas.
+  - `docs/speckit/ROADMAP.md`: Iniciativas 19 a 22 actualizadas y reflejadas en el progreso del programa.
+  - `prompt.txt`: Actualizado con la línea base de 1072 tests PASS y el plan auditado.
+
 ## [2026-09-16] - Implementación Spec 067: Gateway Heartbeat & Supresión de Tormentas de Red Local (PROP-005) + Auditoría QA Completa
 
 * **Objetivo**: 

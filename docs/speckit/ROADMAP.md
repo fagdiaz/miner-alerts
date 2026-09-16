@@ -6,7 +6,8 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (66 de 66 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 1062 tests PASS — Release V5.0.3 Cold-Boot Fleet Grace Period & Adaptive Supervisory Hooks Certificada).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (67 de 67 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 1072 tests PASS — Release V5.1.0 Gateway Heartbeat & Network Storm Suppression Certificada).
+- **Horizonte V5.1 en Curso**: Specs 068, 069 y 070 completamente auditadas arquitectónicamente y listas para ejecución segura.
 
 
 ---
@@ -815,13 +816,38 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Sincronización continua de `monitor_ctx.governance = _GLOBAL_INTERVENTION_GOV` en cada tick e inyección en `extra_tick_data` para hooks.
 - [x] Suite de 15 pruebas unitarias en `tests/test_startup_grace_period.py`. **1062/1062 tests globales PASS** (0 regresiones).
 
+### Iniciativa 19 — Latido de Gateway y Supresión de Tormentas de Red Local (Spec 067 - PROP-005 - Completado)
+- Documento de Propuestas: [`docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`](../proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md)
+- Especificación: [`specs/067-gateway-heartbeat/spec.md`](../../specs/067-gateway-heartbeat/spec.md) | Evidencia: [`specs/067-gateway-heartbeat/evidence.md`](../../specs/067-gateway-heartbeat/evidence.md)
+- [x] Worker daemon ultraliviano de latido `GatewayHeartbeatWorker` en `app/network/gateway_heartbeat.py` (TCP connect 50ms, fallback puerto 53, cierre explícito de sockets).
+- [x] Supresión de falsos conatos de desconexión masiva (`STATE_OFFLINE`) durante parpadeos de switch Ethernet o microcortes de router local (ventana default 15s).
+- [x] Suite de 7 pruebas unitarias en `tests/test_gateway_heartbeat.py`. **1072/1072 tests globales PASS** (0 fallos, 0 regresiones).
+
+### Iniciativa 20 — Canal IPC de Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (Spec 068 - PROP-007 - Auditado / Pendiente P3)
+- Plan de Acción y Auditoría: [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](ACTION_PLAN_V5_1_HORIZON.md)
+- [ ] Servidor Named Pipe nativo en Windows (`\\.\pipe\MinerAlertsWatchdog`) vía `ctypes` (sin dependencias `pywin32`) con fallback a Loopback TCP (`127.0.0.1:4029`).
+- [ ] Protocolo Ping-Pong (`PING <nonce>` -> `PONG <nonce> <seq> <uptime>`) con timeout de 100ms y detección de deadlocks en el bucle principal (`tick_sequence` congelado).
+- [ ] Máquina de estados de 3 etapas y volcado forense automático de trazas de hilos (`sys._current_frames()`) antes de `Restart-Service`.
+
+### Iniciativa 21 — Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (Spec 069 - PROP-008 - Auditado / Prioritario P1)
+- Plan de Acción y Auditoría: [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](ACTION_PLAN_V5_1_HORIZON.md)
+- [ ] Índice compuesto optimizado `ix_chain_telemetry_miner_chain_time` en SQLite WAL para consultas de evaluación en $< 15\text{ ms}$.
+- [ ] Regla de alerta preventiva de bus I2C: notificación proactiva en Telegram si `sensors_error_count > 0` persiste por $> 12\text{ h}$ (cubriendo el caso del Minero 24 Cadena 2).
+- [ ] Discriminador de perturbación eléctrica de grupo (`elevator_1` vs `elevator_2`) vs degradación física de silicio para evitar falsas alarmas de hardware.
+
+### Iniciativa 22 — Modularización del Core Fase B — Desacoplamiento Seguro de `inspect.getsource(main)` (Spec 070 - ST-05 - Auditado / Pendiente P2)
+- Plan de Acción y Auditoría: [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](ACTION_PLAN_V5_1_HORIZON.md)
+- [ ] Construcción del arnés de comportamiento funcional `tests/test_supervisory_core_behavioral.py` reproduciendo los 37 tests de invariantes mediante caja negra sobre `CoreSupervisoryEngine`.
+- [ ] Certificación de paridad dual: validación de 37 tests legados + 37 tests de comportamiento (total $\ge 1109$ tests PASS).
+- [ ] Extracción segura del bucle procedural de `main()` hacia `AcquisitionHook`, `DetectionHook` y `ActuatorHook`.
+
 ---
 
 ## Governance
 
-- All 66 specifications in the current program (Specs 001 through 066) are complete, verified with evidence, and closed.
-- Version 5.0.3 (Release V5.0.3 Cold-Boot Fleet Grace Period & Adaptive Supervisory Hooks) is certified with 1062/1062 tests PASS.
-- Spec 066 (Cold-Boot Fleet Grace Period Post-Arranque PROP-001) is fully implemented, verified, and operational in production.
+- All 67 specifications in the current program (Specs 001 through 067) are complete, verified with evidence, and closed.
+- Version 5.1.0 (Release V5.1.0 Gateway Heartbeat & Network Storm Suppression) is certified with 1072/1072 tests PASS.
+- Spec 067 (Gateway Heartbeat PROP-005) is fully implemented, verified, and operational in production.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
-- Architectural and operational proposals for future horizons (Specs 067-070) are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`, `docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`, and `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.
+- Specs 068, 069, and 070 are fully audited and detailed in `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.

@@ -76,20 +76,26 @@ flowchart TD
   - Actualmente, el watchdog fuera de proceso ([`tools/monitor_watchdog.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/tools/monitor_watchdog.py)) se invoca periódicamente mediante el Programador de Tareas de Windows leyendo `data/monitor_heartbeat.json` y ejecutando `sc.exe queryex`.
   - Aunque este mecanismo es robusto y desacoplado, su latencia de detección es de 2 a 5 minutos.
   - Si el monitor entra en un deadlock de hilos, bloqueo del GIL en una llamada nativa o bucle de CPU cerrado, el watchdog tarda demasiado en actuar.
-* **Arquitectura de Solución**:
-  1. **Servidor Named Pipe Local en Windows**:
-     - Dentro del monitor, un hilo daemon abre el pipe `\\.\pipe\MinerAlertsWatchdog` en modo dúplex no bloqueante.
-  2. **Protocolo Ping-Pong Estricto**:
-     - El cliente watchdog envía `PING <nonce>\n`.
-     - El monitor responde `PONG <nonce> <tick_sequence> <uptime>\n` en menos de 100 ms.
-  3. **Diagnóstico Forense Acelerado (<15s)**:
-     - Si el pipe no responde en 3 intentos consecutivos (intervalos de 5s):
-       - Si el proceso Python existe en Windows (`Get-Process -Id <pid>`):
-         - Certeza matemática de deadlock o cuelgue de hilos.
-         - Toma minidump de depuración (o traza de hilos vía `sys._current_frames()`) y ejecuta reinicio inmediato con `Restart-Service -Name MinerAlerts`.
-* **Puntos de Auditoría Requeridos para Sonnet**:
-  - Gestión segura de Named Pipes en Windows (`pywin32` vs wrappers estándar en `ctypes` o fallback a sockets Unix/localhost para evitar dependencias binarias externas complejas).
-  - Aseguramiento de permisos ACL en el pipe para que sólo procesos locales del mismo usuario/SYSTEM puedan interactuar.
+* **Auditoría Arquitectónica Profunda**:
+  1. **Evaluación de Transporte IPC (Windows)**:
+     - *Opción A: Named Pipes nativos de Windows (`\\.\pipe\MinerAlertsWatchdog`)*:
+       - Implementación mediante `ctypes.windll.kernel32.CreateNamedPipeW` y `ConnectNamedPipe` para **cero dependencias externas** (evita depender de `pywin32` en el venv de producción).
+       - Seguridad: Permisos ACL restringidos al SID del usuario local y `NT AUTHORITY\SYSTEM` para evitar inyección de mensajes locales.
+     - *Opción B: Socket TCP Loopback (`127.0.0.1:4029`)*:
+       - Alternativa de bajísimo riesgo: usa la stdlib `socket`, soporta timeouts de 100ms de forma trivial con `settimeout()`, sin riesgo de cuelgue de buffers nativos de Windows.
+     - *Decisión Arquitectónica*: Implementar servidor Named Pipe con fallback a Loopback Socket si la creación del pipe falla por permisos.
+  2. **Protocolo Ping-Pong & Detección de Deadlock de Main Loop**:
+     - El cliente watchdog envía: `PING <nonce>\n`.
+     - El servidor responde: `PONG <nonce> <tick_sequence> <uptime> <last_tick_elapsed_s>\n` en $\le 100\text{ ms}$.
+     - *Diferenciador Clave*: Si el servidor responde el PONG pero `tick_sequence` no se ha incrementado en $> 60\text{ s}$, el hilo IPC está vivo pero el **bucle principal de supervisión está colgado** (deadlock de `state_lock` o bloqueo en llamada socket).
+  3. **Máquina de Estados de Fallo & Recolección Forense**:
+     - **Intento 1 fallido**: Estado `WARNING`. Reintento a los 2 segundos.
+     - **Intento 2 fallido**: Estado `CRITICAL`. Registro de alerta en `logs/watchdog.log`.
+     - **Intento 3 fallido**: Estado `ACTION_REQUIRED`:
+       * Si el proceso Python de Miner Alerts existe en Windows (`OpenProcess` / PID activo):
+         - **Acción Forense Inmediata**: Invocar volcado de trazas de hilos en disco mediante `sys._current_frames()` escribiendo `logs/deadlock_forensics_<timestamp>.log`.
+         - **Recuperación Automática**: Ejecutar reinicio del servicio Windows: `Restart-Service -Name MinerAlerts -Force`.
+       * Si el proceso no existe: Notificar caída del servicio a Telegram y ejecutar `Start-Service -Name MinerAlerts`.
 
 ---
 
@@ -99,18 +105,27 @@ flowchart TD
 * **Contexto y Problema**:
   - Durante el incidente del 2026-09-12 (Evento 940), el Minero 24 sufrió un reinicio abrupto tras registrar `chain_break` en el firmware Vnish.
   - La inspección de `/api/v1/chains` reveló que el Minero 24 presenta un fallo persistente en el sensor térmico I2C de la **Cadena 2 (Board 2)**: `{"state": "error", "board": 39, "chip": 54, "loc": 28}`.
-  - Actualmente, el colector registra muestras en la tabla `chain_telemetry_samples` pero el monitor carece de un evaluador preventivo en tiempo real que anticipe la desconexión de la placa.
-* **Arquitectura de Solución**:
-  1. **Regla 1 — Alerta Preventiva de Fallo de Bus I2C**:
-     - Si cualquier sensor térmico de una cadena reporta `state: error` durante más de 12 horas consecutivas, emitir advertencia preventiva en Telegram:
-       `⚠️ RIESGO DE CHAIN BREAK: Minero 24 Cadena 2 — Sensor I2C (loc 28) en fallo continuo por >12h.`
-  2. **Regla 2 — Detección de Desbalance / Caída de Hashrate por Cadena**:
-     - Si una placa individual rinde $< 92\%$ de su nominal mientras las otras 2 placas rinden $100\%$, identificar degradación de chips o caída de tensión en dominio.
-  3. **Regla 3 — Aislamiento Causal Cruzado (Elevador vs Placa)**:
-     - Correlacionar reinicios con el comportamiento del grupo eléctrico (`elevator_1` vs `elevator_2`) para distinguir matemáticamente si un corte fue originado por armónicos/tensión en la fase o por fallo físico del silicio en la cadena.
-* **Puntos de Auditoría Requeridos para Sonnet**:
-  - Optimización de las consultas SQL sobre `chain_telemetry_samples` para garantizar que la evaluación histórica tome menos de 15 ms.
-  - Asegurar que la colección asíncrona no compita por el lock de base de datos durante checkpoints WAL.
+  - Actualmente, el colector registra muestras en la tabla `chain_telemetry_samples` y `app/governance/chain_health.py` evalúa la salud granular, pero falta la **regla de alerta preventiva continua y correlación de red eléctrica**.
+* **Auditoría Arquitectónica Profunda**:
+  1. **Optimización de Consultas en SQLite WAL**:
+     - Para evaluar el histórico de 12h y 24h sin superar los $15\text{ ms}$ de latencia, se requiere un índice compuesto específico:
+       ```sql
+       CREATE INDEX IF NOT EXISTS ix_chain_telemetry_miner_chain_time
+           ON chain_telemetry_samples(miner_key, chain_id, observed_ts DESC);
+       ```
+     - Consulta de evaluación ejecutada en el pool de solo lectura con `execute_readonly_with_retry` para jamás bloquear transacciones concurrentes.
+  2. **Reglas de Detección Matemática & Filtro de Falsos Positivos**:
+     - **Regla 1 (Fallo Persistente de Bus I2C)**:
+       * Condición: En una ventana de 12 horas, $\ge 90\%$ de las muestras de la cadena reportan `sensors_error_count > 0` con la misma ubicación física (`loc 28`).
+       * Acción: Emitir alerta preventiva a Telegram (deduplicada, máx. 1 vez cada 24h):
+         `⚠️ ALERTA PREVENTIVA: Minero 24 Cadena 2 — Sensor I2C (loc 28) en fallo continuo por >12h. Riesgo de parada por chain_break.`
+     - **Regla 2 (Déficit Aislado de Placa vs Flota)**:
+       * Condición: `hr_deficit_pct >= 10.0%` en una placa durante $\ge 3\text{ horas}$ continuas mientras las otras dos placas del mismo minero operan con déficit $\le 2.0\%$.
+       * Diagnóstico: Degradación localizada de chips (ASIC throttled o dominio descalibrado).
+  3. **Discriminador de Causa Eléctrica (Elevador) vs Silicio (Placa)**:
+     - Si $\ge 2$ mineros del mismo grupo eléctrico (`elevator_1` o `elevator_2`) sufren caídas simultáneas de hashrate en un intervalo de 60 segundos:
+       * Clasificación: `POWER_DISTURBANCE` (Perturbación eléctrica en línea/tensión).
+       * Se suprime la alerta individual de fallo de silicio de la placa.
 
 ---
 
@@ -118,17 +133,29 @@ flowchart TD
 
 * **Prioridad**: P2 (Media) | **Riesgo**: Alto (Regresión de Tests Legados) | **Módulos**: `app/miner_monitor.py`, `app/core/engine.py`, `tests/`
 * **Contexto y Problema**:
-  - Actualmente, 4 suites de tests verifican la estructura textual de `main()` mediante `inspect.getsource(main)`:
-    1. `tests/test_auto_reboot_signal_gate.py` (`state.low_since_ts = None`, orden de puertas).
-    2. `tests/test_hashboard_auto_reboot.py` (`elif (\n new_state == STATE_HASHBOARD`, orden de los 6 interlocks).
-    3. `tests/test_reboot_safety.py` (orden startup < sustained < interlocks < cooldown < window < hashcore).
-    4. `tests/test_vnish_hashboard_detection.py` (`active_boards < expected_boards` antes de `rate_ths < threshold_ths`).
-  - Esto obliga a mantener el bucle procedural en `main()` en lugar de mover la lógica a `AcquisitionHook`, `DetectionHook` y `ActuatorHook`.
-* **Estrategia Inviolable de Migración**:
-  - **Paso 1**: Crear tests de comportamiento funcional (behavioral tests) equivalentes sobre `CoreSupervisoryEngine` utilizando `MonitorContext` mockeado, verificando exactamente los mismos 6 interlocks y reglas de transición.
-  - **Paso 2**: Demostrar que los behavioral tests pasan al 100% y tienen paridad funcional idéntica con los tests textuales.
-  - **Paso 3**: Solo tras certificar la paridad y con aprobación explícita, refactorizar gradualmente los tests de inspección y migrar las etapas procedurales hacia hooks desacoplados.
-  - **Regla Inviolable**: `len(tests_pass)` sólo puede crecer ($\ge 1062$), jamás decrecer.
+  - Actualmente, 4 suites de tests verifican la estructura textual de `main()` mediante `inspect.getsource(main)` (37 tests en total):
+    1. `tests/test_auto_reboot_signal_gate.py`: 8 tests verificando el reseteo de `state.low_since_ts = None` y orden de compuertas.
+    2. `tests/test_hashboard_auto_reboot.py`: 8 tests verificando `elif (\n new_state == STATE_HASHBOARD` y el orden de los 6 interlocks.
+    3. `tests/test_reboot_safety.py`: 13 tests verificando el orden jerárquico (`startup < sustained < interlocks < cooldown < window < hashcore`).
+    4. `tests/test_vnish_hashboard_detection.py`: 8 tests verificando que `active_boards < expected_boards` preceda a `rate_ths < threshold_ths`.
+  - Este acoplamiento textual actúa como una barrera rígida que impide modularizar el loop procedural de `main()` en `AcquisitionHook`, `DetectionHook` y `ActuatorHook`.
+* **Auditoría Arquitectónica & Estrategia de Migración de Riesgo Cero**:
+  1. **Fase 1: Construcción del Arnés de Comportamiento (`Behavioral Test Harness`)**:
+     - Crear `tests/test_supervisory_core_behavioral.py`.
+     - En lugar de inspeccionar el código fuente como texto, el arnés instancia `CoreSupervisoryEngine` con un `MonitorContext` mockeado y ejecuta `execute_tick()`.
+     - Se reproducen de forma determinística los escenarios exactos de los 37 tests:
+       * Minero en arranque dentro del grace period $\rightarrow$ auto-reboot bloqueado.
+       * Minero con caída sostenida $\rightarrow$ secuencia de 6 interlocks evaluada en orden idéntico.
+       * Interlock fallido $\rightarrow$ acción cancelada y `reboot_requested = False`.
+       * Cooldown activo $\rightarrow$ acción suprimida.
+  2. **Fase 2: Certificación de Paridad Dual**:
+     - Ambas suites de pruebas coexisten en el repositorio:
+       $$\text{Suite Original (37 tests de inspección)} + \text{Suite de Comportamiento (37 tests funcionales)}$$
+     - La suite global pasa de **1072 tests a 1109 tests PASS**.
+     - Cero modificaciones a `main()` en esta fase.
+  3. **Fase 3: Refactorización Modular & Deprecación Gradual**:
+     - Con la suite de comportamiento garantizando la invariante funcional al 100%, se extraen de forma segura los bloques de `main()` hacia hooks desacoplados.
+     - Se actualizan los 4 archivos de test legados para apuntar a los métodos de evaluación del motor en lugar de examinar cadenas de texto plano de `main`.
 
 ---
 

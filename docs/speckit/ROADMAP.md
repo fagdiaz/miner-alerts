@@ -861,19 +861,20 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Retiro y saneamiento de shims procedurales preservando contratos de `inspect.getsource(main)`.
 - [x] Suite de pruebas en `tests/test_state_serialization_parity.py` y `tests/test_find_assessment_by_target.py`. **1113/1113 tests globales PASS** (0 fallos, 0 regresiones).
 
-### Iniciativa 25 — Reutilización de Clientes en Tools & Alineación de Configuración (Spec 073 - P3 - Planificada)
+### Iniciativa 25 — Reutilización de Clientes en Tools & Alineación de Configuración (Spec 073 - P3 - Completada)
 - Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
-- [ ] Migración de `tools/miner_diagnostics.py` y `debug_4028.py` a `app.network.cgminer_client`.
-- [ ] Script auditor de configuración `tools/audit_config.py` validando paridad entre `config.example.json` y `config.json`.
-- [ ] Consolidación de fixtures duplicadas en tests compactos de Telegram.
+- [x] Migración de `tools/miner_diagnostics.py` y `debug_4028.py` a `app.network.cgminer_client`.
+- [x] Script auditor de configuración `tools/audit_config.py` validando paridad entre `config.example.json` y `config.json`.
+- [x] Consolidación de fixtures duplicadas en tests compactos de Telegram (`tests/fixtures_compact_ux.py`).
+- [x] Suite de pruebas en `tests/test_miner_diagnostics_client.py` y `tests/test_audit_config.py`. **1119/1119 tests globales PASS** (0 fallos, 0 regresiones).
 
 ---
 
 ## Governance
 
-- All 69 specifications implemented in the program (Specs 001 through 067, Spec 071, and Spec 072) are complete, verified with evidence, and closed.
-- Version 5.1.0 + State Unification is certified with 1113/1113 tests PASS (0 failures, 0 regressions, Windows service running).
-- Specs 068, 069, 070, and 073 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
-- Next implementation target: Spec 073 (Tools Client Reuse & Config Alignment).
+- All 70 specifications implemented in the program (Specs 001 through 067, Spec 071, Spec 072, and Spec 073) are complete, verified with evidence, and closed.
+- Version 5.1.0 + State Unification + Tools Client Reuse is certified with 1119/1119 tests PASS (0 failures, 0 regressions, Windows service running).
+- Specs 068, 069, and 070 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
+- Next implementation target: Spec 070 (Modularización del Core Fase B - Fase 1: Arnés de Comportamiento Determinista).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

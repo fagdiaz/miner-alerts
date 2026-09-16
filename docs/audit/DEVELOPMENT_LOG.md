@@ -3,6 +3,27 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación Spec 073: Reutilización de Clientes en Tools & Alineación de Configuración (P3)
+
+* **Objetivo**:
+  1. Refactorizar herramientas de soporte (`tools/miner_diagnostics.py` y `tools/debug_4028.py`) para reutilizar centralizadamente el cliente de red `app.network.cgminer_client.query_cgminer`, eliminando llamadas procedurales directas y `sys.exit()` incondicionales al importar módulos.
+  2. Implementar validador estructural de configuración (`tools/audit_config.py`) con detección de claves faltantes requeridas/opcionales, verificación de tipos (con relajación de compatibilidad numérica `int`/`float` y `chat_id`), detección de marcadores de posición (`PONER_TOKEN`, etc.), reporte de claves desconocidas y validación de entidades de hardware (`miners`).
+  3. Consolidar fixtures redundantes de tests de UX compacta en `tests/fixtures_compact_ux.py` e importar desde `test_compact_format.py` y `test_compact_ux.py`.
+  4. Garantizar compatibilidad estricta con Windows NT, ejecución segura y suite de regresión 100% verde.
+* **Componentes Modificados / Creados**:
+  - `tools/debug_4028.py`: Modularización en funciones `debug_miner()` y `main()` protegidas por bloque `if __name__ == "__main__":` y delegación a `query_cgminer`.
+  - `tools/miner_diagnostics.py`: Reutilización centralizada de `query_cgminer`.
+  - `tools/audit_config.py`: Herramienta CLI y programática de auditoría de esquemas JSON con modos estándar y `--strict`.
+  - `tests/test_miner_diagnostics_client.py`: Suite exhaustiva de pruebas unitarias para `miner_diagnostics` y `debug_4028` (éxito, fallo, excepciones de socket, argumentos de CLI y retorno de códigos).
+  - `tests/test_audit_config.py`: 12 pruebas unitarias de validación cruzada y casos borde de configuración.
+  - `tests/fixtures_compact_ux.py`: Consolidación de `make_test_coordinator` y `observe_test_episode`.
+  - `tests/test_compact_format.py` & `tests/test_compact_ux.py`: Reutilización de fixtures consolidados.
+  - `specs/073-tools-client-reuse-and-config-alignment/evidence.md`: Evidencia de certificación y ejecución.
+* **Resultados & Verificación**:
+  - Pruebas unitarias de Spec 073: 20 tests PASS en 0.007s (`test_miner_diagnostics_client.py` y `test_audit_config.py`).
+  - Suite completa de regresión: **1119 tests PASS** en 32.2s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+
 ## [2026-09-16] - Implementación Spec 072: Unificación de Serialización de Estado & Desacoplamiento de Shims Redundantes (P2)
 
 * **Objetivo**: 

@@ -823,23 +823,47 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Supresión de falsos conatos de desconexión masiva (`STATE_OFFLINE`) durante parpadeos de switch Ethernet o microcortes de router local (ventana default 15s).
 - [x] Suite de 7 pruebas unitarias en `tests/test_gateway_heartbeat.py`. **1072/1072 tests globales PASS** (0 fallos, 0 regresiones).
 
-### Iniciativa 20 — Canal IPC de Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (Spec 068 - PROP-007 - Auditado / Pendiente P3)
-- Plan de Acción y Auditoría: [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](ACTION_PLAN_V5_1_HORIZON.md)
+### Iniciativa 20 — Canal IPC de Alta Frecuencia Monitor ↔ Watchdog vía Named Pipes (Spec 068 - PROP-007 - Especificada / Pausada para Ajuste)
+- Documento de Plan y Especificación: [`specs/068-watchdog-ipc-pipe/spec.md`](../../specs/068-watchdog-ipc-pipe/spec.md)
+- **Estado**: Especificada end-to-end, en pausa para ajuste de ciclo de hilos daemon tras la Spec 071.
 - [ ] Servidor Named Pipe nativo en Windows (`\\.\pipe\MinerAlertsWatchdog`) vía `ctypes` (sin dependencias `pywin32`) con fallback a Loopback TCP (`127.0.0.1:4029`).
 - [ ] Protocolo Ping-Pong (`PING <nonce>` -> `PONG <nonce> <seq> <uptime>`) con timeout de 100ms y detección de deadlocks en el bucle principal (`tick_sequence` congelado).
 - [ ] Máquina de estados de 3 etapas y volcado forense automático de trazas de hilos (`sys._current_frames()`) antes de `Restart-Service`.
 
-### Iniciativa 21 — Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (Spec 069 - PROP-008 - Auditado / Prioritario P1)
-- Plan de Acción y Auditoría: [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](ACTION_PLAN_V5_1_HORIZON.md)
+### Iniciativa 21 — Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (Spec 069 - PROP-008 - Especificada / Pausada para Ajuste)
+- Documento de Plan y Especificación: [`specs/069-chain-telemetry-break-prediction/spec.md`](../../specs/069-chain-telemetry-break-prediction/spec.md)
+- **Estado**: Especificada end-to-end, en pausa para ajuste tras Spec 071 (se conectará directamente al nuevo pool SQLite sin conexiones ad-hoc).
 - [ ] Índice compuesto optimizado `ix_chain_telemetry_miner_chain_time` en SQLite WAL para consultas de evaluación en $< 15\text{ ms}$.
 - [ ] Regla de alerta preventiva de bus I2C: notificación proactiva en Telegram si `sensors_error_count > 0` persiste por $> 12\text{ h}$ (cubriendo el caso del Minero 24 Cadena 2).
 - [ ] Discriminador de perturbación eléctrica de grupo (`elevator_1` vs `elevator_2`) vs degradación física de silicio para evitar falsas alarmas de hardware.
 
-### Iniciativa 22 — Modularización del Core Fase B — Desacoplamiento Seguro de `inspect.getsource(main)` (Spec 070 - ST-05 - Auditado / Pendiente P2)
-- Plan de Acción y Auditoría: [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](ACTION_PLAN_V5_1_HORIZON.md)
+### Iniciativa 22 — Modularización del Core Fase B — Desacoplamiento Seguro de `inspect.getsource(main)` (Spec 070 - ST-05 - Especificada / Pausada para Ajuste)
+- Documento de Plan y Especificación: [`specs/070-core-modularization-decoupling/spec.md`](../../specs/070-core-modularization-decoupling/spec.md)
+- **Estado**: Especificada end-to-end, en pausa para ajuste tras Spec 072 (se beneficiará de la unificación de estado para simplificar el arnés de comportamiento).
 - [ ] Construcción del arnés de comportamiento funcional `tests/test_supervisory_core_behavioral.py` reproduciendo los 37 tests de invariantes mediante caja negra sobre `CoreSupervisoryEngine`.
 - [ ] Certificación de paridad dual: validación de 37 tests legados + 37 tests de comportamiento (total $\ge 1109$ tests PASS).
 - [ ] Extracción segura del bucle procedural de `main()` hacia `AcquisitionHook`, `DetectionHook` y `ActuatorHook`.
+
+### Iniciativa 23 — Consolidación de Pool SQLite Resiliente & Barrera de Hilos Daemon (Spec 071 - P0/P1 - En Curso)
+- Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
+- Especificación: [`specs/071-sqlite-pool-and-thread-hardening/spec.md`](../../specs/071-sqlite-pool-and-thread-hardening/spec.md)
+- [ ] Función defensiva `_async_restore_locked_preset_tripwire` en `miner_monitor.py` para blindar el hilo `RestoreLock_{name}` con captura total de excepciones y logging estructurado (P0).
+- [ ] Exposición formal de `open_readonly_connection(db_path)` en `app/core/event_store.py` (P1).
+- [ ] Migración de las 7 conexiones directas ad-hoc a SQLite (`energy_efficiency`, `fan_health`, `preset_balancer`, `charts`, `daily_digest`, `presets`) hacia el pool resiliente con reintento automático ante `SQLITE_BUSY_SNAPSHOT`.
+- [ ] Suite de pruebas unitarias en `tests/test_sqlite_readonly_consolidation.py` certificando la no-regresión y el cumplimiento de invariantes ($\ge 1072$ tests PASS).
+
+### Iniciativa 24 — Unificación de Serialización de Estado & Desacoplamiento de Shims (Spec 072 - P2 - Planificada)
+- Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
+- [ ] Delegación de `_build_state_payload()` en `StateManager._serialize_state()` unificando la fuente de verdad de `MinerState`.
+- [ ] Extracción del helper compartido `find_assessment_by_target()` eliminando copy-paste en 5 comandos de Telegram.
+- [ ] Centralización de `_dicts()` en `app/core/mining_quality.py`.
+- [ ] Retiro de shims procedurales redundantes en `miner_monitor.py`.
+
+### Iniciativa 25 — Reutilización de Clientes en Tools & Alineación de Configuración (Spec 073 - P3 - Planificada)
+- Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
+- [ ] Migración de `tools/miner_diagnostics.py` y `debug_4028.py` a `app.network.cgminer_client`.
+- [ ] Script auditor de configuración `tools/audit_config.py` validando paridad entre `config.example.json` y `config.json`.
+- [ ] Consolidación de fixtures duplicadas en tests compactos de Telegram.
 
 ---
 
@@ -847,7 +871,8 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 
 - All 67 specifications in the current program (Specs 001 through 067) are complete, verified with evidence, and closed.
 - Version 5.1.0 (Release V5.1.0 Gateway Heartbeat & Network Storm Suppression) is certified with 1072/1072 tests PASS.
-- Spec 067 (Gateway Heartbeat PROP-005) is fully implemented, verified, and operational in production.
+- Specs 068, 069, and 070 are fully specified end-to-end and paused pending post-cleanup architectural alignment.
+- Specs 071, 072, and 073 establish the immediate repository cleanup and technical debt remediation track.
+- Active implementation target: **Spec 071 (Consolidación de Pool SQLite Resiliente & Barrera de Hilos Daemon)**.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
-- Specs 068, 069, and 070 are fully audited and detailed in `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.

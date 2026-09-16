@@ -13,18 +13,15 @@
 
 1. ESTADO ACTUAL DEL SISTEMA:
 - Pruebas unitarias: 1204 tests PASS (0 fallos, 0 errores, 0 regresiones en 36.4s).
-- Servicio Windows 'MinerAlerts': Running ininterrumpido.
-- Rama: 'codex/022-adaptive-acquisition' (adelantada por 1 commit: 0dcf68f).
+- Servicio Windows 'MinerAlerts': Running ininterrumpido (reiniciado exitosamente con Spec 069 en producción).
+- Rama: 'codex/022-adaptive-acquisition' sincronizada con origin (git push completado).
 - Árbol de trabajo: Limpio (nothing to commit, working tree clean).
-- Todas las especificaciones del programa (Specs 001 a 073) implementadas y certificadas al 100%.
+- Flota ASIC: 4/4 mineros en estado 'OK', 100% placas activas (~400 TH/s combinados).
+- Spec 069 en producción: Alerta predictiva disparada a las 18:00:03 sobre S19JPRO-24 Cadena 2 (loc 28).
 
-2. COMMIT REALIZADO:
-- Hash: 0dcf68f
-- Mensaje: feat(spec-069): implement predictive chain break diagnostics, composite SQLite index, and electrical group correlation
-- Archivos commiteados: 15 archivos modificados/creados (+1603 / -57).
-- QA, estabilización y documentación auditada al 100%.
+2. COMMITS PUBLICADOS:
+- Commit 0dcf68f: feat(spec-069): implement predictive chain break diagnostics, composite SQLite index, and electrical group correlation
+- Commit f0bb9db: chore: update prompt.txt with latest execution status
 
 3. PRÓXIMO OBJETIVO:
-- Consultar al usuario sobre los siguientes pasos:
-  * Publicar cambios al repositorio remoto (`git push origin codex/022-adaptive-acquisition`).
-  * Iniciar nueva propuesta/especificación del programa o monitoreo operativo del servicio.
+- Monitoreo en producción o inicio de nueva especificación según prioridades del usuario.

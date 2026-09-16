@@ -159,6 +159,14 @@ def _resolve_miner_state(states: Dict[str, Any], miner: Dict[str, Any]) -> Optio
     return None
 
 
+def format_miner_key(miner: Dict[str, Any]) -> str:
+    """Safely format a miner canonical state key 'name|host:port' without KeyError."""
+    name = str(miner.get("name") or "unknown")
+    host = str(miner.get("host") or miner.get("ip") or "no-host")
+    port = miner.get("port", 4028)
+    return f"{name}|{host}:{port}"
+
+
 def find_assessment_by_target(
     assessments: Any,
     target_arg: str,

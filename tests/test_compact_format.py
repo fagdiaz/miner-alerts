@@ -12,42 +12,10 @@ from app.core.alert_episodes import (
 )
 
 
-def _coord(coalesce: float = 30) -> IrregularEpisodeCoordinator:
-    return IrregularEpisodeCoordinator(
-        coalesce_seconds=coalesce,
-        reminder_schedule_seconds=(300, 600, 900, 1800, 3600, 7200),
-        steady_repeat_seconds=3600,
-    )
-
-
-def _observe(
-    c: IrregularEpisodeCoordinator,
-    *,
-    miner: str = "24",
-    previous: str = "OK",
-    state: str = "OFFLINE",
-    now: float = 100.0,
-    rate: float | None = None,
-    responded: bool = False,
-    boards: int | None = None,
-    event_id: int | None = 123,
-    restart: dict | None = None,
-) -> None:
-    c.observe(
-        miner_key=f"S19JPRO-{miner}|192.168.100.{miner}:4028",
-        name_display=miner,
-        host=f"192.168.100.{miner}",
-        previous_state=previous,
-        state=state,
-        responded=responded,
-        rate_ths=rate,
-        threshold_ths=60.0,
-        active_boards=boards if boards is not None else (3 if responded else None),
-        expected_boards=3,
-        now_ts=now,
-        transition_event_id=event_id,
-        restart=restart,
-    )
+from tests.fixtures_compact_ux import (
+    make_test_coordinator as _coord,
+    observe_test_episode as _observe,
+)
 
 
 class CompactAlertFormatTest(unittest.TestCase):

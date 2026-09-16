@@ -7,6 +7,7 @@ import time
 from typing import Any, List, Optional
 
 from app.telegram.commands.base import BaseCommandHandler
+from app.telegram.command_center import format_miner_key
 from app.telegram.context import TelegramRequestContext
 
 logger = logging.getLogger("miner-alerts")
@@ -47,7 +48,7 @@ class SnoozeCommand(BaseCommandHandler):
             exp_str = format_snooze_expiry_time(until_ts)
             with context.state_lock:
                 for m in context.miners:
-                    key = f"{m['name']}|{m['host']}:{m.get('port', 4028)}"
+                    key = format_miner_key(m)
                     st = context.states.get(key)
                     if st:
                         st.snooze_until_ts = until_ts
@@ -76,7 +77,7 @@ class SnoozeCommand(BaseCommandHandler):
         now_ts = time.time()
         until_ts = now_ts + (minutes * 60.0)
         exp_str = format_snooze_expiry_time(until_ts)
-        state_key = f"{miner['name']}|{miner['host']}:{miner.get('port', 4028)}"
+        state_key = format_miner_key(miner)
         with context.state_lock:
             st = context.states.get(state_key)
             if st:
@@ -123,7 +124,7 @@ class UnsnoozeCommand(BaseCommandHandler):
         if target.lower() in ("all", "fleet"):
             with context.state_lock:
                 for m in context.miners:
-                    key = f"{m['name']}|{m['host']}:{m.get('port', 4028)}"
+                    key = format_miner_key(m)
                     st = context.states.get(key)
                     if st:
                         st.snooze_until_ts = None
@@ -149,7 +150,7 @@ class UnsnoozeCommand(BaseCommandHandler):
             )
             return True
 
-        state_key = f"{miner['name']}|{miner['host']}:{miner.get('port', 4028)}"
+        state_key = format_miner_key(miner)
         with context.state_lock:
             st = context.states.get(state_key)
             if st:

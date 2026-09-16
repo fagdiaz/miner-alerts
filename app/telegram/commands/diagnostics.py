@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from app.telegram.commands.base import BaseCommandHandler
+from app.telegram.command_center import format_miner_key
 from app.telegram.context import TelegramRequestContext
 
 logger = logging.getLogger("miner-alerts")
@@ -426,7 +427,7 @@ class EventsCommand(BaseCommandHandler):
                         dbg_update_id=update_id,
                     )
                     return True
-                miner_key = f"{miner['name']}|{miner['host']}:{miner.get('port', 4028)}"
+                miner_key = format_miner_key(miner)
             recent_events = context.event_store.list_events(limit=8, miner_key=miner_key)
             events_text = (
                 "Historial temporalmente no disponible."
@@ -515,7 +516,7 @@ class WhyCommand(BaseCommandHandler):
                         dbg_update_id=update_id,
                     )
                     return True
-                miner_key = f"{miner['name']}|{miner['host']}:{miner.get('port', 4028)}"
+                miner_key = format_miner_key(miner)
             decision = context.event_store.latest_reboot_decision(miner_key=miner_key)
             why_text = (
                 "Diagnostico historico temporalmente no disponible."
@@ -560,7 +561,7 @@ class ChainsCommand(BaseCommandHandler):
             matched_miner = resolve_miner(target_arg, context.miners)
             if matched_miner:
                 m_name = matched_miner.get("name", target_arg)
-                m_key = f"{matched_miner['name']}|{matched_miner['host']}:{matched_miner.get('port', 4028)}"
+                m_key = format_miner_key(matched_miner)
                 samples = (
                     context.event_store.get_latest_chain_samples(m_key)
                     if (context.event_store and context.event_store.available)
@@ -575,7 +576,7 @@ class ChainsCommand(BaseCommandHandler):
         else:
             assessments_list = []
             for m in context.miners:
-                m_key = f"{m.get('name')}|{m.get('host')}:{m.get('port', 4028)}"
+                m_key = format_miner_key(m)
                 samples = (
                     context.event_store.get_latest_chain_samples(m_key)
                     if (context.event_store and context.event_store.available)

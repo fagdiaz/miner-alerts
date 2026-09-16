@@ -9,6 +9,7 @@ import time
 from typing import Any, List, Optional
 
 from app.telegram.commands.base import BaseCommandHandler
+from app.telegram.command_center import format_miner_key
 from app.telegram.context import TelegramRequestContext
 
 logger = logging.getLogger("miner-alerts")
@@ -90,7 +91,7 @@ class RebootCommand(BaseCommandHandler):
             return True
 
         action = "reboot"
-        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        state_key = format_miner_key(miner)
         now_ts = time.time()
 
         with context.state_lock:
@@ -378,7 +379,7 @@ class ConfirmCommand(BaseCommandHandler):
                 )
                 if ok:
                     results.append(f"{display_name(miner['name'])}  OK")
-                    state_key = f"{miner['name']}|{miner['host']}:{miner.get('port', 4028)}"
+                    state_key = format_miner_key(miner)
                     with context.state_lock:
                         state = context.states.get(state_key)
                         if state:
@@ -420,7 +421,7 @@ class ConfirmCommand(BaseCommandHandler):
             )
             return True
 
-        state_key = f"{miner['name']}|{miner['host']}:{miner.get('port', 4028)}"
+        state_key = format_miner_key(miner)
         if pending_lock:
             with pending_lock:
                 pending = pending_reboots.get(state_key)

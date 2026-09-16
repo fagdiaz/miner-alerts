@@ -1,7 +1,7 @@
-﻿from dataclasses import dataclass
+from dataclasses import dataclass
 import unittest
 
-from app.telegram.command_center import find_assessment_by_target
+from app.telegram.command_center import find_assessment_by_target, format_miner_key
 
 
 @dataclass
@@ -45,6 +45,18 @@ class TestFindAssessmentByTarget(unittest.TestCase):
     def test_find_nonexistent_returns_none(self):
         res = find_assessment_by_target(self.assessments, "999", self.miners)
         self.assertIsNone(res)
+
+    def test_format_miner_key_standard(self):
+        key = format_miner_key({"name": "S19JPRO-23", "host": "192.168.1.23", "port": 4028})
+        self.assertEqual(key, "S19JPRO-23|192.168.1.23:4028")
+
+    def test_format_miner_key_ip_and_default_port(self):
+        key = format_miner_key({"name": "M50", "ip": "10.0.0.1"})
+        self.assertEqual(key, "M50|10.0.0.1:4028")
+
+    def test_format_miner_key_empty(self):
+        key = format_miner_key({})
+        self.assertEqual(key, "unknown|no-host:4028")
 
 
 if __name__ == "__main__":

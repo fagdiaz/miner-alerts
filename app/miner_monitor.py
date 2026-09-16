@@ -1922,6 +1922,10 @@ def resolve_miner(input_name: str, miners: list) -> Optional[dict]:
         disp = display_name(miner.get("name", "")).lower()
         if needle == raw or needle == disp:
             return miner
+    for miner in miners:
+        host = str(miner.get("host") or miner.get("ip") or "").strip().lower()
+        if host and (needle == host or needle == host.split(":")[-1]):
+            return miner
     return None
 
 

@@ -20,11 +20,17 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - **BUG-04 (Protección contra `SQLITE_BUSY_SNAPSHOT` en Consultas de Gráficos Telegram)**:
     * En `app/telegram/charts.py:fetch_miner_chart_data()`, las consultas directas sobre SQLite durante checkpoints `TRUNCATE` concurrentes podían recibir excepciones de bloqueo.
     * Se integró la función `execute_readonly_with_retry` de `app.core.event_store`, absorbiendo transitorios de checkpoint con reintentos y retroceso exponencial automático.
+  - **BUG-05 (Doble Escritura Innecesaria de `state.json` por Tick)**:
+    * El bucle principal de `miner_monitor.py` ya ejecuta `_flush_state_payload(state_path, _payload)` durante el tick; posteriormente, `PersistenceHook.execute()` volvía a invocar `context.state_manager.save()`, generando una segunda escritura y fsync redundante por cada ciclo de supervisión.
+    * Se añadió `extra_tick_data: Optional[Dict[str, Any]] = None` a `CoreSupervisoryEngine.execute_tick()`, inyectando `_state_persisted=True` desde el loop principal para activar el skip guard canónico de `PersistenceHook` (`persistence_skipped: reason='already_persisted_by_main_loop'`).
+  - **BUG-06 (Prevención de Sobrescritura de `last_daily_digest_date` con Valor Stale)**:
+    * `PersistenceHook` leía `last_daily_digest_date` de `context.last_daily_digest_date` (fijado en `None` en el arranque) en lugar del valor actualizado dinámicamente en tiempo de ejecución.
+    * Se sincronizó `monitor_ctx.last_daily_digest_date = _LAST_DAILY_DIGEST_DATE` en `miner_monitor.py` y se inyectó en `extra_tick_data`, agregando pruebas unitarias de priorización en `tests/test_supervisory_hooks.py`.
   - **QA-01 (Saneamiento Integral de Espacios en Blanco y Saltos de Línea)**:
     * Se purgaron espacios finales en `app/miner_monitor.py`, `app/core/event_store.py`, `app/governance/preset_balancer.py`, etc., logrando que `git diff --check` y el script de preflight `preflight.ps1 -RunBuilds` pasen con salida 0 (PASS).
 * **Verificación y Evidencia**:
   - `preflight.ps1 -RunBuilds` → **PASS** (ExitCode: 0, py_compile limpio, git-diff-check limpio).
-  - Suite completa: `unittest discover -s tests` → **1043 / 1043 tests PASS** en 34.6s (0 fallos, 0 errores, 0 regresiones).
+  - Suite completa: `unittest discover -s tests` → **1046 / 1046 tests PASS** en 35.0s (0 fallos, 0 errores, 0 regresiones).
   - Verificación de contratos `inspect.getsource(main)` y literales críticos: 100% preservados.
   - Servicio Windows `MinerAlerts` validado y reiniciado con las actualizaciones.
 

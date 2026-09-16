@@ -7270,11 +7270,16 @@ def main() -> None:
             # La persistencia de estado real (save_state) ya ocurrió en el loop; el PersistenceHook
             # opera sobre el context.state_manager para telemetría del pipeline.
             try:
+                monitor_ctx.last_daily_digest_date = _LAST_DAILY_DIGEST_DATE
                 _supervisory_engine.execute_tick(
                     states=states,
                     last_update_id_ref=last_update_id_ref,
                     now_ts=now_ts,
                     tick_sequence=tick_sequence,
+                    extra_tick_data={
+                        "_state_persisted": True,
+                        "last_daily_digest_date": _LAST_DAILY_DIGEST_DATE,
+                    },
                 )
             except Exception as _hook_exc:
                 log(f"[WARN] SUPERVISORY_HOOKS execute_tick failed: {type(_hook_exc).__name__}: {_hook_exc}")

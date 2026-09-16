@@ -654,6 +654,64 @@ class TestPersistenceHook(unittest.TestCase):
         result = hook.execute(ctx, 1, time.time(), tick_data)
         self.assertEqual(result, {"persistence_skipped": True, "reason": "no_state_manager"})
 
+    def test_persistence_hook_skips_when_already_persisted(self) -> None:
+        """PersistenceHook debe omitir guardado si _state_persisted es True."""
+        ctx = _make_context()
+        hook = PersistenceHook()
+        tick_data = {"_state_persisted": True, "states": {}}
+        result = hook.execute(ctx, 1, time.time(), tick_data)
+        self.assertEqual(result, {"persistence_skipped": True, "reason": "already_persisted_by_main_loop"})
+
+    def test_persistence_hook_uses_last_daily_digest_date_from_tick_data(self) -> None:
+        """PersistenceHook debe priorizar last_daily_digest_date de tick_data sobre context."""
+        ctx = _make_context()
+        ctx.last_daily_digest_date = "stale-date"
+        hook = PersistenceHook()
+
+        saved_payloads: List[dict] = []
+        class MockStateManager:
+            def save(self, states, last_update_id, last_daily_digest_date=None):
+                saved_payloads.append({
+                    "states": states,
+                    "last_update_id": last_update_id,
+                    "last_daily_digest_date": last_daily_digest_date,
+                })
+
+        ctx.state_manager = MockStateManager()
+        tick_data = {
+            "states": {"m1": MinerState("m1")},
+            "last_update_id_ref": {"value": 42},
+            "last_daily_digest_date": "2026-09-15",
+        }
+        result = hook.execute(ctx, 1, time.time(), tick_data)
+        self.assertEqual(result, {"persistence_saved": True})
+        self.assertEqual(1, len(saved_payloads))
+        self.assertEqual("2026-09-15", saved_payloads[0]["last_daily_digest_date"])
+
+    def test_execute_tick_merges_extra_tick_data(self) -> None:
+        """execute_tick debe fusionar extra_tick_data en tick_data para los hooks."""
+        ctx = _make_context()
+        engine = CoreSupervisoryEngine(ctx)
+        received_data: List[dict] = []
+
+        class InspectHook(SupervisoryHook):
+            name = "inspect"
+            stage = HookStage.PRE_TICK
+            def execute(self, context, tick_sequence, now_ts, tick_data):
+                received_data.append(dict(tick_data))
+                return None
+
+        engine.register_hook(InspectHook())
+        engine.execute_tick(
+            states={},
+            last_update_id_ref={"value": None},
+            now_ts=time.time(),
+            extra_tick_data={"custom_flag": "active", "_state_persisted": True},
+        )
+        self.assertEqual(1, len(received_data))
+        self.assertEqual("active", received_data[0].get("custom_flag"))
+        self.assertTrue(received_data[0].get("_state_persisted"))
+
 
 # ---------------------------------------------------------------------------
 # Tests de integración del engine completo (pipeline E2E mínimo)

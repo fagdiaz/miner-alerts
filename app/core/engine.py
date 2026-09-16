@@ -208,6 +208,7 @@ class CoreSupervisoryEngine:
         last_update_id_ref: Dict[str, Optional[int]],
         now_ts: float,
         tick_sequence: Optional[int] = None,
+        extra_tick_data: Optional[Dict[str, Any]] = None,
     ) -> TickResult:
         """Ejecutar un tick completo del pipeline de supervisión.
 
@@ -229,6 +230,8 @@ class CoreSupervisoryEngine:
             "now_ts": now_ts,
             "tick_sequence": self._tick_sequence,
         }
+        if extra_tick_data:
+            tick_data.update(extra_tick_data)
         result = TickResult(
             tick_sequence=self._tick_sequence,
             tick_duration_seconds=0.0,

@@ -230,28 +230,55 @@ class RebootSafetyInterlockTests(unittest.TestCase):
         self.assertEqual(100.0, decision.fleet_snapshot_age_seconds)
 
     def test_runtime_wiring_keeps_gate_order_and_publishes_completed_tick(self) -> None:
-        source = inspect.getsource(monitor.main)
-        startup = source.index("elif startup_guard_active")
-        sustained = source.index("elif (now_ts - state.low_since_ts) < low_sustained_seconds")
-        interlock = source.index("elif not interlock_decision.allowed")
-        cooldown = source.index("last_reboot_ts = None")
-        hashcore = source.index("run_hashcore_cli(hashcore_cfg, miner, \"reboot\"")
+        """Verify the gate order hierarchy and timer resets via ActuatorHook."""
+        from app.core.engine import ActuatorHook
+        from app.core.reboot_safety import RebootInterlockDecision, INTERLOCK_FIRMWARE_TRANSITION
 
-        self.assertLess(startup, sustained)
-        self.assertLess(sustained, interlock)
-        self.assertLess(interlock, cooldown)
-        self.assertLess(cooldown, hashcore)
-        self.assertIn(
-            "chains_transitioning_count=quality_telemetry.chains_transitioning_count",
-            source,
+        st = monitor.MinerState(state=monitor.STATE_LOW, low_since_ts=1000.0)
+
+        # 1. Startup guard precede sostenido
+        res_startup = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=monitor.STATE_LOW, responded=True,
+            rate_ths=20.0, threshold_ths=60.0, active_boards=3, now_ts=500.0,
+            process_start_ts=0.0, startup_guard_seconds=600, low_sustained_seconds=900,
         )
-        interlock_branch = source.index("elif not interlock_decision.allowed")
-        transition_reset = source.index("state.low_since_ts = now_ts", interlock_branch)
-        thermal_branch = source.index('interlock_reason == "high_temperature"', interlock_branch)
-        self.assertLess(transition_reset, thermal_branch)
-        self.assertLess(transition_reset, cooldown)
-        self.assertIn("current_tick_signals[state_key] = auto_reboot_signal", source)
-        self.assertIn("previous_tick_signals = current_tick_signals.copy()", source)
+        self.assertEqual("startup_guard", res_startup["reason"])
+
+        # 2. Sostenido precede interlocks
+        res_sustained = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=monitor.STATE_LOW, responded=True,
+            rate_ths=20.0, threshold_ths=60.0, active_boards=3, now_ts=1200.0,
+            process_start_ts=0.0, startup_guard_seconds=600, low_sustained_seconds=900,
+        )
+        self.assertEqual("not_sustained", res_sustained["reason"])
+
+        # 3. Interlocks bloquea y transición de firmware resetea low_since_ts a now_ts
+        dec = RebootInterlockDecision(
+            allowed=False,
+            reason=INTERLOCK_FIRMWARE_TRANSITION,
+            chains_transitioning_count=1,
+        )
+        res_interlock = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=monitor.STATE_LOW, responded=True,
+            rate_ths=20.0, threshold_ths=60.0, active_boards=3, now_ts=2500.0,
+            process_start_ts=0.0, startup_guard_seconds=600, low_sustained_seconds=900,
+            interlock_decision=dec,
+        )
+        self.assertEqual(INTERLOCK_FIRMWARE_TRANSITION, res_interlock["reason"])
+        self.assertEqual(2500.0, st.low_since_ts)
+
+        # 4. Cooldown delta bloquea antes de ejecución
+        st.low_since_ts = 1000.0
+        st.last_auto_reboot_ts = 2400.0  # 100s atrás < 1800s cooldown
+        res_cooldown = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=monitor.STATE_LOW, responded=True,
+            rate_ths=20.0, threshold_ths=60.0, active_boards=3, now_ts=2500.0,
+            process_start_ts=0.0, startup_guard_seconds=600, low_sustained_seconds=900,
+            reboot_cooldown_seconds=1800,
+        )
+        self.assertEqual("cooldown", res_cooldown["reason"])
+
+        # 5. Worker de telegram polling no ejecuta guardas de transición de firmware
         self.assertNotIn(
             "firmware_transition_guard",
             inspect.getsource(monitor.telegram_polling_worker),

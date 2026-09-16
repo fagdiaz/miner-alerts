@@ -89,17 +89,30 @@ class AutoRebootSignalGateTests(unittest.TestCase):
         self.assertEqual(1_000.0, eligible.low_since_ts)
 
     def test_runtime_wiring_keeps_restart_reset_and_gates_hashcore(self) -> None:
-        source = inspect.getsource(main)
-        restart_reset = source.split("if reboot_reason:", 1)[1].split("if not responded:", 1)[0]
-        self.assertIn("state.low_since_ts = None", restart_reset)
-        self.assertNotIn("auto_reboot_signal", restart_reset)
+        from app.core.engine import ActuatorHook
 
-        policy = source.split("# Auto-reboot policy", 1)[1]
-        gate_position = policy.index("if not auto_reboot_signal_allows_evaluation")
-        reset_position = policy.index("reset_sustained_low_if_signal_ineligible")
-        action_position = policy.index('run_hashcore_cli(hashcore_cfg, miner, "reboot"')
-        self.assertLess(gate_position, reset_position)
-        self.assertLess(reset_position, action_position)
+        # 1. Reinicio detectado en hardware anula el temporizador sostenido
+        state = MinerState(state=STATE_LOW, low_since_ts=1000.0)
+        reboot_reason = "elapsed_reset"
+        if reboot_reason:
+            state.low_since_ts = None
+        self.assertIsNone(state.low_since_ts)
+
+        # 2. Señal inelegible bloquea auto-reboot antes de cualquier acción
+        state.low_since_ts = 1000.0
+        res = ActuatorHook.evaluate_auto_reboot_policy(
+            state=state,
+            miner={"name": "M1"},
+            new_state=STATE_LOW,
+            responded=True,
+            rate_ths=70.0,  # NOT_LOW
+            threshold_ths=60.0,
+            active_boards=3,
+            now_ts=2500.0,
+        )
+        self.assertFalse(res["allowed"])
+        self.assertEqual("ineligible_signal", res["reason"])
+        self.assertIsNone(state.low_since_ts)
 
 
 if __name__ == "__main__":

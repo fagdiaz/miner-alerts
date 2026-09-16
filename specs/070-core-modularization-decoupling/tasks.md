@@ -2,7 +2,7 @@
 
 **ID**: 070  
 **Rama**: `codex/022-adaptive-acquisition`  
-**Estado**: Pendiente  
+**Estado**: Completada  
 
 ---
 
@@ -21,15 +21,15 @@
 
 ### Fase C: Refactorización Segura a Hooks
 
-- [ ] **T008**: Extraer `DetectionHook` en `app/core/engine.py` encapsulando la clasificación de estados (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`).
-- [ ] **T009**: Extraer `ActuatorHook` en `app/core/engine.py` encapsulando la evaluación de interlocks de auto-reboot.
-- [ ] **T010**: Conectar los nuevos hooks en `main()` de `miner_monitor.py`.
-- [ ] **T011**: Actualizar los 4 archivos de test legados para reemplazar las aserciones de `inspect.getsource(main)` por aserciones directas sobre funciones puras o el motor de supervisión.
+- [x] **T008**: Extraer `DetectionHook` en `app/core/engine.py` encapsulando la clasificación de estados (`OK`, `LOW`, `OFFLINE`, `HASHBOARD`).
+- [x] **T009**: Extraer `ActuatorHook` en `app/core/engine.py` encapsulando la evaluación de interlocks de auto-reboot.
+- [x] **T010**: Conectar los nuevos hooks en `main()` de `miner_monitor.py`.
+- [x] **T011**: Actualizar los 4 archivos de test legados para reemplazar las aserciones de `inspect.getsource(main)` por aserciones directas sobre funciones puras o el motor de supervisión.
 
 ### Fase D: Validación Final y Documentación
 
-- [ ] **T012**: Sintaxis `py_compile app/miner_monitor.py app/core/engine.py`.
-- [ ] **T013**: Suite completa de regresión: $\ge 1147$ tests PASS, 0 fallos, 0 regresiones.
-- [ ] **T014**: Registrar comandos y evidencia en `specs/070-core-modularization-decoupling/evidence.md`.
-- [ ] **T015**: Agregar entrada en `docs/audit/DEVELOPMENT_LOG.md`.
-- [ ] **T016**: Actualizar `docs/speckit/ROADMAP.md` y `prompt.txt`.
+- [x] **T012**: Sintaxis `py_compile app/miner_monitor.py app/core/engine.py`.
+- [x] **T013**: Suite completa de regresión: $\ge 1147$ tests PASS (1160/1160 PASS, 0 fallos, 0 regresiones).
+- [x] **T014**: Registrar comandos y evidencia en `specs/070-core-modularization-decoupling/evidence.md`.
+- [x] **T015**: Agregar entrada en `docs/audit/DEVELOPMENT_LOG.md`.
+- [x] **T016**: Actualizar `docs/speckit/ROADMAP.md` y `prompt.txt`.

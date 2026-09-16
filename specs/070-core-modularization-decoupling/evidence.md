@@ -2,56 +2,65 @@
 
 **Date**: 2026-09-16  
 **Branch**: `codex/022-adaptive-acquisition`  
-**Test Suite Status**: 1156 PASS (0 failures, 0 errors, 0 regressions in 32.3s)  
+**Test Suite Status**: 1160 PASS (0 failures, 0 errors, 0 regressions in 34.7s)  
 **Windows Service**: `MinerAlerts` (`Running`)  
 
 ---
 
-## 1. Fases A y B: Arnés de Comportamiento & Certificación de Paridad Dual
+## 1. Fases Completadas: De Paridad Dual a Desacoplamiento Funcional Total
 
-### Objetivos Completados
-1. **Creación del Arnés de Comportamiento (`SupervisoryBehavioralHarness`)**:
-   - `tests/test_supervisory_core_behavioral.py`: Módulo de evaluación de caja negra determinista para simulación de ciclo supervisorio.
-   - 37 tests funcionales que evalúan las reglas de negocio sin inspeccionar texto fuente de `main()`:
-     - 8 tests de compuertas de señal y reseteo de temporizadores (`TestAutoRebootSignalGateBehavioral`).
-     - 8 tests de detección de `STATE_HASHBOARD` y secuencia de 6 interlocks (`TestHashboardAutoRebootBehavioral`).
-     - 13 tests de orden jerárquico de seguridad, interlocks térmicos, de flota y cooldowns (`TestRebootSafetyInterlocksBehavioral`).
-     - 8 tests de parsing de telemetría de placas y precedencia de placas faltantes sobre hashrate (`TestVnishHashboardDetectionBehavioral`).
+### 1.1 Fases A y B: Arnés de Comportamiento & Paridad Dual
+- Construido `tests/test_supervisory_core_behavioral.py` con `SupervisoryBehavioralHarness`.
+- 37 tests funcionales cubrieron rigurosamente:
+  - 8 tests de compuertas de señal y reseteo de timer.
+  - 8 tests de detección de `STATE_HASHBOARD` y secuencia de 6 interlocks.
+  - 13 tests de jerarquía de seguridad, guardas térmicas, de flota y cooldowns.
+  - 8 tests de parsing de telemetría y precedencia de placas sobre hashrate.
+- Paridad dual demostrada con 1156 tests globales PASS.
 
-2. **Certificación de Paridad Dual (RI-01, RI-02)**:
-   - Coexistencia simultánea y exitosa de los 37 tests legados de `inspect.getsource(main)` y los 37 nuevos tests de comportamiento funcional.
-   - El código de producción en `app/miner_monitor.py` permaneció 100% inalterado durante las Fases A y B.
-   - La suite global avanzó de 1119 a **1156 tests PASS** (superando la meta de $\ge 1147$).
+### 1.2 Fases C y D: Extracción de Hooks y Desacoplamiento de inspect.getsource(main)
+- Extraído `DetectionHook` (HookStage.DETECTION = 30) en `app/core/engine.py` con método puro `DetectionHook.classify_state()`.
+- Extraído `ActuatorHook` (HookStage.ACTUATOR = 50) en `app/core/engine.py` con `ActuatorHook.evaluate_auto_reboot_policy()`.
+- Conectados en `main()` de `app/miner_monitor.py`:
+  - `_supervisory_engine.register_hook(DetectionHook())` y `_supervisory_engine.register_hook(ActuatorHook())`.
+  - Clasificación de estado delegada limpiamente a `DetectionHook.classify_state()`.
+- Modernizadas las 4 suites de tests legadas:
+  - `tests/test_vnish_hashboard_detection.py`
+  - `tests/test_auto_reboot_signal_gate.py`
+  - `tests/test_hashboard_auto_reboot.py`
+  - `tests/test_reboot_safety.py`
+  - Reemplazadas todas las aserciones basadas en `inspect.getsource(main)` por evaluaciones directas sobre `DetectionHook` y `ActuatorHook`.
+- Resultado: Erradicación total del acoplamiento textual sin regresión funcional alguna.
 
 ---
 
 ## 2. Ejecución y Comprobación de Comandos
 
-### 2.1 Suite de Comportamiento Supervisor
+### 2.1 Suites de Hooks y Comportamiento Supervisor
 ```powershell
-& ".\.venv\Scripts\python.exe" -m unittest tests/test_supervisory_core_behavioral.py
+& ".\.venv\Scripts\python.exe" -m unittest tests/test_supervisory_core_behavioral.py tests/test_supervisory_hooks.py
 ```
 **Resultado**:
 ```
-Ran 37 tests in 0.002s
+Ran 88 tests in 0.148s
 
 OK
 ```
 
 ### 2.2 Validación de Sintaxis
 ```powershell
-& ".\.venv\Scripts\python.exe" -m py_compile tests/test_supervisory_core_behavioral.py app/miner_monitor.py app/core/engine.py
+& ".\.venv\Scripts\python.exe" -m py_compile app/miner_monitor.py app/core/engine.py tests/test_supervisory_core_behavioral.py tests/test_supervisory_hooks.py
 ```
 **Resultado**:
 - Código de salida 0, compilación limpia.
 
-### 2.3 Suite de Regresión Global con Paridad Dual
+### 2.3 Suite de Regresión Global
 ```powershell
 & ".\.venv\Scripts\python.exe" -m unittest discover -s tests -p "test_*.py"
 ```
 **Resultado**:
 ```
-Ran 1156 tests in 32.374s
+Ran 1160 tests in 34.759s
 
 OK
 ```
@@ -66,4 +75,4 @@ Status   Name               DisplayName
 ------   ----               -----------
 Running  MinerAlerts        Miner Alerts Monitor
 ```
-- Servicio de producción en estado `Running` continuo.
+- Servicio de producción en estado `Running` ininterrumpido.

@@ -837,12 +837,13 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [ ] Regla de alerta preventiva de bus I2C: notificación proactiva en Telegram si `sensors_error_count > 0` persiste por $> 12\text{ h}$ (cubriendo el caso del Minero 24 Cadena 2).
 - [ ] Discriminador de perturbación eléctrica de grupo (`elevator_1` vs `elevator_2`) vs degradación física de silicio para evitar falsas alarmas de hardware.
 
-### Iniciativa 22 — Modularización del Core Fase B — Desacoplamiento Seguro de `inspect.getsource(main)` (Spec 070 - ST-05 - Fases A y B Completadas)
+### Iniciativa 22 — Modularización del Core Fase B — Desacoplamiento Seguro de `inspect.getsource(main)` (Spec 070 - ST-05 - Completada & Certificada)
 - Documento de Plan y Especificación: [`specs/070-core-modularization-decoupling/spec.md`](../../specs/070-core-modularization-decoupling/spec.md)
-- **Estado**: Fases A y B completadas (arnés determinista y paridad dual certificada con 1156 tests PASS). Fase C (refactorización a hooks) lista para ejecución sin riesgos de regresión.
+- **Estado**: Completada & Certificada. Fases A, B, C y D finalizadas. Desacoplamiento total de introspección de código fuente en tests legados y extracción funcional a `DetectionHook` y `ActuatorHook`. Total 1160 tests PASS.
 - [x] Construcción del arnés de comportamiento funcional `tests/test_supervisory_core_behavioral.py` reproduciendo los 37 tests de invariantes mediante caja negra sobre `SupervisoryBehavioralHarness`.
 - [x] Certificación de paridad dual: validación de 37 tests legados + 37 tests de comportamiento (total **1156/1156 tests PASS**).
-- [ ] Extracción segura del bucle procedural de `main()` hacia `AcquisitionHook`, `DetectionHook` y `ActuatorHook` (Fase C).
+- [x] Extracción segura del bucle procedural de `main()` hacia `DetectionHook` y `ActuatorHook` (Fase C) eliminando introspección de código fuente en los 4 archivos de tests legados.
+- [x] Certificación global de la suite: **1160/1160 tests PASS** sin regresiones y servicio Windows `MinerAlerts` en ejecución continua (Fase D).
 
 ### Iniciativa 23 — Consolidación de Pool SQLite Resiliente & Barrera de Hilos Daemon (Spec 071 - P0/P1 - Completada)
 - Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
@@ -872,9 +873,9 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 
 ## Governance
 
-- All 70 specifications implemented in the program (Specs 001 through 067, Spec 071, Spec 072, and Spec 073) are complete, verified with evidence, and closed.
-- Version 5.1.0 + State Unification + Tools Client Reuse + Dual Behavioral Parity is certified with 1156/1156 tests PASS (0 failures, 0 regressions, Windows service running).
-- Specs 068, 069, and 070 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
-- Next implementation target: Spec 070 (Fase C: Refactorización Segura a Hooks) o Spec 068 (Canal IPC Monitor ↔ Watchdog - PROP-007).
+- All 71 specifications implemented in the program (Specs 001 through 067, Spec 070, Spec 071, Spec 072, and Spec 073) are complete, verified with evidence, and closed.
+- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling is certified with 1160/1160 tests PASS (0 failures, 0 regressions, Windows service running).
+- Specs 068 and 069 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
+- Next implementation target: Spec 068 (Canal IPC Monitor ↔ Watchdog - PROP-007).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

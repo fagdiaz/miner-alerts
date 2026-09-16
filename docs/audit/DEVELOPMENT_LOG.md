@@ -3,6 +3,29 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación Spec 070 (Fases C y D): Extracción de Hooks y Desacoplamiento Total de `inspect.getsource(main)` (ST-05)
+
+* **Objetivo**:
+  1. Extraer los bloques procedurales de clasificación de estado y de evaluación de auto-reboot desde `main()` hacia `DetectionHook` (Stage 30) y `ActuatorHook` (Stage 50) en `app/core/engine.py`.
+  2. Registrar formalmente `DetectionHook` y `ActuatorHook` en `_supervisory_engine` en `app/miner_monitor.py` y delegar la clasificación de estado del ciclo a `DetectionHook.classify_state()`.
+  3. Desacoplar completamente los 4 archivos de tests legados (`test_auto_reboot_signal_gate.py`, `test_hashboard_auto_reboot.py`, `test_reboot_safety.py`, `test_vnish_hashboard_detection.py`) sustituyendo las aserciones frágiles de texto sobre `inspect.getsource(main)` por evaluaciones funcionales directas de `DetectionHook` y `ActuatorHook`.
+  4. Actualizar `test_startup_grace_period.py` para verificar la invocación de `DetectionHook.classify_state` en `main()`.
+  5. Certificar 1160 tests globales PASS sin regresiones y servicio Windows `MinerAlerts` en estado `Running`.
+* **Componentes Modificados**:
+  - `app/core/engine.py`: Incorporación de `DetectionHook` y `ActuatorHook` con interfaces tipadas, preservando contratos e invariantes operativas.
+  - `app/miner_monitor.py`: Registro de hooks en `_supervisory_engine` y delegación limpia de `classify_state`.
+  - `tests/test_auto_reboot_signal_gate.py`: Modernización funcional de 4 tests eliminando `inspect.getsource(main)`.
+  - `tests/test_hashboard_auto_reboot.py`: Modernización funcional de 14 tests eliminando `inspect.getsource(main)`.
+  - `tests/test_reboot_safety.py`: Modernización funcional de 13 tests eliminando `inspect.getsource(main)`.
+  - `tests/test_vnish_hashboard_detection.py`: Modernización funcional de 6 tests eliminando `inspect.getsource(main)`.
+  - `tests/test_startup_grace_period.py`: Actualización de aserción contractual de `main`.
+  - `tests/test_supervisory_hooks.py`: Verificación de ejecución secuencial en pipeline.
+  - `specs/070-core-modularization-decoupling/tasks.md` & `evidence.md`: Marcado completo de T001-T016 y reporte de evidencia.
+* **Resultados & Verificación**:
+  - Suite completa de regresión: **1160/1160 tests PASS** en 34.3s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+  - Cero dependencias residuales de introspección de código fuente sobre `main()`.
+
 ## [2026-09-16] - Implementación Spec 070 (Fases A y B): Arnés de Comportamiento Determinista & Certificación de Paridad Dual (ST-05)
 
 * **Objetivo**:

@@ -56,15 +56,43 @@ class VnishHashboardDetectionTests(unittest.TestCase):
         self.assertIs(response, raw)
 
     def test_hashboard_precedence_stays_before_low_and_auto_reboot(self) -> None:
-        source = inspect.getsource(main)
-        state_block = source.split("prev_state = state.state", 1)[1].split("state.state = new_state", 1)[0]
-        self.assertLess(
-            state_block.index("active_boards < expected_boards"),
-            state_block.index("rate_ths < threshold_ths"),
+        from app.core.engine import DetectionHook, ActuatorHook
+        from app.miner_monitor import MinerState
+
+        # 1. Precedencia: placas faltantes tiene prioridad sobre hashrate bajo
+        st_hashboard = DetectionHook.classify_state(
+            responded=True,
+            rate_ths=20.0,
+            threshold_ths=60.0,
+            active_boards=2,
+            expected_boards=3,
         )
-        policy = source.split("# Auto-reboot policy", 1)[1]
-        self.assertIn("if new_state == STATE_LOW and state.low_since_ts", policy)
-        self.assertNotIn("if new_state == STATE_HASHBOARD and state.low_since_ts", policy)
+        self.assertEqual("HASHBOARD", st_hashboard)
+
+        st_low = DetectionHook.classify_state(
+            responded=True,
+            rate_ths=20.0,
+            threshold_ths=60.0,
+            active_boards=3,
+            expected_boards=3,
+        )
+        self.assertEqual("LOW", st_low)
+
+        # 2. Política de auto-reboot: HASHBOARD no se evalúa con timer de LOW
+        st = MinerState(state="HASHBOARD", low_since_ts=None, hashboard_since_ts=1000.0)
+        res = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st,
+            miner={"name": "M1"},
+            new_state="HASHBOARD",
+            responded=True,
+            rate_ths=0.0,
+            threshold_ths=60.0,
+            active_boards=0,
+            expected_boards=3,
+            now_ts=2000.0,
+            hashboard_sustained_seconds=600,
+        )
+        self.assertTrue(res["allowed"])
 
 
 if __name__ == "__main__":

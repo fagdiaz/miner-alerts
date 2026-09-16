@@ -233,12 +233,8 @@ class TestStartupGraceInvariantContracts(unittest.TestCase):
         self.assertIn("state.low_since_ts = None", restart_reset)
         self.assertNotIn("auto_reboot_signal", restart_reset)
 
-        # 3. vnish_hashboard_detection invariant
-        state_block = source.split("prev_state = state.state", 1)[1].split("state.state = new_state", 1)[0]
-        self.assertLess(
-            state_block.index("active_boards < expected_boards"),
-            state_block.index("rate_ths < threshold_ths"),
-        )
+        # 3. vnish_hashboard_detection invariant (delegated to DetectionHook)
+        self.assertIn("DetectionHook.classify_state", source)
 
         # 4. reboot_safety invariants
         self.assertIn("elif (\n                    new_state == STATE_HASHBOARD", source)

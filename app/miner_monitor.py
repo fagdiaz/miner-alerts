@@ -5370,18 +5370,22 @@ def main() -> None:
         _poll_interval_seconds: float = float(poll_seconds)
         from app.core.engine import (
             CoreSupervisoryEngine,
+            DetectionHook,
+            ActuatorHook,
             GovernanceInterlockHook,
             PersistenceHook,
             TimingGuardHook,
         )
         _supervisory_engine = CoreSupervisoryEngine(monitor_ctx)
         _supervisory_engine.register_hook(TimingGuardHook(warn_threshold_seconds=25.0))
+        _supervisory_engine.register_hook(DetectionHook())
         _supervisory_engine.register_hook(GovernanceInterlockHook())
+        _supervisory_engine.register_hook(ActuatorHook())
         _supervisory_engine.register_hook(PersistenceHook())
         log(
             f"SUPERVISORY_HOOKS pipeline_ready=true "
             f"hooks={len(_supervisory_engine.registered_hooks)} "
-            f"stages=[PRE_TICK,GOVERNANCE,PERSISTENCE]"
+            f"stages=[PRE_TICK,DETECTION,GOVERNANCE,ACTUATOR,PERSISTENCE]"
         )
         # Spec 066: Cold-Boot Fleet Grace Period (PROP-001)
         startup_grace_active = startup_fleet_grace_period_seconds > 0
@@ -5585,16 +5589,20 @@ def main() -> None:
                     state.low_streak = 0
 
                 prev_state = state.state
-                new_state = prev_state
-                if not startup_grace_active:
-                    if not responded and state.offline_streak >= fails_before_alert:
-                        new_state = STATE_OFFLINE
-                    elif responded and active_boards is not None and active_boards < expected_boards:
-                        new_state = STATE_HASHBOARD
-                    elif responded and rate_ths is not None and rate_ths < threshold_ths and state.low_streak >= fails_before_alert:
-                        new_state = STATE_LOW
-                if responded and rate_ths is not None and rate_ths >= threshold_ths and state.ok_streak >= recovery_successes:
-                    new_state = STATE_OK
+                new_state = DetectionHook.classify_state(
+                    responded=responded,
+                    rate_ths=rate_ths,
+                    threshold_ths=threshold_ths,
+                    active_boards=active_boards,
+                    expected_boards=expected_boards,
+                    startup_grace_active=startup_grace_active,
+                    offline_streak=state.offline_streak,
+                    low_streak=state.low_streak,
+                    ok_streak=state.ok_streak,
+                    fails_before_alert=fails_before_alert,
+                    recovery_successes=recovery_successes,
+                    prev_state=prev_state,
+                )
 
                 if new_state != prev_state and new_state in (STATE_HASHBOARD, STATE_LOW):
                     if chain_telemetry_enabled and event_store is not None and event_store.available:

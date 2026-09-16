@@ -838,5 +838,92 @@ class TestMinerMonitorEngineIntegration(unittest.TestCase):
         self.assertGreater(HookStage.PERSISTENCE, HookStage.ACTUATOR)
 
 
+class TestDetectionHook(unittest.TestCase):
+    """Verifica el comportamiento de DetectionHook (Spec 070)."""
+
+    def test_detection_hook_metadata(self) -> None:
+        from app.core.engine import DetectionHook
+        hook = DetectionHook()
+        self.assertEqual("detection", hook.name)
+        self.assertEqual(HookStage.DETECTION, hook.stage)
+
+    def test_detection_hook_precedence(self) -> None:
+        from app.core.engine import DetectionHook
+        # Precedencia de placas faltantes sobre hashrate
+        state = DetectionHook.classify_state(
+            responded=True,
+            rate_ths=30.0,
+            threshold_ths=60.0,
+            active_boards=2,
+            expected_boards=3,
+        )
+        self.assertEqual("HASHBOARD", state)
+
+        # Placas completas pero hashrate bajo
+        state_low = DetectionHook.classify_state(
+            responded=True,
+            rate_ths=30.0,
+            threshold_ths=60.0,
+            active_boards=3,
+            expected_boards=3,
+        )
+        self.assertEqual("LOW", state_low)
+
+        # Hashrate recuperado
+        state_ok = DetectionHook.classify_state(
+            responded=True,
+            rate_ths=70.0,
+            threshold_ths=60.0,
+            active_boards=3,
+            expected_boards=3,
+        )
+        self.assertEqual("OK", state_ok)
+
+
+class TestActuatorHook(unittest.TestCase):
+    """Verifica el comportamiento de ActuatorHook (Spec 070)."""
+
+    def test_actuator_hook_metadata(self) -> None:
+        from app.core.engine import ActuatorHook
+        hook = ActuatorHook()
+        self.assertEqual("actuator", hook.name)
+        self.assertEqual(HookStage.ACTUATOR, hook.stage)
+
+    def test_actuator_hook_evaluates_interlocks_and_gates(self) -> None:
+        from app.core.engine import ActuatorHook
+        from app.miner_monitor import MinerState
+
+        st = MinerState(state="LOW", low_since_ts=1000.0)
+        # 1. Ineligible signal blocks
+        res = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st,
+            miner={"name": "M1"},
+            new_state="LOW",
+            responded=True,
+            rate_ths=80.0,  # NOT_LOW
+            threshold_ths=60.0,
+            active_boards=3,
+            now_ts=2500.0,
+        )
+        self.assertFalse(res["allowed"])
+        self.assertEqual("ineligible_signal", res["reason"])
+
+        # 2. Not sustained blocks
+        st.low_since_ts = 2400.0  # 100s elapsed < 900s
+        res_sustained = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st,
+            miner={"name": "M1"},
+            new_state="LOW",
+            responded=True,
+            rate_ths=20.0,
+            threshold_ths=60.0,
+            active_boards=3,
+            now_ts=2500.0,
+            low_sustained_seconds=900,
+        )
+        self.assertFalse(res_sustained["allowed"])
+        self.assertEqual("not_sustained", res_sustained["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()

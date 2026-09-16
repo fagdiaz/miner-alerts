@@ -497,6 +497,227 @@ class TimingGuardHook(SupervisoryHook):
         return {"timing_guard_mono": mono_now}
 
 
+class DetectionHook(SupervisoryHook):
+    """Hook de detección y clasificación de estado operacional del minero (Spec 070).
+
+    Etapa DETECTION (30) — clasifica el estado operacional (OK, LOW, OFFLINE, HASHBOARD)
+    garantizando la precedencia constitucional de placas faltantes sobre tasa baja.
+    """
+
+    name = "detection"
+    stage = HookStage.DETECTION
+
+    @staticmethod
+    def classify_state(
+        *,
+        responded: bool,
+        rate_ths: Optional[float],
+        threshold_ths: float,
+        active_boards: Optional[int],
+        expected_boards: int = 3,
+        startup_grace_active: bool = False,
+        offline_streak: int = 1,
+        low_streak: int = 1,
+        ok_streak: int = 1,
+        fails_before_alert: int = 1,
+        recovery_successes: int = 1,
+        prev_state: str = "OK",
+    ) -> str:
+        """Clasificar estado operacional con precedencia determinista:
+        1. Si startup_grace_active es True, no transiciona a OFFLINE/HASHBOARD/LOW.
+        2. Si no responde y offline_streak >= fails -> OFFLINE.
+        3. Si responde y active_boards < expected_boards -> HASHBOARD (precedencia sobre LOW).
+        4. Si responde y rate_ths < threshold_ths y low_streak >= fails -> LOW.
+        5. Si responde y rate_ths >= threshold_ths y ok_streak >= recovery -> OK.
+        """
+        new_state = prev_state
+        if not startup_grace_active:
+            if not responded and offline_streak >= fails_before_alert:
+                new_state = "OFFLINE"
+            elif responded and active_boards is not None and active_boards < expected_boards:
+                new_state = "HASHBOARD"
+            elif (
+                responded
+                and rate_ths is not None
+                and rate_ths < threshold_ths
+                and low_streak >= fails_before_alert
+            ):
+                new_state = "LOW"
+        if (
+            responded
+            and rate_ths is not None
+            and rate_ths >= threshold_ths
+            and ok_streak >= recovery_successes
+        ):
+            new_state = "OK"
+        return new_state
+
+    def execute(
+        self,
+        context: MonitorContext,
+        tick_sequence: int,
+        now_ts: float,
+        tick_data: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        return None
+
+
+class ActuatorHook(SupervisoryHook):
+    """Hook de actuación y evaluación de políticas de auto-reboot (Spec 070).
+
+    Etapa ACTUATOR (50) — evalúa compuertas de señal, guardas de arranque,
+    temporizadores sostenidos, interlocks de seguridad (térmico, transición, flota),
+    cooldowns y ventanas de cuota de reinicio.
+    """
+
+    name = "actuator"
+    stage = HookStage.ACTUATOR
+
+    @staticmethod
+    def evaluate_auto_reboot_policy(
+        *,
+        state: Any,
+        miner: Dict[str, Any],
+        new_state: str,
+        responded: bool,
+        rate_ths: Optional[float],
+        threshold_ths: float,
+        active_boards: Optional[int],
+        expected_boards: int = 3,
+        now_ts: float = 1000.0,
+        process_start_ts: float = 0.0,
+        startup_guard_seconds: int = 600,
+        low_sustained_seconds: int = 900,
+        hashboard_sustained_seconds: int = 600,
+        hashboard_reboot_enabled: bool = True,
+        allow_partial_hashboard: bool = False,
+        reboot_cooldown_seconds: int = 1800,
+        max_reboots_per_window: int = 3,
+        auto_reboot_window_seconds: int = 21600,
+        interlock_decision: Optional[Any] = None,
+        qa_mode: bool = False,
+        qa_allow_actions: bool = False,
+    ) -> Dict[str, Any]:
+        """Evaluar compuertas e interlocks en orden estricto constitucional."""
+        if hasattr(state, "auto_reboot_timestamps"):
+            state.auto_reboot_timestamps = [
+                ts for ts in state.auto_reboot_timestamps if (now_ts - ts) <= auto_reboot_window_seconds
+            ]
+        startup_guard_active = (now_ts - process_start_ts) < startup_guard_seconds
+
+        from app.miner_monitor import (
+            classify_auto_reboot_signal,
+            auto_reboot_signal_allows_evaluation,
+            reset_sustained_low_if_signal_ineligible,
+            reset_sustained_hashboard_if_ineligible,
+            STATE_LOW,
+            STATE_HASHBOARD,
+        )
+        from app.core.reboot_safety import INTERLOCK_FIRMWARE_TRANSITION
+
+        signal = classify_auto_reboot_signal(responded, rate_ths, threshold_ths)
+
+        if new_state == STATE_LOW and getattr(state, "low_since_ts", None):
+            if not auto_reboot_signal_allows_evaluation(new_state, state.low_since_ts, signal):
+                reset_sustained_low_if_signal_ineligible(state, signal)
+                return {"allowed": False, "reason": "ineligible_signal", "signal": signal}
+
+            if startup_guard_active:
+                return {"allowed": False, "reason": "startup_guard", "signal": signal}
+
+            if (now_ts - state.low_since_ts) < low_sustained_seconds:
+                return {"allowed": False, "reason": "not_sustained", "signal": signal}
+
+            if interlock_decision and not interlock_decision.allowed:
+                if getattr(interlock_decision, "reason", None) == INTERLOCK_FIRMWARE_TRANSITION:
+                    state.low_since_ts = now_ts
+                return {"allowed": False, "reason": interlock_decision.reason, "signal": signal}
+
+            last_reboot_ts = getattr(state, "last_auto_reboot_ts", None)
+            if getattr(state, "last_manual_reboot_ts", None) is not None:
+                last_reboot_ts = (
+                    state.last_manual_reboot_ts
+                    if last_reboot_ts is None
+                    else max(last_reboot_ts, state.last_manual_reboot_ts)
+                )
+            if last_reboot_ts is not None and (now_ts - last_reboot_ts) < reboot_cooldown_seconds:
+                return {"allowed": False, "reason": "cooldown", "signal": signal}
+
+            if len(getattr(state, "auto_reboot_timestamps", [])) >= max_reboots_per_window:
+                state.degraded_mode = True
+                return {"allowed": False, "reason": "window", "signal": signal}
+
+            if qa_mode and not qa_allow_actions:
+                return {"allowed": False, "reason": "qa", "signal": signal}
+
+            return {"allowed": True, "reason": "eligible", "signal": signal}
+
+        elif (
+            new_state == STATE_HASHBOARD
+            and getattr(state, "hashboard_since_ts", None)
+            and hashboard_reboot_enabled
+        ):
+            if not auto_reboot_signal_allows_evaluation(
+                new_state=new_state,
+                low_since_ts=None,
+                signal_classification=signal,
+                hashboard_since_ts=state.hashboard_since_ts,
+                active_boards=active_boards,
+                expected_boards=expected_boards,
+                allow_partial_hashboard=allow_partial_hashboard,
+                hashboard_reboot_enabled=hashboard_reboot_enabled,
+            ):
+                reset_sustained_hashboard_if_ineligible(
+                    state=state,
+                    signal_classification=signal,
+                    active_boards=active_boards,
+                    expected_boards=expected_boards,
+                    allow_partial_hashboard=allow_partial_hashboard,
+                )
+                return {"allowed": False, "reason": "ineligible_signal", "signal": signal}
+
+            if startup_guard_active:
+                return {"allowed": False, "reason": "startup_guard", "signal": signal}
+
+            if (now_ts - state.hashboard_since_ts) < hashboard_sustained_seconds:
+                return {"allowed": False, "reason": "not_sustained", "signal": signal}
+
+            if interlock_decision and not interlock_decision.allowed:
+                if getattr(interlock_decision, "reason", None) == INTERLOCK_FIRMWARE_TRANSITION:
+                    state.hashboard_since_ts = now_ts
+                return {"allowed": False, "reason": interlock_decision.reason, "signal": signal}
+
+            last_reboot_ts = getattr(state, "last_auto_reboot_ts", None)
+            if getattr(state, "last_manual_reboot_ts", None) is not None:
+                last_reboot_ts = (
+                    state.last_manual_reboot_ts
+                    if last_reboot_ts is None
+                    else max(last_reboot_ts, state.last_manual_reboot_ts)
+                )
+            if last_reboot_ts is not None and (now_ts - last_reboot_ts) < reboot_cooldown_seconds:
+                return {"allowed": False, "reason": "cooldown", "signal": signal}
+
+            if len(getattr(state, "auto_reboot_timestamps", [])) >= max_reboots_per_window:
+                state.degraded_mode = True
+                return {"allowed": False, "reason": "window", "signal": signal}
+
+            if qa_mode and not qa_allow_actions:
+                return {"allowed": False, "reason": "qa", "signal": signal}
+
+            return {"allowed": True, "reason": "eligible", "signal": signal}
+
+        return {"allowed": False, "reason": "not_candidate", "signal": signal}
+
+    def execute(
+        self,
+        context: MonitorContext,
+        tick_sequence: int,
+        now_ts: float,
+        tick_data: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Pure helper functions (Spec 060 legado — mantenidas para compatibilidad)
 # ---------------------------------------------------------------------------

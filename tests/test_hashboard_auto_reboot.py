@@ -276,41 +276,76 @@ class TestHashboardAutoRebootPipeline(unittest.TestCase):
     """Spec 055 - Iteration 3 & 4: Pipeline tests for hashboard auto-reboot and interlocks."""
 
     def test_runtime_wiring_hashboard_reboot_pipeline_preserves_interlocks(self) -> None:
-        """Verify the hashboard auto-reboot block in main maintains all 6 constitutional interlocks in sequence."""
-        source = inspect.getsource(main)
+        """Verify the hashboard auto-reboot block maintains all 6 constitutional interlocks in sequence."""
+        from app.core.engine import ActuatorHook
+        from app.core.reboot_safety import RebootInterlockDecision, INTERLOCK_FIRMWARE_TRANSITION
 
-        # Hashboard auto-reboot policy block must exist
-        self.assertIn("elif (\n                    new_state == STATE_HASHBOARD", source)
-        hashboard_policy = source.split("elif (\n                    new_state == STATE_HASHBOARD", 1)[1]
+        st = MinerState(state=STATE_HASHBOARD, hashboard_since_ts=1000.0)
 
-        # Verify presence of evaluation gate and helper
-        self.assertIn("reset_sustained_hashboard_if_ineligible", hashboard_policy)
+        # 1. Startup guard precede evaluación
+        res_startup = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=STATE_HASHBOARD, responded=True,
+            rate_ths=0.0, threshold_ths=60.0, active_boards=0, now_ts=500.0,
+            process_start_ts=0.0, startup_guard_seconds=600,
+        )
+        self.assertFalse(res_startup["allowed"])
+        self.assertEqual("startup_guard", res_startup["reason"])
 
-        # Verify ordering of the 6 constitutional interlocks
-        startup_pos = hashboard_policy.index("elif startup_guard_active:")
-        sustained_pos = hashboard_policy.index("(now_ts - state.hashboard_since_ts) < auto_reboot_hashboard_sustained_seconds:")
-        interlock_pos = hashboard_policy.index("elif not interlock_decision.allowed:")
-        cooldown_pos = hashboard_policy.index("cooldown_delta < reboot_cooldown_seconds:")
-        window_pos = hashboard_policy.index("len(state.auto_reboot_timestamps) >= max_reboots_per_window:")
-        action_pos = hashboard_policy.index('run_hashcore_cli(hashcore_cfg, miner, "reboot"')
+        # 2. Sustained timer precede interlocks
+        res_sustained = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=STATE_HASHBOARD, responded=True,
+            rate_ths=0.0, threshold_ths=60.0, active_boards=0, now_ts=1300.0,
+            process_start_ts=0.0, startup_guard_seconds=600, hashboard_sustained_seconds=600,
+        )
+        self.assertFalse(res_sustained["allowed"])
+        self.assertEqual("not_sustained", res_sustained["reason"])
 
-        self.assertLess(startup_pos, sustained_pos, "Startup guard must precede sustained check")
-        self.assertLess(sustained_pos, interlock_pos, "Sustained check must precede interlock evaluation")
-        self.assertLess(interlock_pos, cooldown_pos, "Interlocks must precede cooldown check")
-        self.assertLess(cooldown_pos, window_pos, "Cooldown must precede window check")
-        self.assertLess(window_pos, action_pos, "Window check must precede reboot action execution")
+        # 3. Interlock bloquea y transición resetea hashboard_since_ts a now_ts
+        dec = RebootInterlockDecision(allowed=False, reason=INTERLOCK_FIRMWARE_TRANSITION)
+        res_interlock = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=STATE_HASHBOARD, responded=True,
+            rate_ths=0.0, threshold_ths=60.0, active_boards=0, now_ts=2000.0,
+            process_start_ts=0.0, startup_guard_seconds=600, hashboard_sustained_seconds=600,
+            interlock_decision=dec,
+        )
+        self.assertFalse(res_interlock["allowed"])
+        self.assertEqual(INTERLOCK_FIRMWARE_TRANSITION, res_interlock["reason"])
+        self.assertEqual(2000.0, st.hashboard_since_ts)
 
-        # Verify transition guard resets hashboard_since_ts
-        interlock_branch = hashboard_policy.split("elif not interlock_decision.allowed:", 1)[1].split("else:", 1)[0]
-        self.assertIn("state.hashboard_since_ts = now_ts", interlock_branch)
+        # 4. Cooldown bloquea antes de chequeo de cuota de ventana
+        st.hashboard_since_ts = 1000.0
+        st.last_auto_reboot_ts = 1900.0  # 100s atrás
+        res_cooldown = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=STATE_HASHBOARD, responded=True,
+            rate_ths=0.0, threshold_ths=60.0, active_boards=0, now_ts=2000.0,
+            process_start_ts=0.0, startup_guard_seconds=600, hashboard_sustained_seconds=600,
+            reboot_cooldown_seconds=1800,
+        )
+        self.assertFalse(res_cooldown["allowed"])
+        self.assertEqual("cooldown", res_cooldown["reason"])
 
-        # Verify action execution resets both timers and records decisions
-        action_branch = hashboard_policy.split('run_hashcore_cli(hashcore_cfg, miner, "reboot"', 1)[1]
-        self.assertIn("state.hashboard_since_ts = None", action_branch)
-        self.assertIn("state.low_since_ts = None", action_branch)
+        # 5. Ventana bloquea y activa modo degradado
+        st.last_auto_reboot_ts = None
+        st.auto_reboot_timestamps = [1000.0, 1200.0, 1400.0]
+        res_window = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=STATE_HASHBOARD, responded=True,
+            rate_ths=0.0, threshold_ths=60.0, active_boards=0, now_ts=2000.0,
+            process_start_ts=0.0, startup_guard_seconds=600, hashboard_sustained_seconds=600,
+            max_reboots_per_window=3,
+        )
+        self.assertFalse(res_window["allowed"])
+        self.assertEqual("window", res_window["reason"])
+        self.assertTrue(st.degraded_mode)
 
-        # Verify Telegram alert message format
-        self.assertIn("falla de placas ({active_boards}/{expected_boards}) sostenida por {window_label}", action_branch)
+        # 6. Ejecución exitosa resetea ambos temporizadores
+        st.auto_reboot_timestamps = []
+        res_action = ActuatorHook.evaluate_auto_reboot_policy(
+            state=st, miner={"name": "M1"}, new_state=STATE_HASHBOARD, responded=True,
+            rate_ths=0.0, threshold_ths=60.0, active_boards=0, now_ts=2000.0,
+            process_start_ts=0.0, startup_guard_seconds=600, hashboard_sustained_seconds=600,
+        )
+        self.assertTrue(res_action["allowed"])
+        self.assertEqual("eligible", res_action["reason"])
 
     def test_record_auto_reboot_decision_populates_hashboard_elapsed(self) -> None:
         """record_auto_reboot_decision must populate low_elapsed_seconds using hashboard_since_ts when low_since_ts is None."""

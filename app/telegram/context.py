@@ -60,7 +60,7 @@ class TelegramRequestContext:
         """Send a message back to the operator via Telegram sender queue/fallback."""
         from app.miner_monitor import send_telegram
         cid = str(target_chat_id or self.chat_id)
-        return send_telegram(
+        send_telegram(
             self.bot_token,
             cid,
             text,
@@ -71,3 +71,4 @@ class TelegramRequestContext:
             dbg_cmd=dbg_cmd,
             dbg_update_id=dbg_update_id,
         )
+        return True

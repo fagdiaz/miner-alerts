@@ -19,6 +19,7 @@ sobre la base de código de Miner Alerts antes de iniciar la implementación de 
   * Spec 065: Pipeline declarativo de hooks en CoreSupervisoryEngine (app/core/engine.py).
   * Spec 066: Cold-Boot Fleet Grace Period de 180s (app/miner_monitor.py).
   * Fix de Gobernanza: monitor_ctx.governance sincronizado con _GLOBAL_INTERVENTION_GOV en cada tick.
+  * Fix de Telegram Context: soporte dedup_key y **kwargs en send_telegram() eliminando warnings en getUpdates.
 
 2. DOCUMENTO MAESTRO DE PLANIFICACIÓN:
 - Lee obligatoriamente: docs/speckit/ACTION_PLAN_V5_1_HORIZON.md.

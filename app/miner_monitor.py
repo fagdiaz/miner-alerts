@@ -1254,6 +1254,8 @@ def send_telegram(
     dbg_update_id: Optional[int] = None,
     dbg_cmd: Optional[str] = None,
     reply_markup: Optional[Dict[str, Any]] = None,
+    dedup_key: Optional[str] = None,
+    **kwargs: Any,
 ) -> None:
     if not msg_type:
         msg_type = "ERROR"

@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/065-supervisory-hooks/plan.md` (Spec 065: Pipeline Declarativo de Hooks en CoreSupervisoryEngine ST-04)
+`specs/066-cold-boot-grace/plan.md` (Spec 066: Cold-Boot Fleet Grace Period Post-Arranque PROP-001)
 
 Active production observation gate:
-`specs/065-supervisory-hooks/plan.md` (Implementation Stage; Baseline 996 tests PASS, Windows Service RUNNING)
+`specs/066-cold-boot-grace/plan.md` (Production Certified Stage; Baseline 1062 tests PASS, Windows Service RUNNING)
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 

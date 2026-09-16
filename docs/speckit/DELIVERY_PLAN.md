@@ -1,7 +1,7 @@
 # Miner Alerts Delivery Plan
 
-**Planning baseline**: 2026-08-13
-**Planning horizon**: 2026-08-13 to 2026-12-20
+**Planning baseline**: 2026-09-15
+**Planning horizon**: 2026-09-15 to 2026-12-20
 **Source program**: `docs/speckit/SPEC_PROGRAM.md`
 **Source backlog**: `docs/speckit/ROADMAP.md`
 
@@ -69,6 +69,20 @@ safety gates are not compressed to recover an estimate.
 | Release v4.1.2 | Closed 2026-09-12 (`approved`) | Desescalado adaptativo con gradientes térmicos (-5%/-3%/-2%) y corrección de dwell | 3 tests añadidos, 840 tests PASS. |
 | Spec 055 hashboard auto-reboot | Closed 2026-09-13 (`approved`) | Auto-reboot seguro ante falla total de placas (0/3), ventana sostenida 600s, 6 interlocks | 14 tests añadidos, 854 tests PASS. |
 | Spec 056 two-tier recovery | Closed 2026-09-13 (`approved`) | Discriminador de 2 niveles: Soft Auto-Restart (Nivel 1, Vnish REST 15s) vs Hard Auto-Reboot (Nivel 2, Hashcore CLI 4m) | 27 tests añadidos, 881 tests PASS. |
+| Spec 057 intervention governance | Closed 2026-09-15 (`approved`) | Modo Vnish Libre, toggle unificado en /menu y contención de presets asimétricos | 21 tests añadidos, 902 tests PASS. |
+| Spec 058 telegram modularization | Closed 2026-09-15 (`approved`) | Arquitectura modular de router y command handlers independientes (MT-01) | 8 tests añadidos, 910 tests PASS. |
+| Spec 059 hardware clients extraction | Closed 2026-09-15 (`approved`) | Clientes tipados de socket CGMiner 4028, Vnish REST y Hashcore Toolkit (MT-02) | 18 tests añadidos, 928 tests PASS. |
+| Spec 060 core daemon architecture | Closed 2026-09-15 (`approved`) | MonitorContext, StateManager L1/L2 anti-deadlock y orquestador (ST-01/ST-02) | 30 tests añadidos, 958 tests PASS. |
+| Spec 061 sqlite wal integrity | Closed 2026-09-15 (`approved`) | Resiliencia SQLite WAL Mode, PRAGMA synchronous NORMAL, quick_check en arranque (PROP-002) | 11 tests añadidos, 969 tests PASS. |
+| Spec 062 hw error tripwire | Closed 2026-09-15 (`approved`) | Detección de chips defectuosos, rollback de preset y candado de 48h (PROP-003) | 10 tests añadidos, 979 tests PASS. |
+| Spec 063 ambient thermal pid | Closed 2026-09-15 (`approved`) | Gobernador térmico estacional con lectura de inlet_temp_c y 3 guardarraíles (PROP-004) | 14 tests añadidos, 993 tests PASS. |
+| Spec 064 multi-miner charts | Closed 2026-09-15 (`approved`) | Gráficos visuales multi-miner por grupo eléctrico con selectores inline en Telegram (PROP-006) | 11 tests añadidos, 1004 tests PASS. |
+| Spec 065 supervisory hooks | Closed 2026-09-15 (`approved`) | Pipeline declarativo de 7 etapas (HookStage), contención de excepciones y timing monotónico (ST-04) | 48 tests añadidos, 1047 tests PASS. |
+| Spec 066 cold-boot grace | Closed 2026-09-15 (`approved`) | Período de gracia post-arranque 180s (WARMING_UP), supresión de falsas alarmas y tarjeta 🟢 FLOTA RESTABLECIDA (PROP-001) | 15 tests añadidos, 1062 tests PASS. |
+| Spec 067 gateway heartbeat | 2026-09-16 to 2026-09-20 | 2026-09-21 to 2026-09-23 | Worker TCP no bloqueante de latido hacia router y supresión de tormentas 15s (PROP-005). |
+| Spec 068 ipc watchdog pipe | 2026-09-21 to 2026-09-25 | 2026-09-26 to 2026-09-28 | Servidor Named Pipe en monitor y cliente watchdog fuera de proceso con ping-pong <15s (PROP-007). |
+| Spec 069 deep chain telemetry | 2026-09-26 to 2026-10-03 | 2026-10-04 to 2026-10-06 | Telemetría profunda por cadena, diagnóstico predictivo de bus I2C y desbalance de potencia (PROP-008). |
+| Spec 070 core modularization b | 2026-10-07 to 2026-10-15 | 2026-10-16 to 2026-10-20 | Sustitución de inspect.getsource(main) por Behavioral Test Harness desacoplado (ST-05). |
 
 ## Milestones
 
@@ -99,6 +113,13 @@ safety gates are not compressed to recover an estimate.
 | 2026-09-12 | Spec 054 Predictive Chain Diagnostics Closed | Colector asíncrono, SQLite v7, diagnóstico predictivo, UX /chains y CLI analítica certificados con 835 tests PASS. |
 | 2026-09-12 | V4.1.1 Uptime Persistence & Sensor Accuracy Hotfix | Persistencia de last_elapsed, discriminación de sensores inactivos, purga DB y 837 tests PASS. |
 | 2026-09-12 | V4.1.2 Gradient-Adaptive Fan Step-Down & Dwell Fix | Desescalado térmico adaptativo (-5%/-3%/-2%), dwell ágil de 60s en frío y 840 tests PASS. |
+| 2026-09-13 | V4.1.3 Hashboard Failure Auto-Reboot (Spec 055) | Recuperación automática ante falla total de placas, 6 interlocks y 854 tests PASS. |
+| 2026-09-13 | V4.1.4 Two-Tier Mining Recovery (Spec 056) | Soft Auto-Restart vs Hard Auto-Reboot y 881 tests PASS. |
+| 2026-09-15 | V4.1.5 Intervention Governance & Contingency (Spec 057) | Modo Vnish Libre, toggle unificado en /menu y 902 tests PASS. |
+| 2026-09-15 | V5.0 Modular Architecture & Foundation (Specs 058-060) | Desacoplamiento de Telegram, clientes de red y StateManager L1/L2, 958 tests PASS. |
+| 2026-09-15 | V5.0.1 Hardware Resilience & Seasonality (Specs 061-063) | SQLite WAL mode, HW Error Tripwire y gobernador estacional, 993 tests PASS. |
+| 2026-09-15 | V5.0.2 Supervisory Hooks & Multi-Miner UX (Specs 064-065) | Pipeline declarativo de hooks en CoreSupervisoryEngine y gráficos comparativos multi-miner, 1047 tests PASS. |
+| 2026-09-15 | V5.0.3 Cold-Boot Fleet Grace Period Release (Spec 066) | Supresión de streaks de arranque, tarjeta 🟢 FLOTA RESTABLECIDA y 1062 tests PASS certificados en producción. |
 
 ## Review And Bug-Fix Rhythm
 

@@ -15,17 +15,16 @@ Este documento consolida y prioriza **7 propuestas técnicas de mejora** derivad
 
 ---
 
-## 🎯 Matriz de Prioridades y Clasificación de Riesgo
-
-| ID | Propuesta | Prioridad | Riesgo | Impacto Principal |
-| :--- | :--- | :---: | :---: | :--- |
-| **PROP-001** | Período de Gracia y Calentamiento Post-Arranque (`Cold-Boot Grace Period`) | **P1 (Alta)** | Bajo | Cero falsas alarmas tras retorno de energía o reinicio del host. |
-| **PROP-002** | Resiliencia SQLite WAL Mode & Integridad ante Apagones | **P1 (Alta)** | Bajo | Blindaje transaccional de EventStore contra cierres abruptos. |
-| **PROP-003** | Rollback Automático por Tasa de Errores de Hardware (`HW Error Tripwire`) | **P2 (Media)** | Medio | Protección de silicio y eliminación de shares desperdiciados. |
-| **PROP-004** | Gobernador Térmico con Conciencia Estacional (`Ambient-Aware Thermal PID`) | **P2 (Media)** | Medio | Ahorro energético en invierno y máxima disipación en verano. |
-| **PROP-005** | Latido de Gateway y Supresión de Tormentas por Fallo de Red Local | **P2 (Media)** | Bajo | Supresión de alarmas espurias ante parpadeos del switch Ethernet. |
-| **PROP-006** | Tarjetas de Gráficos Comparativos Multi-Miner en Telegram (`/chart` Overlays) | **P3 (Baja)** | Bajo | Visibilidad operativa inmediata de divergencias entre elevadores. |
-| **PROP-007** | Canal IPC de Alta Frecuencia Monitor ↔ Watchdog (Named Pipes) | **P3 (Baja)** | Medio | Detección de bloqueos del GIL y diagnóstico forense en <15s. |
+| ID | Propuesta | Prioridad | Riesgo | Estado / Spec | Impacto Principal |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| **PROP-001** | Período de Gracia y Calentamiento Post-Arranque (`Cold-Boot Grace Period`) | **P1 (Alta)** | Bajo | **Completado (Spec 066)** | Cero falsas alarmas tras retorno de energía o reinicio del host. |
+| **PROP-002** | Resiliencia SQLite WAL Mode & Integridad ante Apagones | **P1 (Alta)** | Bajo | **Completado (Spec 061)** | Blindaje transaccional de EventStore contra cierres abruptos. |
+| **PROP-003** | Rollback Automático por Tasa de Errores de Hardware (`HW Error Tripwire`) | **P2 (Media)** | Medio | **Completado (Spec 062)** | Protección de silicio y eliminación de shares desperdiciados. |
+| **PROP-004** | Gobernador Térmico con Conciencia Estacional (`Ambient-Aware Thermal PID`) | **P2 (Media)** | Medio | **Completado (Spec 063)** | Ahorro energético en invierno y máxima disipación en verano. |
+| **PROP-005** | Latido de Gateway y Supresión de Tormentas por Fallo de Red Local | **P2 (Media)** | Bajo | **Planificado (Spec 067)** | Supresión de alarmas espurias ante parpadeos del switch Ethernet. |
+| **PROP-006** | Tarjetas de Gráficos Comparativos Multi-Miner en Telegram (`/chart` Overlays) | **P3 (Baja)** | Bajo | **Completado (Spec 064)** | Visibilidad operativa inmediata de divergencias entre elevadores. |
+| **PROP-007** | Canal IPC de Alta Frecuencia Monitor ↔ Watchdog (Named Pipes) | **P3 (Baja)** | Medio | **Planificado (Spec 068)** | Detección de bloqueos del GIL y diagnóstico forense en <15s. |
+| **PROP-008** | Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break | **P1 (Alta)** | Medio | **Planificado (Spec 069)** | Diagnóstico predictivo de fallas de bus I2C y degradación de placas. |
 
 ---
 
@@ -203,17 +202,20 @@ Actualmente, el monitor captura únicamente métricas consolidadas (hashrate tot
 
 ---
 
-## 📅 Hoja de Ruta Sugerida para Implementación
+## 📅 Estado de Implementación & Hoja de Ruta
 
-1. **Fase Inmediata (Mantenimiento V4.1)**:
-   - Implementación de **PROP-001** (`Cold-Boot Fleet Grace Period`), **PROP-002** (`SQLite WAL Mode`) y **PROP-008** (`Telemetría Profunda por Cadena & Diagnóstico Chain Break`).
-   - Cero riesgo de regresión: operan como colectores desacoplados y aumentan drásticamente la capacidad de diagnóstico.
-2. **Fase Mediana (Optimización V4.2)**:
-   - Implementación de **PROP-003** (`HW Error Tripwire`) y **PROP-004** (`Ambient-Aware Thermal PID`).
-   - Foco en optimización energética, protección de hardware y prolongación de la vida útil de los ventiladores.
-3. **Fase Avanzada (Observabilidad V4.3)**:
-   - Implementación de **PROP-005**, **PROP-006** y **PROP-007**.
-   - Foco en UX móvil avanzada y telemetría de ultra-baja latencia.
+1. **Iniciativas Completadas (Fases 4 a 6 - V5.0 Post-Evolution)**:
+   - ✅ **PROP-001** (`Cold-Boot Fleet Grace Period`) -> Implementada y certificada en **Spec 066** (1062 tests PASS).
+   - ✅ **PROP-002** (`SQLite WAL Mode & Integrity Check`) -> Implementada y certificada en **Spec 061**.
+   - ✅ **PROP-003** (`HW Error Tripwire & Overclock Rollback`) -> Implementada y certificada en **Spec 062**.
+   - ✅ **PROP-004** (`Ambient-Aware Thermal PID`) -> Implementada y certificada en **Spec 063**.
+   - ✅ **PROP-006** (`Multi-Miner Charts & Range Switchers`) -> Implementada y certificada en **Spec 064**.
+
+2. **Horizonte Activo (Fases 7 y 8 - Horizonte V5.1)**:
+   - ⏳ **PROP-005** (`Latido de Gateway y Supresión de Tormentas`) -> Planificada como **Spec 067** (P2 Media / Bajo riesgo).
+   - ⏳ **PROP-007** (`Canal IPC Alta Frecuencia Monitor ↔ Watchdog`) -> Planificada como **Spec 068** (P3 Baja / Medio riesgo).
+   - ⏳ **PROP-008** (`Telemetría Profunda por Cadena & Diagnóstico Chain Break`) -> Planificada como **Spec 069** (P1 Alta / Medio riesgo).
+   - Ver detalle de ejecución en [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](../speckit/ACTION_PLAN_V5_1_HORIZON.md).
 
 ---
 

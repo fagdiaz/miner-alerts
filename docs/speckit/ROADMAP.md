@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (57 de 57 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 902 tests PASS — Release V4.1.5 Intervention Governance & Adaptive Contingency Certificada).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (66 de 66 especificaciones del programa completadas y verificadas con evidencia en producción y suite de tests: 1062 tests PASS — Release V5.0.3 Cold-Boot Fleet Grace Period & Adaptive Supervisory Hooks Certificada).
 
 
 ---
@@ -819,9 +819,9 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 
 ## Governance
 
-- All 57 specifications in the initial program are complete, verified with evidence, and closed.
-- Version 4.1.5 (Release V4.1.5 Intervention Governance & Adaptive Contingency) is certified with 902/902 tests PASS.
-- Spec 057 (Intervention Governance & Adaptive Contingency) is fully implemented, verified, and operational in production.
+- All 66 specifications in the current program (Specs 001 through 066) are complete, verified with evidence, and closed.
+- Version 5.0.3 (Release V5.0.3 Cold-Boot Fleet Grace Period & Adaptive Supervisory Hooks) is certified with 1062/1062 tests PASS.
+- Spec 066 (Cold-Boot Fleet Grace Period Post-Arranque PROP-001) is fully implemented, verified, and operational in production.
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
-- Architectural and operational proposals for future horizons are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`, `docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`, and `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.
+- Architectural and operational proposals for future horizons (Specs 067-070) are documented in `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`, `docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`, and `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.

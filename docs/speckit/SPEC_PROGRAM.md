@@ -1,8 +1,8 @@
 # Miner Alerts Specification Program
 
-**Planning baseline**: 2026-08-13
-**Program horizon**: 2026-08-13 to 2026-12-20
-**Active production gate**: V2 Release Candidate Approved & Tagged (`v2.0.0`)
+**Planning baseline**: 2026-09-15
+**Program horizon**: 2026-09-15 to 2026-12-20
+**Active production gate**: V5.0.3 Cold-Boot Fleet Grace Period Approved (`v5.0.3`, 1062 tests PASS, Windows Service RUNNING)
 **Canonical schedule**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Purpose
@@ -20,12 +20,12 @@ been completed.
 - API 4028 polling is the authoritative miner-health acquisition path.
 - Vnish WebSocket collection is bounded, scheduled and read-only; it enriches
   evidence but does not replace API 4028 or authorize actions.
-- SQLite schema v5 is the durable incident, sample, firmware and decision store.
+- SQLite schema v7 in WAL mode is the durable incident, sample, firmware and decision store.
 - Telegram is the remote control surface; the static operations dashboard is
   read-only.
-- Specs 001 through 030 are 100% completed, verified, and evidenced in production.
-- Production runtime has operated continuously for 267.2+ hours under PID 38816 with zero P0/P1 alerts.
-- Spec 029 Release Audit Gate approved; annotated tag `v2.0.0` published.
+- Specs 001 through 066 are 100% completed, verified, and evidenced in production.
+- Production runtime has operated continuously with a certified test suite of 1062 tests PASS (0 failures, 0 errors, 0 regressions).
+- Production Windows service `MinerAlerts` is running continuously under Windows 11.
 
 ## Decisions Made In This Planning Pass
 
@@ -84,11 +84,35 @@ The directory numbers preserve the roadmap concepts created before this program.
 Execution order is governed by dependencies and priority, so Spec 028 is
 scheduled before conditional Spec 027.
 
+### Horizon V5.0 Certified Packages (Specs 057–066)
+
+| Order | Spec | Priority | Risk | Module Scope | Outcome |
+| --- | --- | --- | --- | --- | --- |
+| Closed | 057 Intervention Governance | P1 | MEDIUM | `app/governance/`, Telegram | Completed, Vnish Free Mode & Adaptive Contingency (`v4.1.5`, 902 tests PASS). |
+| Closed | 058 Telegram Dispatcher | P1 | LOW | `app/telegram/router.py` | Completed, MT-01 Modular Router & Dispatcher (`v5.0.0`, 910 tests PASS). |
+| Closed | 059 Hardware Clients Extraction | P1 | MEDIUM | `app/network/` | Completed, MT-02 CGMiner, Vnish & Hashcore Clients (`v5.0.0`, 928 tests PASS). |
+| Closed | 060 Core Daemon Architecture | P0 | HIGH | `app/core/` | Completed, ST-01/ST-02 MonitorContext & StateManager L1/L2 (`v5.0.0`, 958 tests PASS). |
+| Closed | 061 SQLite WAL Integrity | P1 | LOW | `app/core/event_store.py` | Completed, PROP-002 WAL Mode & Quick Check (`v5.0.1`, 969 tests PASS). |
+| Closed | 062 HW Error Tripwire | P2 | MEDIUM | `app/governance/preset_balancer.py` | Completed, PROP-003 HW Error Tripwire & 48h Lock (`v5.0.1`, 979 tests PASS). |
+| Closed | 063 Ambient Thermal PID | P2 | MEDIUM | `app/governance/fan_governor.py` | Completed, PROP-004 Seasonal Thermal PID & Inlet Guards (`v5.0.1`, 993 tests PASS). |
+| Closed | 064 Multi-Miner Charts | P3 | LOW | `app/telegram/charts.py` | Completed, PROP-006 Multi-Miner Charts & Range Switchers (`v5.0.2`, 1004 tests PASS). |
+| Closed | 065 Supervisory Hooks | P1 | MEDIUM | `app/core/engine.py` | Completed, ST-04 Declarative 7-Stage Hooks Pipeline (`v5.0.2`, 1047 tests PASS). |
+| Closed | 066 Cold-Boot Fleet Grace | P1 | LOW | `app/miner_monitor.py` | Completed, PROP-001 Cold-Boot 180s Fleet Warmup Grace (`v5.0.3`, 1062 tests PASS). |
+
+### Horizon V5.1 Active Planned Packages (Specs 067–070)
+
+| Order | Spec | Priority | Risk | Depends on | Outcome / Objective |
+| --- | --- | --- | --- | --- | --- |
+| Planned | 067 Gateway Heartbeat & Storm Suppression | P2 | LOW | Spec 066 | Worker TCP 50ms hacia router y supresión de tormentas 15s (PROP-005). |
+| Planned | 068 IPC Watchdog Named Pipe | P3 | MEDIUM | Spec 067 | Servidor Named Pipe en monitor y cliente watchdog fuera de proceso <15s (PROP-007). |
+| Planned | 069 Deep Chain Telemetry & Predictive Break | P1 | MEDIUM | Spec 067 | Telemetría profunda por cadena, diagnóstico predictivo bus I2C (PROP-008). |
+| Planned | 070 Core Modularization Phase B | P0 | HIGH | Spec 069 | Sustitución de inspect.getsource(main) por Behavioral Test Harness desacoplado (ST-05). |
+
 ## Implementation Readiness And Hard Gates
 
-All 30 packages in the program have satisfied their planning, implementation,
+All 66 packages in the program (Specs 001 through 066) have satisfied their planning, implementation,
 validation, and production soak gates. The system is stabilized and certified
-under Release v2.0.0.
+under Release v5.0.3 (1062 tests PASS).
 
 Documentation and sanitized fixtures may advance in parallel. Runtime code,
 activation or a new long-lived component cannot bypass the hard blocks above.
@@ -293,7 +317,13 @@ The program requires three documentation sweeps.
 - Spec 054 is **Completed, Deep Chain Telemetry Ingestion, SQLite v7 Storage, Predictive Hashboard Diagnostics & Interactive /chains UX Certified in Live Production** (`v4.1.0`, 835/835 tests PASS).
 - Spec 055 is **Completed, Automated Hashboard Failure Recovery, 6-Interlock Auto-Reboot & Sustained 600s Window Certified in Live Production** (`v4.1.3`, 854/854 tests PASS).
 - Spec 056 is **Completed, Two-Tier Mining Recovery (Soft Auto-Restart via Vnish REST vs Hard Auto-Reboot via Hashcore CLI) Certified in Live Production** (`v4.1.4`, 881/881 tests PASS).
-- All 56 specifications across V1, V2, V3, and V4 have satisfied their design, test, concurrency, and evidence gates with 881/881 passing automated tests.
+- Spec 057 is **Completed, Intervention Governance & Adaptive Contingency Certified in Live Production** (`v4.1.5`, 902/902 tests PASS).
+- Specs 058 through 060 are **Completed, Telegram Command Center & Dispatcher Modularization, Hardware Clients Extraction & Core Daemon Architecture Certified** (`v5.0.0`, 958/958 tests PASS).
+- Specs 061 through 063 are **Completed, SQLite WAL Mode Integrity, HW Error Tripwire & Ambient-Aware Seasonal Thermal PID Certified** (`v5.0.1`, 993/993 tests PASS).
+- Specs 064 and 065 are **Completed, Multi-Miner Charts & Range Switchers, Declarative Hooks Pipeline in CoreSupervisoryEngine Certified** (`v5.0.2`, 1047/1047 tests PASS).
+- Spec 066 is **Completed, Cold-Boot Fleet Grace Period Post-Arranque (PROP-001) Certified in Live Production** (`v5.0.3`, 1062/1062 tests PASS).
+- All 66 specifications across V1, V2, V3, V4, and V5 have satisfied their design, test, concurrency, and evidence gates with 1062/1062 passing automated tests.
+- Active implementation and audit plan for Horizon V5.1 (Specs 067-070) is established in `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.
 
 ## Planning Hardening Record - 2026-08-13
 

@@ -174,6 +174,11 @@ class StateManager:
                 setattr(state, attr, value)
             return state
 
+    @staticmethod
+    def serialize_miner_state(state: Any) -> Dict[str, Any]:
+        """Convert a MinerState instance to a JSON-serialisable dict (Spec 072)."""
+        return _serialise_miner_state(state)
+
 
 # ---------------------------------------------------------------------------
 # Internal helper — mirrors _build_state_payload field list in miner_monitor.py

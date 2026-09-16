@@ -3,6 +3,26 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Implementación Spec 072: Unificación de Serialización de Estado & Desacoplamiento de Shims Redundantes (P2)
+
+* **Objetivo**: 
+  1. Unificar la serialización de `MinerState` centralizándola en `StateManager.serialize_miner_state(state)` / `serialize_miner_state(state)` en `app/core/state_manager.py`, eliminando la duplicación del payload de ~45 campos en `_build_state_payload()` en `app/miner_monitor.py`.
+  2. Migrar los comandos de Telegram (`diagnostics.py`, `fans.py`, `reboot.py`, `maintenance.py`) para reutilizar `find_assessment_by_target` y `format_miner_key` de `app/telegram/command_center.py`, eliminando formateos manuales dispersos y previniendo `KeyError`.
+  3. Centralizar el generador recursivo `_dicts()` en `app/core/mining_quality.py` e importarlo limpiamente en `app/vnish/telemetry.py`.
+  4. Preservar intactos los 37 contratos de tests `inspect.getsource(main)`.
+* **Componentes Modificados / Creados**:
+  - `app/core/state_manager.py`: Exposición del método estático `StateManager.serialize_miner_state` y alias de módulo `serialize_miner_state`.
+  - `app/miner_monitor.py`: Delegación de `_build_state_payload()` en `serialize_miner_state()`.
+  - `app/telegram/commands/diagnostics.py`: Reutilización de `format_miner_key`.
+  - `app/telegram/commands/reboot.py`: Reutilización de `format_miner_key`.
+  - `app/telegram/commands/fans.py`: Reutilización de `format_miner_key` en 4 puntos de sondeo.
+  - `tests/test_state_serialization_parity.py`: Suite exhaustiva de paridad determinista de campos y serializabilidad JSON de `MinerState`.
+  - `tests/test_find_assessment_by_target.py`: 8 pruebas unitarias de resolución por ID corto, nombre completo, IP y formateo seguro de claves.
+* **Resultados & Verificación**:
+  - Pruebas unitarias de Spec 072: 11 tests PASS (3 en `test_state_serialization_parity.py`, 8 en `test_find_assessment_by_target.py`).
+  - Suite completa de regresión: **1113 tests PASS** en 33.5s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+
 ## [2026-09-16] - Auditoría QA Exhaustiva & Mitigaciones de Diseño en Especificaciones Pendientes (Specs 068 a 073)
 
 * **Objetivo**: Auditoría técnica de calidad y control de riesgos sobre las especificaciones pendientes de implementación (Specs 068, 069, 070, 072 y 073), asegurando que todos los planes, especificaciones y listas de tareas incorporen salvaguardas de seguridad, concurrencia, permisos en Windows NT y significancia estadística antes de iniciar cualquier fase de código.

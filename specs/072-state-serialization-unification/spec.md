@@ -1,9 +1,9 @@
-﻿# Spec 072: Unificación de Serialización de Estado & Desacoplamiento de Shims Redundantes (P2)
+# Spec 072: Unificación de Serialización de Estado & Desacoplamiento de Shims Redundantes (P2)
 
 **ID**: 072  
 **Rama**: `codex/022-adaptive-acquisition`  
 **Prioridad**: P2 (Mantenibilidad & DRY)  
-**Estado**: Planificado  
+**Estado**: Implementado & Verificado  
 
 ---
 

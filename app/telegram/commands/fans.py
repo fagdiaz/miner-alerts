@@ -7,6 +7,7 @@ import time
 from typing import Any, List, Optional
 
 from app.telegram.commands.base import BaseCommandHandler
+from app.telegram.command_center import format_miner_key
 from app.telegram.context import TelegramRequestContext
 
 logger = logging.getLogger("miner-alerts")
@@ -100,9 +101,7 @@ class SilentCommand(BaseCommandHandler):
             with context.state_lock:
                 for m in context.miners:
                     m_name = m.get("name", "")
-                    m_host = m.get("host", "")
-                    m_port = m.get("port", 4028)
-                    sk = f"{m_name}|{m_host}:{m_port}"
+                    sk = format_miner_key(m)
                     st = context.states.get(sk)
                     if st is not None and st.silent_mode_active:
                         st.silent_mode_active = False
@@ -127,9 +126,7 @@ class SilentCommand(BaseCommandHandler):
             with context.state_lock:
                 for m in context.miners:
                     m_name = m.get("name", "")
-                    m_host = m.get("host", "")
-                    m_port = m.get("port", 4028)
-                    sk = f"{m_name}|{m_host}:{m_port}"
+                    sk = format_miner_key(m)
                     st = context.states.get(sk)
                     if st is None:
                         context.states[sk] = MinerState()
@@ -167,9 +164,7 @@ class SilentCommand(BaseCommandHandler):
             with context.state_lock:
                 for m in context.miners:
                     m_name = m.get("name", "")
-                    m_host = m.get("host", "")
-                    m_port = m.get("port", 4028)
-                    sk = f"{m_name}|{m_host}:{m_port}"
+                    sk = format_miner_key(m)
                     st = context.states.get(sk)
                     if st is None:
                         lines.append(f"  {m_name}: sin datos")
@@ -288,9 +283,7 @@ class GovernorCommand(BaseCommandHandler):
             with context.state_lock:
                 for m in context.miners:
                     m_name = m.get("name", "")
-                    m_host = m.get("host", "")
-                    m_port = m.get("port", 4028)
-                    sk = f"{m_name}|{m_host}:{m_port}"
+                    sk = format_miner_key(m)
                     st = context.states.get(sk)
                     if st is None:
                         lines.append(f"  {m_name}: sin datos")

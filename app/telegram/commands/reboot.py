@@ -62,7 +62,7 @@ class RebootCommand(BaseCommandHandler):
             for m in context.miners:
                 dname = display_name(m.get("name", ""))
                 mhost = m.get("host", "")
-                sk = f"{m.get('name','')}|{mhost}:{m.get('port', 4028)}"
+                sk = format_miner_key(m)
                 st = states_snap.get(sk)
                 st_state = getattr(st, "state", "UNKNOWN") if st else "UNKNOWN"
                 lines.append(f"• *{dname}* ({mhost}): `{st_state}`")

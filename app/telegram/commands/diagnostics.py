@@ -72,7 +72,7 @@ class DiagnoseCommand(BaseCommandHandler):
                     target_miners = [matched]
             for m in target_miners:
                 m_name = m.get("name", "")
-                m_key = f"{m_name}|{m.get('host','')}:{m.get('port', 4028)}"
+                m_key = format_miner_key(m)
                 samples = event_store.list_samples(m_key, start_ts=win_start, end_ts=assessment_now_ts)
                 events = event_store.list_events(limit=50, miner_key=m_key)
                 fw_logs = event_store.list_firmware_events(miner_name=m_name, limit=50)

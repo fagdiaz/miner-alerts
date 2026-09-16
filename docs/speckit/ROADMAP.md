@@ -853,12 +853,13 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Barrera defensiva en `ShutdownPurgeNotify` y nombres descriptivos en hilos de mensajería (`TelegramSender`, `TelegramPolling`).
 - [x] Suites de pruebas en `tests/test_sqlite_readonly_consolidation.py` y `tests/test_tripwire_thread_hardening.py`. **1079/1079 tests globales PASS** (+7 nuevos, 0 regresiones).
 
-### Iniciativa 24 — Unificación de Serialización de Estado & Desacoplamiento de Shims (Spec 072 - P2 - Planificada)
+### Iniciativa 24 — Unificación de Serialización de Estado & Desacoplamiento de Shims (Spec 072 - P2 - Completada & Certificada)
 - Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
-- [ ] Delegación de `_build_state_payload()` en `StateManager._serialize_state()` unificando la fuente de verdad de `MinerState`.
-- [ ] Extracción del helper compartido `find_assessment_by_target()` eliminando copy-paste en 5 comandos de Telegram.
-- [ ] Centralización de `_dicts()` en `app/core/mining_quality.py`.
-- [ ] Retiro de shims procedurales redundantes en `miner_monitor.py`.
+- [x] Delegación de `_build_state_payload()` en `StateManager.serialize_miner_state()` unificando la fuente de verdad de `MinerState`.
+- [x] Extracción del helper compartido `find_assessment_by_target()` y `format_miner_key()` eliminando copy-paste en comandos de Telegram (`diagnostics`, `fans`, `reboot`, `maintenance`).
+- [x] Centralización de `_dicts()` en `app/core/mining_quality.py`.
+- [x] Retiro y saneamiento de shims procedurales preservando contratos de `inspect.getsource(main)`.
+- [x] Suite de pruebas en `tests/test_state_serialization_parity.py` y `tests/test_find_assessment_by_target.py`. **1113/1113 tests globales PASS** (0 fallos, 0 regresiones).
 
 ### Iniciativa 25 — Reutilización de Clientes en Tools & Alineación de Configuración (Spec 073 - P3 - Planificada)
 - Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
@@ -870,9 +871,9 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 
 ## Governance
 
-- All 68 specifications implemented in the program (Specs 001 through 067, and Spec 071) are complete, verified with evidence, and closed.
-- Version 5.1.0 + Hardening is certified with 1110/1110 tests PASS (0 failures, 0 regressions, Windows service running).
-- Specs 068, 069, 070, 072, and 073 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
-- Implementation of Specs 068, 069, 070, 072, and 073 remains paused awaiting explicit user approval.
+- All 69 specifications implemented in the program (Specs 001 through 067, Spec 071, and Spec 072) are complete, verified with evidence, and closed.
+- Version 5.1.0 + State Unification is certified with 1113/1113 tests PASS (0 failures, 0 regressions, Windows service running).
+- Specs 068, 069, 070, and 073 are fully specified end-to-end and audited by QA with all security, resilience, and statistical safeguards incorporated.
+- Next implementation target: Spec 073 (Tools Client Reuse & Config Alignment).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

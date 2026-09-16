@@ -38,6 +38,8 @@ from app.network.vnish_client import (
     unlock_miner,
 )
 
+from app.network.gateway_heartbeat import GatewayHeartbeatWorker
+
 __all__ = [
     # CGMiner 4028
     "CGMinerClient",
@@ -73,4 +75,6 @@ __all__ = [
     "safe_get_overclock_settings",
     "set_miner_preset",
     "safe_set_miner_preset",
+    # Spec 067: Gateway Heartbeat
+    "GatewayHeartbeatWorker",
 ]

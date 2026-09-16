@@ -204,5 +204,13 @@
     "gateway_port": 53,
     "gateway_timeout_seconds": 0.5,
     "cooldown_seconds": 300.0
-  }
+  },
+  "_comment_gateway_heartbeat": "Spec 067: Latido de Gateway y Supresión de Tormentas de Red Local (PROP-005). Hilo daemon que verifica conectividad TCP al router/gateway cada interval_s segundos. Suprime alertas de desconexión de mineros durante microcortes de switch (< network_storm_suppression_seconds). Desactivado por defecto — activar solo si hay problemas de parpadeo de switch Ethernet.",
+  "gateway_heartbeat_enabled": false,
+  "gateway_host": "192.168.100.1",
+  "gateway_port": 80,
+  "gateway_fallback_port": 53,
+  "gateway_heartbeat_interval_s": 5,
+  "gateway_connect_timeout_ms": 50,
+  "network_storm_suppression_seconds": 15
 }

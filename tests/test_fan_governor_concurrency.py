@@ -435,6 +435,35 @@ class TestAutoswitchRecovery(unittest.TestCase):
         self.assertEqual(st26.governor_last_action, ACTION_STEP_DOWN)
         self.assertEqual(st26.governor_duty, 95)
 
+    def test_contingency_reduced_preset_adapts_fans_to_regulate_temp(self):
+        """When contingency reduces preset to 2300W and miner runs at 2299W, governor must adapt
+        its target power to 2300W and STEP_DOWN towards 82°C instead of forcing 100% cooling."""
+        miners = [
+            {"name": "M25", "host": "192.168.100.25", "port": 4028, "target_power_w": 2700.0},
+        ]
+        lock = threading.Lock()
+        states = {
+            "M25|192.168.100.25:4028": MinerState(
+                governor_duty=90,
+                governor_last_temp_c=76.0,  # cool, below 81.0°C deadband
+                governor_last_power_w=2299.0,  # matching 2300W contingency preset, though below 2700W max
+                governor_last_change_ts=0.0,
+                balancer_preset="2300W",  # Active contingency / balancer preset!
+            )
+        }
+        cfg = _make_config(
+            fan_governor_dry_run=True,
+            fan_governor_target_temp_c=82.0,
+            fan_governor_deadband_low_c=81.0,
+        )
+        execute_governor_cycle(miners, states, lock, cfg, now_ts=1000.0)
+
+        st = states["M25|192.168.100.25:4028"]
+        # Must NOT force 100% RECOVERY_MAX_COOLING; must step down to regulate chips towards 82°C!
+        self.assertNotEqual(st.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(st.governor_last_action, ACTION_STEP_DOWN)
+        self.assertLess(st.governor_duty, 90)
+
 
 if __name__ == "__main__":
     unittest.main()

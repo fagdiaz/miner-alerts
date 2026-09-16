@@ -5365,6 +5365,7 @@ def main() -> None:
     log("Inicio de monitoreo.")
 
     acquirer: Optional[BoundedAcquirer] = None
+    _gateway_heartbeat: Optional[Any] = None
     try:
         first_tick = True
         episode_notifications = IrregularEpisodeCoordinator(
@@ -5430,6 +5431,31 @@ def main() -> None:
         # Spec 066: Cold-Boot Fleet Grace Period (PROP-001)
         startup_grace_active = startup_fleet_grace_period_seconds > 0
         startup_notified = False
+
+        # Spec 067: Gateway Heartbeat — Supresión de Tormentas de Red Local (PROP-005)
+        _gateway_heartbeat = None
+        _network_storm_suppression_seconds = float(config.get("network_storm_suppression_seconds", 15.0))
+        if config.get("gateway_heartbeat_enabled", False):
+            try:
+                from app.network.gateway_heartbeat import GatewayHeartbeatWorker
+                _gateway_heartbeat = GatewayHeartbeatWorker(
+                    host=str(config.get("gateway_host", "192.168.100.1")),
+                    port=int(config.get("gateway_port", 80)),
+                    interval_s=float(config.get("gateway_heartbeat_interval_s", 5.0)),
+                    connect_timeout_s=float(config.get("gateway_connect_timeout_ms", 50)) / 1000.0,
+                    fallback_port=int(config.get("gateway_fallback_port", 53)),
+                )
+                _gateway_heartbeat.start()
+                log(
+                    f"GATEWAY_HEARTBEAT started "
+                    f"host={config.get('gateway_host', '192.168.100.1')} "
+                    f"port={config.get('gateway_port', 80)} "
+                    f"interval={config.get('gateway_heartbeat_interval_s', 5)}s "
+                    f"suppression_window={_network_storm_suppression_seconds}s"
+                )
+            except Exception as _gw_exc:
+                log(f"[WARN] GATEWAY_HEARTBEAT failed to start: {type(_gw_exc).__name__}: {_gw_exc}. Operating without storm suppression.")
+                _gateway_heartbeat = None
 
         while True:
             tick_start = time.monotonic()
@@ -7027,6 +7053,33 @@ def main() -> None:
                 if _sm_still_active_miners:
                     log(f"[SILENT_MODE] Restored active silence on startup: {', '.join(_sm_still_active_miners)}")
 
+            # Spec 067: Network Storm Suppression — suprimir episodios de desconexión
+            # si el gateway estuvo caído recientemente (parpadeo de switch o access point).
+            # Solo suprime alertas de STATE_OFFLINE: LOW, hashboard y temperatura se propagan siempre.
+            _network_storm_active = (
+                _gateway_heartbeat is not None
+                and _gateway_heartbeat.is_recently_lost(
+                    within_seconds=_network_storm_suppression_seconds
+                )
+            )
+            if _network_storm_active and not episode_batch.empty:
+                _storm_loss_elapsed = _gateway_heartbeat.gateway_loss_elapsed_s()
+                _storm_elapsed_str = f"{_storm_loss_elapsed:.1f}s" if _storm_loss_elapsed is not None else "recently"
+                _suppressed_opens = [
+                    ep for ep in episode_batch.opened
+                    if getattr(ep, "state", None) == STATE_OFFLINE
+                ]
+                if _suppressed_opens:
+                    log(
+                        f"[NETWORK_STORM_SUPPRESSED] gateway_lost={_storm_elapsed_str} "
+                        f"— suprimiendo {len(_suppressed_opens)} alerta(s) de desconexion. "
+                        f"Mineros: {[ep.name_display for ep in _suppressed_opens]}"
+                    )
+                    episode_batch.opened = [
+                        ep for ep in episode_batch.opened
+                        if getattr(ep, "state", None) != STATE_OFFLINE
+                    ]
+
             if not notification_sent and not episode_batch.empty and not startup_grace_active and ((not qa_mode) or qa_notify):
                 from app.telegram.snooze import filter_snoozed_episodes
                 filtered_batch = filter_snoozed_episodes(episode_batch, states, now_ts=now_ts)
@@ -7511,6 +7564,8 @@ def main() -> None:
             acquirer.close()
         if event_store is not None:
             event_store.close()
+        if _gateway_heartbeat is not None:
+            _gateway_heartbeat.stop()
         release_mutex()
 
 

@@ -328,8 +328,8 @@ The program requires three documentation sweeps.
 - Specs 061 through 063 are **Completed, SQLite WAL Mode Integrity, HW Error Tripwire & Ambient-Aware Seasonal Thermal PID Certified** (`v5.0.1`, 993/993 tests PASS).
 - Specs 064 and 065 are **Completed, Multi-Miner Charts & Range Switchers, Declarative Hooks Pipeline in CoreSupervisoryEngine Certified** (`v5.0.2`, 1047/1047 tests PASS).
 - Spec 066 is **Completed, Cold-Boot Fleet Grace Period Post-Arranque (PROP-001) Certified in Live Production** (`v5.0.3`, 1062/1062 tests PASS).
-- All 66 specifications across V1, V2, V3, V4, and V5 have satisfied their design, test, concurrency, and evidence gates with 1062/1062 passing automated tests.
-- Active implementation and audit plan for Horizon V5.1 (Specs 067-070) is established in `docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`.
+- All 73 specifications across V1, V2, V3, V4, and V5.1 have satisfied their design, test, concurrency, and evidence gates with 1204/1204 passing automated tests.
+- Implementation and audit plan for Horizon V5.1 (Specs 067-070) is archived in [`docs/speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md`](archive/plans/ACTION_PLAN_V5_1_HORIZON.md).
 
 ## Planning Hardening Record - 2026-08-13
 

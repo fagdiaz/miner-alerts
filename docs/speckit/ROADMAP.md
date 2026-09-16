@@ -736,7 +736,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Certificación global con 902/902 tests unitarios y de regresión PASS.
 
 ### Iniciativa 12 — Desacoplamiento y Modularización Arquitectónica del Monolito (Horizonte V5.0)
-- Documento de Plan de Acción: [`docs/speckit/ACTION_PLAN_V5_MODULARIZATION.md`](ACTION_PLAN_V5_MODULARIZATION.md)
+- Documento de Plan de Acción: [`docs/speckit/archive/plans/ACTION_PLAN_V5_MODULARIZATION.md`](archive/plans/ACTION_PLAN_V5_MODULARIZATION.md)
 - **Fase 0 — Quick Wins Inmediatos**:
   - [x] **QW-01**: Extracción de teclados y menús táctiles (integrada en Spec 058).
   - [x] **QW-02**: Rotación automática de registros con `RotatingFileHandler` en `logs/out.log` para prevenir saturación de disco bajo el servicio Windows.
@@ -759,7 +759,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
   - [x] Suite de 7 pruebas unitarias en `tests/test_core_daemon.py` con **935/935 tests globales PASS** (cero fallos, cero regresiones). Milestone V5.0 certificado.
 
 ### Iniciativa 13 — Resiliencia de Almacenamiento SQLite WAL Mode & Integrity Check (Spec 061 - Completada)
-- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Documento de Plan de Evolución: [`docs/speckit/archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md`](archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md)
 - Especificación: [`specs/061-sqlite-wal-integrity/spec.md`](../../specs/061-sqlite-wal-integrity/spec.md)
 - Evidencia: [`specs/061-sqlite-wal-integrity/evidence.md`](../../specs/061-sqlite-wal-integrity/evidence.md)
 - [x] Verificación de integridad asíncrona (`_integrity_check_worker`) en arranque sin retrasar el booteo ni el Startup Guard.
@@ -769,7 +769,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Pool de lectura multi-lector `create_readonly_connection` con manejo defensivo de `SQLITE_BUSY_SNAPSHOT` y reintentos con backoff exponencial (11 tests en `tests/test_event_store_wal_resilience.py`, 946/946 tests PASS).
 
 ### Iniciativa 14 — HW Error Tripwire & Rollback Automático de Overclock (Spec 062 - Completado)
-- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Documento de Plan de Evolución: [`docs/speckit/archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md`](archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md)
 - Especificación: [`specs/062-hw-error-tripwire/spec.md`](../../specs/062-hw-error-tripwire/spec.md) | Evidencia: [`specs/062-hw-error-tripwire/evidence.md`](../../specs/062-hw-error-tripwire/evidence.md)
 - [x] Métrica de errores de hardware no volátil en `StabilityMetrics` (`hw_errors_delta_10m`, `hw_error_rate_pct`) calculada vía `EventStore`.
 - [x] Regla de disparo `ACTION_STEP_DOWN_HW_ERRORS` en `evaluate_balancer_step()` con umbral combinado (`hw_error_rate_pct >= 0.5%` AND `hw_errors_delta_10m >= 200`).
@@ -777,7 +777,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Interlock anti-cascada post-reboot L1/L2 impidiendo que el firmware restablezca 2700W por defecto.
 - [x] Tarjeta de notificación móvil en Telegram `<= 32` columnas (`render_hw_error_tripwire_card()`).
 ### Iniciativa 15 — Gobernador Térmico con Conciencia Estacional (Spec 063 - Completado)
-- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Documento de Plan de Evolución: [`docs/speckit/archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md`](archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md)
 - Especificación: [`specs/063-ambient-thermal-pid/spec.md`](../../specs/063-ambient-thermal-pid/spec.md) | Evidencia: [`specs/063-ambient-thermal-pid/evidence.md`](../../specs/063-ambient-thermal-pid/evidence.md)
 - [x] Extracción de `inlet_temp_c` en `VnishTelemetry` y `normalize_vnish_stats()` desde `stats_response` existente sin requests HTTP adicionales.
 - [x] Extensión de `GovernorConfig` con parámetros estacionales (`winter_target_temp_c`, `summer_min_duty_percent`, etc.).
@@ -786,7 +786,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Agregación grupal de $T_{\text{amb}}$ y orquestación en `execute_governor_cycle()`.
 - [x] Suite completa de tests en `tests/test_fan_governor_seasonal.py`.
 ### Iniciativa 16 — Telemetría Visual y Gráficos Multi-Miner en Telegram (Spec 064 - Completado)
-- Documento de Plan de Evolución: [`docs/speckit/ACTION_PLAN_POST_V5_EVOLUTION.md`](ACTION_PLAN_POST_V5_EVOLUTION.md)
+- Documento de Plan de Evolución: [`docs/speckit/archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md`](archive/plans/ACTION_PLAN_POST_V5_EVOLUTION.md)
 - Especificación Activa: [`specs/064-multi-miner-charts/spec.md`](../../specs/064-multi-miner-charts/spec.md) | Evidencia: [`specs/064-multi-miner-charts/evidence.md`](../../specs/064-multi-miner-charts/evidence.md)
 - [x] Consultas y renderizado de gráficos por grupo eléctrico (`fetch_group_chart_data`, `render_group_chart_png`) en `charts.py`.
 - [x] Soporte para comandos `/chart elevator_1`, `/chart elevator_2`, `/chart fleet` en `ChartCommand`.
@@ -849,7 +849,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Certificación global de la suite: **1160/1160 tests PASS** sin regresiones y servicio Windows `MinerAlerts` en ejecución continua (Fase D).
 
 ### Iniciativa 23 — Consolidación de Pool SQLite Resiliente & Barrera de Hilos Daemon (Spec 071 - P0/P1 - Completada)
-- Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
+- Plan de Acción y Saneamiento: [`docs/speckit/archive/plans/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](archive/plans/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
 - Especificación: [`specs/071-sqlite-pool-and-thread-hardening/spec.md`](../../specs/071-sqlite-pool-and-thread-hardening/spec.md) | Evidencia: [`specs/071-sqlite-pool-and-thread-hardening/evidence.md`](../../specs/071-sqlite-pool-and-thread-hardening/evidence.md)
 - [x] Función defensiva `_async_restore_locked_preset_tripwire` en `miner_monitor.py` para blindar el hilo `RestoreLock_{name}` con captura total de excepciones y logging estructurado (P0).
 - [x] Exposición formal de `open_readonly_connection(db_path)` en `app/core/event_store.py` con fallback y pragmas resilientes (P1).
@@ -858,7 +858,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Suites de pruebas en `tests/test_sqlite_readonly_consolidation.py` y `tests/test_tripwire_thread_hardening.py`. **1079/1079 tests globales PASS** (+7 nuevos, 0 regresiones).
 
 ### Iniciativa 24 — Unificación de Serialización de Estado & Desacoplamiento de Shims (Spec 072 - P2 - Completada & Certificada)
-- Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
+- Plan de Acción y Saneamiento: [`docs/speckit/archive/plans/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](archive/plans/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
 - [x] Delegación de `_build_state_payload()` en `StateManager.serialize_miner_state()` unificando la fuente de verdad de `MinerState`.
 - [x] Extracción del helper compartido `find_assessment_by_target()` y `format_miner_key()` eliminando copy-paste en comandos de Telegram (`diagnostics`, `fans`, `reboot`, `maintenance`).
 - [x] Centralización de `_dicts()` en `app/core/mining_quality.py`.
@@ -866,7 +866,7 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Suite de pruebas en `tests/test_state_serialization_parity.py` y `tests/test_find_assessment_by_target.py`. **1113/1113 tests globales PASS** (0 fallos, 0 regresiones).
 
 ### Iniciativa 25 — Reutilización de Clientes en Tools & Alineación de Configuración (Spec 073 - P3 - Completada)
-- Plan de Acción y Saneamiento: [`docs/speckit/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
+- Plan de Acción y Saneamiento: [`docs/speckit/archive/plans/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`](archive/plans/ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md)
 - [x] Migración de `tools/miner_diagnostics.py` y `debug_4028.py` a `app.network.cgminer_client`.
 - [x] Script auditor de configuración `tools/audit_config.py` validando paridad entre `config.example.json` y `config.json`.
 - [x] Consolidación de fixtures duplicadas en tests compactos de Telegram (`tests/fixtures_compact_ux.py`).

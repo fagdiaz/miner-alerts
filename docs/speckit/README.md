@@ -11,23 +11,25 @@ Permite planificar, validar y auditar cambios seguros en producción: reducción
 
 | Documento | Propósito Principal |
 |---|---|
-| [`ROADMAP.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/ROADMAP.md) | **Backlog maestro de trabajo**, cola de entregas, matriz de riesgos y estado de ejecución de specs (Specs 001 a 044 completadas). |
-| [`RUNBOOK.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/RUNBOOK.md) | **Manual de operaciones y procedimientos**: catálogo completo de comandos Telegram, simulacros de contingencia, hot backup/restore y recuperación de caídas. |
-| [`SPEC_PROGRAM.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/SPEC_PROGRAM.md) | **Marco programático**: secuencia formal de especificaciones, límites arquitectónicos, clases de riesgo y Criterio de Finalización (DoD). |
-| [`DELIVERY_PLAN.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/DELIVERY_PLAN.md) | **Calendario de entrega y estabilización**: ventanas de implementación, periodos de observación (soak) y control de cambios. |
-| [`MINER_DIAGNOSTICS.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/MINER_DIAGNOSTICS.md) | **Manual de herramientas de diagnóstico**: contrato de adquisición y modelo de evidencia de `tools/miner_diagnostics.py`. |
-| [`TECHNOLOGY_STRATEGY.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/TECHNOLOGY_STRATEGY.md) | **Estrategia tecnológica y arquitectura**: reglas de adopción para polling vs WebSockets, SQLite v5, Prometheus/Grafana, Docker, MQTT y asyncio. |
+| [`ROADMAP.md`](ROADMAP.md) | **Backlog maestro de trabajo**, cola de entregas, matriz de riesgos y estado de ejecución de specs (Specs 001 a 073 completadas). |
+| [`RUNBOOK.md`](RUNBOOK.md) | **Manual de operaciones y procedimientos**: catálogo completo de comandos Telegram, simulacros de contingencia, hot backup/restore y recuperación de caídas. |
+| [`SPEC_PROGRAM.md`](SPEC_PROGRAM.md) | **Marco programático**: secuencia formal de especificaciones, límites arquitectónicos, clases de riesgo y Criterio de Finalización (DoD). |
+| [`DELIVERY_PLAN.md`](DELIVERY_PLAN.md) | **Calendario de entrega y estabilización**: ventanas de implementación, periodos de observación (soak) y control de cambios. |
+| [`MINER_DIAGNOSTICS.md`](MINER_DIAGNOSTICS.md) | **Manual de herramientas de diagnóstico**: contrato de adquisición y modelo de evidencia de `tools/miner_diagnostics.py`. |
+| [`TECHNOLOGY_STRATEGY.md`](TECHNOLOGY_STRATEGY.md) | **Estrategia tecnológica y arquitectura**: reglas de adopción para polling vs WebSockets, SQLite WAL v5, Prometheus/Grafana, Docker, MQTT y Named Pipes. |
+| [`rfcs/README.md`](rfcs/README.md) | **Directorio de RFCs**: propuestas de diseño arquitectónico y de experiencia de usuario antes de su traducción a specs. |
 
-### 2. Documentos Históricos y Decisiones Cerradas ([`archive/`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/archive/README.md))
+### 2. Documentos Históricos y Decisiones Cerradas ([`archive/`](archive/README.md))
 
-Documentos estratégicos puntuales que alcanzaron su objetivo o cuya implementación ya fue concluida y certificada:
-- [`archive/HASHCORE_TOOLKIT_STRATEGY.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/archive/HASHCORE_TOOLKIT_STRATEGY.md): Inventario inicial de capacidades Hashcore (Spec 026; disposición `accepted`).
-- [`archive/INTERFACE_STRATEGY.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/archive/INTERFACE_STRATEGY.md): Evaluación de interfaz web / FastAPI (Spec 027; decisión formal `no_build`).
-- [`archive/V3_EXPANSION_PLAN.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/speckit/archive/V3_EXPANSION_PLAN.md): Plan de expansión Telegram Max y V3 (Specs 031 a 038; 100% certificado en producción).
+Documentos estratégicos puntuales y planes de acción cerrados que alcanzaron su objetivo terminal:
+- [`archive/HASHCORE_TOOLKIT_STRATEGY.md`](archive/HASHCORE_TOOLKIT_STRATEGY.md): Inventario inicial de capacidades Hashcore (Spec 026).
+- [`archive/INTERFACE_STRATEGY.md`](archive/INTERFACE_STRATEGY.md): Evaluación de interfaz web / FastAPI (Spec 027; decisión formal `no_build`).
+- [`archive/V3_EXPANSION_PLAN.md`](archive/V3_EXPANSION_PLAN.md): Plan de expansión Telegram Max y V3 (Specs 031 a 038).
+- [`archive/plans/`](archive/README.md): Planes de acción cerrados de modularización V5, horizonte V5.1 y saneamiento de repositorio (Specs 056 a 073).
 
 ### 3. Registro Maestro de Cambios y Auditoría
 
-- **La Joya del Proyecto**: [`../audit/DEVELOPMENT_LOG.md`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/audit/DEVELOPMENT_LOG.md).
+- **La Joya del Proyecto**: [`../audit/DEVELOPMENT_LOG.md`](../audit/DEVELOPMENT_LOG.md).
   Historial cronológico inverso (newest-first) inmutable de cada spec, release, benchmark y auditoría técnica ejecutada.
 
 ---
@@ -46,12 +48,16 @@ Documentos estratégicos puntuales que alcanzaron su objetivo o cuya implementac
 
 ## Estado Actual del Sistema
 
-- **Versión Certificada**: Release V3.0.0 (`specs/038-v3-release-stabilization`).
-- **Capacidades V3.1 en Producción**:
-  - Gobernador de refrigeración y potencia adaptativo (`specs/039-cooling-power-governor`).
-  - Autodescubrimiento dinámico de top presets Vnish y correlación de sensibilidad de elevadores (`specs/040-vnish-top-preset-autodiscovery`).
-- **Estado de Specs**: 40 de 40 especificaciones completadas (100%).
-- **Liveness en Producción**: Servicio `MinerAlerts` activo bajo NSSM con supervisión continua, acquisition aislada por minero y cero spam en Telegram.
+- **Versión Certificada**: Release V5.1.0 (`specs/069-chain-telemetry-break-prediction`).
+- **Capacidades V5.1 en Producción**:
+  - Arquitectura desacoplada Clean Core (`app/core/`, `app/governance/`, `app/network/`, `app/interfaces/`, `app/ipc/`).
+  - Pool SQLite WAL concurrente con lecturas de series temporales $< 15\text{ ms}$ y retención acotada.
+  - Canal IPC de alta frecuencia Watchdog ↔ Monitor mediante Named Pipes (`\\.\pipe\MinerAlertsWatchdog`).
+  - Diagnóstico predictivo de fallos de cadena (PROP-008 / Spec 069) con correlación eléctrica por elevador.
+  - UX móvil compacta vertical ($\le 32$ columnas) y Centro de Control Táctil interactivo.
+- **Estado de Specs**: 73 de 73 especificaciones completadas (100%).
+- **Línea Base de Pruebas**: **1204/1204 tests PASS** (0 fallos, 0 errores, 0 regresiones).
+- **Liveness en Producción**: Servicio Windows NT `MinerAlerts` activo bajo supervisión continua con cero spam en Telegram.
 
 ---
 

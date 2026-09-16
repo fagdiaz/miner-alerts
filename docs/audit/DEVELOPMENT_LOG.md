@@ -3,6 +3,32 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-16] - Saneamiento y Reorganización Estructural de la Documentación en `/docs`
+
+* **Objetivo**:
+  1. Reorganizar de forma integral y profesional la estructura del directorio `docs/`, resolviendo la saturación de archivos sueltos en `docs/speckit/` y la falta de un portal maestro de entrada.
+  2. Crear `docs/README.md` como índice y mapa de navegación central para operadores, desarrolladores y arquitectos.
+  3. Crear el subdirectorio formal `docs/speckit/rfcs/` con su respectivo `README.md`, agrupando `RFC_TEMPLATE.md`, `RFC_TELEGRAM_INTERACTIVE_CONTROL.md` y `RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md`.
+  4. Crear el subdirectorio `docs/speckit/archive/plans/` y archivar los planes de acción cerrados y certificados (`ACTION_PLAN_POST_V5_EVOLUTION.md`, `ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md`, `ACTION_PLAN_V5_1_HORIZON.md` y `ACTION_PLAN_V5_MODULARIZATION.md`), despejando la raíz de `docs/speckit/` para contener exclusivamente los 7 documentos canónicos vivos.
+  5. Actualizar `docs/speckit/README.md` alineándolo a la versión V5.1.0 y las 73 especificaciones completadas (1204 tests PASS).
+  6. Actualizar `docs/speckit/archive/README.md` incorporando la tabla de planes archivados.
+  7. Sincronizar todos los enlaces cruzados en `docs/speckit/ROADMAP.md`, `docs/speckit/SPEC_PROGRAM.md`, `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md` y el `README.md` raíz.
+* **Componentes Modificados / Creados**:
+  - `docs/README.md`: Creado portal de documentación maestro.
+  - `docs/speckit/rfcs/`: Creado directorio con `README.md` y 3 RFCs reubicados vía `git mv`.
+  - `docs/speckit/archive/plans/`: Creado directorio con 4 planes de acción históricos archivados vía `git mv`.
+  - `docs/speckit/README.md`: Actualizado a V5.1.0 (73 specs, 1204 tests PASS).
+  - `docs/speckit/archive/README.md`: Actualizado con el catálogo de planes históricos.
+  - `docs/speckit/ROADMAP.md`: Enlaces a planes de acción actualizados a `archive/plans/`.
+  - `docs/speckit/SPEC_PROGRAM.md`: Enlace de horizonte V5.1 actualizado.
+  - `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`: Enlace de horizonte V5.1 y estados PROP actualizados.
+  - `README.md`: Enlaces del bloque de documentación actualizados.
+* **Resultados & Verificación**:
+  - Estructura validada: raíz de `docs/speckit/` reducida a exactamente 7 documentos canónicos vivos y 2 subdirectorios organizados (`rfcs/`, `archive/`).
+  - Suite completa del proyecto: **1204/1204 tests PASS** en 41.37s (0 fallos, 0 errores, 0 regresiones).
+  - Integridad de release: `tools/release_audit.py --check-only` PASS (8/8 disposiciones terminales verificadas).
+  - Servicio Windows `MinerAlerts`: `Running` ininterrumpido.
+
 ## [2026-09-16] - Implementación & Certificación Spec 069: Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break (PROP-008)
 
 * **Objetivo**:

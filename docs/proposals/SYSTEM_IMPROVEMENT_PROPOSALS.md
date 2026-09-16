@@ -211,11 +211,11 @@ Actualmente, el monitor captura únicamente métricas consolidadas (hashrate tot
    - ✅ **PROP-004** (`Ambient-Aware Thermal PID`) -> Implementada y certificada en **Spec 063**.
    - ✅ **PROP-006** (`Multi-Miner Charts & Range Switchers`) -> Implementada y certificada en **Spec 064**.
 
-2. **Horizonte Activo (Fases 7 y 8 - Horizonte V5.1)**:
-   - ⏳ **PROP-005** (`Latido de Gateway y Supresión de Tormentas`) -> Planificada como **Spec 067** (P2 Media / Bajo riesgo).
-   - ⏳ **PROP-007** (`Canal IPC Alta Frecuencia Monitor ↔ Watchdog`) -> Planificada como **Spec 068** (P3 Baja / Medio riesgo).
-   - ⏳ **PROP-008** (`Telemetría Profunda por Cadena & Diagnóstico Chain Break`) -> Planificada como **Spec 069** (P1 Alta / Medio riesgo).
-   - Ver detalle de ejecución en [`docs/speckit/ACTION_PLAN_V5_1_HORIZON.md`](../speckit/ACTION_PLAN_V5_1_HORIZON.md).
+2. **Horizonte V5.1 (Completado y Certificado)**:
+   - ✅ **PROP-005** (`Latido de Gateway y Supresión de Tormentas`) -> Implementada y certificada en **Spec 067**.
+   - ✅ **PROP-007** (`Canal IPC Alta Frecuencia Monitor ↔ Watchdog`) -> Implementada y certificada en **Spec 068**.
+   - ✅ **PROP-008** (`Telemetría Profunda por Cadena & Diagnóstico Chain Break`) -> Implementada y certificada en **Spec 069**.
+   - Ver detalle de ejecución en [`docs/speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md`](../speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md).
 
 ---
 

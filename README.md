@@ -3,14 +3,17 @@
 Monitor de mineros ASIC (API 4028) con alertas por Telegram, cambios de estado agrupados, deteccion de reboots y hashboards caidos. Pensado para correr en Windows con PowerShell y evitar spam.
 
 **Documentacion del proyecto**
+- Centro de documentacion general: `docs/README.md`.
 - Indice maestro de Speckit: `docs/speckit/README.md`.
-- Prioridades, backlog y cola de entregas (Specs 001-040): `docs/speckit/ROADMAP.md`.
+- Prioridades, backlog y cola de entregas (Specs 001-073): `docs/speckit/ROADMAP.md`.
 - Operacion, manual de comandos Telegram y contingencias: `docs/speckit/RUNBOOK.md`.
 - Marco programatico de specs y criterios de calidad: `docs/speckit/SPEC_PROGRAM.md`.
 - Calendario de implementacion y estabilizacion: `docs/speckit/DELIVERY_PLAN.md`.
 - Decisiones tecnologicas y arquitectura: `docs/speckit/TECHNOLOGY_STRATEGY.md`.
-- Archivo de estrategias historicas: `docs/speckit/archive/README.md`.
+- Propuestas de diseño y RFCs: `docs/speckit/rfcs/README.md`.
+- Archivo de estrategias y planes historicos: `docs/speckit/archive/README.md`.
 - Historial completo y bitacora de cambios: `docs/audit/DEVELOPMENT_LOG.md`.
+- Propuestas de mejora del sistema (PROP): `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`.
 
 **Requisitos**
 - Windows + PowerShell

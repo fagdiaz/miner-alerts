@@ -603,6 +603,23 @@ class TestGovernanceInterlockHook(unittest.TestCase):
         result = hook.execute(ctx, 1, time.time(), {})
         self.assertIsInstance(result, dict)
 
+    def test_governance_hook_reads_from_tick_data_if_provided(self) -> None:
+        """GovernanceInterlockHook debe priorizar tick_data['governance'] sobre context."""
+        ctx = _make_context()
+        ctx.governance = None
+        hook = GovernanceInterlockHook()
+
+        class MockGov:
+            expires_at_ts = 100.0
+            master_enabled = False
+            def is_expired(self, now_ts: float) -> bool:
+                return True
+
+        result = hook.execute(ctx, 1, 200.0, {"governance": MockGov()})
+        self.assertIsNotNone(result)
+        self.assertTrue(result.get("governance_expired"))
+        self.assertFalse(result.get("governance_master"))
+
 
 # ---------------------------------------------------------------------------
 # Tests de PersistenceHook

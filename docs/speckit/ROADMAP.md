@@ -804,6 +804,17 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Integración aditiva en `main()` de `miner_monitor.py` con `_poll_interval_seconds` y modelo monotónico `poll_seconds = max(0.0, interval - elapsed); time.sleep(poll_seconds)`.
 - [x] Suite `tests/test_supervisory_hooks.py` con 47 tests (13 clases) cubriendo orden de etapas, contención, timing monotónico y hooks canónicos. **1043/1043 tests PASS** (0 regresiones).
 
+### Iniciativa 18 — Cold-Boot Fleet Grace Period Post-Arranque (Spec 066 - PROP-001 - Completado)
+- Documento de Propuestas: [`docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`](../proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md)
+- Especificación: [`specs/066-cold-boot-grace/spec.md`](../../specs/066-cold-boot-grace/spec.md) | Evidencia: [`specs/066-cold-boot-grace/evidence.md`](../../specs/066-cold-boot-grace/evidence.md)
+- [x] Configuración `"startup_fleet_grace_period_seconds": 180` y `"startup_fleet_grace_threshold_ths": 50.0`.
+- [x] Supresión activa de streaks de falla (`offline_streak = 0`, `low_streak = 0`) y reseteo de timers sostenidos durante la fase `WARMING_UP`.
+- [x] Inhibición de alertas de episodios irregulares (`EPISODE_ALERT`) a Telegram durante la ventana de calentamiento de 180 segundos.
+- [x] Consolidación temprana de arranque con tarjeta limpia `🟢 FLOTA RESTABLECIDA` al alcanzar $\ge 50$ TH/s en toda la flota.
+- [x] Consolidación por timeout tras 180s con tarjeta `STARTUP [FIN PERÍODO DE GRACIA]` y reconocimiento de iniciales (`acknowledge_active_initials()`).
+- [x] Sincronización continua de `monitor_ctx.governance = _GLOBAL_INTERVENTION_GOV` en cada tick e inyección en `extra_tick_data` para hooks.
+- [x] Suite de 15 pruebas unitarias en `tests/test_startup_grace_period.py`. **1062/1062 tests globales PASS** (0 regresiones).
+
 ---
 
 ## Governance

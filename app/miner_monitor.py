@@ -1758,6 +1758,44 @@ def format_rate(rate: Optional[float]) -> str:
     return f"{rate:.2f} TH/s" if rate is not None else "N/A"
 
 
+def format_fleet_restored_line(
+    name_display: str,
+    rate_ths: Optional[float],
+    temp_c: Optional[float] = None,
+) -> str:
+    """Format a single miner status line for the 🟢 FLOTA RESTABLECIDA card."""
+    rate_str = f"{float(rate_ths):.1f} TH/s" if rate_ths is not None else "N/A"
+    temp_str = f" {float(temp_c):.0f}°C" if temp_c is not None else ""
+    return f"- {name_display}: {rate_str} [OK]{temp_str}"
+
+
+def is_fleet_warmup_complete(
+    miners: list,
+    states: dict,
+    threshold_ths: float,
+    expected_boards: int = 3,
+) -> bool:
+    """Check if all valid miners have responded and reached the warm-up hashrate threshold."""
+    if not miners:
+        return False
+    for m in miners:
+        m_name = m.get("name", "")
+        m_host = m.get("host", "")
+        m_sk = f"{m_name}|{m_host}:{m.get('port', 4028)}"
+        m_st = states.get(m_sk)
+        if m_st is None:
+            return False
+        if not getattr(m_st, "last_responded", False):
+            return False
+        rate = getattr(m_st, "last_rate_ths", None)
+        if rate is None or float(rate) < float(threshold_ths):
+            return False
+        boards = getattr(m_st, "last_active_boards", None)
+        if boards is not None and int(boards) < int(expected_boards):
+            return False
+    return True
+
+
 def record_action_outcome(
     event_store: Optional[EventStore],
     *,
@@ -4992,6 +5030,18 @@ def main() -> None:
     recovery_successes = int(config.get("recovery_successes", 2))
     expected_boards = int(config.get("expected_boards", 3))
     notify_startup = bool(config.get("notify_startup", True))
+    startup_fleet_grace_period_seconds = max(
+        0, int(config.get("startup_fleet_grace_period_seconds", 180))
+    )
+    startup_fleet_grace_threshold_ths = max(
+        0.0, float(config.get("startup_fleet_grace_threshold_ths", 50.0))
+    )
+    if startup_fleet_grace_period_seconds > 0:
+        log(
+            f"Startup fleet grace period activo por {startup_fleet_grace_period_seconds}s "
+            f"(umbral={startup_fleet_grace_threshold_ths:.1f} TH/s): "
+            "alertas de arranque, offline y low postergadas durante calentamiento"
+        )
     notify_offline = bool(config.get("notify_offline", True))
     notify_reboot = bool(config.get("notify_reboot", True))
     notify_initial_non_ok = bool(config.get("notify_initial_non_ok", False))
@@ -5330,10 +5380,24 @@ def main() -> None:
             f"hooks={len(_supervisory_engine.registered_hooks)} "
             f"stages=[PRE_TICK,GOVERNANCE,PERSISTENCE]"
         )
+        # Spec 066: Cold-Boot Fleet Grace Period (PROP-001)
+        startup_grace_active = startup_fleet_grace_period_seconds > 0
+        startup_notified = False
 
         while True:
             tick_start = time.monotonic()
             now_ts = time.time()
+            if startup_grace_active and (now_ts - process_start_ts) >= startup_fleet_grace_period_seconds:
+                startup_grace_active = False
+                log(
+                    f"[COLD_BOOT_GRACE] Período de gracia finalizado por timeout "
+                    f"({now_ts - process_start_ts:.1f}s >= {startup_fleet_grace_period_seconds}s)"
+                )
+            elif startup_grace_active:
+                log(
+                    f"[COLD_BOOT_GRACE] Fase WARMING_UP activa "
+                    f"(elapsed={now_ts - process_start_ts:.1f}s/{startup_fleet_grace_period_seconds}s)"
+                )
             reboot_names_tick = []
             miner_lines = []
             startup_lines = [] if first_tick else None
@@ -5488,15 +5552,20 @@ def main() -> None:
                     state.low_streak = 0
                     state.offline_streak = 0
 
+                if startup_grace_active:
+                    state.offline_streak = 0
+                    state.low_streak = 0
+
                 prev_state = state.state
                 new_state = prev_state
-                if not responded and state.offline_streak >= fails_before_alert:
-                    new_state = STATE_OFFLINE
-                elif responded and active_boards is not None and active_boards < expected_boards:
-                    new_state = STATE_HASHBOARD
-                elif responded and rate_ths is not None and rate_ths < threshold_ths and state.low_streak >= fails_before_alert:
-                    new_state = STATE_LOW
-                elif responded and rate_ths is not None and rate_ths >= threshold_ths and state.ok_streak >= recovery_successes:
+                if not startup_grace_active:
+                    if not responded and state.offline_streak >= fails_before_alert:
+                        new_state = STATE_OFFLINE
+                    elif responded and active_boards is not None and active_boards < expected_boards:
+                        new_state = STATE_HASHBOARD
+                    elif responded and rate_ths is not None and rate_ths < threshold_ths and state.low_streak >= fails_before_alert:
+                        new_state = STATE_LOW
+                if responded and rate_ths is not None and rate_ths >= threshold_ths and state.ok_streak >= recovery_successes:
                     new_state = STATE_OK
 
                 if new_state != prev_state and new_state in (STATE_HASHBOARD, STATE_LOW):
@@ -5529,6 +5598,10 @@ def main() -> None:
                     if state.hashboard_since_ts is None:
                         state.hashboard_since_ts = now_ts
                 else:
+                    state.hashboard_since_ts = None
+
+                if startup_grace_active:
+                    state.low_since_ts = None
                     state.hashboard_since_ts = None
 
                 if event_store is not None and event_store.available:
@@ -6650,7 +6723,7 @@ def main() -> None:
                     and float(rate_ths) >= threshold_ths
                     and (active_boards is None or active_boards >= expected_boards)
                 )
-                if first_tick and current_signal_healthy:
+                if (first_tick or startup_grace_active) and current_signal_healthy:
                     # Do not create a notification episode from persisted hysteresis.
                     episode_previous_state = STATE_OK
                     episode_state = STATE_OK
@@ -6767,20 +6840,107 @@ def main() -> None:
                 episode_batch.persistent.clear()
 
             notification_sent = False
-            if first_tick:
+
+            # Spec 066: Cold-Boot Fleet Grace Period — Evaluación de estabilización y notificación
+            fleet_healthy = is_fleet_warmup_complete(
+                miners=valid_miners,
+                states=states,
+                threshold_ths=startup_fleet_grace_threshold_ths,
+                expected_boards=expected_boards,
+            )
+            should_send_startup = False
+            is_fleet_restored = False
+
+            if not startup_notified:
+                if startup_fleet_grace_period_seconds == 0:
+                    if first_tick:
+                        should_send_startup = True
+                else:
+                    if fleet_healthy:
+                        should_send_startup = True
+                        is_fleet_restored = True
+                        startup_grace_active = False
+                    elif (now_ts - process_start_ts) >= startup_fleet_grace_period_seconds:
+                        should_send_startup = True
+                        is_fleet_restored = False
+                        startup_grace_active = False
+
+            if should_send_startup:
+                startup_notified = True
                 if notify_startup and ((not qa_mode) or qa_notify):
-                    message_lines = [f"STARTUP ({now_str()})", ""]
-                    message_lines.extend(startup_lines or miner_lines)
-                    send_telegram(
-                        bot_token,
-                        str(chat_id),
-                        "\n".join(message_lines),
-                        "STARTUP",
-                        "startup",
-                    )
+                    if is_fleet_restored:
+                        restored_lines = [
+                            f"🟢 FLOTA RESTABLECIDA ({now_str()})",
+                            "",
+                            "Supervisión activa tras retorno de energía:",
+                        ]
+                        for m in valid_miners:
+                            m_name = m.get("name", "")
+                            m_host = m.get("host", "")
+                            m_sk = f"{m_name}|{m_host}:{m.get('port', 4028)}"
+                            m_st = states.get(m_sk)
+                            m_rate = getattr(m_st, "last_rate_ths", None) if m_st else None
+                            m_temp = getattr(m_st, "last_max_chip_temp", None) if m_st else None
+                            restored_lines.append(format_fleet_restored_line(m_name, m_rate, m_temp))
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            "\n".join(restored_lines),
+                            "STARTUP",
+                            "startup",
+                        )
+                        log(
+                            f"[COLD_BOOT_GRACE] Flota restablecida y estabilizada en "
+                            f"{now_ts - process_start_ts:.1f}s. Notificación enviada."
+                        )
+                        if event_store is not None and event_store.available:
+                            event_store.record_event(
+                                occurred_ts=now_ts,
+                                miner_key="fleet",
+                                miner_name="FLOTA",
+                                host="",
+                                event_type="startup_fleet_grace_completed",
+                                severity="info",
+                                summary=f"Flota restablecida en {now_ts - process_start_ts:.1f}s",
+                                details={
+                                    "elapsed_seconds": now_ts - process_start_ts,
+                                    "threshold_ths": startup_fleet_grace_threshold_ths,
+                                },
+                            )
+                    else:
+                        hdr = f"STARTUP ({now_str()})"
+                        if startup_fleet_grace_period_seconds > 0:
+                            hdr = f"STARTUP ({now_str()}) [FIN PERÍODO DE GRACIA]"
+                        message_lines = [hdr, ""]
+                        message_lines.extend(startup_lines or miner_lines)
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            "\n".join(message_lines),
+                            "STARTUP",
+                            "startup",
+                        )
+                        log(f"[COLD_BOOT_GRACE] Notificación STARTUP enviada tras {now_ts - process_start_ts:.1f}s.")
+                        if startup_fleet_grace_period_seconds > 0 and event_store is not None and event_store.available:
+                            event_store.record_event(
+                                occurred_ts=now_ts,
+                                miner_key="fleet",
+                                miner_name="FLOTA",
+                                host="",
+                                event_type="startup_fleet_grace_expired",
+                                severity="warning",
+                                summary=f"Período de gracia finalizado tras {now_ts - process_start_ts:.1f}s",
+                                details={
+                                    "elapsed_seconds": now_ts - process_start_ts,
+                                    "grace_period_seconds": startup_fleet_grace_period_seconds,
+                                },
+                            )
                     episode_notifications.acknowledge_active_initials()
                     notification_sent = True
+                else:
+                    episode_notifications.acknowledge_active_initials()
 
+            if first_tick:
                 # Spec 044 C2: On startup/NSSM restart, reconcile silent_mode state.
                 # If a silent mode was active when the service stopped, it may have expired
                 # during downtime. Purge expired silences immediately so hardware is not left
@@ -6813,7 +6973,7 @@ def main() -> None:
                 if _sm_still_active_miners:
                     log(f"[SILENT_MODE] Restored active silence on startup: {', '.join(_sm_still_active_miners)}")
 
-            elif not episode_batch.empty and ((not qa_mode) or qa_notify):
+            if not notification_sent and not episode_batch.empty and not startup_grace_active and ((not qa_mode) or qa_notify):
                 from app.telegram.snooze import filter_snoozed_episodes
                 filtered_batch = filter_snoozed_episodes(episode_batch, states, now_ts=now_ts)
                 if not filtered_batch.empty:
@@ -7271,6 +7431,7 @@ def main() -> None:
             # opera sobre el context.state_manager para telemetría del pipeline.
             try:
                 monitor_ctx.last_daily_digest_date = _LAST_DAILY_DIGEST_DATE
+                monitor_ctx.governance = _GLOBAL_INTERVENTION_GOV
                 _supervisory_engine.execute_tick(
                     states=states,
                     last_update_id_ref=last_update_id_ref,
@@ -7279,6 +7440,8 @@ def main() -> None:
                     extra_tick_data={
                         "_state_persisted": True,
                         "last_daily_digest_date": _LAST_DAILY_DIGEST_DATE,
+                        "governance": _GLOBAL_INTERVENTION_GOV,
+                        "startup_grace_active": startup_grace_active,
                     },
                 )
             except Exception as _hook_exc:

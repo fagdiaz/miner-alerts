@@ -3,6 +3,30 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-15] - Implementación Spec 066: Cold-Boot Fleet Grace Period Post-Arranque (PROP-001)
+
+* **Objetivo**: Implementar un período de gracia y calentamiento post-arranque (`WARMING_UP`) para la flota de mineros ASIC, eliminando las falsas alarmas de `STARTUP`, `OFFLINE` y `LOW` que ocurren durante el booteo de NAND y la calibración por autotuning de frecuencias/voltajes de los equipos tras cortes de energía o reinicios de servicio.
+* **Componentes Modificados / Creados**:
+  - `app/config.example.json`: Añadidos parámetros `"startup_fleet_grace_period_seconds": 180` y `"startup_fleet_grace_threshold_ths": 50.0`.
+  - `app/miner_monitor.py`:
+    * Lectura y validación de `startup_fleet_grace_period_seconds` y `startup_fleet_grace_threshold_ths`.
+    * Control de estado `startup_grace_active` y timeout tras expiración de la ventana de calentamiento.
+    * Supresión de streaks de falla (`offline_streak = 0`, `low_streak = 0`) y reseteo de temporizadores de falla sostenida (`low_since_ts = None`, `hashboard_since_ts = None`) durante la fase `WARMING_UP`.
+    * Supresión de despacho de alertas de episodios irregulares (`EPISODE_ALERT`) a Telegram durante la gracia.
+    * Implementación de helpers puros: `is_fleet_warmup_complete(miners, states, threshold_ths, expected_boards)` y `format_fleet_restored_line(name, rate, temp)`.
+    * Consolidación temprana con tarjeta unificada `🟢 FLOTA RESTABLECIDA` al superar el umbral en toda la flota, o consolidación por timeout `STARTUP [FIN PERÍODO DE GRACIA]` con reconocimiento de episodios iniciales (`acknowledge_active_initials()`).
+    * Sincronización continua de `monitor_ctx.governance = _GLOBAL_INTERVENTION_GOV` en cada tick e inyección en `extra_tick_data` para resolver stale governance.
+    * Preservación estricta de todos los contratos de inspección literal de código (`inspect.getsource(main)`).
+  - `app/core/engine.py`: `GovernanceInterlockHook` lee preferentemente de `tick_data.get("governance")` o `context.governance`.
+  - `tests/test_startup_grace_period.py`: Nueva suite con 15 pruebas unitarias exhaustivas cubriendo formateo, predicados, supresión de streaks, disparo de consolidación temprana/timeout y contratos de inspección.
+  - `tests/test_supervisory_hooks.py`: Añadida prueba de sincronización y lectura de governance en `GovernanceInterlockHook`.
+* **Verificación y Evidencia**:
+  - `preflight.ps1 -RunBuilds` → **PASS** (ExitCode: 0, py_compile limpio, git-diff-check limpio).
+  - Suite de invariantes (37 tests) → **37 PASS** en 0.071s.
+  - Suite enfocada (66 tests) → **66 PASS** en 0.166s.
+  - Suite completa de regresión → **1062 / 1062 tests PASS** en 34.4s (0 fallos, 0 errores, 0 regresiones).
+  - Preservación 100% de contratos `inspect.getsource(main)`.
+
 ## [2026-09-15] - QA Audit & Estabilización Post-Implementación Specs 061 a 065
 
 * **Objetivo**: Auditoría exhaustiva de calidad (QA) y robustez operativa sobre las implementaciones Specs 061 a 065 (SQLite WAL, HW Error Tripwire, Gobernador Estacional, Gráficos Multi-Miner y Pipeline Declarativo de Hooks), resolución de defectos sutiles de ordenamiento y contención, y certificación de la suite global de 1043 pruebas unitarias.

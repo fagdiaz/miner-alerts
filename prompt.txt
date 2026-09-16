@@ -1,31 +1,28 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD: INICIO SPEC 066 — COLD-BOOT FLEET GRACE PERIOD (PROP-001)
+# PROMPT DE CONTINUIDAD: SPEC 066 COMPLETADA & LÍNEA BASE CERTIFICADA
 # ==============================================================================
 # MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Lógica pura de dominio, temporizadores monotónicos, configuración
-# y pruebas unitarias aisladas sin riesgos de concurrencia de bajo nivel.
+# Justificación: Lógica pura de dominio, telemetría y pruebas unitarias aisladas.
 # ==============================================================================
 
 Contexto actual del proyecto:
-1. Línea Base Certificada: 1046 tests PASS (0 errores, 0 fallos, 0 regresiones en 35.0s).
+1. Línea Base Certificada: 1062 tests PASS (0 errores, 0 fallos, 0 regresiones en 34.4s).
 2. Servicio Windows 'MinerAlerts' en ejecución ininterrumpida (Estado: Running).
-3. Specs 061 a 065 100% completadas y documentadas en docs/audit/DEVELOPMENT_LOG.md:
+3. Specs 061 a 066 100% completadas y documentadas en docs/audit/DEVELOPMENT_LOG.md:
    - Spec 061: Resiliencia SQLite WAL Mode & Integrity Check (ST-03).
    - Spec 062: HW Error Tripwire & Rollback de Overclock (GOV-01).
    - Spec 063: Gobernador Térmico con Conciencia Estacional (GOV-02).
    - Spec 064: Telemetría Visual y Gráficos Multi-Miner en Telegram (UX-01).
    - Spec 065: Pipeline Declarativo de Hooks en CoreSupervisoryEngine (ST-04).
+   - Spec 066: Cold-Boot Fleet Grace Period Post-Arranque (PROP-001).
+4. Auditoría QA y Estabilización:
+   - Sincronización continua de `monitor_ctx.governance = _GLOBAL_INTERVENTION_GOV` y lectura en `GovernanceInterlockHook`.
+   - Eliminación de escrituras duplicadas de `state.json` mediante skip guard en `PersistenceHook`.
+   - Sincronización de `last_daily_digest_date`.
+   - Preservación 100% de contratos `inspect.getsource(main)`.
 
 Próxima Spec Prioritaria:
-- Spec 066: Cold-Boot Fleet Grace Period Post-Arranque (PROP-001, Prioridad P1 Alta).
-  * Objetivo: Suprimir falsas alarmas OFFLINE / LOW y postergar la tarjeta de STARTUP
-    durante el booteo y autotuning de los mineros ASIC tras reinicio del host o retorno de energía.
-  * Parámetro: "startup_fleet_grace_period_seconds": 180 (por defecto 180s).
-  * Consolidación: La tarjeta STARTUP se emite cuando toda la flota alcanza >= 50 TH/s o tras 180s.
-  * Preservar estrictamente los contratos inspect.getsource(main) en app/miner_monitor.py.
-
-Instrucciones de Arranque:
-1. Actualizar .specify/feature.json apuntando a "specs/066-cold-boot-grace".
-2. Crear specs/066-cold-boot-grace/ con spec.md, plan.md y tasks.md.
-3. Implementar en app/miner_monitor.py y app/config.example.json.
-4. Crear suite tests/test_startup_grace_period.py y verificar 1043+ tests PASS.
+- Spec 067: Telemetría Profunda por Cadena & Diagnóstico Chain Break (PROP-008, Prioridad P1 Alta).
+  * Objetivo: Diagnóstico automatizado de corte o degradación de cadenas de chips ASIC
+    a partir de telemetría de registros Vnish y muestras en EventStore.
+  * Ver detalle técnico en docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md.

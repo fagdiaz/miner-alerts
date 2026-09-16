@@ -19,6 +19,8 @@
   "alert_cooldown_seconds": 900,
   "expected_boards": 3,
   "notify_startup": true,
+  "startup_fleet_grace_period_seconds": 180,
+  "startup_fleet_grace_threshold_ths": 50.0,
   "notify_offline": true,
   "notify_reboot": true,
   "notify_initial_non_ok": false,

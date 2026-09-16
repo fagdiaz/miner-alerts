@@ -447,7 +447,7 @@ class GovernanceInterlockHook(SupervisoryHook):
         now_ts: float,
         tick_data: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        gov = context.governance
+        gov = tick_data.get("governance") or context.governance
         if gov is None:
             return {"governance_expired": False}
 

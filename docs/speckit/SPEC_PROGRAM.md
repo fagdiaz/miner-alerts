@@ -2,7 +2,7 @@
 
 **Planning baseline**: 2026-09-15
 **Program horizon**: 2026-09-15 to 2026-12-20
-**Active production gate**: V5.0.3 Cold-Boot Fleet Grace Period Approved (`v5.0.3`, 1062 tests PASS, Windows Service RUNNING)
+**Active production gate**: V5.1.0 Staggered Elevator Governance & Soft Contingency Approved (`v5.1.0`, 1288 tests PASS, Windows Service RUNNING)
 **Canonical schedule**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Purpose
@@ -330,7 +330,9 @@ The program requires three documentation sweeps.
 - Spec 066 is **Completed, Cold-Boot Fleet Grace Period Post-Arranque (PROP-001) Certified in Live Production** (`v5.0.3`, 1062/1062 tests PASS).
 - Spec 074 is **Completed, Paired Elevator Contingency & Inrush Dampening (PROP-009) Certified in Live Production** (1221/1221 tests PASS).
 - Spec 075 is **Completed, Soft-Landing Recovery, Headroom Chilling & APW12 Latch-Off Defense (PROP-010) Certified** (1236/1236 tests PASS).
-- All 75 specifications across the program have satisfied their design, test, concurrency, and evidence gates with 1236/1236 passing automated tests.
+- Spec 076 is **Completed, Autonomous Firmware Reflash in NAND & Hardware Ladder Calibration (PROP-011) Certified** (1262/1262 tests PASS).
+- Spec 077 is **Completed, Staggered Elevator Governance, Facility Drop Queue & Soft Contingency (PROP-012) Certified in Live Production** (1288/1288 tests PASS).
+- All 77 specifications across the program have satisfied their design, test, concurrency, and evidence gates with 1288/1288 passing automated tests.
 
 ## Planning Hardening Record - 2026-08-13
 

@@ -38,9 +38,11 @@ ACTION_STEP_DOWN_PARTNER = "STEP_DOWN_PARTNER"
 ACTION_HOLD_CONTINGENCY = "HOLD_CONTINGENCY"
 ACTION_STEP_UP_SOAK = "STEP_UP_SOAK"
 ACTION_RESTORE_NOMINAL = "RESTORE_NOMINAL"
+ACTION_RESTORE_INRUSH_DAMPENER = "RESTORE_INRUSH_DAMPENER"
 ACTION_NO_ACTION = "NO_ACTION"
 
 DEFAULT_SOAK_SECONDS = 7200.0       # 2 continuous hours without restart to initiate recovery
+DEFAULT_INRUSH_DAMPENER_SECONDS = 300.0  # 5 minutes temporary partner dampening during inrush
 DEFAULT_MIN_PRESET_FLOOR = "2100W"   # Lower limit for automated contingency reductions
 DEFAULT_MAX_CEILING = "2700W"
 
@@ -117,6 +119,10 @@ class GroupContingencyState:
     canary_initial_preset: Optional[str] = None
     partner_initial_preset: Optional[str] = None
     soak_duration_seconds: float = DEFAULT_SOAK_SECONDS
+    inrush_dampener_active: bool = False
+    inrush_dampener_expires_ts: Optional[float] = None
+    inrush_dampener_partner: str = ""
+    inrush_dampener_restored_preset: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -135,6 +141,10 @@ class GroupContingencyState:
             canary_initial_preset=data.get("canary_initial_preset"),
             partner_initial_preset=data.get("partner_initial_preset"),
             soak_duration_seconds=float(data.get("soak_duration_seconds", DEFAULT_SOAK_SECONDS)),
+            inrush_dampener_active=bool(data.get("inrush_dampener_active", False)),
+            inrush_dampener_expires_ts=float(data["inrush_dampener_expires_ts"]) if data.get("inrush_dampener_expires_ts") is not None else None,
+            inrush_dampener_partner=str(data.get("inrush_dampener_partner", "")),
+            inrush_dampener_restored_preset=data.get("inrush_dampener_restored_preset"),
         )
 
 
@@ -150,6 +160,9 @@ class ContingencyDecision:
     requires_write: bool = False
     notification_msg: str = ""
     updated_group_state: Optional[GroupContingencyState] = None
+    partner_miner: str = ""
+    partner_target_preset: str = ""
+    partner_requires_write: bool = False
 
 
 def evaluate_canary_contingency(
@@ -162,6 +175,8 @@ def evaluate_canary_contingency(
     canary_map: Optional[Dict[str, str]] = None,
     min_preset_floor: str = DEFAULT_MIN_PRESET_FLOOR,
     soak_seconds: float = DEFAULT_SOAK_SECONDS,
+    enable_paired_inrush: bool = False,
+    inrush_dampener_seconds: float = DEFAULT_INRUSH_DAMPENER_SECONDS,
 ) -> ContingencyDecision:
     """Pure evaluation of adaptive contingency logic.
     
@@ -175,6 +190,8 @@ def evaluate_canary_contingency(
         canary_map: Canary assignments override
         min_preset_floor: Minimum wattage allowed for reduction (default "2100W")
         soak_seconds: Stability seconds required for recovery (default 7200s = 2h)
+        enable_paired_inrush: If True, temporary dampens partner miner during restart inrush
+        inrush_dampener_seconds: Duration of temporary partner dampening (default 300s)
     
     Returns:
         ContingencyDecision with complete action, target miner, presets, and updated state.
@@ -201,6 +218,41 @@ def evaluate_canary_contingency(
             notification_msg=f"ℹ️ Contingencia de elevador [{group_name}] restablecida.",
             updated_group_state=reset_state,
         )
+
+    # -----------------------------------------------------------------------
+    # Case 1.5: Inrush Dampener Restoration Check on soak_tick
+    # -----------------------------------------------------------------------
+    if event_type == "soak_tick" and state.inrush_dampener_active and state.inrush_dampener_expires_ts:
+        if now_ts >= state.inrush_dampener_expires_ts:
+            target_p = state.inrush_dampener_partner
+            restored_p = state.inrush_dampener_restored_preset or DEFAULT_MAX_CEILING
+            curr_p = current_presets.get(target_p) or current_presets.get(normalize_miner_name(target_p), restored_p)
+            new_st = GroupContingencyState(
+                group_name=state.group_name,
+                active=state.active,
+                trigger_miner=state.trigger_miner,
+                started_ts=state.started_ts,
+                last_restart_ts=state.last_restart_ts,
+                step_down_count=state.step_down_count,
+                canary_initial_preset=state.canary_initial_preset,
+                partner_initial_preset=state.partner_initial_preset,
+                soak_duration_seconds=state.soak_duration_seconds,
+                inrush_dampener_active=False,
+                inrush_dampener_expires_ts=None,
+                inrush_dampener_partner="",
+                inrush_dampener_restored_preset=None,
+            )
+            return ContingencyDecision(
+                action=ACTION_RESTORE_INRUSH_DAMPENER,
+                group_name=group_name,
+                target_miner=target_p,
+                previous_preset=curr_p,
+                target_preset=restored_p,
+                reason=f"Amortiguación de arranque completada: restaurando compañero {target_p} a {restored_p}",
+                requires_write=True,
+                notification_msg=f"⚡ *AMORTIGUACIÓN DE ELEVADOR FINALIZADA [{group_name}]*\n• Minero compañero *{target_p}* restablecido a *{restored_p}* tras arranque estable.",
+                updated_group_state=new_st,
+            )
 
     # -----------------------------------------------------------------------
     # Case 2: Unexpected Restart Event (Canary vs Robust Partner)
@@ -235,6 +287,22 @@ def evaluate_canary_contingency(
                         updated_group_state=state,
                     )
 
+                partner_damp_tier = ""
+                partner_write = False
+                damp_active = False
+                damp_exp = None
+                damp_target = ""
+                damp_restored = None
+                if enable_paired_inrush and partner_name and partner_preset:
+                    p_tier = find_previous_preset_tier(partner_preset, min_floor=min_preset_floor)
+                    if p_tier:
+                        partner_damp_tier = p_tier
+                        partner_write = True
+                        damp_active = True
+                        damp_exp = now_ts + inrush_dampener_seconds
+                        damp_target = partner_name
+                        damp_restored = partner_preset
+
                 new_state = GroupContingencyState(
                     group_name=group_name,
                     active=True,
@@ -245,9 +313,15 @@ def evaluate_canary_contingency(
                     canary_initial_preset=curr_p,
                     partner_initial_preset=partner_preset,
                     soak_duration_seconds=soak_seconds,
+                    inrush_dampener_active=damp_active,
+                    inrush_dampener_expires_ts=damp_exp,
+                    inrush_dampener_partner=damp_target,
+                    inrush_dampener_restored_preset=damp_restored,
                 )
 
                 partner_display = f"{partner_name} se mantiene en {partner_preset}." if partner_name else ""
+                if partner_write and partner_damp_tier:
+                    partner_display = f"{partner_name} amortigua a {partner_damp_tier} ({int(inrush_dampener_seconds)}s)."
                 notif = (
                     f"⚡ *CONTINGENCIA ASIMÉTRICA [{group_name}]*\n\n"
                     f"Reinicio inesperado en minero canario *{miner_name}*.\n"
@@ -266,6 +340,9 @@ def evaluate_canary_contingency(
                     requires_write=True,
                     notification_msg=notif,
                     updated_group_state=new_state,
+                    partner_miner=partner_name if partner_write else "",
+                    partner_target_preset=partner_damp_tier if partner_write else "",
+                    partner_requires_write=partner_write,
                 )
             else:
                 # Already in contingency: Canary restarted AGAIN! (Prueba en los límites)

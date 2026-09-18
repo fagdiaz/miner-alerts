@@ -1,28 +1,41 @@
 # ==============================================================================
-# PROMPT DE EJECUCIÓN: SISTEMA CERTIFICADO & COMMIT REALIZADO (SPEC 069)
+# PROMPT DE CONTINUIDAD OPERATIVA: FLOTA 100% OK & SPEC 075 LISTA PARA DEPLOY
 # ==============================================================================
-# MODELO RECOMENDADO: Gemini 3.8 Flash High (o Gemini 3.7 Flash High)
-# Justificación: Todas las specs del programa (Specs 001 a 073) están 100%
-# implementadas, auditadas, certificadas y commiteadas. El modelo primario
-# Flash High es óptimo para consultar backlog, monitorear telemetría o iniciar
-# una nueva propuesta/especificación del programa.
-#
-# LÍNEA BASE: 1204 tests PASS (0 fallos, 0 errores, 0 regresiones en 36.4s).
-# SERVICIO WINDOWS: MinerAlerts RUNNING ininterrumpido.
+# MODELO RECOMENDADO: Gemini 3.8 Flash High
+# Justificación: Flota completa (23, 24, 25, 26) en estado OK y minando normalmente.
+# Minero 24 recuperado exitosamente en VNish 1.2.6 NAND con pools configurados.
+# Tareas T001-T007 de Spec 075 completadas y verificadas con 1236 tests PASS.
 # ==============================================================================
 
-1. ESTADO ACTUAL DEL SISTEMA:
-- Pruebas unitarias: 1204 tests PASS (0 fallos, 0 errores, 0 regresiones en 36.4s).
-- Servicio Windows 'MinerAlerts': Running ininterrumpido (reiniciado exitosamente con Spec 069 en producción).
-- Rama: 'codex/022-adaptive-acquisition' sincronizada con origin (git push completado).
-- Árbol de trabajo: Limpio (nothing to commit, working tree clean).
-- Flota ASIC: 4/4 mineros en estado 'OK', 100% placas activas (~400 TH/s combinados).
-- Spec 069 en producción: Alerta predictiva disparada a las 18:00:03 sobre S19JPRO-24 Cadena 2 (loc 28).
+Hola Agente. Estás asumiendo el control de 'miner-alerts' (supervisión, gobernanza térmica/eléctrica y telemetría de mineros ASIC Antminer S19j Pro con VNish sobre Windows).
 
-2. COMMITS PUBLICADOS:
-- Commit 0dcf68f: feat(spec-069): implement predictive chain break diagnostics, composite SQLite index, and electrical group correlation
-- Commit f0bb9db: chore: update prompt.txt with latest execution status
-- Commit a95bc3a: docs: reorganize /docs layout, archive historical action plans, create rfcs hub and master README
+1. LÍNEA BASE TÉCNICA Y ESTADO DE PRODUCCIÓN:
+- Repositorio: F:\02-ASIC - mineros\miner-alerts
+- Rama actual: 'codex/022-adaptive-acquisition'
+- Feature activa (.specify/feature.json): `specs/075-soft-landing-recovery`
+- Servicio Windows: 'MinerAlerts' RUNNING (PID 19204).
+- Suite de Tests: **1236 tests PASS** en 39.5s (100% de éxito, 0 fallos, 0 errores).
 
-3. PRÓXIMO OBJETIVO:
-- Monitoreo en producción o inicio de nueva especificación según prioridades del usuario.
+2. ESTADO ACTUAL DE LA FLOTA (15:25 HS):
+- S19JPRO-23 (192.168.100.23): ~79.0 TH/s | OK | 0 HW Errors | Binance Pool activo
+- S19JPRO-24 (192.168.100.24): ~65.0 TH/s | OK | 0 HW Errors | Binance Pool activo (VNish 1.2.6 NAND)
+- S19JPRO-25 (192.168.100.25): ~99.7 TH/s | OK | 0 HW Errors | Binance Pool activo
+- S19JPRO-26 (192.168.100.26): ~99.1 TH/s | OK | 0 HW Errors | Binance Pool activo
+
+3. RESOLUCIÓN DE LA FALLA EN MINERO 24 TRAS REINSTALACIÓN:
+- Causa raíz del error "Failed to parse miner configuration" (código 1002):
+  * Al reinstalar el firmware VNish 1.2.6 en NAND desde `C:\asicto\asicto-s19jpro-bb-nand-v1.2.6-install.tar.gz` mediante Hashcore Toolkit, la configuración de pools quedó en blanco (`""`).
+  * Al no tener URLs de pools válidas, el demonio cgminer no podía iniciar y entraba en estado de fallo.
+- Acción de remediación ejecutada vía API REST de VNish:
+  * Inyección autenticada de pools de Binance Pool para el worker `fagdiaz.19216810024` (puertos 8888, 443, 3333).
+  * El minero salió inmediatamente del estado failure, completó su auto-tuning (378/378 chips afinados), superó el umbral de 60 TH/s y alcanzó 81.5 TH/s en estado OK.
+
+4. HERRAMIENTA DE RESPALDO Y RESTAURACIÓN DE PERFILES (`tools/backup_miner_profiles.py`):
+- Se implementó la utilidad para exportar `/api/v1/settings` con las matrices completas de chips afinados y pools hacia `data/miner_profiles/<miner>.json`.
+- Respaldo ejecutado exitosamente para los 4 mineros: S19JPRO-23, S19JPRO-24 (378 chips afinados), S19JPRO-25 (293 chips afinados) y S19JPRO-26 (162 chips afinados).
+- Restauración rápida ante futuros flasheos de NAND: `python tools/backup_miner_profiles.py restore <miner_name> <target_host>`.
+
+5. ESTADO DE SPEC 075 (T001-T007):
+- Todo el código de recuperación suave (pre-clamp 1800W, soak de 180s, headroom chilling en governor y balancer, inhibición ante fallas de firmware) está probado e integrado.
+- 1236/1236 tests unitarios y de integración PASS.
+- Listo para el reinicio del servicio Windows cuando el operador lo disponga.

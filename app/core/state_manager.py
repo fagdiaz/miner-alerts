@@ -261,6 +261,12 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "last_efficiency_j_th": getattr(state, "last_efficiency_j_th", None),
         "last_responded": getattr(state, "last_responded", False),
         "inlet_temp_c": getattr(state, "inlet_temp_c", None),
+        # Spec 075: Soft-Landing Recovery & APW12 Latch-Off Defense
+        "stopped_since_ts": getattr(state, "stopped_since_ts", None),
+        "is_pre_clamped": getattr(state, "is_pre_clamped", False),
+        "original_preset_before_clamp": getattr(state, "original_preset_before_clamp", None),
+        "staged_ramp_up_pending": getattr(state, "staged_ramp_up_pending", False),
+        "staged_ramp_up_soak_start_ts": getattr(state, "staged_ramp_up_soak_start_ts", None),
     }
 
 

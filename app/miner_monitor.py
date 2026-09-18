@@ -912,6 +912,13 @@ class MinerState:
     inlet_temp_c: Optional[float] = None
     # Spec 057: Intervention Governance & Vnish Libre Mode
     intervention_gov: Optional[Any] = None
+    # Spec 075: Soft-Landing Recovery & APW12 Latch-Off Defense
+    stopped_since_ts: Optional[float] = None
+    is_pre_clamped: bool = False
+    original_preset_before_clamp: Optional[str] = None
+    staged_ramp_up_pending: bool = False
+    staged_ramp_up_soak_start_ts: Optional[float] = None
+    stock_firmware_fallback_notified: bool = False
 
 
 
@@ -1027,7 +1034,9 @@ def read_version(host: str, port: int, timeout: float = 5.0) -> Optional[dict]:
 
 
 def is_miner_no_ok(state: Optional["MinerState"]) -> bool:
-    return bool(state and state.state == STATE_LOW)
+    if not state or not getattr(state, "state", None):
+        return True
+    return state.state != STATE_OK
 
 
 def classify_auto_reboot_signal(
@@ -1215,11 +1224,22 @@ def _async_execute_mining_restart(
     qa_mode: bool,
     qa_notify: bool,
     event_store: Optional[EventStore],
+    pre_clamp_preset: str = "1800",
 ) -> None:
     try:
         ts = time.time()
         disp_name = display_name(miner_name)
         log(f"[AUTO-RESTART] {disp_name} ({host}) iniciando soft restart de minado (intento {attempt}/{max_attempts}, razon={trigger_reason})...")
+
+        # Spec 075 / FR-01: Soft-Landing Pre-Clamp to safe floor (1800W) before restarting
+        log(f"[SAFE-RECOVERY] {disp_name} ({host}) aplicando pre-clamp defensivo a {pre_clamp_preset}W para proteger fuente APW12...")
+        clamp_ok, clamp_err = safe_set_miner_preset(host, password, pre_clamp_preset, clamp_top_preset=True)
+        if clamp_ok:
+            log(f"[SAFE-RECOVERY] {disp_name} ({host}) pre-clamp a {pre_clamp_preset}W aplicado con exito. Asentando voltajes (2.0s)...")
+            time.sleep(2.0)
+        else:
+            log(f"[WARN] [SAFE-RECOVERY] {disp_name} ({host}) no se pudo aplicar pre-clamp ({clamp_err}); procediendo con soft restart de minado directo.")
+
         ok, err = safe_restart_mining(host, password)
         if ok:
             log(f"[AUTO-RESTART] {disp_name} ({host}) soft mining restart enviado exitosamente (intento {attempt}/{max_attempts}).")
@@ -2219,6 +2239,7 @@ from app.network.hashcore_client import (
 
 def _execute_subprocess_no_window(cmd: Any, **kwargs: Any) -> subprocess.CompletedProcess:
     """Windows subprocess execution ensuring no console window is spawned."""
+    kwargs.pop("creationflags", None)
     return subprocess.run(cmd, creationflags=_NO_WINDOW_CREATION_FLAGS, **kwargs)
 
 
@@ -2534,6 +2555,24 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("inlet_temp_c") is not None
                     else None
                 ),
+                # Spec 075: Soft-Landing Recovery
+                stopped_since_ts=(
+                    float(data.get("stopped_since_ts"))
+                    if data.get("stopped_since_ts") is not None
+                    else None
+                ),
+                is_pre_clamped=bool(data.get("is_pre_clamped", False)),
+                original_preset_before_clamp=(
+                    str(data.get("original_preset_before_clamp"))
+                    if data.get("original_preset_before_clamp") is not None
+                    else None
+                ),
+                staged_ramp_up_pending=bool(data.get("staged_ramp_up_pending", False)),
+                staged_ramp_up_soak_start_ts=(
+                    float(data.get("staged_ramp_up_soak_start_ts"))
+                    if data.get("staged_ramp_up_soak_start_ts") is not None
+                    else None
+                ),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2595,7 +2634,7 @@ def _build_state_payload(
         "last_daily_digest_date": _LAST_DAILY_DIGEST_DATE,
         "scheduled_maintenance": sch_win.to_dict() if sch_win is not None else None,
         "intervention_governance": gov_obj.to_dict() if gov_obj is not None else None,
-        "elevator_contingency": {grp: s.to_dict() for grp, s in cont_states.items()} if cont_states else None,
+        "elevator_contingency": {grp: s.to_dict() for grp, s in list(cont_states.items())} if cont_states else None,
         "states": {},
     }
 
@@ -3104,6 +3143,10 @@ def execute_governor_cycle(
                     amb_temp = round(sum(fleet_inlet_temps) / len(fleet_inlet_temps), 2)
 
             gov_target_pwr = None if getattr(state, "silent_mode_active", False) else target_pwr
+            miner_is_warming_up = (
+                (getattr(state, "last_elapsed", None) is not None and getattr(state, "last_elapsed", 999) < 240)
+                or (getattr(state, "reboot_pending_until", 0.0) > now_ts)
+            )
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
@@ -3114,6 +3157,7 @@ def execute_governor_cycle(
                 current_power_w=getattr(state, "governor_last_power_w", None),
                 target_power_w=gov_target_pwr,
                 ambient_temp_c=amb_temp,
+                is_warming_up=miner_is_warming_up,
             )
             miner_decisions.append((miner, state_key, decision))
 
@@ -5301,6 +5345,9 @@ def main() -> None:
     auto_restart_cooldown_seconds = int(config.get("auto_restart_cooldown_seconds", 300))
     auto_restart_max_retries_before_reboot = int(config.get("auto_restart_max_retries_before_reboot", 2))
     auto_restart_min_elapsed_seconds = int(config.get("auto_restart_min_elapsed_seconds", 180))
+    # Spec 075: Soft-Landing Recovery & APW12 Latch-Off Defense
+    safe_recovery_settle_window_seconds = float(config.get("safe_recovery_settle_window_seconds", 120.0))
+    safe_recovery_pre_clamp_preset = str(config.get("safe_recovery_pre_clamp_preset", "1800"))
     if qa_mode:
         poll_seconds = int(config.get("qa_poll_seconds", 2))
         reboot_cooldown_seconds = int(config.get("qa_reboot_cooldown_seconds", 120))
@@ -5310,6 +5357,7 @@ def main() -> None:
         auto_reboot_window_seconds = int(config.get("qa_auto_reboot_window_seconds", 600))
         auto_restart_cooldown_seconds = int(config.get("qa_auto_restart_cooldown_seconds", 30))
         auto_restart_min_elapsed_seconds = int(config.get("qa_auto_restart_min_elapsed_seconds", 0))
+        safe_recovery_settle_window_seconds = float(config.get("qa_safe_recovery_settle_window_seconds", 5.0))
     auto_reboot_fleet_snapshot_max_age_seconds = max(60.0, float(poll_seconds * 2))
     offline_is_actionable = bool(config.get("offline_is_actionable", True))
     hashcore_cfg = config.get("hashcore", {})
@@ -5419,6 +5467,7 @@ def main() -> None:
 
     # Spec 060 Phase B: StateManager & MonitorContext DI Container
     import app.miner_monitor as _self_module
+    _self_module._TELEGRAM_QUEUE = _TELEGRAM_QUEUE
     from app.core.state_manager import StateManager
     from app.core.context import build_monitor_context
 
@@ -6135,14 +6184,16 @@ def main() -> None:
                             cont_allowed, _ = should_allow_intervention(ACTION_CONTINGENCY, gov_obj, now_ts)
                             if cont_allowed:
                                 _grp_presets = {}
-                                for _m in miners:
-                                    if (_m.get("electrical_group") or _m.get("group")) == m_group:
-                                        _mn = _m.get("name")
-                                        _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
-                                        _st = states.get(_sk)
-                                        _pr = getattr(_st, "balancer_preset", None) if _st else None
-                                        _grp_presets[_mn] = _pr or _m.get("max_preset", "2700W")
-                                _c_state = _ELEVATOR_CONTINGENCY_STATES.get(m_group)
+                                with state_lock:
+                                    for _m in miners:
+                                        if (_m.get("electrical_group") or _m.get("group")) == m_group:
+                                            _mn = _m.get("name")
+                                            _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                                            _st = states.get(_sk)
+                                            _pr = getattr(_st, "balancer_preset", None) if _st else None
+                                            _grp_presets[_mn] = _pr or _m.get("max_preset", "2700W")
+                                    _c_state = _ELEVATOR_CONTINGENCY_STATES.get(m_group)
+                                _paired_inrush_cfg = bool(config.get("contingency_paired_inrush_enabled", True))
                                 _decision = evaluate_canary_contingency(
                                     event_type="unexpected_restart",
                                     miner_name=name_display,
@@ -6150,21 +6201,57 @@ def main() -> None:
                                     current_presets=_grp_presets,
                                     now_ts=now_ts,
                                     group_state=_c_state,
+                                    enable_paired_inrush=_paired_inrush_cfg,
                                 )
                                 if _decision.updated_group_state:
-                                    _ELEVATOR_CONTINGENCY_STATES[m_group] = _decision.updated_group_state
+                                    with state_lock:
+                                        _ELEVATOR_CONTINGENCY_STATES[m_group] = _decision.updated_group_state
                                 if _decision.requires_write and not qa_mode:
-                                    _tgt_miner = next((m_item for m_item in miners if m_item.get("name") == _decision.target_miner), None)
+                                    from app.governance.adaptive_contingency import normalize_miner_name
+                                    _tgt_miner = next(
+                                        (m_item for m_item in miners
+                                         if normalize_miner_name(m_item.get("name", "")) == normalize_miner_name(_decision.target_miner)),
+                                        None
+                                    )
                                     if _tgt_miner:
                                         vnish_pw = str(config.get("vnish_api_password", "admin"))
-                                        from app.governance.preset_balancer import safe_set_miner_preset
+                                        from app.vnish.client import safe_set_miner_preset
                                         _w_ok, _w_msg = safe_set_miner_preset(
                                             _tgt_miner.get("host", ""),
                                             vnish_pw,
                                             _decision.target_preset,
                                             timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+                                            clamp_top_preset=True,
                                         )
                                         log(f"[CONTINGENCY] Applied preset {_decision.target_preset} to {_decision.target_miner}: ok={_w_ok} msg={_w_msg}")
+                                        _t_sk = f"{_tgt_miner.get('name','')}|{_tgt_miner.get('host','')}:{_tgt_miner.get('port',4028)}"
+                                        with state_lock:
+                                            _t_st = states.get(_t_sk)
+                                            if _t_st:
+                                                _t_st.balancer_preset = _decision.target_preset
+                                if _decision.partner_requires_write and _decision.partner_miner and not qa_mode:
+                                    from app.governance.adaptive_contingency import normalize_miner_name
+                                    _pt_miner = next(
+                                        (m_item for m_item in miners
+                                         if normalize_miner_name(m_item.get("name", "")) == normalize_miner_name(_decision.partner_miner)),
+                                        None
+                                    )
+                                    if _pt_miner:
+                                        vnish_pw = str(config.get("vnish_api_password", "admin"))
+                                        from app.vnish.client import safe_set_miner_preset
+                                        _pw_ok, _pw_msg = safe_set_miner_preset(
+                                            _pt_miner.get("host", ""),
+                                            vnish_pw,
+                                            _decision.partner_target_preset,
+                                            timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+                                            clamp_top_preset=True,
+                                        )
+                                        log(f"[CONTINGENCY_DAMPENER] Applied partner dampener {_decision.partner_target_preset} to {_decision.partner_miner}: ok={_pw_ok} msg={_pw_msg}")
+                                        _pt_sk = f"{_pt_miner.get('name','')}|{_pt_miner.get('host','')}:{_pt_miner.get('port',4028)}"
+                                        with state_lock:
+                                            _pt_st = states.get(_pt_sk)
+                                            if _pt_st:
+                                                _pt_st.balancer_preset = _decision.partner_target_preset
                                 if _decision.notification_msg:
                                     send_telegram(
                                         bot_token,
@@ -6216,81 +6303,140 @@ def main() -> None:
                     state.reboot_pending_reason = ""
                     state.reboot_pending_elapsed = None
 
-                # Spec 056: Two-Tier Mining Recovery - Level 1 (Soft Auto-Restart)
+                # Spec 075: Staged Ramp-Up restore after Soft-Landing
+                if (
+                    getattr(state, "is_pre_clamped", False)
+                    and getattr(state, "staged_ramp_up_pending", False)
+                    and new_state == STATE_OK
+                    and (rate_ths is not None and rate_ths >= threshold_ths)
+                ):
+                    if state.staged_ramp_up_soak_start_ts is None:
+                        with state_lock:
+                            state.staged_ramp_up_soak_start_ts = now_ts
+                        log(f"[SAFE-RECOVERY] {name_display} estabilizado en OK con pre-clamp: iniciando soak de rampa ascendente (180s)...")
+                    elif (now_ts - state.staged_ramp_up_soak_start_ts) >= 180.0:
+                        nom_preset = (getattr(state, "original_preset_before_clamp", None) or getattr(state, "balancer_preset", "2300W") or "2300W").rstrip("W")
+                        log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W)...")
+                        safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=True)
+                        with state_lock:
+                            state.is_pre_clamped = False
+                            state.staged_ramp_up_pending = False
+                            state.staged_ramp_up_soak_start_ts = None
+                            state.original_preset_before_clamp = None
+
+                # Spec 056 & Spec 075: Two-Tier Mining Recovery - Level 1 (Soft Auto-Restart & Soft-Landing)
+                is_hash_degraded = (
+                    new_state in (STATE_LOW, STATE_HASHBOARD)
+                    or (rate_ths is not None and rate_ths <= 0.0)
+                    or (active_boards is not None and active_boards == 0)
+                )
+                if not is_hash_degraded:
+                    if state.stopped_since_ts is not None:
+                        with state_lock:
+                            state.stopped_since_ts = None
+
+                _is_stock_fw = False
                 if (
                     auto_restart_mining_enabled
                     and responded
                     and not first_tick
                     and not startup_grace_active
                     and not reboot_reason
-                    and (
-                        new_state in (STATE_LOW, STATE_HASHBOARD)
-                        or (rate_ths is not None and rate_ths <= 0.0)
-                        or (active_boards is not None and active_boards == 0)
-                    )
+                    and is_hash_degraded
                 ):
-                    _v_st_ok, _v_st_data, _ = get_miner_status(host)
-                    _vn_state, _restart_req, _reboot_req = parse_miner_status_flags(_v_st_data if _v_st_ok else None)
-                    _is_restart_cand, _restart_reason, _restart_cd = evaluate_auto_restart_candidate(
-                        now_ts=now_ts,
-                        responded=responded,
-                        rate_ths=rate_ths,
-                        threshold_ths=threshold_ths,
-                        active_boards=active_boards,
-                        expected_boards=expected_boards,
-                        miner_state=_vn_state,
-                        restart_required=_restart_req,
-                        reboot_required=_reboot_req,
-                        auto_restart_enabled=auto_restart_mining_enabled,
-                        last_auto_restart_ts=state.last_auto_restart_ts,
-                        auto_restart_cooldown_seconds=auto_restart_cooldown_seconds,
-                        auto_restart_count=state.auto_restart_count,
-                        max_retries_before_reboot=auto_restart_max_retries_before_reboot,
-                        in_maintenance=getattr(state, "is_shutdown_maintenance", False),
-                        is_snoozed=(state.snooze_until_ts is not None and now_ts < state.snooze_until_ts),
-                        elapsed=elapsed,
-                        min_elapsed_seconds=auto_restart_min_elapsed_seconds,
-                        startup_grace_active=startup_grace_active,
-                    )
-                    if _is_restart_cand:
-                        if qa_mode and not qa_allow_actions:
-                            log(f"[AUTO-RESTART] blocked_by=qa miner={name_display} reason={_restart_reason}")
-                            if qa_notify:
-                                send_telegram(
-                                    bot_token,
-                                    str(chat_id),
-                                    f"[AUTO-RESTART] Accion bloqueada (QA): {name_display} ({_restart_reason}).",
-                                    "ERROR",
-                                    "qa_block",
-                                )
-                        else:
-                            state.last_auto_restart_ts = now_ts
-                            state.auto_restart_count += 1
-                            threading.Thread(
-                                target=_async_execute_mining_restart,
-                                args=(
-                                    host,
-                                    vnish_api_password,
-                                    name,
-                                    miner,
-                                    _restart_reason,
-                                    state.auto_restart_count,
-                                    auto_restart_max_retries_before_reboot,
-                                    bot_token,
-                                    chat_id,
-                                    qa_mode,
-                                    qa_notify,
-                                    event_store,
-                                ),
-                                daemon=True,
-                                name=f"AutoRestart_{name}",
-                            ).start()
-                    elif _restart_reason == "cooldown":
-                        log(f"[AUTO-RESTART] blocked_by=cooldown miner={name_display} cooldown_remaining={_restart_cd:.0f}s")
-                    elif _restart_reason == "miner_warming_up":
-                        log(f"[AUTO-RESTART] blocked_by=miner_warming_up miner={name_display} elapsed={elapsed}s < {auto_restart_min_elapsed_seconds}s")
-                    elif _restart_reason == "max_retries_exceeded":
-                        log(f"[AUTO-RESTART] blocked_by=max_retries_exceeded miner={name_display} attempts={state.auto_restart_count}/{auto_restart_max_retries_before_reboot} -> escalando a Nivel 2 (auto-reboot)")
+                    if state.stopped_since_ts is None:
+                        with state_lock:
+                            state.stopped_since_ts = now_ts
+                    elapsed_stopped = now_ts - state.stopped_since_ts
+
+                    _v_st_ok, _v_st_data, _v_st_err = get_miner_status(host)
+                    _is_stock_fw = (_v_st_err == "stock_firmware_fallback_detected")
+
+                    if _is_stock_fw:
+                        log(f"[SAFE-RECOVERY] blocked_by=stock_firmware_fallback miner={name_display} (firmware stock Bitmain detectado)")
+                        if not getattr(state, "stock_firmware_fallback_notified", False):
+                            with state_lock:
+                                state.stock_firmware_fallback_notified = True
+                            send_telegram(
+                                bot_token,
+                                str(chat_id),
+                                f"[FIRMWARE FALLBACK] {name_display} ({host}) ha iniciado en firmware de fabrica Bitmain 2021 (NAND).\n"
+                                f"Tarjeta MicroSD con VNish no detectada o ilegible tras corte de energia.\n"
+                                f"Accion recomendada: Revisar fisicamente la ranura MicroSD.",
+                                "ERROR",
+                                "firmware_fallback",
+                            )
+                    elif elapsed_stopped < safe_recovery_settle_window_seconds:
+                        log(f"[SAFE-RECOVERY] miner={name_display} en ventana pasiva de settle ({elapsed_stopped:.0f}s/{safe_recovery_settle_window_seconds:.0f}s)")
+                    else:
+                        _vn_state, _restart_req, _reboot_req = parse_miner_status_flags(_v_st_data if _v_st_ok else None)
+                        _is_restart_cand, _restart_reason, _restart_cd = evaluate_auto_restart_candidate(
+                            now_ts=now_ts,
+                            responded=responded,
+                            rate_ths=rate_ths,
+                            threshold_ths=threshold_ths,
+                            active_boards=active_boards,
+                            expected_boards=expected_boards,
+                            miner_state=_vn_state,
+                            restart_required=_restart_req,
+                            reboot_required=_reboot_req,
+                            auto_restart_enabled=auto_restart_mining_enabled,
+                            last_auto_restart_ts=state.last_auto_restart_ts,
+                            auto_restart_cooldown_seconds=auto_restart_cooldown_seconds,
+                            auto_restart_count=state.auto_restart_count,
+                            max_retries_before_reboot=auto_restart_max_retries_before_reboot,
+                            in_maintenance=getattr(state, "is_shutdown_maintenance", False),
+                            is_snoozed=(state.snooze_until_ts is not None and now_ts < state.snooze_until_ts),
+                            elapsed=elapsed,
+                            min_elapsed_seconds=auto_restart_min_elapsed_seconds,
+                            startup_grace_active=startup_grace_active,
+                        )
+                        if _is_restart_cand:
+                            if qa_mode and not qa_allow_actions:
+                                log(f"[AUTO-RESTART] blocked_by=qa miner={name_display} reason={_restart_reason}")
+                                if qa_notify:
+                                    send_telegram(
+                                        bot_token,
+                                        str(chat_id),
+                                        f"[AUTO-RESTART] Accion bloqueada (QA): {name_display} ({_restart_reason}).",
+                                        "ERROR",
+                                        "qa_block",
+                                    )
+                            else:
+                                with state_lock:
+                                    state.last_auto_restart_ts = now_ts
+                                    state.auto_restart_count += 1
+                                    if not getattr(state, "original_preset_before_clamp", None):
+                                        state.original_preset_before_clamp = getattr(state, "balancer_preset", None) or "2300"
+                                    state.is_pre_clamped = True
+                                    state.staged_ramp_up_pending = True
+                                    state.staged_ramp_up_soak_start_ts = None
+                                threading.Thread(
+                                    target=_async_execute_mining_restart,
+                                    args=(
+                                        host,
+                                        vnish_api_password,
+                                        name,
+                                        miner,
+                                        _restart_reason,
+                                        state.auto_restart_count,
+                                        auto_restart_max_retries_before_reboot,
+                                        bot_token,
+                                        chat_id,
+                                        qa_mode,
+                                        qa_notify,
+                                        event_store,
+                                        safe_recovery_pre_clamp_preset,
+                                    ),
+                                    daemon=True,
+                                    name=f"AutoRestart_{name}",
+                                ).start()
+                        elif _restart_reason == "cooldown":
+                            log(f"[AUTO-RESTART] blocked_by=cooldown miner={name_display} cooldown_remaining={_restart_cd:.0f}s")
+                        elif _restart_reason == "miner_warming_up":
+                            log(f"[AUTO-RESTART] blocked_by=miner_warming_up miner={name_display} elapsed={elapsed}s < {auto_restart_min_elapsed_seconds}s")
+                        elif _restart_reason == "max_retries_exceeded":
+                            log(f"[AUTO-RESTART] blocked_by=max_retries_exceeded miner={name_display} attempts={state.auto_restart_count}/{auto_restart_max_retries_before_reboot} -> escalando a Nivel 2 (auto-reboot)")
 
                 # Auto-reboot policy
                 state.auto_reboot_timestamps = [
@@ -6320,6 +6466,7 @@ def main() -> None:
                         auto_reboot_firmware_transition_guard_enabled
                     ),
                     chains_transitioning_count=quality_telemetry.chains_transitioning_count,
+                    stock_firmware_present=_is_stock_fw,
                 )
                 decision_context: Dict[str, Any] = {
                     "evaluated_ts": now_ts,
@@ -7531,16 +7678,19 @@ def main() -> None:
                     gov_obj = globals().get("_GLOBAL_INTERVENTION_GOV")
                     cont_allowed, _ = should_allow_intervention(ACTION_CONTINGENCY, gov_obj, now_ts) if gov_obj else (True, "")
                     if cont_allowed:
-                        for grp, c_st in list(_ELEVATOR_CONTINGENCY_STATES.items()):
+                        with state_lock:
+                            _contingency_items = list(_ELEVATOR_CONTINGENCY_STATES.items())
+                        for grp, c_st in _contingency_items:
                             if c_st.active:
                                 _grp_presets = {}
-                                for _m in valid_miners:
-                                    if (_m.get("electrical_group") or _m.get("group")) == grp:
-                                        _mn = _m.get("name")
-                                        _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
-                                        _st = states.get(_sk)
-                                        _pr = getattr(_st, "balancer_preset", None) if _st else None
-                                        _grp_presets[_mn] = _pr or _m.get("max_preset", "2700W")
+                                with state_lock:
+                                    for _m in valid_miners:
+                                        if (_m.get("electrical_group") or _m.get("group")) == grp:
+                                            _mn = _m.get("name")
+                                            _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                                            _st = states.get(_sk)
+                                            _pr = getattr(_st, "balancer_preset", None) if _st else None
+                                            _grp_presets[_mn] = _pr or _m.get("max_preset", "2700W")
                                 _dec = evaluate_canary_contingency(
                                     event_type="soak_tick",
                                     miner_name="",
@@ -7550,20 +7700,32 @@ def main() -> None:
                                     group_state=c_st,
                                 )
                                 if _dec.updated_group_state:
-                                    _ELEVATOR_CONTINGENCY_STATES[grp] = _dec.updated_group_state
+                                    with state_lock:
+                                        _ELEVATOR_CONTINGENCY_STATES[grp] = _dec.updated_group_state
                                 if _dec.action != ACTION_NO_ACTION:
                                     if _dec.requires_write and not qa_mode:
-                                        _tgt = next((m_item for m_item in valid_miners if m_item.get("name") == _dec.target_miner), None)
+                                        from app.governance.adaptive_contingency import normalize_miner_name
+                                        _tgt = next(
+                                            (m_item for m_item in valid_miners
+                                             if normalize_miner_name(m_item.get("name", "")) == normalize_miner_name(_dec.target_miner)),
+                                            None
+                                        )
                                         if _tgt:
                                             vnish_pw = str(config.get("vnish_api_password", "admin"))
-                                            from app.governance.preset_balancer import safe_set_miner_preset
-                                            safe_set_miner_preset(
+                                            from app.vnish.client import safe_set_miner_preset
+                                            _s_ok, _s_msg = safe_set_miner_preset(
                                                 _tgt.get("host", ""),
                                                 vnish_pw,
                                                 _dec.target_preset,
                                                 timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+                                                clamp_top_preset=True,
                                             )
-                                            log(f"[CONTINGENCY_SOAK] Step-up preset {_dec.target_preset} applied to {_dec.target_miner}")
+                                            log(f"[CONTINGENCY_SOAK] Preset {_dec.target_preset} applied to {_dec.target_miner}: ok={_s_ok} msg={_s_msg}")
+                                            _t_sk = f"{_tgt.get('name','')}|{_tgt.get('host','')}:{_tgt.get('port',4028)}"
+                                            with state_lock:
+                                                _t_st = states.get(_t_sk)
+                                                if _t_st:
+                                                    _t_st.balancer_preset = _dec.target_preset
                                     if _dec.notification_msg:
                                         send_telegram(
                                             bot_token,

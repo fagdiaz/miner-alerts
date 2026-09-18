@@ -3,6 +3,87 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-18] - Implementación Spec 075: Recuperación Suave de Hasheo, Headroom Chilling y Diagnóstico Raíz Minero 24 (PROP-010)
+
+* **Objetivo**:
+  1. Diagnosticar la causa raíz de la falla del Minero 24 (`192.168.100.24`) tras el apagón de las 11:52 hs e incorporarla como defensa en el motor supervisor.
+  2. Implementar `PROP-010` / `Spec 075` para proteger las fuentes Bitmain APW12 contra auto-bloqueo (*Latch-Off*) ante transitorios inductivos y reinicios de software violentos a plena potencia.
+  3. Resolver la trampa de suboptimización térmica (*Sub-Optimal Fan Trap*) acoplando el Preset Balancer con el Fan Governor mediante el protocolo de **Headroom Chilling** (forzado temporal de ventilación al 100% ante bloqueo térmico en 2500W para desbloquear 2700W con +6 TH/s de ganancia).
+  4. Implementar desescalada preventiva (*Soft-Landing Clamp* a 1800W) antes de emitir órdenes de reinicio de minado (`safe_restart_mining`) y ventana pasiva de normalización (*Settle Window* de 120s).
+  5. Calibrar el umbral de emergencia del Fan Governor a 83.0°C.
+  6. Blindar el sistema contra bucles infinitos de reinicio ante fallas físicas de sensores I2C o caídas al firmware de fábrica de Bitmain (NAND).
+* **Diagnóstico Raíz Minero 24**:
+  - Al retornar la energía tras el corte de las 11:52 hs, el Minero 24 no detectó la tarjeta MicroSD con VNish en su placa de control BeagleBone Black (TI AM335x) y cayó al firmware de fábrica Bitmain 2021 (`BMMiner 1.0.0` / HTTP Digest realm `"antMiner Configuration"`).
+  - El firmware base cargado (`BHB42601`) no coincide con las placas instaladas (`BHB42621`), generando en el Kernel Log: `Sweep error string = J255:4. Fixture data load failed, exit. ERROR_SOC_INIT: basic init failed! stop_mining: basic init failed! ****power off hashboard****`.
+  - El monitor detectó 0 TH/s y despachó 3 auto-reboots inútiles hasta el bloqueo por ventana (`blocked_by=window`).
+  - Mitigación implementada: Detección automática en `unlock_miner()` de `stock_firmware_fallback_detected` e inhibición absoluta de reinicios en caliente (`INTERLOCK_STOCK_FIRMWARE`, `ACTION_INHIBIT_HARDWARE_FAULT`) junto con alerta diagnóstica en Telegram.
+* **Componentes Modificados / Creados**:
+  - `app/governance/safe_recovery.py`: Módulo funcional puro con `SafeRecoveryState`, `RecoveryDecision`, `evaluate_safe_recovery`, `evaluate_headroom_chilling`, ventana de 120s, pre-clamp a 1800W, soak de 180s y compuertas de inhibición para fallas de hardware/firmware.
+  - `app/governance/fan_governor.py`: Integración de `boost_cooling` (Headroom Chilling, Regla 6b) y calibración de `emergency_temp_c` a 83.0°C.
+  - `app/governance/preset_balancer.py`: Extensión de `StabilityMetrics` con `fan_pwm_percent`, `BalancerDecision` con `boost_cooling_requested` y evaluación proactiva de Headroom Chilling en Regla 3.
+  - `app/miner_monitor.py`: Integración de Soft-Landing pre-clamp en `_async_execute_mining_restart`, ventana de settle de 120s, restauración de rampa tras 180s en OK, inhibición defensiva ante `stock_firmware_fallback_detected`, y persistencia en `MinerState`.
+  - `app/core/reboot_safety.py`: Adición de `INTERLOCK_HARDWARE_FAULT` e `INTERLOCK_STOCK_FIRMWARE` a las compuertas de interlock de auto-reboot.
+  - `app/core/state_manager.py`: Actualización de serialización de `MinerState` preservando paridad exacta en `state.json`.
+  - `app/vnish/client.py`: Detección de header HTTP Digest/lighttpd para identificar `stock_firmware_fallback_detected`.
+  - `app/config.example.json`: Inclusión de `safe_recovery_settle_window_seconds: 120.0`, `safe_recovery_pre_clamp_preset: "1800"`, `safe_recovery_ramp_up_soak_seconds: 180.0`, y `fan_governor_emergency_temp_c: 83.0`.
+    - `tools/backup_miner_profiles.py`: Utilidad de respaldo y restauración de perfiles dorados de sintonización (/api/v1/settings con matrices de chips y pools) para restauraciones instantáneas ante reflasheos de NAND.
+  - `tests/test_safe_recovery.py`: 7 tests unitarios nuevos cubriendo toda la máquina de estados y fallas de hardware.
+  - `tests/test_fan_governor.py`: 21 tests (3 nuevos para Headroom Chilling).
+  - `tests/test_preset_balancer.py`: 20 tests (3 nuevos para Headroom Chilling).
+  - `tests/test_reboot_safety.py`: 17 tests (2 nuevos para interlocks de stock firmware y fallas físicas).
+* **Resultados & Verificación**:
+  - Suite completa de regresión: **1236/1236 tests PASS** en 39.5s (0 fallos, 0 errores, 0 regresiones).
+  - Auditoría exhaustiva de concurrencia y subprocesos completada: jerarquía de cerrojos L1/L2 invariante (`state_lock` para memoria, `_SAVE_STATE_LOCK` para disco atómico), cero I/O de red bajo cerrojos, prevención de carreras en hilos `AutoRestart_{name}` mediante `last_auto_restart_ts` atómico, y blindaje de todas las mutaciones de estado de recuperación suave bajo `with state_lock:`.
+  - Verificación en vivo y recuperación completa de Minero 24: Tras reinstalación limpia en NAND eMMC con Hashcore Toolkit (`asicto-s19jpro-bb-nand-v1.2.6-install.tar.gz`), se inyectaron pools de Binance Pool vía API. El minero salió de `failure`, completó su auto-tuning con 378/378 chips afinados, y alcanzó 81.5 TH/s en estado OK consolidado.
+  - Respaldo de perfiles dorados de la flota completa ejecutado exitosamente en `data/miner_profiles/` (S19JPRO-23, S19JPRO-24 con 378 chips afinados, S19JPRO-25 con 293 chips afinados y S19JPRO-26 con 162 chips afinados).
+  - Servicio Windows `MinerAlerts` reiniciado y certificado en producción. Flota 100% en estado OK.
+
+## [2026-09-17] - Hotfix Operativo & Diagnóstico Eléctrico: Resolución de Bugs en Telegram/Hashcore y Análisis de Caída Minero 25
+
+* **Objetivo**:
+  1. Evaluar la hipótesis de corte térmico/eléctrico en el minero 25 (>2700W / disparo de llave termomagnética).
+  2. Resolver bug crítico en Hashcore CLI: `TypeError: subprocess.run() got multiple values for keyword argument 'creationflags'` que impedía la ejecución de reinicios remotos por Telegram.
+  3. Resolver bug en comando Telegram `/reboot_no_ok`: solo contemplaba `STATE_LOW`, omitiendo mineros `OFFLINE` y `HASHBOARD` (devolviendo "No hay mineros en estado NO-OK").
+  4. Resolver bug de latencia y timeouts en botones inline de Telegram: variable `_TELEGRAM_QUEUE` no propagada al namespace del módulo causaba degradación síncrona en el poller thread y expiración de callbacks (`query is too old`).
+  5. Validar con 1221 pruebas unitarias y desplegar en producción reiniciando el servicio Windows `MinerAlerts`.
+* **Componentes Modificados**:
+  - `app/miner_monitor.py`:
+    - Sanitización de `kwargs` en `_execute_subprocess_no_window` para evitar colisión de `creationflags=_NO_WINDOW_CREATION_FLAGS`.
+    - Corrección de `is_miner_no_ok(state)` para evaluar `state.state != STATE_OK` (abarcando `OFFLINE`, `HASHBOARD`, `UNKNOWN`).
+    - Propagación explícita `_self_module._TELEGRAM_QUEUE = _TELEGRAM_QUEUE` en el arranque del servicio.
+  - `tests/test_reboot_safety.py`: Adición de `test_is_miner_no_ok_classifications` cubriendo todos los estados.
+* **Resultados & Verificación**:
+  - Suite de pruebas unitarias: **1221/1221 tests PASS** en 34.19s (0 fallos, 0 errores).
+  - Servicio `MinerAlerts`: Reiniciado exitosamente (PID 19204), adquisición adaptativa en curso y cola asíncrona de Telegram restablecida.
+  - Diagnóstico Minero 25: Evidencia en telemetría descarta que estuviera consumiendo >2700W (operaba a 2298W estables). A las 19:10:05 revivió y hasheó a 42.7 TH/s en 3 cadenas antes de caer a las 19:11:10 (ausente de ARP/ping). Hipótesis física confirmada: apertura de protección térmica/disyuntor local o latch-off de APW12 ante el pico de arranque.
+
+## [2026-09-17] - Implementación en Laboratorio & Validación Spec 074: Amortiguador de Inrush Pareado de Elevador (PROP-009)
+
+* **Objetivo**:
+  1. Diseñar e implementar el mecanismo de contingencia pareada y amortiguación de inrush inductivo (`PROP-009`, Spec 074) para eliminar las cascadas de reinicios en pares eléctricos (`elevator_1`: 23 & 24, `elevator_2`: 25 & 26).
+  2. Resolver **H1 (Fallo de coincidencia de nombres)**: Reemplazar comparaciones estrictas de cadenas `m.get("name") == target` por coincidencia canónica normalizada `normalize_miner_name(...)`, sincronizando además `balancer_preset` en los estados en memoria.
+  3. Resolver **H2 (Conflicto con demonio térmico Vnish)**: Habilitar `clamp_top_preset=True` en `set_miner_preset` y `safe_set_miner_preset` de `app/vnish/client.py`, fijando tanto `preset` como `preset_switcher.top_preset` para evitar que Vnish sobreescriba la contingencia en clima frío.
+  4. Resolver **H3 (Transitorios inductivos por inrush $L \cdot di/dt$)**: Implementar desescalada preventiva transitoria del compañero robusto (-1 peldaño por 300s) durante el arranque del minero canario, con auto-restauración en `soak_tick` tras superar la ventana crítica de arranque.
+  5. Resolver **H4 (Sobreenfriamiento en arranque)**: Incorporar `is_warming_up` y cota mínima `current_power_w >= 500.0` en `fan_governor.py` para suprimir `ACTION_RECOVERY_MAX_COOLING` durante los primeros 240s post-reinicio, preservando la temperatura óptima de silicio y previniendo falsos abortos de autotuning.
+  6. Preservar 100% la compatibilidad retroactiva de serialización en `GroupContingencyState`.
+* **Componentes Modificados / Creados**:
+  - `docs/proposals/PROP-009-contingency-stabilization-hypotheses.md`: Dossier técnico y deducción física de inductancia mutua.
+  - `tools/audit_contingency_night.py`: Herramienta de auditoría de incidentes nocturnos sobre SQLite.
+  - `specs/074-paired-elevator-contingency/`: Directorio formal de especificación (`spec.md`, `plan.md`, `tasks.md`, `evidence.md`).
+  - `app/governance/adaptive_contingency.py`: Soporte de amortiguación pareada en `GroupContingencyState`, `ContingencyDecision` y `evaluate_canary_contingency`.
+  - `app/vnish/client.py`: Soporte para `clamp_top_preset=True` en la API REST.
+  - `app/governance/fan_governor.py`: Inclusión de `is_warming_up` y filtro de potencia mínima.
+  - `app/miner_monitor.py`: Normalización de nombres, sincronización de `balancer_preset` y manejo seguro de actuadores en `unexpected_restart` y `soak_tick`.
+  - `tests/test_paired_elevator_contingency.py`: Suite dedicada de 15 pruebas unitarias cubriendo H1-H4 y serialización.
+  - `tests/test_vnish_client.py`: Actualización de assertions para soporte de `clamp_top_preset`.
+* **Resultados & Verificación**:
+  - Auditoría de Concurrencia y Subprocesos (Claude Sonnet 4.6 Thinking): **APROBADO**.
+  - Blindaje Preventivo: Mutaciones de `states[sk].balancer_preset` y lecturas de `_grp_presets` aseguradas bajo `state_lock` sin bloquear llamadas REST externas; serialización de `_ELEVATOR_CONTINGENCY_STATES` protegida con copia atómica vía `list(cont_states.items())`.
+  - Suite dedicada Spec 074: **15/15 tests PASS** en 0.002s.
+  - Suite de regresión integral del proyecto: **1219/1219 tests PASS** en 33.10s (0 fallos, 0 errores, 0 regresiones).
+  - Servicio de producción `MinerAlerts`: En ejecución continua (`RUNNING`), 4/4 mineros operando nominalmente (~401 TH/s).
+  - Estado: Certificado para despliegue cuando el operador lo disponga.
+
 ## [2026-09-16] - Saneamiento y Reorganización Estructural de la Documentación en `/docs`
 
 * **Objetivo**:

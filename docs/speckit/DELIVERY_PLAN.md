@@ -79,10 +79,12 @@ safety gates are not compressed to recover an estimate.
 | Spec 064 multi-miner charts | Closed 2026-09-15 (`approved`) | Gráficos visuales multi-miner por grupo eléctrico con selectores inline en Telegram (PROP-006) | 11 tests añadidos, 1004 tests PASS. |
 | Spec 065 supervisory hooks | Closed 2026-09-15 (`approved`) | Pipeline declarativo de 7 etapas (HookStage), contención de excepciones y timing monotónico (ST-04) | 48 tests añadidos, 1047 tests PASS. |
 | Spec 066 cold-boot grace | Closed 2026-09-15 (`approved`) | Período de gracia post-arranque 180s (WARMING_UP), supresión de falsas alarmas y tarjeta 🟢 FLOTA RESTABLECIDA (PROP-001) | 15 tests añadidos, 1062 tests PASS. |
-| Spec 067 gateway heartbeat | 2026-09-16 to 2026-09-20 | 2026-09-21 to 2026-09-23 | Worker TCP no bloqueante de latido hacia router y supresión de tormentas 15s (PROP-005). |
-| Spec 068 ipc watchdog pipe | 2026-09-21 to 2026-09-25 | 2026-09-26 to 2026-09-28 | Servidor Named Pipe en monitor y cliente watchdog fuera de proceso con ping-pong <15s (PROP-007). |
-| Spec 069 deep chain telemetry | 2026-09-26 to 2026-10-03 | 2026-10-04 to 2026-10-06 | Telemetría profunda por cadena, diagnóstico predictivo de bus I2C y desbalance de potencia (PROP-008). |
-| Spec 070 core modularization b | 2026-10-07 to 2026-10-15 | 2026-10-16 to 2026-10-20 | Sustitución de inspect.getsource(main) por Behavioral Test Harness desacoplado (ST-05). |
+| Spec 074 paired elevator contingency | Closed 2026-09-17 (`approved`) | Amortiguador de inrush pareado de elevador, desescalada transitoria del compañero (-1 peldaño) y auto-restauración en soak (PROP-009) | 15 tests añadidos, 1221 tests PASS. |
+| Spec 075 soft-landing recovery | Closed 2026-09-18 (`approved`) | Recuperación suave a 1800W, blindaje Latch-Off de fuente APW12, Headroom Chilling y backup de perfiles (PROP-010) | 15 tests añadidos, 1236 tests PASS. |
+| Spec 067 gateway heartbeat | 2026-09-19 to 2026-09-22 | 2026-09-23 to 2026-09-25 | Worker TCP no bloqueante de latido hacia router y supresión de tormentas 15s (PROP-005). |
+| Spec 068 ipc watchdog pipe | 2026-09-23 to 2026-09-27 | 2026-09-28 to 2026-09-30 | Servidor Named Pipe en monitor y cliente watchdog fuera de proceso con ping-pong <15s (PROP-007). |
+| Spec 069 deep chain telemetry | 2026-10-01 to 2026-10-08 | 2026-10-09 to 2026-10-11 | Telemetría profunda por cadena, diagnóstico predictivo de bus I2C y desbalance de potencia (PROP-008). |
+| Spec 070 core modularization b | 2026-10-12 to 2026-10-20 | 2026-10-21 to 2026-10-25 | Sustitución de inspect.getsource(main) por Behavioral Test Harness desacoplado (ST-05). |
 
 ## Milestones
 

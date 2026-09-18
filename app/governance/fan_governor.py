@@ -159,6 +159,8 @@ def compute_governor_step(
     current_power_w: Optional[float] = None,
     target_power_w: Optional[float] = None,
     ambient_temp_c: Optional[float] = None,
+    is_warming_up: bool = False,
+    boost_cooling: bool = False,
 ) -> GovernorDecision:
     """
     Pure mathematical decision engine for Vnish closed-loop fan modulation.
@@ -243,7 +245,15 @@ def compute_governor_step(
     # If miner is hashing below its established autoswitch ceiling (e.g. 2300W < 2500W or 2700W),
     # fans MUST be at 100% to lower chip temp <= 79°C and allow Vnish autoswitch to step up.
     # We NEVER modulate fans down when the miner is working under its power limit!
-    if target_power_w is not None and current_power_w is not None and target_power_w > 0:
+    # Guard: Do not trigger 100% cooling when miner is warming up post-reboot or has not started hashing (<500W),
+    # to allow the ASIC silicon to reach operational temperature without cold-chip autotuning faults.
+    if (
+        not is_warming_up
+        and target_power_w is not None
+        and current_power_w is not None
+        and target_power_w > 0
+        and current_power_w >= 500.0
+    ):
         if current_power_w < (target_power_w - cfg.power_margin_w):
             needs_write = curr_duty < cfg.max_fan_duty_percent
             return GovernorDecision(
@@ -259,6 +269,22 @@ def compute_governor_step(
                 requires_write=needs_write,
                 seasonal_mode=seasonal.mode,
             )
+
+    # 6b. Headroom Chilling (Spec 075 / PROP-010):
+    # If the balancer requests boost cooling to enable stepping up preset (e.g. from 2500W to 2700W),
+    # force fans to 100% PWM to bring chip temperature down without waiting for dwell.
+    if boost_cooling and not is_warming_up:
+        needs_write = curr_duty < cfg.max_fan_duty_percent
+        return GovernorDecision(
+            action=ACTION_STEP_UP,
+            target_duty=cfg.max_fan_duty_percent,
+            current_duty=curr_duty,
+            reason="Enfriamiento proactivo (Headroom Chilling) para habilitar escalamiento de potencia",
+            dwell_effective=0,
+            is_emergency=False,
+            requires_write=needs_write,
+            seasonal_mode=seasonal.mode,
+        )
 
     # 7. R1: Adaptive Dwell Time calculation
     dwell_effective = (

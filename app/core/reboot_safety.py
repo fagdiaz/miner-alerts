@@ -8,6 +8,8 @@ from typing import Any, Mapping, Optional
 INTERLOCK_HIGH_TEMPERATURE = "high_temperature"
 INTERLOCK_FIRMWARE_TRANSITION = "firmware_transition"
 INTERLOCK_FLEET_INCIDENT = "fleet_incident"
+INTERLOCK_HARDWARE_FAULT = "hardware_fault"
+INTERLOCK_STOCK_FIRMWARE = "stock_firmware_fallback"
 
 _AFFECTED_SIGNAL_CLASSES = frozenset(("eligible", "invalid_signal"))
 
@@ -54,6 +56,8 @@ def evaluate_auto_reboot_interlocks(
     fleet_min_affected: int,
     firmware_transition_guard_enabled: bool = True,
     chains_transitioning_count: Any = None,
+    hardware_fault_present: bool = False,
+    stock_firmware_present: bool = False,
 ) -> RebootInterlockDecision:
     """Evaluate conservative no-action gates using already collected evidence."""
     current_temp = _finite_number(max_temp_c)
@@ -84,6 +88,26 @@ def evaluate_auto_reboot_interlocks(
             if signal in _AFFECTED_SIGNAL_CLASSES
         )
     )
+
+    if stock_firmware_present:
+        return RebootInterlockDecision(
+            allowed=False,
+            reason=INTERLOCK_STOCK_FIRMWARE,
+            affected_miners=affected,
+            max_temp_c=current_temp,
+            fleet_snapshot_age_seconds=snapshot_age,
+            chains_transitioning_count=current_transition_count,
+        )
+
+    if hardware_fault_present:
+        return RebootInterlockDecision(
+            allowed=False,
+            reason=INTERLOCK_HARDWARE_FAULT,
+            affected_miners=affected,
+            max_temp_c=current_temp,
+            fleet_snapshot_age_seconds=snapshot_age,
+            chains_transitioning_count=current_transition_count,
+        )
 
     if (
         thermal_guard_enabled

@@ -46,6 +46,7 @@ htmlcov/
 Credenciales*.txt
 
 # Temporary files
+scratch/
 *.tmp
 *.temp
 *.bak

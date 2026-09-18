@@ -218,9 +218,24 @@ class TestVnishClient(unittest.TestCase):
         mock_resp.status_code = 200
         mock_post.return_value = mock_resp
 
+        # Default clamps top_preset as well
         ok, err = set_miner_preset("192.168.100.23", "token_123", "2500W")
         self.assertTrue(ok)
         self.assertIsNone(err)
+        mock_post.assert_called_once_with(
+            "http://192.168.100.23/api/v1/settings",
+            headers={
+                "Authorization": "Bearer token_123",
+                "Content-Type": "application/json",
+            },
+            json={"miner": {"overclock": {"preset": "2500", "preset_switcher": {"top_preset": "2500"}}}},
+            timeout=DEFAULT_HTTP_TIMEOUT,
+        )
+
+        mock_post.reset_mock()
+        # Explicit clamp_top_preset=False
+        ok, err = set_miner_preset("192.168.100.23", "token_123", "2500W", clamp_top_preset=False)
+        self.assertTrue(ok)
         mock_post.assert_called_once_with(
             "http://192.168.100.23/api/v1/settings",
             headers={
@@ -242,7 +257,7 @@ class TestVnishClient(unittest.TestCase):
         ok, err = safe_set_miner_preset("192.168.100.23", "admin", "2500W")
         self.assertTrue(ok)
         mock_unlock.assert_called_once_with("192.168.100.23", "admin", timeout=DEFAULT_HTTP_TIMEOUT)
-        mock_set.assert_called_once_with("192.168.100.23", "token_abc", "2500W", timeout=DEFAULT_HTTP_TIMEOUT)
+        mock_set.assert_called_once_with("192.168.100.23", "token_abc", "2500W", timeout=DEFAULT_HTTP_TIMEOUT, clamp_top_preset=True)
         mock_lock.assert_called_once_with("192.168.100.23", "token_abc", timeout=DEFAULT_HTTP_TIMEOUT)
 
     @patch("requests.get")

@@ -23,8 +23,10 @@ Este documento consolida y prioriza **7 propuestas técnicas de mejora** derivad
 | **PROP-004** | Gobernador Térmico con Conciencia Estacional (`Ambient-Aware Thermal PID`) | **P2 (Media)** | Medio | **Completado (Spec 063)** | Ahorro energético en invierno y máxima disipación en verano. |
 | **PROP-005** | Latido de Gateway y Supresión de Tormentas por Fallo de Red Local | **P2 (Media)** | Bajo | **Planificado (Spec 067)** | Supresión de alarmas espurias ante parpadeos del switch Ethernet. |
 | **PROP-006** | Tarjetas de Gráficos Comparativos Multi-Miner en Telegram (`/chart` Overlays) | **P3 (Baja)** | Bajo | **Completado (Spec 064)** | Visibilidad operativa inmediata de divergencias entre elevadores. |
-| **PROP-007** | Canal IPC de Alta Frecuencia Monitor ↔ Watchdog (Named Pipes) | **P3 (Baja)** | Medio | **Planificado (Spec 068)** | Detección de bloqueos del GIL y diagnóstico forense en <15s. |
-| **PROP-008** | Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break | **P1 (Alta)** | Medio | **Planificado (Spec 069)** | Diagnóstico predictivo de fallas de bus I2C y degradación de placas. |
+| **PROP-007** | Canal IPC de Alta Frecuencia Monitor ↔ Watchdog (Named Pipes) | **P3 (Baja)** | Medio | **Completado (Spec 068)** | Detección de bloqueos del GIL y diagnóstico forense en <15s. |
+| **PROP-008** | Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break | **P1 (Alta)** | Medio | **Completado (Spec 069)** | Diagnóstico predictivo de fallas de bus I2C y degradación de placas. |
+| **PROP-009** | Contingencia Coordinada de Pares y Estabilización de Elevadores | **P1 (Alta)** | Medio | **En Recopilación / Hipótesis Activa** | Eliminación de reinicios múltiples y cascadas de elevador durante arranques. |
+| **PROP-010** | Recuperación Suave de Hasheo y Blindaje Anticolapso de Fuentes APW12 | **P1 (Alta)** | Medio | **Documentado / Base de Futura Spec** | Supresión de bloqueos de fuentes APW12 (Latch-Off) mediante desescalada pre-reinicio. |
 
 ---
 
@@ -200,6 +202,24 @@ Actualmente, el monitor captura únicamente métricas consolidadas (hashrate tot
      - **Regla 2 (Déficit de Potencia/Hashrate)**: Si una placa rinde $< 92\%$ de su nominal mientras las otras rinden $100\%$, predecir degradación de chips o caída de tensión en dominio.
      - **Regla 3 (Aislamiento de Causas)**: Correlación cruzada entre elevador (fase eléctrica AC), fuente de alimentación (DC general) y placa hash (señal interna SPI/I2C) para determinar con certeza matemática si un reinicio es eléctrico o de silicio.
 
+### PROP-009: Contingencia Coordinada de Pares y Estabilización Rápida de Elevadores
+
+#### 1. Contexto y Problema
+Durante perturbaciones de red o reinicios en un elevador eléctrico, el sistema experimenta múltiples reinicios en bucle (2 a 4 por equipo) y caídas en cascada del compañero entre 700s y 1000s después. La contingencia asimétrica actual ([Spec 057](../specs/057-adaptive-elevator-contingency/spec.md)) presentaba un desacople de software que silenciaba la llamada REST a la API de VNish y dejaba al minero compañero a plena carga (2700W), induciendo un transitorio inductivo ($L \cdot di/dt$) al reanudar el minado.
+
+#### 2. Hipótesis y Diagnóstico Técnico
+Se han formulado y documentado 5 hipótesis analíticas respaldadas por telemetría de producción:
+* **H1 (Bug Crítico de Software)**: `display_name` ('24') vs `name` ('S19JPRO-24') silencia la escritura física de preset en hardware.
+* **H2 (Conflicto Firmware VNish)**: `preset_switcher` re-acelera a `top_preset: 2700` en frío.
+* **H3 (Transitorio Eléctrico)**: Salto de 0A a 12A induce caída de tensión en el autotransformador, desestabilizando al par.
+* **H4 (Enfriamiento Excesivo)**: Fan Governor al 100% enfría chips a <53°C provocando fallas SPI/I2C de autotuning.
+* **H5 (Ventana de Calentamiento)**: Watchdog de 180s colisiona con el tiempo real de calibración de VNish (210s-240s).
+
+Para el estudio completo, modelos matemáticos, código y plan de validación, consultar el documento específico:
+👉 **[PROP-009: Diagnóstico Exhaustivo de Reinicios Múltiples en Contingencia](PROP-009-contingency-stabilization-hypotheses.md)**.
+
+Herramienta de auditoría continua: `tools/audit_contingency_night.py`.
+
 ---
 
 ## 📅 Estado de Implementación & Hoja de Ruta
@@ -216,6 +236,9 @@ Actualmente, el monitor captura únicamente métricas consolidadas (hashrate tot
    - ✅ **PROP-007** (`Canal IPC Alta Frecuencia Monitor ↔ Watchdog`) -> Implementada y certificada en **Spec 068**.
    - ✅ **PROP-008** (`Telemetría Profunda por Cadena & Diagnóstico Chain Break`) -> Implementada y certificada en **Spec 069**.
    - Ver detalle de ejecución en [`docs/speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md`](../speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md).
+
+3. **Iniciativas en Evaluación y Recopilación Activa**:
+   - 🔬 **PROP-009** (`Contingencia Coordinada de Pares y Estabilización de Elevadores`) -> Documento específico en [`docs/proposals/PROP-009-contingency-stabilization-hypotheses.md`](PROP-009-contingency-stabilization-hypotheses.md). Herramienta de auditoría operativa en [`tools/audit_contingency_night.py`](../../tools/audit_contingency_night.py).
 
 ---
 

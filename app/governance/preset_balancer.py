@@ -61,6 +61,8 @@ class StabilityMetrics:
     hw_error_rate_pct: float = 0.0     # Percentage rate of HW errors
     hw_error_lock_until_ts: Optional[float] = None  # Lockout timestamp against step-up
     hw_error_locked_preset: Optional[str] = None    # Target preset locked by tripwire
+    # Spec 075: Fan PWM for Headroom Chilling evaluation
+    fan_pwm_percent: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -90,6 +92,7 @@ class BalancerDecision:
     reason: str
     requires_write: bool
     estimated_effective_hashrate: float = 0.0
+    boost_cooling_requested: bool = False
 
 
 def compute_effective_hashrate(
@@ -304,31 +307,57 @@ def evaluate_balancer_step(
         not is_hw_error_locked
         and metrics.hours_since_last_restart >= cfg.soak_hours_step_up
         and metrics.restarts_72h == 0
-        and metrics.thermal_headroom_c >= cfg.min_thermal_headroom_c
     ):
         if curr_idx < ceiling_idx and curr_idx < len(tiers) - 1:
-            target_tier = tiers[curr_idx + 1]
-            return BalancerDecision(
-                action=ACTION_STEP_UP_OPTIMIZE,
-                miner_name=metrics.miner_name,
-                electrical_group=metrics.electrical_group,
-                current_preset=current_tier.name,
-                target_preset=target_tier.name,
-                reason=f"Estabilidad comprobada ({metrics.hours_since_last_restart:.0f}h sin reinicios, margen {metrics.thermal_headroom_c:.1f}°C): subiendo a {target_tier.name}",
-                requires_write=True,
-                estimated_effective_hashrate=eff_current,
-            )
+            if metrics.thermal_headroom_c >= cfg.min_thermal_headroom_c:
+                target_tier = tiers[curr_idx + 1]
+                return BalancerDecision(
+                    action=ACTION_STEP_UP_OPTIMIZE,
+                    miner_name=metrics.miner_name,
+                    electrical_group=metrics.electrical_group,
+                    current_preset=current_tier.name,
+                    target_preset=target_tier.name,
+                    reason=f"Estabilidad comprobada ({metrics.hours_since_last_restart:.0f}h sin reinicios, margen {metrics.thermal_headroom_c:.1f}°C): subiendo a {target_tier.name}",
+                    requires_write=True,
+                    estimated_effective_hashrate=eff_current,
+                )
+            else:
+                # Spec 075: Headroom Chilling evaluation
+                # Blocked solely by thermal headroom: check if proactive fan boost can unlock next tier
+                from app.governance.safe_recovery import evaluate_headroom_chilling
+                target_tier = tiers[curr_idx + 1]
+                cur_temp = metrics.current_temp_c if metrics.current_temp_c > 0.0 else (85.0 - metrics.thermal_headroom_c)
+                should_chill, chill_reason = evaluate_headroom_chilling(
+                    target_power_w=float(current_tier.nominal_power_w),
+                    max_power_w=float(target_tier.nominal_power_w),
+                    current_temp_c=cur_temp,
+                    current_fan_duty=int(metrics.fan_pwm_percent),
+                    step_up_min_margin_c=cfg.min_thermal_headroom_c,
+                )
+                if should_chill:
+                    return BalancerDecision(
+                        action=ACTION_HOLD_STABLE,
+                        miner_name=metrics.miner_name,
+                        electrical_group=metrics.electrical_group,
+                        current_preset=current_tier.name,
+                        target_preset=current_tier.name,
+                        reason=chill_reason,
+                        requires_write=False,
+                        estimated_effective_hashrate=eff_current,
+                        boost_cooling_requested=True,
+                    )
         else:
-            return BalancerDecision(
-                action=ACTION_LOCKED_MAX,
-                miner_name=metrics.miner_name,
-                electrical_group=metrics.electrical_group,
-                current_preset=current_tier.name,
-                target_preset=current_tier.name,
-                reason=f"Alcanzado techo máximo configurado ({tiers[ceiling_idx].name}) con alta estabilidad",
-                requires_write=False,
-                estimated_effective_hashrate=eff_current,
-            )
+            if metrics.thermal_headroom_c >= cfg.min_thermal_headroom_c:
+                return BalancerDecision(
+                    action=ACTION_LOCKED_MAX,
+                    miner_name=metrics.miner_name,
+                    electrical_group=metrics.electrical_group,
+                    current_preset=current_tier.name,
+                    target_preset=current_tier.name,
+                    reason=f"Alcanzado techo máximo configurado ({tiers[ceiling_idx].name}) con alta estabilidad",
+                    requires_write=False,
+                    estimated_effective_hashrate=eff_current,
+                )
 
     # 4. Hold Stable: currently in balance
     if is_hw_error_locked:
@@ -522,6 +551,7 @@ def extract_miner_stability_metrics(
         # Fallback to in-memory state if db sample does not yet contain power, temp, or elapsed
         hw_lock_ts = None
         hw_locked_pr = None
+        fan_duty_val = 0.0
         if states:
             for sk, st in states.items():
                 if m_name in sk or (m_host and m_host in sk):
@@ -533,6 +563,8 @@ def extract_miner_stability_metrics(
                         elapsed = st.last_elapsed
                     hw_lock_ts = getattr(st, "hw_error_lock_until_ts", None)
                     hw_locked_pr = getattr(st, "hw_error_locked_preset", None)
+                    if getattr(st, "governor_duty", None) is not None:
+                        fan_duty_val = float(st.governor_duty)
                     break
 
         headroom = max(0.0, 85.0 - max_temp) if max_temp is not None else 10.0
@@ -575,6 +607,7 @@ def extract_miner_stability_metrics(
                 hw_error_rate_pct=round(hw_rate_pct, 4),
                 hw_error_lock_until_ts=hw_lock_ts,
                 hw_error_locked_preset=hw_locked_pr,
+                fan_pwm_percent=fan_duty_val,
             )
         )
 

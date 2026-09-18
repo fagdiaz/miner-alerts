@@ -255,6 +255,47 @@ class TestFanGovernor(unittest.TestCase):
         self.assertEqual(dec.dwell_effective, 90)
         self.assertTrue(dec.requires_write)
 
+    def test_boost_cooling_headroom_chilling_forces_100_percent(self):
+        # T = 81.5°C with duty 90%: inside deadband, but boost_cooling is True -> forces 100% immediately
+        dec = compute_governor_step(
+            max_temp_c=81.5,
+            current_duty=90,
+            seconds_since_last_change=10.0,  # inside dwell!
+            config=self.cfg,
+            boost_cooling=True,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_UP)
+        self.assertEqual(dec.target_duty, 100)
+        self.assertEqual(dec.dwell_effective, 0)
+        self.assertTrue(dec.requires_write)
+        self.assertIn("Headroom Chilling", dec.reason)
+
+    def test_boost_cooling_suppressed_during_warming_up(self):
+        # Even if boost_cooling is requested, warmup floor must be respected
+        dec = compute_governor_step(
+            max_temp_c=72.0,
+            current_duty=50,
+            seconds_since_last_change=10.0,
+            config=self.cfg,
+            is_warming_up=True,
+            boost_cooling=True,
+        )
+        self.assertNotEqual(dec.target_duty, 100)
+        self.assertNotIn("Headroom Chilling", dec.reason)
+
+    def test_emergency_spike_overrides_boost_cooling(self):
+        # If temp >= 83.0°C, EMERGENCY_SPIKE has absolute priority
+        dec = compute_governor_step(
+            max_temp_c=83.5,
+            current_duty=90,
+            seconds_since_last_change=10.0,
+            config=self.cfg,
+            boost_cooling=True,
+        )
+        self.assertEqual(dec.action, ACTION_EMERGENCY_SPIKE)
+        self.assertTrue(dec.is_emergency)
+
 
 if __name__ == "__main__":
     unittest.main()
+

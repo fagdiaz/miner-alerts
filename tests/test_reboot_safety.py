@@ -229,6 +229,44 @@ class RebootSafetyInterlockTests(unittest.TestCase):
         self.assertEqual(("m23",), decision.affected_miners)
         self.assertEqual(100.0, decision.fleet_snapshot_age_seconds)
 
+    def test_stock_firmware_interlock_blocks_reboot(self) -> None:
+        """Spec 075 / Miner 24 Incident: Stock Bitmain NAND fallback blocks auto-reboot."""
+        decision = evaluate_auto_reboot_interlocks(
+            current_miner_key="m24",
+            current_signal="eligible",
+            previous_signals={},
+            previous_signals_observed_ts=990.0,
+            evaluated_ts=1000.0,
+            fleet_snapshot_max_age_seconds=60.0,
+            max_temp_c=70.0,
+            thermal_guard_enabled=True,
+            thermal_limit_c=85.0,
+            fleet_guard_enabled=True,
+            fleet_min_affected=2,
+            stock_firmware_present=True,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual("stock_firmware_fallback", decision.reason)
+
+    def test_hardware_fault_interlock_blocks_reboot(self) -> None:
+        """Spec 075 / Miner 24 Incident: Persistent hardware/sensor fault blocks auto-reboot."""
+        decision = evaluate_auto_reboot_interlocks(
+            current_miner_key="m24",
+            current_signal="eligible",
+            previous_signals={},
+            previous_signals_observed_ts=990.0,
+            evaluated_ts=1000.0,
+            fleet_snapshot_max_age_seconds=60.0,
+            max_temp_c=70.0,
+            thermal_guard_enabled=True,
+            thermal_limit_c=85.0,
+            fleet_guard_enabled=True,
+            fleet_min_affected=2,
+            hardware_fault_present=True,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual("hardware_fault", decision.reason)
+
     def test_runtime_wiring_keeps_gate_order_and_publishes_completed_tick(self) -> None:
         """Verify the gate order hierarchy and timer resets via ActuatorHook."""
         from app.core.engine import ActuatorHook
@@ -299,6 +337,24 @@ class RebootSafetyInterlockTests(unittest.TestCase):
             [300, 600, 900, 1800, 3600, 7200],
             config["persistent_outage_schedule_seconds"],
         )
+
+    def test_is_miner_no_ok_classifications(self) -> None:
+        """Verify that is_miner_no_ok accurately classifies all non-OK states (LOW, OFFLINE, HASHBOARD)."""
+        from app.miner_monitor import is_miner_no_ok, MinerState, STATE_OK, STATE_LOW, STATE_OFFLINE, STATE_HASHBOARD
+        self.assertFalse(is_miner_no_ok(MinerState(state=STATE_OK)))
+        self.assertTrue(is_miner_no_ok(MinerState(state=STATE_LOW)))
+        self.assertTrue(is_miner_no_ok(MinerState(state=STATE_OFFLINE)))
+        self.assertTrue(is_miner_no_ok(MinerState(state=STATE_HASHBOARD)))
+        self.assertTrue(is_miner_no_ok(None))
+        self.assertTrue(is_miner_no_ok(MinerState(state="")))
+
+    def test_execute_subprocess_no_window_handles_creationflags_in_kwargs(self) -> None:
+        """Verify that _execute_subprocess_no_window pops creationflags from kwargs to prevent duplicate argument TypeError."""
+        from unittest.mock import patch
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = None
+            monitor._execute_subprocess_no_window(["cmd.exe", "/c", "echo", "test"], creationflags=0x08000000)
+            mock_run.assert_called_once_with(["cmd.exe", "/c", "echo", "test"], creationflags=0x08000000)
 
 
 if __name__ == "__main__":

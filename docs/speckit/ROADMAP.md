@@ -872,11 +872,31 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Consolidación de fixtures duplicadas en tests compactos de Telegram (`tests/fixtures_compact_ux.py`).
 - [x] Suite de pruebas en `tests/test_miner_diagnostics_client.py` y `tests/test_audit_config.py`. **1119/1119 tests globales PASS** (0 fallos, 0 regresiones).
 
+### Iniciativa 26 — Amortiguador de Inrush Pareado de Elevador (Spec 074 - PROP-009 - Laboratorio & Validación Completada)
+- Especificación: [`specs/074-paired-elevator-contingency/spec.md`](../../specs/074-paired-elevator-contingency/spec.md) | Evidencia: [`specs/074-paired-elevator-contingency/evidence.md`](../../specs/074-paired-elevator-contingency/evidence.md) | Propuesta: [`docs/proposals/PROP-009-contingency-stabilization-hypotheses.md`](../proposals/PROP-009-contingency-stabilization-hypotheses.md)
+- **Estado**: Laboratorio & Validación Completada (1219 tests PASS). Preparado para auditoría de concurrencia y subprocesos con Claude Sonnet 4.6 (Thinking) antes de despliegue a producción.
+- [x] Normalización canónica de identificadores de mineros (`normalize_miner_name`) en búsquedas y disparadores de contingencia (H1).
+- [x] Clampeo de `preset_switcher.top_preset` (`clamp_top_preset=True`) en `app/vnish/client.py` para anular interferencia del demonio térmico de Vnish (H2).
+- [x] Desescalada preventiva transitoria del compañero robusto (-1 peldaño / 300s) durante inrush inductivo y auto-restauración en `soak_tick` (H3).
+- [x] Supresión de `ACTION_RECOVERY_MAX_COOLING` durante ventana de arranque (`is_warming_up`) y umbral de potencia de hashboard ($< 500\text{W}$) en `fan_governor.py` (H4).
+- [x] Suite dedicada `tests/test_paired_elevator_contingency.py` (15 tests PASS). Suite global del proyecto: **1219/1219 tests PASS** (0 regresiones).
+- [x] Despliegue en producción certificado (1221 tests PASS, Servicio Windows PID 19204).
+
+### Iniciativa 27 — Recuperación Suave de Hasheo, Headroom Chilling y Blindaje Anticolapso de Fuentes APW12 (Spec 075 - PROP-010)
+- Especificación: [`specs/075-soft-landing-recovery/spec.md`](../../specs/075-soft-landing-recovery/spec.md) | Plan: [`specs/075-soft-landing-recovery/plan.md`](../../specs/075-soft-landing-recovery/plan.md) | Propuesta: [`docs/proposals/PROP-010-soft-landing-recovery-psu-protection.md`](../proposals/PROP-010-soft-landing-recovery-psu-protection.md)
+- **Estado**: Implementación y Auditoría de Concurrencia Completadas (T001-T007). Lista para Certificación en Producción (T008).
+- [x] Ventana de normalización pasiva de 120s (`settle_window`) ante detención de hasheo.
+- [x] Desescalada preventiva pre-reinicio (`soft_landing_clamp` a 1800W con `clamp_top_preset=True`) para suprimir picos $di/dt$ y evitar el Latch-Off de la fuente APW12.
+- [x] Inhibición de reintentos agresivos ante falla física persistente (`CHAIN_FAULT` / `stock_firmware_fallback`) para evitar someter a la fuente a ciclos destructivos inútiles.
+- [x] Protocolo de enfriamiento proactivo (*Headroom Chilling*): Balancer solicita 100% PWM temporal al Governor para enfriar minero de 2500W a $\le 78.5^\circ\text{C}$ y desbloquear el salto a 2700W (+6 TH/s).
+- [x] Calibración de emergencia de Governor a 83.0°C.
+- [x] Suite completa de regresión: **1236/1236 tests PASS** (0 fallos, 0 regresiones).
+
 ---
 
 ## Governance
 
-- All 73 specifications implemented in the program (Specs 001 through 073) are complete, verified with evidence, and closed.
-- Version 5.1.0 + State Unification + Tools Client Reuse + Modular Hooks Decoupling + Watchdog Named Pipe IPC + Predictive Chain Break Diagnostics (Spec 069) is certified with 1204/1204 tests PASS (0 failures, 0 regressions, Windows service running).
+- All 75 specifications in the program (Specs 001 through 075) are tracked and maintained.
+- Version 5.1.0 + State Unification + Predictive Chain Break Diagnostics (Spec 069) + Paired Elevator Contingency (Spec 074) + Soft-Landing Recovery & APW12 Defense (Spec 075) is verified with 1236/1236 tests PASS (0 failures, 0 regressions).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

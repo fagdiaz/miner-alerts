@@ -421,6 +421,63 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertIn("ELEVATOR_2", card)
         self.assertIn("ALTA_SENSIBILIDAD", card)
 
+    def test_headroom_chilling_triggered_when_stable_at_2500w_and_thermally_blocked(self):
+        """Spec 075 / US-04: Verify that a stable miner at 2500W blocked by thermal headroom triggers boost cooling."""
+        m = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=93.5,
+            thermal_headroom_c=3.5,  # 81.5°C (min headroom is 4.0°C)
+            current_temp_c=81.5,
+            fan_pwm_percent=88.0,
+        )
+        dec = evaluate_balancer_step(m, self.cfg)
+        self.assertEqual(dec.action, ACTION_HOLD_STABLE)
+        self.assertEqual(dec.current_preset, "2500W")
+        self.assertTrue(dec.boost_cooling_requested)
+        self.assertIn("Headroom Chilling", dec.reason)
+
+    def test_headroom_chilling_not_triggered_if_fan_already_at_max(self):
+        """Spec 075: If fans are already >=98%, headroom chilling cannot help, do not request boost cooling."""
+        m = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=93.5,
+            thermal_headroom_c=3.5,
+            current_temp_c=81.5,
+            fan_pwm_percent=99.0,
+        )
+        dec = evaluate_balancer_step(m, self.cfg)
+        self.assertEqual(dec.action, ACTION_HOLD_STABLE)
+        self.assertFalse(dec.boost_cooling_requested)
+
+    def test_step_up_executes_when_headroom_satisfied(self):
+        """Spec 075: Once cooled to <= 78.5°C (headroom >= 4.0°C), step up to 2700W executes."""
+        m = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=93.5,
+            thermal_headroom_c=7.0,  # 78.0°C
+            current_temp_c=78.0,
+            fan_pwm_percent=100.0,
+        )
+        dec = evaluate_balancer_step(m, self.cfg)
+        self.assertEqual(dec.action, ACTION_STEP_UP_OPTIMIZE)
+        self.assertEqual(dec.target_preset, "2700W")
+        self.assertFalse(dec.boost_cooling_requested)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,9 +12,11 @@ Este directorio organiza la arquitectura, procedimientos de operador, propuestas
 docs/
 ├── README.md                               <-- Este índice maestro
 ├── audit/
-│   └── DEVELOPMENT_LOG.md                  <-- Bitácora inmutable de desarrollo (Specs 001-073)
+│   └── DEVELOPMENT_LOG.md                  <-- Bitácora inmutable de desarrollo (Specs 001-075)
 ├── proposals/
-│   └── SYSTEM_IMPROVEMENT_PROPOSALS.md     <-- Propuestas maestras del sistema (PROP-001 a PROP-008)
+│   ├── SYSTEM_IMPROVEMENT_PROPOSALS.md     <-- Propuestas maestras del sistema (PROP-001 a PROP-010)
+│   ├── PROP-009-contingency-stabilization-hypotheses.md <-- Estudio de estabilización de elevadores
+│   └── PROP-010-soft-landing-recovery-psu-protection.md <-- Protección de fuentes APW12 y Headroom Chilling
 └── speckit/                                <-- Marco de especificaciones y operación viva
     ├── README.md                           <-- Guía del framework Speckit y ciclo de vida
     ├── ROADMAP.md                          <-- Backlog activo, matriz de riesgos y estado de specs

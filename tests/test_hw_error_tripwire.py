@@ -118,11 +118,11 @@ class TestHWErrorTripwirePureEngine(unittest.TestCase):
         self.assertEqual(decision.action, ACTION_HOLD_STABLE)
 
     def test_tripwire_at_minimum_preset_emits_locked_min(self):
-        """Tripwire triggered at 1600W (lowest tier) emits ACTION_LOCKED_MIN with requires_write=False."""
+        """Tripwire triggered at 1740W (lowest tier) emits ACTION_LOCKED_MIN with requires_write=False."""
         metrics = StabilityMetrics(
             miner_name="S19JPRO-01",
             electrical_group="elevator_1",
-            current_preset="1600W",
+            current_preset="1740W",
             restarts_24h=0,
             restarts_72h=0,
             hours_since_last_restart=50.0,
@@ -131,10 +131,10 @@ class TestHWErrorTripwirePureEngine(unittest.TestCase):
         )
         decision = evaluate_balancer_step(metrics, self.cfg, now_ts=self.now)
         self.assertEqual(decision.action, ACTION_LOCKED_MIN)
-        self.assertEqual(decision.current_preset, "1600W")
-        self.assertEqual(decision.target_preset, "1600W")
+        self.assertEqual(decision.current_preset, "1740W")
+        self.assertEqual(decision.target_preset, "1740W")
         self.assertFalse(decision.requires_write)
-        self.assertIn("Preset m\u00ednimo (1600W) alcanzado", decision.reason)
+        self.assertIn("Preset m\u00ednimo (1740W) alcanzado", decision.reason)
 
     def test_lockout_enforcement_forces_step_down_if_preset_exceeds_locked(self):
         """If active lock is present and current preset exceeds locked preset, force step down."""

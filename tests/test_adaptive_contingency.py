@@ -39,11 +39,17 @@ class TestAdaptiveContingencyPolicy(unittest.TestCase):
         # Stepping down
         self.assertEqual(find_previous_preset_tier("2700W"), "2500W")
         self.assertEqual(find_previous_preset_tier("2500W"), "2300W")
-        self.assertEqual(find_previous_preset_tier("2300W"), "2100W")
-        self.assertIsNone(find_previous_preset_tier("2100W"), "Should hit default floor of 2100W")
+        self.assertEqual(find_previous_preset_tier("2300W"), "2150W")
+        self.assertIsNone(find_previous_preset_tier("2150W"), "Should hit default floor of 2150W")
+
+        # Stepping down with custom lower floor
+        self.assertEqual(find_previous_preset_tier("1850W", min_floor="1740W"), "1800W")
+        self.assertEqual(find_previous_preset_tier("1800W", min_floor="1740W"), "1740W")
+        self.assertIsNone(find_previous_preset_tier("1740W", min_floor="1740W"))
 
         # Stepping up
-        self.assertEqual(find_next_preset_tier("2100W"), "2300W")
+        self.assertEqual(find_next_preset_tier("1800W"), "1850W")
+        self.assertEqual(find_next_preset_tier("2150W"), "2300W")
         self.assertEqual(find_next_preset_tier("2300W"), "2500W")
         self.assertEqual(find_next_preset_tier("2500W"), "2700W")
         self.assertIsNone(find_next_preset_tier("2700W"), "Should hit default ceiling of 2700W")
@@ -118,7 +124,7 @@ class TestAdaptiveContingencyPolicy(unittest.TestCase):
         self.assertEqual(decision.updated_group_state.step_down_count, 2)
 
     def test_canary_floor_reached_holds_contingency(self):
-        """Canary reaches 2100W floor and cannot be reduced further."""
+        """Canary reaches 2150W floor and cannot be reduced further."""
         init_state = GroupContingencyState(
             group_name="elevator_1",
             active=True,
@@ -127,7 +133,7 @@ class TestAdaptiveContingencyPolicy(unittest.TestCase):
         )
         presets = {
             "S19JPRO-23": "2700W",
-            "S19JPRO-24": "2100W",
+            "S19JPRO-24": "2150W",
         }
         decision = evaluate_canary_contingency(
             event_type="unexpected_restart",

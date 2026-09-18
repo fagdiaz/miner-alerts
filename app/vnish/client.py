@@ -244,12 +244,14 @@ def set_miner_preset(
     timeout: float = DEFAULT_HTTP_TIMEOUT,
     session: Optional[requests.Session] = None,
     clamp_top_preset: bool = True,
+    top_preset: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Update active overclocking preset on Vnish miner.
     
-    If clamp_top_preset is True, also clamps preset_switcher.top_preset to prevent
-    the internal Vnish temperature daemon from overriding the contingency preset in cold weather.
+    If top_preset is specified, explicitly sets preset_switcher.top_preset to that value.
+    Otherwise if clamp_top_preset is True, clamps preset_switcher.top_preset to preset_name
+    to prevent the internal Vnish temperature daemon from overriding the contingency preset in cold weather.
     
     Returns: (success: bool, error_message: Optional[str])
     """
@@ -262,7 +264,12 @@ def set_miner_preset(
     overclock_dict: Dict[str, Any] = {
         "preset": clean_preset
     }
-    if clamp_top_preset:
+    if top_preset is not None:
+        clean_top = str(top_preset).upper().rstrip("W").strip()
+        overclock_dict["preset_switcher"] = {
+            "top_preset": clean_top
+        }
+    elif clamp_top_preset:
         overclock_dict["preset_switcher"] = {
             "top_preset": clean_preset
         }
@@ -289,6 +296,7 @@ def safe_set_miner_preset(
     preset_name: str,
     timeout: float = DEFAULT_HTTP_TIMEOUT,
     clamp_top_preset: bool = True,
+    top_preset: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Transactional wrapper for preset change:
@@ -303,7 +311,22 @@ def safe_set_miner_preset(
         ok, token, err = unlock_miner(host, password, timeout=timeout)
         if not ok or not token:
             return False, f"unlock_failed: {err}"
-        return set_miner_preset(host, token, preset_name, timeout=timeout, clamp_top_preset=clamp_top_preset)
+        if top_preset is not None:
+            return set_miner_preset(
+                host,
+                token,
+                preset_name,
+                timeout=timeout,
+                clamp_top_preset=clamp_top_preset,
+                top_preset=top_preset,
+            )
+        return set_miner_preset(
+            host,
+            token,
+            preset_name,
+            timeout=timeout,
+            clamp_top_preset=clamp_top_preset,
+        )
     finally:
         if token:
             try:

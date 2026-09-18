@@ -43,7 +43,7 @@ ACTION_NO_ACTION = "NO_ACTION"
 
 DEFAULT_SOAK_SECONDS = 7200.0       # 2 continuous hours without restart to initiate recovery
 DEFAULT_INRUSH_DAMPENER_SECONDS = 300.0  # 5 minutes temporary partner dampening during inrush
-DEFAULT_MIN_PRESET_FLOOR = "2100W"   # Lower limit for automated contingency reductions
+DEFAULT_MIN_PRESET_FLOOR = "2150W"   # Lower limit for automated contingency reductions (calibrated to hardware)
 DEFAULT_MAX_CEILING = "2700W"
 
 

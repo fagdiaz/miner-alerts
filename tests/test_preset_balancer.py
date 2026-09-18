@@ -49,9 +49,16 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertGreater(eff_clean_2500w, eff_3)
 
     def test_find_preset_index(self):
-        self.assertEqual(find_preset_index("2500W"), 5)
-        self.assertEqual(find_preset_index("2700w"), 6)
+        self.assertEqual(find_preset_index("2500W"), 6)
+        self.assertEqual(find_preset_index("2700w"), 7)
+        self.assertEqual(find_preset_index("1800W"), 1)
+        self.assertEqual(find_preset_index("1800"), 1)
+        self.assertEqual(find_preset_index("2150W"), 4)
         self.assertEqual(find_preset_index("nonexistent_preset"), -1)
+        self.assertEqual(find_preset_index(""), -1)
+        self.assertEqual(find_preset_index("   "), -1)
+        self.assertEqual(find_preset_index("W"), -1)
+        self.assertEqual(find_preset_index("2"), -1)
 
     def test_unknown_preset(self):
         metrics = StabilityMetrics(
@@ -89,11 +96,11 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertIn("desescalando a 2500W", dec.reason)
 
     def test_step_down_at_minimum_preset_locks(self):
-        # In minimum tier (1600W) with restarts -> cannot step down further
+        # In minimum tier (1740W) with restarts -> cannot step down further
         metrics = StabilityMetrics(
             miner_name="S19JPRO-24",
             electrical_group="elevator_sensible",
-            current_preset="1600W",
+            current_preset="1740W",
             restarts_24h=4,
             restarts_72h=6,
             hours_since_last_restart=1.0,
@@ -103,7 +110,7 @@ class TestPresetBalancer(unittest.TestCase):
         )
         dec = evaluate_balancer_step(metrics, self.cfg)
         self.assertEqual(dec.action, ACTION_LOCKED_MIN)
-        self.assertEqual(dec.target_preset, "1600W")
+        self.assertEqual(dec.target_preset, "1740W")
         self.assertFalse(dec.requires_write)
 
     def test_group_cascade_step_down(self):
@@ -223,7 +230,8 @@ class TestPresetBalancer(unittest.TestCase):
     def test_infer_preset_name_from_power(self):
         self.assertEqual(infer_preset_name_from_power(2480), "2500W")
         self.assertEqual(infer_preset_name_from_power(2720), "2700W")
-        self.assertEqual(infer_preset_name_from_power(1610), "1600W")
+        self.assertEqual(infer_preset_name_from_power(1745), "1740W")
+        self.assertEqual(infer_preset_name_from_power(1805), "1800W")
         self.assertEqual(infer_preset_name_from_power(None), "2500W")
 
     def test_build_balancer_table_text(self):

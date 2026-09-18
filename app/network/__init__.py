@@ -39,6 +39,12 @@ from app.network.vnish_client import (
 )
 
 from app.network.gateway_heartbeat import GatewayHeartbeatWorker
+from app.network.firmware_flasher import (
+    FirmwareFlasher,
+    flash_bitmain_nand,
+    is_stock_bitmain,
+    DEFAULT_PACKAGE_PATH,
+)
 
 __all__ = [
     # CGMiner 4028
@@ -77,4 +83,9 @@ __all__ = [
     "safe_set_miner_preset",
     # Spec 067: Gateway Heartbeat
     "GatewayHeartbeatWorker",
+    # Spec 076: Firmware Flasher
+    "FirmwareFlasher",
+    "flash_bitmain_nand",
+    "is_stock_bitmain",
+    "DEFAULT_PACKAGE_PATH",
 ]

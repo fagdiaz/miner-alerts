@@ -3,6 +3,37 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-18] - Auditoría QA y Spec 076: Reinstalación Autónoma de Firmware VNish en NAND y Calibración de Escalera de Hardware S19j Pro (PROP-011)
+
+* **Objetivo**:
+  1. Ejecutar auditoría integral de QA y corrección de bugs/fallas de buenas prácticas en el sistema de monitoreo.
+  2. Implementar `PROP-011` / `Spec 076` para permitir la reinstalación autónoma y remota de firmware VNish 1.2.6 en NAND eMMC (BeagleBone Black) sobre mineros que hayan caído al firmware de fábrica de Bitmain tras apagones o corrupción de memoria.
+  3. Calibrar la escalera autoritativa de hardware de Antminer S19j Pro eliminando peldaños teóricos (`2100W`, `2800W`) que provocaban rechazos `HTTP 400 Bad Request`, incorporando el peldaño `1800W`, y remediando el bloqueo que atrapaba al Minero 23 a 1800W.
+  4. Implementar aprovisionamiento automático post-booteo (`miner_provisioner.py`) inyectando pools de Binance, preset de potencia y restaurando la matriz guardada de 378 chips afinados desde perfiles dorados.
+  5. Desplegar comando interactivo de Telegram `/flash_vnish <miner>` con confirmación en dos pasos, protección contra ejecuciones concurrentes y reporte en tiempo real de fases a un worker daemon desacoplado.
+* **Auditoría QA y Hallazgos Subsanados**:
+  - *Vulnerabilidad de coincidencia parcial en `find_preset_index`*: Arreglado en `app/governance/preset_balancer.py` reemplazando `in` sobre strings por extracción numérica de watts vía regex y correspondencia exacta con `nominal_power_w`.
+  - *Calibración de escalera S19j Pro (9 peldaños)*: `1740W, 1800W, 1850W, 2000W, 2150W, 2300W, 2500W, 2700W, 2970W`. `DEFAULT_MIN_PRESET_FLOOR` elevado a `2150W`.
+  - *Cableado de Headroom Chilling (Spec 075)*: Conectado `decision.boost_cooling_requested` en `preset_balancer.py` a `st.boost_cooling_active` en `miner_monitor.py` y `boost_cooling=True` en `compute_governor_step`.
+  - *Calibración térmica de emergencia*: `fan_governor_emergency_temp_c` configurado en `83.0°C` por defecto en `miner_monitor.py`.
+  - *Desbloqueo de top preset en rampa*: Soporte de `top_preset` explícito en `safe_set_miner_preset` y rampa de 2700W en `miner_monitor.py` pasando `clamp_top_preset=False, top_preset="2700"`.
+  - *Resolución de nombres en Telegram*: Corregidas llamadas a `display_name(miner)` que pasaban diccionarios en lugar de strings en `flash.py` y `miner_monitor.py`.
+* **Componentes Implementados / Modificados**:
+  - `app/network/firmware_flasher.py`: Módulo autónomo de flasheo con detección de Bitmain stock en puerto 80 (`is_stock_bitmain`) y carga multipart HTTP Digest `/cgi-bin/upgrade.cgi` (`flash_bitmain_nand`) con streaming seguro y tolerancia a desconexión por reboot.
+  - `app/governance/miner_provisioner.py`: Inyección automática de credenciales de pool (Binance), preset nominal (2300W / 2700W) y matriz de 378 chips afinados desde `data/miner_profiles/{miner_name}.json`.
+  - `app/telegram/commands/flash.py`: Comando `/flash_vnish` con verificación en 2 pasos (botones inline `flash_cfm`/`flash_ccl` o `CONFIRM`), guardas de concurrencia y pipeline en worker daemon desacoplado.
+  - `app/telegram/callbacks.py` y `app/miner_monitor.py`: Manejadores para callbacks `flash_cfm` y `flash_ccl`, integración de worker daemon y alias `generate = create_token` en `CallbackTokenRegistry`.
+  - `app/telegram/router.py`: Registro de `FlashVnishCommand` y sus alias (`flash`, `flashear`, `instalar_firmware`).
+  - `tests/test_firmware_flasher.py`: 9 tests unitarios para sondeo y carga de firmware Bitmain.
+  - `tests/test_miner_provisioner.py`: 5 tests unitarios para autenticación, inyección de pools, presets y matrices de afinación.
+  - `tests/test_telegram_flash_command.py`: 12 tests para ayuda, validación, confirmación inline, y simulación integral de pipeline.
+  - `tests/test_telegram_callbacks.py`: Pruebas de parsing y longitudes límite para `flash_cfm` y `flash_ccl`.
+* **Resultados & Verificación**:
+  - Suite de regresión global: **1262/1262 tests PASS** en 41.69s (0 fallos, 0 errores, 0 regresiones).
+  - Compilación limpia con `py_compile` en todos los módulos de producción.
+  - Telemetría en vivo: Minero 23 normalizado y estable en 2300W (78-81 TH/s). Minero 24 en 88-90 TH/s con VNish 1.2.6 y 378 chips afinados. Flota completa al 100% de salud.
+  - Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
+
 ## [2026-09-18] - Implementación Spec 075: Recuperación Suave de Hasheo, Headroom Chilling y Diagnóstico Raíz Minero 24 (PROP-010)
 
 * **Objetivo**:

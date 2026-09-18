@@ -892,11 +892,22 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Calibración de emergencia de Governor a 83.0°C.
 - [x] Suite completa de regresión: **1236/1236 tests PASS** (0 fallos, 0 regresiones).
 
+### Iniciativa 28 — Reinstalación Autónoma de Firmware VNish en NAND y Calibración de Escalera de Hardware S19j Pro (Spec 076 - PROP-011 - Completada & Certificada)
+- Especificación: [`specs/076-firmware-reflash-and-ladder/spec.md`](../../specs/076-firmware-reflash-and-ladder/spec.md) | Plan: [`specs/076-firmware-reflash-and-ladder/plan.md`](../../specs/076-firmware-reflash-and-ladder/plan.md) | Evidencia: [`specs/076-firmware-reflash-and-ladder/evidence.md`](../../specs/076-firmware-reflash-and-ladder/evidence.md) | Propuesta: [`docs/proposals/PROP-011-autonomous-firmware-reflash-and-hardware-ladder.md`](../proposals/PROP-011-autonomous-firmware-reflash-and-hardware-ladder.md)
+- **Estado**: Implementación, Auditoría QA y Certificación en Producción Completadas (T001-T008). 1262/1262 tests PASS.
+- [x] Calibración 1:1 de `DEFAULT_PRESET_LADDER` con los 9 peldaños reales de VNish 1.2.6 (`1740W`, `1800W`, `1850W`, `2000W`, `2150W`, `2300W`, `2500W`, `2700W`, `2970W`) y piso mínimo de contingencia en `2150W` (eliminando rechazos HTTP 400 y atrapamiento en 1800W).
+- [x] Módulo `app/network/firmware_flasher.py` con verificación de stock Bitmain (`is_stock_bitmain`) y carga multipart HTTP Digest `/cgi-bin/upgrade.cgi` (`flash_bitmain_nand`).
+- [x] Aprovisionamiento post-flasheo (`app/governance/miner_provisioner.py`) inyectando pools de Binance, preset 2300W/2700W y matriz de 378 chips afinados desde perfiles guardados.
+- [x] Comando Telegram `/flash_vnish <miner>` con confirmación interactiva de 2 pasos (`flash_cfm`/`flash_ccl` o `CONFIRM`) y ejecución en worker desacoplado `FlashWorker_{miner}`.
+- [x] Suite de pruebas dedicadas (`test_firmware_flasher.py`, `test_miner_provisioner.py`, `test_telegram_flash_command.py`) y validación de regresión completa (**1262/1262 tests PASS**).
+- [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
+
 ---
 
 ## Governance
 
-- All 75 specifications in the program (Specs 001 through 075) are tracked and maintained.
-- Version 5.1.0 + State Unification + Predictive Chain Break Diagnostics (Spec 069) + Paired Elevator Contingency (Spec 074) + Soft-Landing Recovery & APW12 Defense (Spec 075) is verified with 1236/1236 tests PASS (0 failures, 0 regressions).
+- All 76 specifications in the program (Specs 001 through 076) are tracked and maintained.
+- Version 5.1.0 + State Unification + Predictive Chain Break Diagnostics (Spec 069) + Paired Elevator Contingency (Spec 074) + Soft-Landing Recovery & APW12 Defense (Spec 075) + Autonomous Firmware Reflash & Hardware Ladder Calibration (Spec 076) is verified with 1262/1262 tests PASS (0 failures, 0 regressions).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
+

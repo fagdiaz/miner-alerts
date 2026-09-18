@@ -229,6 +229,7 @@ def create_default_command_router() -> TelegramCommandRouter:
         ScheduledCommand,
     )
     from app.telegram.commands.help import HelpCommand, MenuCommand, DigestCommand
+    from app.telegram.commands.flash import FlashVnishCommand
 
     router = TelegramCommandRouter()
     # Status & Info
@@ -246,6 +247,8 @@ def create_default_command_router() -> TelegramCommandRouter:
     # Maintenance & Schedules
     router.register(SnoozeCommand()).register(UnsnoozeCommand()).register(SnoozedCommand())
     router.register(ShutdownCommand()).register(ResumeCommand()).register(ScheduleMaintenanceCommand()).register(ScheduledCommand())
+    # Flash & Provisioning (Spec 076)
+    router.register(FlashVnishCommand())
     # Help & Dashboard
     router.register(HelpCommand()).register(MenuCommand()).register(DigestCommand())
 

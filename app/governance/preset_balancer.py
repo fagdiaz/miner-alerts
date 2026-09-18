@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
 import sqlite3
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,16 +30,17 @@ class PresetTier:
     order: int
 
 
-# Standard Vnish overclock ladder for Antminer S19j Pro
+# Standard Vnish 1.2.6 overclock ladder for Antminer S19j Pro (hardware validated)
 DEFAULT_PRESET_LADDER: Tuple[PresetTier, ...] = (
-    PresetTier(name="1600W", nominal_power_w=1600, nominal_ths=68.0, order=0),
-    PresetTier(name="1740W", nominal_power_w=1740, nominal_ths=72.0, order=1),
-    PresetTier(name="1900W", nominal_power_w=1900, nominal_ths=78.0, order=2),
-    PresetTier(name="2100W", nominal_power_w=2100, nominal_ths=83.0, order=3),
-    PresetTier(name="2300W", nominal_power_w=2300, nominal_ths=88.0, order=4),
-    PresetTier(name="2500W", nominal_power_w=2500, nominal_ths=93.0, order=5),
-    PresetTier(name="2700W", nominal_power_w=2700, nominal_ths=98.0, order=6),
-    PresetTier(name="2800W", nominal_power_w=2800, nominal_ths=102.0, order=7),
+    PresetTier(name="1740W", nominal_power_w=1740, nominal_ths=65.0, order=0),
+    PresetTier(name="1800W", nominal_power_w=1800, nominal_ths=70.0, order=1),
+    PresetTier(name="1850W", nominal_power_w=1850, nominal_ths=76.0, order=2),
+    PresetTier(name="2000W", nominal_power_w=2000, nominal_ths=80.0, order=3),
+    PresetTier(name="2150W", nominal_power_w=2150, nominal_ths=83.0, order=4),
+    PresetTier(name="2300W", nominal_power_w=2300, nominal_ths=87.0, order=5),
+    PresetTier(name="2500W", nominal_power_w=2500, nominal_ths=92.0, order=6),
+    PresetTier(name="2700W", nominal_power_w=2700, nominal_ths=96.0, order=7),
+    PresetTier(name="2970W", nominal_power_w=2970, nominal_ths=100.0, order=8),
 )
 
 
@@ -113,12 +115,21 @@ def compute_effective_hashrate(
 
 
 def find_preset_index(preset_name: str, ladder: Optional[List[PresetTier]] = None) -> int:
-    """Find index in ladder by name. Returns -1 if not found."""
+    """Find index in ladder by name or nominal power. Returns -1 if not found or invalid."""
+    if not preset_name or not str(preset_name).strip():
+        return -1
     tiers = ladder or list(DEFAULT_PRESET_LADDER)
-    clean = str(preset_name).strip().upper().rstrip("W").strip()
+    raw = str(preset_name).strip().upper()
+    digits = re.findall(r"\d+", raw)
+    if digits:
+        target_num = int(digits[0])
+        for idx, tier in enumerate(tiers):
+            if tier.nominal_power_w == target_num:
+                return idx
+    clean = raw.rstrip("W").strip()
     for idx, tier in enumerate(tiers):
         t_clean = tier.name.upper().rstrip("W").strip()
-        if t_clean == clean or clean in t_clean or t_clean in clean:
+        if clean == t_clean:
             return idx
     return -1
 

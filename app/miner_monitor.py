@@ -2977,7 +2977,7 @@ def execute_governor_cycle(
         target_temp_c=float(config.get("fan_governor_target_temp_c", 82.0)),
         deadband_low_c=float(config.get("fan_governor_deadband_low_c", 81.0)),
         deadband_high_c=float(config.get("fan_governor_deadband_high_c", 82.5)),
-        emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 83.5)),
+        emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 83.0)),
         min_fan_duty_percent=int(config.get("fan_governor_min_duty_pct", 30)),
         max_fan_duty_percent=100,
         step_down_percent=int(config.get("fan_governor_step_down_pct", 2)),
@@ -3147,6 +3147,15 @@ def execute_governor_cycle(
                 (getattr(state, "last_elapsed", None) is not None and getattr(state, "last_elapsed", 999) < 240)
                 or (getattr(state, "reboot_pending_until", 0.0) > now_ts)
             )
+            boost_cooling_is_active = bool(
+                getattr(state, "boost_cooling_active", False)
+                and (getattr(state, "boost_cooling_expires_ts", 0.0) > now_ts)
+            )
+            if getattr(state, "boost_cooling_active", False) and not boost_cooling_is_active:
+                with state_lock:
+                    state.boost_cooling_active = False
+                    state.boost_cooling_expires_ts = None
+
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
@@ -3158,6 +3167,7 @@ def execute_governor_cycle(
                 target_power_w=gov_target_pwr,
                 ambient_temp_c=amb_temp,
                 is_warming_up=miner_is_warming_up,
+                boost_cooling=boost_cooling_is_active,
             )
             miner_decisions.append((miner, state_key, decision))
 
@@ -3364,7 +3374,15 @@ def refresh_vnish_overclock_settings(
                                     from app.governance.preset_balancer import find_preset_index
                                     curr_p_idx = find_preset_index(st.vnish_discovered_preset)
                                     lock_p_idx = find_preset_index(st.hw_error_locked_preset)
-                                    if curr_p_idx >= 0 and lock_p_idx >= 0 and curr_p_idx > lock_p_idx:
+                                    if curr_p_idx >= 0 and lock_p_idx >= 0:
+                                        is_higher = (curr_p_idx > lock_p_idx)
+                                    else:
+                                        curr_digits = re.findall(r"\d+", str(st.vnish_discovered_preset))
+                                        lock_digits = re.findall(r"\d+", str(st.hw_error_locked_preset))
+                                        curr_w = int(curr_digits[0]) if curr_digits else 0
+                                        lock_w = int(lock_digits[0]) if lock_digits else 0
+                                        is_higher = (curr_w > lock_w > 0)
+                                    if is_higher:
                                         log(
                                             f"[TRIPWIRE_INTERLOCK] miner={m_name} detecto preset superior ({st.vnish_discovered_preset}) "
                                             f"a candado ({st.hw_error_locked_preset}). Forzando restauracion defensiva."
@@ -3545,6 +3563,11 @@ def execute_balancer_cycle(
             current_time=now_ts,
         )
         decisions.append((m_metrics, decision))
+        if getattr(decision, "boost_cooling_requested", False) and st is not None:
+            with state_lock:
+                st.boost_cooling_active = True
+                st.boost_cooling_expires_ts = now_ts + 180.0
+            log(f"[HEADROOM-CHILLING] {m_metrics.miner_name}: solicitando boost cooling (100% PWM) por 180s para habilitar escalamiento de preset ({decision.reason})")
 
     writers = [
         (miner_map.get(m.miner_name, {}), m, d)
@@ -4753,6 +4776,66 @@ def _handle_callback_query(
                 f"CB_REBOOT_FAIL miner={display_name(miner['name'])} "
                 f"msg={msg_result}"
             )
+        return
+
+    # --- flash_ccl:<miner_id>: cancel flash confirmation ---
+    if action.action_type == "flash_ccl":
+        answer_callback_query(bot_token, cb_id, text="❌ Flasheo cancelado.")
+        if message_id is not None:
+            edit_message_text(bot_token, str(cb_chat_id), message_id, f"❌ Flasheo cancelado para {action.miner_id}.")
+        return
+
+    # --- flash_cfm:<miner_id>: execute flash pipeline ---
+    if action.action_type == "flash_cfm":
+        answer_callback_query(bot_token, cb_id, text="🚀 Iniciando flasheo VNish...")
+        miner = resolve_miner(action.miner_id, miners)
+        if not miner:
+            if message_id is not None:
+                edit_message_text(bot_token, str(cb_chat_id), message_id, f"❌ Minero '{action.miner_id}' no encontrado.")
+            return
+
+        miner_raw_name = miner.get("name", "")
+        name = display_name(miner_raw_name)
+        host = miner.get("host", "")
+        norm = normalize_miner_name(miner_raw_name)
+
+        from app.telegram.commands.flash import is_flash_in_progress, run_flash_and_provision_pipeline, _RUNNING_FLASH_JOBS, _FLASH_JOBS_LOCK
+        from app.telegram.context import TelegramRequestContext
+
+        if is_flash_in_progress(norm):
+            if message_id is not None:
+                edit_message_text(bot_token, str(cb_chat_id), message_id, f"⏳ Ya hay un flasheo en progreso para {name}.")
+            return
+
+        if message_id is not None:
+            edit_message_text(bot_token, str(cb_chat_id), message_id, f"🚀 *Flasheo VNish iniciado en background para {name}* (`{host}`)...\nRecibirá actualizaciones por fases.")
+
+        ctx = TelegramRequestContext(
+            config=config,
+            bot_token=bot_token,
+            chat_id=str(cb_chat_id),
+            miners=miners,
+            states=states,
+            state_lock=state_lock,
+            state_path=state_path,
+            current_last_update_id=current_last_update_id,
+            hashcore_cfg=hashcore_cfg,
+            event_store=event_store,
+            qa_mode=qa_mode,
+            qa_allow_actions=qa_allow_actions,
+            token_registry=token_registry,
+        )
+        vnish_pw = str(config.get("vnish_api_password", "admin"))
+        th = threading.Thread(
+            target=run_flash_and_provision_pipeline,
+            args=(host, norm, ctx),
+            kwargs={"vnish_pw": vnish_pw},
+            name=f"FlashWorker_{norm}",
+            daemon=True,
+        )
+        with _FLASH_JOBS_LOCK:
+            _RUNNING_FLASH_JOBS[norm] = th
+        th.start()
         return
 
     # --- snz:<miner_id>:<minutes>: maintenance snooze ---
@@ -6316,8 +6399,8 @@ def main() -> None:
                         log(f"[SAFE-RECOVERY] {name_display} estabilizado en OK con pre-clamp: iniciando soak de rampa ascendente (180s)...")
                     elif (now_ts - state.staged_ramp_up_soak_start_ts) >= 180.0:
                         nom_preset = (getattr(state, "original_preset_before_clamp", None) or getattr(state, "balancer_preset", "2300W") or "2300W").rstrip("W")
-                        log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W)...")
-                        safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=True)
+                        log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W, ceiling 2700W)...")
+                        safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=False, top_preset="2700")
                         with state_lock:
                             state.is_pre_clamped = False
                             state.staged_ramp_up_pending = False

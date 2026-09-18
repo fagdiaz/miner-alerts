@@ -1,10 +1,14 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD OPERATIVA: FLOTA 100% OK & SPEC 075 LISTA PARA DEPLOY
+# PROMPT DE CONTINUIDAD OPERATIVA: AUDITORÍA QA & SPEC 076 IMPLEMENTADA (1262 TESTS PASS)
 # ==============================================================================
 # MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Flota completa (23, 24, 25, 26) en estado OK y minando normalmente.
-# Minero 24 recuperado exitosamente en VNish 1.2.6 NAND con pools configurados.
-# Tareas T001-T007 de Spec 075 completadas y verificadas con 1236 tests PASS.
+# Justificación: Flota completa (23, 24, 25, 26) 100% en estado OK y minando normalmente.
+# Minero 23 normalizado a 2300W (78-81 TH/s).
+# Minero 24 operando a 88-90 TH/s en VNish 1.2.6 NAND con 378 chips afinados.
+# Auditoría QA completada: vulnerabilidad de subcadenas en find_preset_index resuelta,
+# escalera de hardware S19j Pro calibrada a 9 peldaños reales, cableado de Headroom Chilling,
+# y corrección de referencias en Telegram callbacks/commands.
+# Spec 076 implementada, probada con 1262 tests PASS y servicio Windows MinerAlerts reiniciado.
 # ==============================================================================
 
 Hola Agente. Estás asumiendo el control de 'miner-alerts' (supervisión, gobernanza térmica/eléctrica y telemetría de mineros ASIC Antminer S19j Pro con VNish sobre Windows).
@@ -12,30 +16,28 @@ Hola Agente. Estás asumiendo el control de 'miner-alerts' (supervisión, gobern
 1. LÍNEA BASE TÉCNICA Y ESTADO DE PRODUCCIÓN:
 - Repositorio: F:\02-ASIC - mineros\miner-alerts
 - Rama actual: 'codex/022-adaptive-acquisition'
-- Feature activa (.specify/feature.json): `specs/075-soft-landing-recovery`
-- Servicio Windows: 'MinerAlerts' RUNNING (PID 19204).
-- Suite de Tests: **1236 tests PASS** en 39.5s (100% de éxito, 0 fallos, 0 errores).
+- Feature activa (.specify/feature.json): `specs/076-firmware-reflash-and-ladder` (Completada y Certificada)
+- Servicio Windows: 'MinerAlerts' RUNNING (Reiniciado y Verificado).
+- Suite de Tests: **1262 tests PASS** en 41.7s (100% de éxito, 0 fallos, 0 errores, 0 regresiones).
 
-2. ESTADO ACTUAL DE LA FLOTA (15:25 HS):
-- S19JPRO-23 (192.168.100.23): ~79.0 TH/s | OK | 0 HW Errors | Binance Pool activo
-- S19JPRO-24 (192.168.100.24): ~65.0 TH/s | OK | 0 HW Errors | Binance Pool activo (VNish 1.2.6 NAND)
-- S19JPRO-25 (192.168.100.25): ~99.7 TH/s | OK | 0 HW Errors | Binance Pool activo
-- S19JPRO-26 (192.168.100.26): ~99.1 TH/s | OK | 0 HW Errors | Binance Pool activo
+2. ESTADO ACTUAL DE LA FLOTA EN VIVO:
+- S19JPRO-23 (192.168.100.23): ~78-81 TH/s | Preset: 2300W / Top: 2700W | Temps: 57-74°C | OK | Binance Pool activo
+- S19JPRO-24 (192.168.100.24): ~88-90 TH/s | Preset: 2300W / Top: 2700W | Temps: 56-81°C | OK | Binance Pool activo (VNish 1.2.6 NAND)
+- S19JPRO-25 (192.168.100.25): ~86-88 TH/s | Preset: 2300W / Top: 2700W | Temps: 58-79°C | OK | Binance Pool activo
+- S19JPRO-26 (192.168.100.26): ~91-93 TH/s | Preset: 2500W / Top: 2700W | Temps: 55-81°C | OK | Binance Pool activo
 
-3. RESOLUCIÓN DE LA FALLA EN MINERO 24 TRAS REINSTALACIÓN:
-- Causa raíz del error "Failed to parse miner configuration" (código 1002):
-  * Al reinstalar el firmware VNish 1.2.6 en NAND desde `C:\asicto\asicto-s19jpro-bb-nand-v1.2.6-install.tar.gz` mediante Hashcore Toolkit, la configuración de pools quedó en blanco (`""`).
-  * Al no tener URLs de pools válidas, el demonio cgminer no podía iniciar y entraba en estado de fallo.
-- Acción de remediación ejecutada vía API REST de VNish:
-  * Inyección autenticada de pools de Binance Pool para el worker `fagdiaz.19216810024` (puertos 8888, 443, 3333).
-  * El minero salió inmediatamente del estado failure, completó su auto-tuning (378/378 chips afinados), superó el umbral de 60 TH/s y alcanzó 81.5 TH/s en estado OK.
+3. AUDITORÍA QA & CORRECCIONES APLICADAS:
+- `find_preset_index`: Se reemplazó la búsqueda por subcadena por extracción de enteros y coincidencia numérica estricta contra `nominal_power_w`.
+- Escalera de hardware S19j Pro: Calibrada a los 9 peldaños oficiales del silicio: `1740, 1800, 1850, 2000, 2150, 2300, 2500, 2700, 2970`. Piso mínimo elevado a `2150W`.
+- Headroom Chilling (Spec 075): `decision.boost_cooling_requested` enlazado con `st.boost_cooling_active` en `miner_monitor.py` y `boost_cooling` en `compute_governor_step`.
+- Emergency Spike: Calibrado a `83.0°C` por defecto en `miner_monitor.py`.
+- Telegram: Corregidas referencias a nombres de minero en `flash.py` y `miner_monitor.py`, y añadido alias `generate = create_token` en `CallbackTokenRegistry`.
 
-4. HERRAMIENTA DE RESPALDO Y RESTAURACIÓN DE PERFILES (`tools/backup_miner_profiles.py`):
-- Se implementó la utilidad para exportar `/api/v1/settings` con las matrices completas de chips afinados y pools hacia `data/miner_profiles/<miner>.json`.
-- Respaldo ejecutado exitosamente para los 4 mineros: S19JPRO-23, S19JPRO-24 (378 chips afinados), S19JPRO-25 (293 chips afinados) y S19JPRO-26 (162 chips afinados).
-- Restauración rápida ante futuros flasheos de NAND: `python tools/backup_miner_profiles.py restore <miner_name> <target_host>`.
+4. SPEC 076 IMPLEMENTADA:
+- `app/network/firmware_flasher.py`: Detección Bitmain stock en puerto 80 y carga multipart HTTP Digest `/cgi-bin/upgrade.cgi`.
+- `app/governance/miner_provisioner.py`: Inyección automática de pools Binance, preset nominal y 378 chips afinados desde `data/miner_profiles/`.
+- `app/telegram/commands/flash.py`: Comando `/flash_vnish <miner>` con 2-step confirmation (`flash_cfm`/`flash_ccl` o `CONFIRM`) y pipeline en worker daemon.
+- Suites de pruebas: `test_firmware_flasher.py` (9 tests), `test_miner_provisioner.py` (5 tests), `test_telegram_flash_command.py` (12 tests), `test_telegram_callbacks.py` (29 tests).
 
-5. ESTADO DE SPEC 075 (T001-T007):
-- Todo el código de recuperación suave (pre-clamp 1800W, soak de 180s, headroom chilling en governor y balancer, inhibición ante fallas de firmware) está probado e integrado.
-- 1236/1236 tests unitarios y de integración PASS.
-- Listo para el reinicio del servicio Windows cuando el operador lo disponga.
+5. PRÓXIMAS PRIORIDADES:
+- Monitoreo continuo de telemetría de producción y observación pasiva de la flota.

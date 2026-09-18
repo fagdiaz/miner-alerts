@@ -48,6 +48,15 @@ class TestTelegramCallbacks(unittest.TestCase):
         self.assertEqual(action.action_type, "rb_ccl")
         self.assertEqual(action.miner_id, "23")
 
+        action = parse_callback_data("flash_cfm:tok456:24")
+        self.assertEqual(action.action_type, "flash_cfm")
+        self.assertEqual(action.token, "tok456")
+        self.assertEqual(action.miner_id, "24")
+
+        action = parse_callback_data("flash_ccl:24")
+        self.assertEqual(action.action_type, "flash_ccl")
+        self.assertEqual(action.miner_id, "24")
+
         action = parse_callback_data("noop")
         self.assertEqual(action.action_type, "noop")
 
@@ -67,6 +76,8 @@ class TestTelegramCallbacks(unittest.TestCase):
             build_callback_data("rb_req", "S19JPRO-23"),
             build_callback_data("rb_cfm", "S19JPRO-23", token="a1b2c3d4"),
             build_callback_data("rb_ccl", "S19JPRO-23"),
+            build_callback_data("flash_cfm", "S19JPRO-24", token="a1b2c3d4"),
+            build_callback_data("flash_ccl", "S19JPRO-24"),
             build_callback_data("noop", ""),
         ]
         for s in samples:

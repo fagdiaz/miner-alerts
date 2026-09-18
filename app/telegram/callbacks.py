@@ -45,7 +45,7 @@ def parse_callback_data(raw_data: str) -> Optional[CallbackAction]:
 
     if tag == "noop":
         return CallbackAction(action_type="noop", miner_id="")
-    elif tag in ("diag", "chart", "rb_req", "rb_ccl"):
+    elif tag in ("diag", "chart", "rb_req", "rb_ccl", "flash_req", "flash_ccl"):
         if len(parts) == 2 and parts[1]:
             return CallbackAction(action_type=tag, miner_id=parts[1])
         return None
@@ -53,9 +53,9 @@ def parse_callback_data(raw_data: str) -> Optional[CallbackAction]:
         if len(parts) == 3 and parts[1] and parts[2]:
             return CallbackAction(action_type=tag, miner_id=parts[1], param=parts[2])
         return None
-    elif tag == "rb_cfm":
+    elif tag in ("rb_cfm", "flash_cfm"):
         if len(parts) == 3 and parts[1] and parts[2]:
-            return CallbackAction(action_type="rb_cfm", miner_id=parts[2], token=parts[1])
+            return CallbackAction(action_type=tag, miner_id=parts[2], token=parts[1])
         return None
 
     return None
@@ -70,14 +70,14 @@ def build_callback_data(
     """Build a normalized callback_data string guaranteed under 64 bytes."""
     if action_type == "noop":
         return "noop"
-    elif action_type in ("diag", "chart", "rb_req", "rb_ccl"):
+    elif action_type in ("diag", "chart", "rb_req", "rb_ccl", "flash_req", "flash_ccl"):
         res = f"{action_type}:{miner_id}"
     elif action_type == "snz":
         res = f"snz:{miner_id}:{param or '60'}"
     elif action_type == "chart_range":
         res = f"chart_range:{miner_id}:{param or '1'}"
-    elif action_type == "rb_cfm":
-        res = f"rb_cfm:{token or ''}:{miner_id}"
+    elif action_type in ("rb_cfm", "flash_cfm"):
+        res = f"{action_type}:{token or ''}:{miner_id}"
     else:
         res = f"{action_type}:{miner_id}"
 
@@ -115,6 +115,8 @@ class CallbackTokenRegistry:
             token = secrets.token_hex(3)  # 6 hex chars
             self._tokens[token] = (miner_id, action, now)
             return token
+
+    generate = create_token
 
     def consume_token(self, token: str) -> Tuple[bool, Optional[str], str]:
         now = time.time()

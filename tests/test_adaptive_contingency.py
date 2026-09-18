@@ -238,6 +238,87 @@ class TestAdaptiveContingencyPolicy(unittest.TestCase):
         self.assertEqual(dec_4h.target_preset, "2700W")
         self.assertFalse(dec_4h.updated_group_state.active, "Group should return to nominal inactive state")
 
+    def test_soak_tick_recovers_robust_partner_when_canary_nominal(self):
+        """When only the robust partner was stepped down, soak tick steps up the partner without touching canary."""
+        st = GroupContingencyState(
+            group_name="elevator_1",
+            active=True,
+            trigger_miner="S19JPRO-23",
+            started_ts=10000.0,
+            last_restart_ts=10000.0,
+            step_down_count=1,
+            canary_initial_preset=None,  # Canary was never degraded
+            partner_initial_preset="2700W",
+            soak_duration_seconds=7200.0,
+        )
+        presets = {
+            "S19JPRO-23": "2500W",
+            "S19JPRO-24": "2700W",  # Canary is already nominal
+        }
+        dec = evaluate_canary_contingency(
+            event_type="soak_tick",
+            miner_name="",
+            group_name="elevator_1",
+            current_presets=presets,
+            now_ts=17201.0,
+            group_state=st,
+        )
+        self.assertEqual(dec.action, ACTION_RESTORE_NOMINAL)
+        self.assertEqual(dec.target_miner, "S19JPRO-23")
+        self.assertEqual(dec.previous_preset, "2500W")
+        self.assertEqual(dec.target_preset, "2700W")
+        self.assertTrue(dec.requires_write)
+        self.assertFalse(dec.updated_group_state.active)
+
+    def test_soak_tick_sequential_dual_recovery(self):
+        """When both canary and partner are stepped down, they recover sequentially and state stays active until both finish."""
+        st = GroupContingencyState(
+            group_name="elevator_1",
+            active=True,
+            trigger_miner="S19JPRO-24",
+            started_ts=10000.0,
+            last_restart_ts=10000.0,
+            step_down_count=2,
+            canary_initial_preset="2700W",
+            partner_initial_preset="2700W",
+            soak_duration_seconds=7200.0,
+        )
+        presets_initial = {
+            "S19JPRO-23": "2500W",
+            "S19JPRO-24": "2500W",
+        }
+        # First soak tick: steps up canary
+        dec_1 = evaluate_canary_contingency(
+            event_type="soak_tick",
+            miner_name="",
+            group_name="elevator_1",
+            current_presets=presets_initial,
+            now_ts=17201.0,
+            group_state=st,
+        )
+        self.assertEqual(dec_1.action, ACTION_STEP_UP_SOAK)
+        self.assertEqual(dec_1.target_miner, "S19JPRO-24")
+        self.assertEqual(dec_1.target_preset, "2700W")
+        self.assertTrue(dec_1.updated_group_state.active, "Must remain active because partner is still degraded")
+
+        # Second soak tick: canary is nominal (2700W), partner steps up
+        presets_second = {
+            "S19JPRO-23": "2500W",
+            "S19JPRO-24": "2700W",
+        }
+        dec_2 = evaluate_canary_contingency(
+            event_type="soak_tick",
+            miner_name="",
+            group_name="elevator_1",
+            current_presets=presets_second,
+            now_ts=24402.0,
+            group_state=dec_1.updated_group_state,
+        )
+        self.assertEqual(dec_2.action, ACTION_RESTORE_NOMINAL)
+        self.assertEqual(dec_2.target_miner, "S19JPRO-23")
+        self.assertEqual(dec_2.target_preset, "2700W")
+        self.assertFalse(dec_2.updated_group_state.active, "Now both are nominal, group returns to inactive")
+
     def test_serialization_roundtrip(self):
         st = GroupContingencyState(
             group_name="elevator_2",

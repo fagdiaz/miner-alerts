@@ -902,12 +902,22 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Suite de pruebas dedicadas (`test_firmware_flasher.py`, `test_miner_provisioner.py`, `test_telegram_flash_command.py`) y validación de regresión completa (**1262/1262 tests PASS**).
 - [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
 
+### Iniciativa 29 — Gobernanza Escalonada de Elevadores, Bajada Compartida y Soft-Contingencia Horaria (Spec 077 - PROP-012 - Completada & Certificada)
+- Especificación: [`specs/077-staggered-elevator-governance/spec.md`](../../specs/077-staggered-elevator-governance/spec.md) | Plan: [`specs/077-staggered-elevator-governance/plan.md`](../../specs/077-staggered-elevator-governance/plan.md) | Evidencia: [`specs/077-staggered-elevator-governance/evidence.md`](../../specs/077-staggered-elevator-governance/evidence.md) | Propuesta: [`docs/proposals/PROP-012-staggered-elevator-governance-and-soft-contingency.md`](../proposals/PROP-012-staggered-elevator-governance-and-soft-contingency.md)
+- **Estado**: Implementación, Auditoría QA y Certificación en Producción Completadas (T001-T007). 1288/1288 tests PASS.
+- [x] Cola global de transición escalonada para la instalación (*Facility-Wide Staggered Queue*): 1 minero a la vez ejecuta cambios de preset por ciclo con ventana de reposo obligatoria de 180s (*Facility Settle Window*) en la bajada compartida.
+- [x] Presupuesto dinámico por transformador elevador ($\le 5000\text{W}$ en horario pico, $\le 5400\text{W}$ en horario valle) y preferencia de equilibrio simétrico (priorizar parejas 2x 2500W antes de combinaciones asimétricas 2700W/2300W).
+- [x] Soft-Contingencia Horaria quirúrgica: en días hábiles (Lunes a Viernes), desescalada paulatina (1 minero cada 180s) hacia 2500W en pico matutino (08:30-10:30 hs) y nocturno (19:30-22:30 hs). 19 horas libres y 100% de fines de semana habilitan plena potencia (2700W x4).
+- [x] Co-gobernanza con VNish: fijación de macro-envolvente en el monitor con clampeo estricto de `top_preset` para evitar desbalanceos por el daemon térmico en frío, respetando el micro-tuneado de chips.
+- [x] Módulos dedicados `app/governance/elevator_budget.py`, tests `test_elevator_budget.py` (21 tests PASS) y validación de regresión global (**1288/1288 tests PASS**).
+- [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
+
 ---
 
 ## Governance
 
-- All 76 specifications in the program (Specs 001 through 076) are tracked and maintained.
-- Version 5.1.0 + State Unification + Predictive Chain Break Diagnostics (Spec 069) + Paired Elevator Contingency (Spec 074) + Soft-Landing Recovery & APW12 Defense (Spec 075) + Autonomous Firmware Reflash & Hardware Ladder Calibration (Spec 076) is verified with 1262/1262 tests PASS (0 failures, 0 regressions).
+- All 77 specifications in the program (Specs 001 through 077) are tracked and maintained.
+- Version 5.1.0 + State Unification + Predictive Chain Break Diagnostics (Spec 069) + Paired Elevator Contingency (Spec 074) + Soft-Landing Recovery & APW12 Defense (Spec 075) + Autonomous Firmware Reflash & Hardware Ladder Calibration (Spec 076) + Staggered Elevator Governance & Soft-Contingency (Spec 077) is verified with 1288/1288 tests PASS (0 failures, 0 regressions).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
 

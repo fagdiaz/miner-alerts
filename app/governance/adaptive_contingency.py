@@ -225,8 +225,8 @@ def evaluate_canary_contingency(
     if event_type == "soak_tick" and state.inrush_dampener_active and state.inrush_dampener_expires_ts:
         if now_ts >= state.inrush_dampener_expires_ts:
             target_p = state.inrush_dampener_partner
-            restored_p = state.inrush_dampener_restored_preset or DEFAULT_MAX_CEILING
-            curr_p = current_presets.get(target_p) or current_presets.get(normalize_miner_name(target_p), restored_p)
+            curr_p = current_presets.get(target_p) or current_presets.get(normalize_miner_name(target_p), "")
+            restored_p = state.inrush_dampener_restored_preset or curr_p or DEFAULT_MAX_CEILING
             new_st = GroupContingencyState(
                 group_name=state.group_name,
                 active=state.active,
@@ -449,18 +449,48 @@ def evaluate_canary_contingency(
             # Check canary
             canary_name = cmap.get(group_name, "")
             canary_curr = current_presets.get(canary_name, "")
-            canary_init = state.canary_initial_preset or DEFAULT_MAX_CEILING
+            canary_init = state.canary_initial_preset
 
-            # If canary is below its initial preset
+            # Check partner miner in group
+            partner_name = ""
+            partner_curr = ""
+            for m_k, p_k in current_presets.items():
+                if normalize_miner_name(m_k) != normalize_miner_name(canary_name):
+                    partner_name = m_k
+                    partner_curr = p_k
+                    break
+            partner_init = state.partner_initial_preset
+
+            # Priority 1: Step up canary if it is below its recorded initial preset
             if canary_curr and canary_init and find_preset_index(canary_curr) < find_preset_index(canary_init):
                 target_miner_cand = canary_name
                 init_preset = canary_init
                 curr_p = canary_curr
+            # Priority 2: Step up partner if canary is nominal but partner is below its recorded initial preset
+            elif partner_curr and partner_init and find_preset_index(partner_curr) < find_preset_index(partner_init):
+                target_miner_cand = partner_name
+                init_preset = partner_init
+                curr_p = partner_curr
 
             if target_miner_cand:
                 next_tier = find_next_preset_tier(curr_p, max_ceiling=init_preset)
                 if next_tier:
-                    is_full_restore = (next_tier == init_preset)
+                    # Full restore only if both canary and partner are at or above their initial presets
+                    canary_restored = True
+                    if canary_init and canary_curr:
+                        if target_miner_cand == canary_name:
+                            canary_restored = (find_preset_index(next_tier) >= find_preset_index(canary_init))
+                        else:
+                            canary_restored = (find_preset_index(canary_curr) >= find_preset_index(canary_init))
+
+                    partner_restored = True
+                    if partner_init and partner_curr:
+                        if target_miner_cand == partner_name:
+                            partner_restored = (find_preset_index(next_tier) >= find_preset_index(partner_init))
+                        else:
+                            partner_restored = (find_preset_index(partner_curr) >= find_preset_index(partner_init))
+
+                    is_full_restore = canary_restored and partner_restored
                     new_state = GroupContingencyState(
                         group_name=group_name,
                         active=not is_full_restore,

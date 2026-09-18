@@ -2608,6 +2608,15 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                 log(f"[CONTINGENCY] Reconstituted elevator contingency: {list(_ELEVATOR_CONTINGENCY_STATES.keys())}")
             except Exception as _c_exc:
                 log(f"[WARN] Error deserializing elevator_contingency: {_c_exc}")
+        raw_facility = raw.get("facility_budget")
+        if raw_facility and isinstance(raw_facility, dict):
+            try:
+                from app.governance.elevator_budget import FacilityBudgetState
+                global _FACILITY_BUDGET_STATE
+                _FACILITY_BUDGET_STATE = FacilityBudgetState.from_dict(raw_facility)
+                log(f"[FACILITY_GOVERNANCE] Reconstituted facility budget state (last_transition={_FACILITY_BUDGET_STATE.last_facility_transition_ts})")
+            except Exception as _f_exc:
+                log(f"[WARN] Error deserializing facility_budget: {_f_exc}")
         return states, int(last_update_id) if last_update_id is not None else None
     except Exception:
         log("[WARN] state.json corrupto. Se ignora.")
@@ -2635,6 +2644,7 @@ def _build_state_payload(
         "scheduled_maintenance": sch_win.to_dict() if sch_win is not None else None,
         "intervention_governance": gov_obj.to_dict() if gov_obj is not None else None,
         "elevator_contingency": {grp: s.to_dict() for grp, s in list(cont_states.items())} if cont_states else None,
+        "facility_budget": _FACILITY_BUDGET_STATE.to_dict() if _FACILITY_BUDGET_STATE is not None else None,
         "states": {},
     }
 
@@ -3459,6 +3469,9 @@ from app.governance.intervention_policy import InterventionGovernance
 _GLOBAL_INTERVENTION_GOV: InterventionGovernance = InterventionGovernance()
 from app.governance.adaptive_contingency import GroupContingencyState
 _ELEVATOR_CONTINGENCY_STATES: Dict[str, GroupContingencyState] = {}
+from app.governance.elevator_budget import FacilityBudgetState
+_FACILITY_BUDGET_STATE: FacilityBudgetState = FacilityBudgetState()
+_LAST_SOFT_CONTINGENCY_PEAK_STATE: Optional[bool] = None
 
 
 
@@ -3482,6 +3495,12 @@ def execute_balancer_cycle(
     and executes non-blocking parallel hardware preset changes if required.
     """
     import concurrent.futures
+    from app.governance.preset_balancer import (
+        ACTION_STEP_DOWN_CASCADE,
+        ACTION_STEP_DOWN_HW_ERRORS,
+        ACTION_STEP_DOWN_RESTARTS,
+        ACTION_STEP_DOWN_THERMAL,
+    )
 
     global _LAST_BALANCER_CYCLE_TS
     bal_enabled_cfg = bool(config.get("preset_balancer_enabled", False))
@@ -3561,6 +3580,7 @@ def execute_balancer_cycle(
             group_metrics=metrics_list,
             max_preset_override=max_override,
             current_time=now_ts,
+            facility_state=_FACILITY_BUDGET_STATE,
         )
         decisions.append((m_metrics, decision))
         if getattr(decision, "boost_cooling_requested", False) and st is not None:
@@ -3577,35 +3597,56 @@ def execute_balancer_cycle(
 
     write_results: Dict[str, tuple] = {}
     if writers:
-        executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(4, len(writers))
-        )
-        try:
-            future_to_name = {
-                executor.submit(
-                    safe_set_miner_preset,
-                    miner.get("host", ""),
-                    vnish_pw,
-                    d.target_preset,
-                    timeout=float(config.get("fan_governor_request_timeout", 2.5)),
-                ): m.miner_name
-                for miner, m, d in writers
-            }
-            deadline = time.monotonic() + float(config.get("fan_governor_fleet_timeout", 5.0))
-            for future in concurrent.futures.as_completed(
-                future_to_name.keys(),
-                timeout=float(config.get("fan_governor_fleet_timeout", 5.0)),
+        # Spec 077 (REQ-002): Facility-Wide Staggered Queue across shared service drop.
+        # Only 1 miner executes a preset change per cycle, enforcing a 180s settle window.
+        # Prioritize emergency step-downs (thermal/HW errors/restarts) before step-ups.
+        def _writer_priority(w_item):
+            _, _, d = w_item
+            if d.action in (
+                ACTION_STEP_DOWN_THERMAL,
+                ACTION_STEP_DOWN_HW_ERRORS,
+                ACTION_STEP_DOWN_RESTARTS,
+                ACTION_STEP_DOWN_CASCADE,
             ):
-                m_name = future_to_name[future]
-                try:
-                    ok, err = future.result(timeout=max(0.1, deadline - time.monotonic()))
-                    write_results[m_name] = (ok, err)
-                except Exception as exc:
-                    write_results[m_name] = (False, str(exc))
-        except concurrent.futures.TimeoutError:
-            for future, m_name in future_to_name.items():
-                if m_name not in write_results:
-                    write_results[m_name] = (False, "fleet_timeout")
+                return 0  # Highest priority: emergency relief
+            return 1      # Normal optimization
+
+        writers.sort(key=_writer_priority)
+        target_dict, m_tgt, d_tgt = writers[0]
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        fleet_timeout = float(config.get("fan_governor_fleet_timeout", 5.0))
+        req_timeout = float(config.get("fan_governor_request_timeout", 2.5))
+        try:
+            future = executor.submit(
+                safe_set_miner_preset,
+                target_dict.get("host", ""),
+                vnish_pw,
+                d_tgt.target_preset,
+                timeout=req_timeout,
+            )
+            try:
+                ok, err = future.result(timeout=fleet_timeout)
+                write_results[m_tgt.miner_name] = (ok, err)
+                if ok:
+                    _FACILITY_BUDGET_STATE.record_transition(
+                        m_tgt.miner_name,
+                        d_tgt.target_preset,
+                        now_ts=now_ts,
+                    )
+                    log(
+                        f"[STAGGERED_BALANCER] Transición ejecutada con éxito en {m_tgt.miner_name}: "
+                        f"{d_tgt.current_preset} -> {d_tgt.target_preset}. Ventana de reposo de 180s iniciada en bajada compartida."
+                    )
+                else:
+                    log(
+                        f"[STAGGERED_BALANCER_ERR] Fallo aplicando preset {d_tgt.target_preset} a {m_tgt.miner_name}: {err}"
+                    )
+            except concurrent.futures.TimeoutError:
+                write_results[m_tgt.miner_name] = (False, "fleet_timeout")
+                log(f"[STAGGERED_BALANCER_ERR] Timeout de flota ({fleet_timeout}s) aplicando preset a {m_tgt.miner_name}")
+            except Exception as exc:
+                write_results[m_tgt.miner_name] = (False, str(exc))
         finally:
             executor.shutdown(wait=False)
 
@@ -5298,7 +5339,7 @@ def main() -> None:
         f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
     )
     qa_mode, qa_mode_source = qa_enabled(config)
-    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES
+    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE
     _QA_MODE = qa_mode
     qa_notify = qa_notify_enabled(config)
     qa_verbose = qa_verbose_enabled(config)
@@ -6399,8 +6440,8 @@ def main() -> None:
                         log(f"[SAFE-RECOVERY] {name_display} estabilizado en OK con pre-clamp: iniciando soak de rampa ascendente (180s)...")
                     elif (now_ts - state.staged_ramp_up_soak_start_ts) >= 180.0:
                         nom_preset = (getattr(state, "original_preset_before_clamp", None) or getattr(state, "balancer_preset", "2300W") or "2300W").rstrip("W")
-                        log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W, ceiling 2700W)...")
-                        safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=False, top_preset="2700")
+                        log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W, clamped)...")
+                        safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=True, top_preset=nom_preset)
                         with state_lock:
                             state.is_pre_clamped = False
                             state.staged_ramp_up_pending = False
@@ -7764,7 +7805,7 @@ def main() -> None:
                         with state_lock:
                             _contingency_items = list(_ELEVATOR_CONTINGENCY_STATES.items())
                         for grp, c_st in _contingency_items:
-                            if c_st.active:
+                            if c_st.active or c_st.inrush_dampener_active:
                                 _grp_presets = {}
                                 with state_lock:
                                     for _m in valid_miners:
@@ -7820,6 +7861,102 @@ def main() -> None:
                                         )
                 except Exception as _soak_exc:
                     log(f"[CONTINGENCY_SOAK_ERR] Soak evaluation error: {_soak_exc}")
+
+            # Spec 077: Soft-Contingencia Horaria & Bajada Compartida Orchestrator
+            try:
+                from app.governance.elevator_budget import (
+                    evaluate_soft_contingency_schedule,
+                    parse_preset_wattage,
+                )
+                from app.vnish.client import safe_set_miner_preset
+                global _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE
+                sched = evaluate_soft_contingency_schedule()
+
+                # Schedule state change notification
+                if _LAST_SOFT_CONTINGENCY_PEAK_STATE is None:
+                    _LAST_SOFT_CONTINGENCY_PEAK_STATE = sched.is_peak_window
+                elif sched.is_peak_window != _LAST_SOFT_CONTINGENCY_PEAK_STATE:
+                    _LAST_SOFT_CONTINGENCY_PEAK_STATE = sched.is_peak_window
+                    if sched.is_peak_window:
+                        notif_sched = (
+                            f"⚡ *SOFT-CONTINGENCIA HORARIA ACTIVADA*\n\n"
+                            f"• Ventana: *{sched.window_name}* (Día hábil pico).\n"
+                            f"• Protección: Limitando potencia de elevadores a *5000W* (máx 2500W/minero).\n"
+                            f"• Desescalada paulatina: Mineros en 2700W desescalan de a 1 por vez cada 180s para cuidar la bajada compartida."
+                        )
+                    else:
+                        notif_sched = (
+                            f"🌱 *SOFT-CONTINGENCIA HORARIA FINALIZADA*\n\n"
+                            f"• Estado: *Horario valle / red estable* ({sched.window_name}).\n"
+                            f"• Autorizada exploración escalonada hasta 2700W (5400W/elevador) respetando reposo de acometida."
+                        )
+                    send_telegram(
+                        bot_token,
+                        str(chat_id),
+                        notif_sched,
+                        "CONTINGENCY",
+                        f"soft_contingency_sched_{sched.window_name}",
+                        is_command=True,
+                    )
+
+                # If in peak window, enforce paulatina reduction to <= 2500W
+                if sched.is_peak_window:
+                    in_settle, rem_s, active_m = _FACILITY_BUDGET_STATE.is_facility_in_settle(now_ts)
+                    if not in_settle:
+                        # Find first miner exceeding 2500W
+                        miner_to_step_down = None
+                        miner_curr_p = ""
+                        for _m in valid_miners:
+                            _mn = _m.get("name")
+                            _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                            with state_lock:
+                                _st = states.get(_sk)
+                                _pr = getattr(_st, "balancer_preset", None) if _st else None
+                            _curr_p = _pr or _m.get("max_preset", "2700W")
+                            if parse_preset_wattage(_curr_p) > 2500:
+                                miner_to_step_down = _m
+                                miner_curr_p = _curr_p
+                                break
+
+                        if miner_to_step_down:
+                            _td_name = miner_to_step_down.get("name", "")
+                            _td_host = miner_to_step_down.get("host", "")
+                            _vnish_pw = str(config.get("vnish_api_password", "admin"))
+                            if not qa_mode:
+                                _sd_ok, _sd_msg = safe_set_miner_preset(
+                                    _td_host,
+                                    _vnish_pw,
+                                    "2500W",
+                                    timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+                                    clamp_top_preset=True,
+                                    top_preset="2500W",
+                                )
+                                log(f"[SOFT_CONTINGENCY] Desescalada escalonada a 2500W aplicada a {_td_name}: ok={_sd_ok} msg={_sd_msg}")
+                            else:
+                                _sd_ok = True
+                                _sd_msg = "qa_simulated"
+
+                            if _sd_ok:
+                                _FACILITY_BUDGET_STATE.record_transition(_td_name, "2500W", now_ts)
+                                _td_sk = f"{_td_name}|{_td_host}:{miner_to_step_down.get('port', 4028)}"
+                                with state_lock:
+                                    _td_st = states.get(_td_sk)
+                                    if _td_st:
+                                        _td_st.balancer_preset = "2500W"
+                                send_telegram(
+                                    bot_token,
+                                    str(chat_id),
+                                    f"⚡ *SOFT-CONTINGENCIA: DESESCALADA ESCALONADA*\n\n"
+                                    f"Ajuste defensivo para proteger la acometida eléctrica compartida.\n"
+                                    f"• Minero: *{_td_name}*\n"
+                                    f"• Rampa suave: *{miner_curr_p}* ➔ *2500W*.\n"
+                                    f"• Reposo de red: Iniciada ventana de estabilización de 180s.",
+                                    "CONTINGENCY",
+                                    f"soft_down_{_td_name}",
+                                    is_command=True,
+                                )
+            except Exception as _soft_exc:
+                log(f"[SOFT_CONTINGENCY_ERR] Error en evaluador de soft-contingencia: {_soft_exc}")
 
             with state_lock:
                 _payload = _build_state_payload(states, current_last_update_id)

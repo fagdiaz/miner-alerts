@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import json
 from pathlib import Path
 import re
@@ -20,6 +21,10 @@ ACTION_STEP_UP_OPTIMIZE = "STEP_UP_OPTIMIZE"
 ACTION_LOCKED_MAX = "LOCKED_MAX"
 ACTION_LOCKED_MIN = "LOCKED_MIN"
 ACTION_UNKNOWN = "UNKNOWN"
+ACTION_HOLD_FACILITY_SETTLE = "HOLD_FACILITY_SETTLE"
+ACTION_HOLD_BUDGET_LIMIT = "HOLD_BUDGET_LIMIT"
+ACTION_HOLD_ASYMMETRY_PREFERENCE = "HOLD_ASYMMETRY_PREFERENCE"
+ACTION_HOLD_SCHEDULE_CEILING = "HOLD_SCHEDULE_CEILING"
 
 
 @dataclass(frozen=True)
@@ -142,6 +147,8 @@ def evaluate_balancer_step(
     max_preset_override: Optional[str] = None,
     now_ts: Optional[float] = None,
     current_time: Optional[float] = None,
+    facility_state: Optional[Any] = None,
+    now_dt: Optional[datetime] = None,
 ) -> BalancerDecision:
     """
     Pure mathematical decision engine for Dynamic Power & Preset Balancer.
@@ -322,6 +329,35 @@ def evaluate_balancer_step(
         if curr_idx < ceiling_idx and curr_idx < len(tiers) - 1:
             if metrics.thermal_headroom_c >= cfg.min_thermal_headroom_c:
                 target_tier = tiers[curr_idx + 1]
+                if facility_state is not None:
+                    from app.governance.elevator_budget import evaluate_facility_transition_permission
+                    group_presets = {
+                        m.miner_name: m.current_preset
+                        for m in (group_metrics or [metrics])
+                        if m.electrical_group == metrics.electrical_group
+                    }
+                    staggered_dec = evaluate_facility_transition_permission(
+                        miner_name=metrics.miner_name,
+                        current_preset=current_tier.name,
+                        target_preset=target_tier.name,
+                        group_name=metrics.electrical_group,
+                        group_presets=group_presets,
+                        now_ts=current_time,
+                        facility_state=facility_state,
+                        now_dt=now_dt,
+                    )
+                    if not staggered_dec.can_proceed:
+                        return BalancerDecision(
+                            action=staggered_dec.action,
+                            miner_name=metrics.miner_name,
+                            electrical_group=metrics.electrical_group,
+                            current_preset=current_tier.name,
+                            target_preset=current_tier.name,
+                            reason=staggered_dec.reason,
+                            requires_write=False,
+                            estimated_effective_hashrate=eff_current,
+                        )
+
                 return BalancerDecision(
                     action=ACTION_STEP_UP_OPTIMIZE,
                     miner_name=metrics.miner_name,

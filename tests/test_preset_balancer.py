@@ -3,6 +3,10 @@ from __future__ import annotations
 import unittest
 
 from app.governance.preset_balancer import (
+    ACTION_HOLD_ASYMMETRY_PREFERENCE,
+    ACTION_HOLD_BUDGET_LIMIT,
+    ACTION_HOLD_FACILITY_SETTLE,
+    ACTION_HOLD_SCHEDULE_CEILING,
     ACTION_HOLD_STABLE,
     ACTION_LOCKED_MAX,
     ACTION_LOCKED_MIN,
@@ -485,6 +489,100 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertEqual(dec.action, ACTION_STEP_UP_OPTIMIZE)
         self.assertEqual(dec.target_preset, "2700W")
         self.assertFalse(dec.boost_cooling_requested)
+
+    def test_step_up_held_by_facility_settle_window(self):
+        """Spec 077: Step-up optimization is held if the shared facility drop line is in settle."""
+        from app.governance.elevator_budget import FacilityBudgetState
+        fac_st = FacilityBudgetState(settle_window_seconds=180.0)
+        fac_st.record_transition("S19JPRO-24", "2500W", now_ts=1000.0)
+
+        m = StabilityMetrics(
+            miner_name="S19JPRO-26",
+            electrical_group="elevator_2",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=93.5,
+            thermal_headroom_c=7.0,
+            current_temp_c=78.0,
+        )
+        dec = evaluate_balancer_step(
+            m,
+            self.cfg,
+            current_time=1060.0,  # 60s into 180s settle
+            facility_state=fac_st,
+        )
+        self.assertEqual(dec.action, ACTION_HOLD_FACILITY_SETTLE)
+        self.assertFalse(dec.requires_write)
+        self.assertIn("Bajada compartida en estabilización", dec.reason)
+
+    def test_step_up_held_by_schedule_ceiling(self):
+        """Spec 077: Step-up optimization towards 2700W is held during peak windows."""
+        from datetime import datetime
+        from app.governance.elevator_budget import FacilityBudgetState
+        fac_st = FacilityBudgetState()
+        peak_dt = datetime(2026, 9, 21, 9, 0)  # Monday 09:00 AM (peak)
+
+        m = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=93.5,
+            thermal_headroom_c=7.0,
+            current_temp_c=78.0,
+        )
+        dec = evaluate_balancer_step(
+            m,
+            self.cfg,
+            current_time=2000.0,
+            facility_state=fac_st,
+            now_dt=peak_dt,
+        )
+        self.assertEqual(dec.action, ACTION_HOLD_SCHEDULE_CEILING)
+        self.assertFalse(dec.requires_write)
+        self.assertIn("soft-contingencia horaria activo", dec.reason)
+
+    def test_step_up_held_by_asymmetry_preference(self):
+        """Spec 077: Candidate cannot step up to 2700W if partner has not yet reached 2500W."""
+        from datetime import datetime
+        from app.governance.elevator_budget import FacilityBudgetState
+        fac_st = FacilityBudgetState()
+        off_peak_dt = datetime(2026, 9, 21, 14, 0)  # Off-peak
+
+        m24 = StabilityMetrics(
+            miner_name="S19JPRO-24",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            avg_hashrate_24h_ths=93.5,
+            thermal_headroom_c=7.0,
+            current_temp_c=78.0,
+        )
+        m23 = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2300W",  # Partner not yet at 2500W!
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+        )
+        dec = evaluate_balancer_step(
+            m24,
+            self.cfg,
+            group_metrics=[m23, m24],
+            current_time=3000.0,
+            facility_state=fac_st,
+            now_dt=off_peak_dt,
+        )
+        self.assertEqual(dec.action, ACTION_HOLD_ASYMMETRY_PREFERENCE)
+        self.assertFalse(dec.requires_write)
+        self.assertIn("Preferencia simétrica de elevador", dec.reason)
 
 
 if __name__ == "__main__":

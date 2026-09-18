@@ -3,6 +3,34 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-18] - Auditoría QA y Spec 077: Gobernanza Escalonada de Elevadores, Bajada Compartida y Soft-Contingencia Horaria (PROP-012)
+
+* **Objetivo**:
+  1. Ejecutar auditoría integral de QA y corrección de bugs en lógica de soak tick de contingencia (`adaptive_contingency.py`), normalización de reseteos en Telegram y eliminación de imports duplicados.
+  2. Implementar `PROP-012` / `Spec 077` para modelar y gobernar las restricciones físicas de la infraestructura eléctrica: acometida compartida desde la calle entre ambos elevadores y mitigación de transitorios inductivos ($L \frac{di}{dt}$) y calentamiento por Joule ($I^2 R$).
+  3. Establecer la cola de transición escalonada para toda la instalación (*Facility-Wide Staggered Queue*): exactamente 1 minero ejecuta cambios de preset por ciclo con una ventana de reposo obligatoria de 180 segundos (*Facility Settle Window*).
+  4. Implementar presupuesto dinámico por transformador elevador ($\le 5000\text{W}$ en horario pico, $\le 5400\text{W}$ en horario valle) y hacer valer la preferencia de equilibrio simétrico (priorizar parejas 2x 2500W antes de intentar combinaciones asimétricas 2700W + 2300W).
+  5. Implementar Soft-Contingencia Horaria quirúrgica: en días hábiles (Lunes a Viernes), desescalada paulatina (1 a la vez espaciada por 180s) hacia 2500W durante el pico matutino (08:30-10:30 hs) y nocturno (19:30-22:30 hs). Fuera de los picos (19 horas en días de semana y 100% de fines de semana), se autoriza la exploración escalonada de máxima potencia hacia 2700W (hasta 5400W/elevador y 10.8 kW en acometida).
+  6. Preservar la co-gobernanza con VNish: fijar la macro-envolvente en el monitor con clampeo estricto de `top_preset` para evitar que el daemon térmico interno desbalancee los elevadores en ambiente frío, permitiendo que VNish administre la sintonización fina de chips.
+* **Auditoría QA y Hallazgos Subsanados**:
+  - *Falla de recuperación de minero robusto en `adaptive_contingency.py`*: `soak_tick` sólo verificaba al canario, dejando al compañero robusto degradado indefinidamente. Reparado incorporando evaluación y rampa ascendente del compañero.
+  - *Sobreescritura espuria por fallback 2700W en canario*: `canary_initial_preset or DEFAULT_MAX_CEILING` forzaba a mineros canarios no degradados a subir a 2700W. Corregido para considerar al canario degradado sólo si `canary_initial_preset` fue efectivamente fijado.
+  - *Condición de `is_full_restore`*: Redefinida para exigir que ambos mineros del elevador alcancen sus respectivos presets iniciales antes de desactivar la contingencia.
+  - *Fallback seguro en amortiguador de arranque*: `inrush_dampener_restored_preset` ahora recurre al preset actual (`curr_p`) antes de caer al techo global.
+  - *Reseteo de contingencia en Telegram*: `/contingencia reset` ahora abarca a todos los grupos de `DEFAULT_CANARY_MAP` incluso en arranques en frío donde el diccionario de estados esté vacío.
+* **Componentes Implementados / Modificados**:
+  - `app/governance/elevator_budget.py`: Módulo funcional puro con `FacilityBudgetState`, cálculo de potencia de grupo, `evaluate_soft_contingency_schedule()`, `can_step_up_within_budget()`, `evaluate_symmetric_balance_preference()`, y compuerta de 4 niveles `evaluate_facility_transition_permission()`.
+  - `app/governance/preset_balancer.py`: Extensión de `evaluate_balancer_step()` con soporte de `facility_state`, acciones `ACTION_HOLD_FACILITY_SETTLE`, `ACTION_HOLD_BUDGET_LIMIT`, `ACTION_HOLD_ASYMMETRY_PREFERENCE` y `ACTION_HOLD_SCHEDULE_CEILING`.
+  - `app/miner_monitor.py`: Persistencia de `facility_budget` en `state.json`, secuenciación de actuador único en `execute_balancer_cycle()` bajo ejecutor acotado con timeout de flota, y orquestador de Soft-Contingencia en el bucle principal.
+  - `tests/test_elevator_budget.py`: 21 tests unitarios exhaustivos para estados de reposo, límites de calendario y cálculo de presupuestos.
+  - `tests/test_adaptive_contingency.py`: Tests añadidos para recuperación escalonada de minero robusto y desescaladas secuenciales.
+  - `tests/test_preset_balancer.py`: Tests unitarios para interbloqueos de ventana de reposo de bajada compartida, techo de horario pico y preferencia simétrica.
+* **Resultados & Verificación**:
+  - Suite de regresión global: **1288/1288 tests PASS**, 75 subtests PASS en 43.28s (0 fallos, 0 errores, 0 regresiones).
+  - Compilación limpia con `py_compile` en todos los módulos modificados.
+  - Estado del Minero 25: 378/378 chips sanos y hasheando de forma estable en 2300W (87.5 TH/s, 59-81°C).
+  - Servicio Windows `MinerAlerts` actualizado y certificado.
+
 ## [2026-09-18] - Auditoría QA y Spec 076: Reinstalación Autónoma de Firmware VNish en NAND y Calibración de Escalera de Hardware S19j Pro (PROP-011)
 
 * **Objetivo**:

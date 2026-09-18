@@ -112,7 +112,8 @@ class ContingencyCommand(BaseCommandHandler):
         sub = (args[0].lower().strip() if args else "status")
         now_ts = time.time()
         if sub in ("reset", "resetear", "nominal"):
-            for grp in list(mm._ELEVATOR_CONTINGENCY_STATES.keys()):
+            groups_to_reset = sorted(set(mm._ELEVATOR_CONTINGENCY_STATES.keys()).union(DEFAULT_CANARY_MAP.keys()))
+            for grp in groups_to_reset:
                 dec = evaluate_canary_contingency("manual_reset", "", grp, {}, now_ts)
                 if dec.updated_group_state:
                     mm._ELEVATOR_CONTINGENCY_STATES[grp] = dec.updated_group_state

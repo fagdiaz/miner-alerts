@@ -14,7 +14,7 @@ Strictly deterministic and free of network I/O.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, time as dtime
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -33,12 +33,25 @@ DEFAULT_VALLEY_ELEVATOR_BUDGET_W: int = 5400     # 2x 2700W during off-peak wind
 DEFAULT_PEAK_MAX_PRESET: str = "2500W"
 DEFAULT_VALLEY_MAX_PRESET: str = "2700W"
 
+# Spec 078: Incident Quiet Window and Solar Thermal Constants
+DEFAULT_INCIDENT_QUIET_WINDOW_S: float = 300.0  # 5 minutes quiet window on an elevator group after an incident
+DEFAULT_SOLAR_WINDOW_START: dtime = dtime(11, 0)
+DEFAULT_SOLAR_WINDOW_END: dtime = dtime(17, 0)
+DEFAULT_SOLAR_MAX_PRESET: str = "2500W"
+DEFAULT_SOLAR_CRITICAL_TEMP_C: float = 82.0
+
 # Decision Actions
 ACTION_ALLOW_TRANSITION = "ALLOW_TRANSITION"
 ACTION_HOLD_FACILITY_SETTLE = "HOLD_FACILITY_SETTLE"
 ACTION_HOLD_BUDGET_LIMIT = "HOLD_BUDGET_LIMIT"
 ACTION_HOLD_ASYMMETRY_PREFERENCE = "HOLD_ASYMMETRY_PREFERENCE"
 ACTION_HOLD_SCHEDULE_CEILING = "HOLD_SCHEDULE_CEILING"
+ACTION_HOLD_INCIDENT_QUIET = "HOLD_INCIDENT_QUIET"
+ACTION_HOLD_HARDWARE_LIMIT = "HOLD_HARDWARE_LIMIT"
+ACTION_HOLD_SOLAR_ENVELOPE = "HOLD_SOLAR_ENVELOPE"
+ACTION_HOLD_THERMAL_HEADROOM = "HOLD_THERMAL_HEADROOM"
+
+DEFAULT_VALLEY_STEP_UP_MAX_CHIP_TEMP_C: float = 80.0
 
 # Preset to Wattage mapping (derived from hardware validated ladder)
 PRESET_WATTAGE_MAP: Dict[str, int] = {
@@ -67,6 +80,20 @@ def parse_preset_wattage(preset_str: str) -> int:
     return 2500
 
 
+def parse_time_str(val: Any, default_time: dtime) -> dtime:
+    """Parse 'HH:MM' string into datetime.time object safely."""
+    if not val or not isinstance(val, str):
+        return default_time
+    try:
+        parts = [int(p) for p in val.strip().split(":")]
+        if len(parts) >= 2:
+            return dtime(parts[0], parts[1])
+    except Exception:
+        pass
+    return default_time
+
+
+
 @dataclass
 class FacilityBudgetState:
     """Tracks global transition state across the shared electrical drop line."""
@@ -74,6 +101,8 @@ class FacilityBudgetState:
     active_transition_miner: str = ""
     active_transition_target_preset: str = ""
     settle_window_seconds: float = DEFAULT_FACILITY_SETTLE_WINDOW_S
+    incident_quiet_window_s: float = DEFAULT_INCIDENT_QUIET_WINDOW_S
+    last_group_incident_ts: Dict[str, float] = field(default_factory=dict)
 
     def is_facility_in_settle(self, now_ts: float) -> Tuple[bool, float, str]:
         """Check if facility is currently waiting for a miner transition to settle.
@@ -101,6 +130,34 @@ class FacilityBudgetState:
         self.active_transition_miner = ""
         self.active_transition_target_preset = ""
 
+    def record_group_incident(self, group_name: str, now_ts: float) -> None:
+        """Register an unexpected restart or contingency incident on an elevator group."""
+        if not group_name:
+            return
+        self.last_group_incident_ts[str(group_name)] = float(now_ts)
+
+    def is_group_in_incident_quiet(self, group_name: str, now_ts: float) -> Tuple[bool, float]:
+        """Check if an elevator group is currently waiting for the incident quiet window (300s).
+        
+        Returns:
+            Tuple[bool, float]: (in_quiet, remaining_seconds)
+        """
+        if not group_name or str(group_name) not in self.last_group_incident_ts:
+            return False, 0.0
+        ts = self.last_group_incident_ts[str(group_name)]
+        if ts <= 0.0:
+            return False, 0.0
+        elapsed = now_ts - ts
+        remaining = max(0.0, self.incident_quiet_window_s - elapsed)
+        if remaining > 0.0:
+            return True, remaining
+        return False, 0.0
+
+    def clear_group_incident(self, group_name: str) -> None:
+        """Clear incident quiet window for an elevator group."""
+        if group_name and str(group_name) in self.last_group_incident_ts:
+            del self.last_group_incident_ts[str(group_name)]
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -108,11 +165,15 @@ class FacilityBudgetState:
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> FacilityBudgetState:
         if not data or not isinstance(data, dict):
             return cls()
+        inc_ts_raw = data.get("last_group_incident_ts", {})
+        inc_ts = {str(k): float(v) for k, v in inc_ts_raw.items()} if isinstance(inc_ts_raw, dict) else {}
         return cls(
             last_facility_transition_ts=float(data.get("last_facility_transition_ts", 0.0)),
             active_transition_miner=str(data.get("active_transition_miner", "")),
             active_transition_target_preset=str(data.get("active_transition_target_preset", "")),
             settle_window_seconds=float(data.get("settle_window_seconds", DEFAULT_FACILITY_SETTLE_WINDOW_S)),
+            incident_quiet_window_s=float(data.get("incident_quiet_window_s", DEFAULT_INCIDENT_QUIET_WINDOW_S)),
+            last_group_incident_ts=inc_ts,
         )
 
 
@@ -126,18 +187,22 @@ class ScheduleEvaluation:
     reason: str
 
 
-def evaluate_soft_contingency_schedule(now_dt: Optional[datetime] = None) -> ScheduleEvaluation:
+def evaluate_soft_contingency_schedule(
+    now_dt: Optional[datetime] = None,
+    config: Optional[Dict[str, Any]] = None,
+) -> ScheduleEvaluation:
     """Evaluate whether the current moment falls in an electrical grid peak window.
     
     Schedule (Local Time):
     - Weekdays (Monday=0 through Friday=4):
-      - Morning Peak: 08:30 <= time < 10:30 (2 hours)
-      - Evening Peak: 19:30 <= time < 22:30 (3 hours)
+      - Morning Peak: Configurable (defaults to 08:30-10:30 if config is None, or 08:30-09:30 if config provided)
+      - Evening Peak: Configurable (defaults to 19:30-22:30 if config is None, or 20:00-21:15 if config provided)
     - Weekends (Saturday=5, Sunday=6):
       - 100% valley / stable operation. Full exploration allowed.
       
     Args:
         now_dt: Optional datetime instance (defaults to datetime.now())
+        config: Optional configuration dictionary
         
     Returns:
         ScheduleEvaluation with peak status, allowed ceilings, and descriptive reason.
@@ -157,38 +222,164 @@ def evaluate_soft_contingency_schedule(now_dt: Optional[datetime] = None) -> Sch
             reason=f"Fin de semana ({day_str}): red de alta estabilidad, sin soft-contingencia horaria",
         )
 
-    # Weekdays: Check Morning Peak (08:30 - 10:30)
-    morning_start = dtime(8, 30)
-    morning_end = dtime(10, 30)
+    if config is not None and isinstance(config, dict):
+        morning_start = parse_time_str(config.get("soft_contingency_morning_start"), dtime(8, 30))
+        morning_end = parse_time_str(config.get("soft_contingency_morning_end"), dtime(9, 30))
+        evening_start = parse_time_str(config.get("soft_contingency_evening_start"), dtime(20, 0))
+        evening_end = parse_time_str(config.get("soft_contingency_evening_end"), dtime(21, 15))
+        peak_preset = str(config.get("soft_contingency_peak_max_preset", DEFAULT_PEAK_MAX_PRESET))
+        valley_preset = str(config.get("soft_contingency_valley_max_preset", DEFAULT_VALLEY_MAX_PRESET))
+    else:
+        morning_start = dtime(8, 30)
+        morning_end = dtime(10, 30)
+        evening_start = dtime(19, 30)
+        evening_end = dtime(22, 30)
+        peak_preset = DEFAULT_PEAK_MAX_PRESET
+        valley_preset = DEFAULT_VALLEY_MAX_PRESET
+
+    peak_budget_w = parse_preset_wattage(peak_preset) * 2
+    valley_budget_w = parse_preset_wattage(valley_preset) * 2
+
+    # Weekdays: Check Morning Peak
     if morning_start <= t < morning_end:
         return ScheduleEvaluation(
             is_peak_window=True,
             window_name="morning_peak",
-            max_individual_preset=DEFAULT_PEAK_MAX_PRESET,
-            max_elevator_budget_w=DEFAULT_PEAK_ELEVATOR_BUDGET_W,
-            reason="Franja pico matutina día hábil (08:30-10:30): soft-contingencia activa a 2500W (5000W/elevador)",
+            max_individual_preset=peak_preset,
+            max_elevator_budget_w=peak_budget_w,
+            reason=f"Franja pico matutina día hábil ({morning_start.strftime('%H:%M')}-{morning_end.strftime('%H:%M')}): soft-contingencia activa a {peak_preset} ({peak_budget_w}W/elevador)",
         )
 
-    # Weekdays: Check Evening Peak (19:30 - 22:30)
-    evening_start = dtime(19, 30)
-    evening_end = dtime(22, 30)
+    # Weekdays: Check Evening Peak
     if evening_start <= t < evening_end:
         return ScheduleEvaluation(
             is_peak_window=True,
             window_name="evening_peak",
-            max_individual_preset=DEFAULT_PEAK_MAX_PRESET,
-            max_elevator_budget_w=DEFAULT_PEAK_ELEVATOR_BUDGET_W,
-            reason="Franja pico nocturna día hábil (19:30-22:30): soft-contingencia activa a 2500W (5000W/elevador)",
+            max_individual_preset=peak_preset,
+            max_elevator_budget_w=peak_budget_w,
+            reason=f"Franja pico nocturna día hábil ({evening_start.strftime('%H:%M')}-{evening_end.strftime('%H:%M')}): soft-contingencia activa a {peak_preset} ({peak_budget_w}W/elevador)",
         )
 
     # Weekdays off-peak
     return ScheduleEvaluation(
         is_peak_window=False,
         window_name="off_peak_weekday",
-        max_individual_preset=DEFAULT_VALLEY_MAX_PRESET,
-        max_elevator_budget_w=DEFAULT_VALLEY_ELEVATOR_BUDGET_W,
-        reason="Horario valle día hábil: autorizada exploración escalonada hasta 2700W (5400W/elevador)",
+        max_individual_preset=valley_preset,
+        max_elevator_budget_w=valley_budget_w,
+        reason=f"Horario valle día hábil: autorizada exploración escalonada hasta {valley_preset} ({valley_budget_w}W/elevador)",
     )
+
+
+@dataclass(frozen=True)
+class SolarEnvelopeEvaluation:
+    """Outcome of evaluating solar thermal envelope rules (11:00-17:00 hs)."""
+    is_solar_window: bool
+    is_overheated: bool
+    max_authorized_preset: str
+    reason: str
+
+
+def evaluate_solar_thermal_envelope(
+    now_dt: Optional[datetime] = None,
+    max_chip_temp_c: float = 0.0,
+    config: Optional[Dict[str, Any]] = None,
+) -> SolarEnvelopeEvaluation:
+    """Evaluate solar thermal constraints during the midday/afternoon solar heating window.
+    
+    Hours: 11:00 to 17:00 hs every day (local time UTC-3).
+    Rule: Fleet ceiling is clamped to 2500W to avoid hitting VNish 84°C decrease_temp tripwire.
+    If max_chip_temp_c >= 82.0°C: strictly enforces 2500W and signals critical thermal relief.
+    If outside 11:00-17:00 hs: solar constraint is inactive (valley default allowed).
+    """
+    dt = now_dt or datetime.now()
+    t = dt.time()
+
+    solar_start = parse_time_str(
+        config.get("solar_thermal_start") if config else None,
+        DEFAULT_SOLAR_WINDOW_START,
+    )
+    solar_end = parse_time_str(
+        config.get("solar_thermal_end") if config else None,
+        DEFAULT_SOLAR_WINDOW_END,
+    )
+    solar_preset = str(
+        config.get("solar_thermal_max_preset", DEFAULT_SOLAR_MAX_PRESET)
+        if config else DEFAULT_SOLAR_MAX_PRESET
+    )
+    crit_temp = float(
+        config.get("solar_thermal_critical_temp_c", DEFAULT_SOLAR_CRITICAL_TEMP_C)
+        if config else DEFAULT_SOLAR_CRITICAL_TEMP_C
+    )
+
+    if solar_start <= t < solar_end:
+        if max_chip_temp_c >= crit_temp:
+            return SolarEnvelopeEvaluation(
+                is_solar_window=True,
+                is_overheated=True,
+                max_authorized_preset=DEFAULT_SOLAR_MAX_PRESET,
+                reason=(
+                    f"Franja solar crítica ({solar_start.strftime('%H:%M')}-{solar_end.strftime('%H:%M')}) "
+                    f"con chip a {max_chip_temp_c:.1f}°C >= {crit_temp:.1f}°C: "
+                    f"techo forzado a {DEFAULT_SOLAR_MAX_PRESET} para prevenir corte brusco VNish a 84°C."
+                ),
+            )
+        return SolarEnvelopeEvaluation(
+            is_solar_window=True,
+            is_overheated=False,
+            max_authorized_preset=solar_preset,
+            reason=(
+                f"Franja solar activa ({solar_start.strftime('%H:%M')}-{solar_end.strftime('%H:%M')}): "
+                f"techo preventivo fijado en {solar_preset}."
+            ),
+        )
+
+    return SolarEnvelopeEvaluation(
+        is_solar_window=False,
+        is_overheated=False,
+        max_authorized_preset=DEFAULT_VALLEY_MAX_PRESET,
+        reason="Fuera de franja solar: autorizada plena exploración según calendario y red.",
+    )
+
+
+def get_miner_max_hardware_preset(
+    miner_name: str,
+    config: Optional[Dict[str, Any]] = None,
+    default_preset: str = DEFAULT_VALLEY_MAX_PRESET,
+) -> str:
+    """Retrieve the maximum hardware capability ceiling for an individual miner.
+    
+    Reads from miner definition in config['miners'] or config['miner_hardware_limits'].
+    Defaults to default_preset (2700W) if not restricted.
+    """
+    if not config or not isinstance(config, dict):
+        return default_preset
+
+    norm = normalize_miner_name(miner_name)
+    miners_list = config.get("miners", [])
+    if isinstance(miners_list, list):
+        for m in miners_list:
+            if isinstance(m, dict):
+                m_name = m.get("name", "")
+                m_ip = m.get("ip", "")
+                if normalize_miner_name(m_name) == norm or normalize_miner_name(m_ip) == norm:
+                    hw_limit = m.get("max_hardware_preset") or m.get("hardware_ceiling")
+                    if hw_limit:
+                        clean = str(hw_limit).strip().upper()
+                        if not clean.endswith("W") and clean.isdigit():
+                            clean = f"{clean}W"
+                        return clean
+
+    hw_map = config.get("miner_hardware_limits")
+    if isinstance(hw_map, dict):
+        for k, v in hw_map.items():
+            if normalize_miner_name(k) == norm:
+                clean = str(v).strip().upper()
+                if not clean.endswith("W") and clean.isdigit():
+                    clean = f"{clean}W"
+                return clean
+
+    return default_preset
+
 
 
 def calculate_group_wattage(group_presets: Dict[str, str]) -> int:
@@ -302,6 +493,9 @@ def evaluate_facility_transition_permission(
     facility_state: FacilityBudgetState,
     now_dt: Optional[datetime] = None,
     is_step_down: bool = False,
+    config: Optional[Dict[str, Any]] = None,
+    max_chip_temp_c: float = 0.0,
+    miner_hardware_max_preset: Optional[str] = None,
 ) -> StaggeredDecision:
     """Pure evaluation of whether an ASIC miner is authorized to change preset.
     
@@ -310,14 +504,17 @@ def evaluate_facility_transition_permission(
     tracker to give the shared drop line time to stabilize.
     
     Step-ups MUST satisfy:
+    0. Group Incident Quiet Window (300s elapsed post-incident on this elevator group).
     1. Facility Settle Window (180s elapsed since last transition across the whole plant).
-    2. Soft-Contingency Schedule: Cannot exceed schedule max preset (e.g. 2500W in peak).
-    3. Group Power Budget: Total group wattage <= allowed budget (5000W or 5400W).
-    4. Symmetric Balance: Partner must be at least 2500W before candidate reaches 2700W.
+    2. Individual Hardware Ceiling (e.g. Miner 25 silicon limit of 2500W).
+    3. Solar Thermal Envelope (11:00-17:00 hs clamped to 2500W if overheated/solar window).
+    4. Soft-Contingency Schedule: Cannot exceed schedule max preset (e.g. 2500W in peak).
+    5. Group Power Budget: Total group wattage <= allowed budget (5000W or 5400W).
+    6. Symmetric Balance: Partner must be at least 2500W before candidate reaches 2700W.
     """
     curr_w = parse_preset_wattage(current_preset)
     target_w = parse_preset_wattage(target_preset)
-    sched = evaluate_soft_contingency_schedule(now_dt)
+    sched = evaluate_soft_contingency_schedule(now_dt, config=config)
 
     # Step-downs (downward power reductions)
     if is_step_down or target_w < curr_w:
@@ -335,7 +532,24 @@ def evaluate_facility_transition_permission(
             max_authorized_budget_w=sched.max_elevator_budget_w,
         )
 
-    # Step-ups: Gate 1 — Facility Settle Lock across shared drop line
+    # Gate 0 — Group Incident Quiet Window (Spec 078 / PROP-013)
+    in_quiet, rem_q = facility_state.is_group_in_incident_quiet(group_name, now_ts)
+    if in_quiet:
+        return StaggeredDecision(
+            action=ACTION_HOLD_INCIDENT_QUIET,
+            can_proceed=False,
+            miner_name=miner_name,
+            target_preset=target_preset,
+            reason=(
+                f"Grupo '{group_name}' en reposo post-incidente: {rem_q:.0f}s restantes de ventana de "
+                f"{facility_state.incident_quiet_window_s:.0f}s. Evitando perturbación inductiva y ruido en elevador."
+            ),
+            remaining_settle_seconds=rem_q,
+            projected_group_power_w=calculate_group_wattage(group_presets),
+            max_authorized_budget_w=sched.max_elevator_budget_w,
+        )
+
+    # Gate 1 — Facility Settle Lock across shared drop line (Spec 077 / PROP-012)
     in_settle, rem_s, active_m = facility_state.is_facility_in_settle(now_ts)
     if in_settle:
         return StaggeredDecision(
@@ -352,8 +566,63 @@ def evaluate_facility_transition_permission(
             max_authorized_budget_w=sched.max_elevator_budget_w,
         )
 
-    # Gate 2 — Schedule ceiling check (Soft-Contingency Peak)
+    # Gate 2 — Individual Silicon Hardware Ceiling (Spec 078 / PROP-013)
+    hw_max = miner_hardware_max_preset or get_miner_max_hardware_preset(miner_name, config=config)
+    hw_idx = find_preset_index(hw_max)
     target_idx = find_preset_index(target_preset)
+    if hw_idx >= 0 and target_idx > hw_idx:
+        return StaggeredDecision(
+            action=ACTION_HOLD_HARDWARE_LIMIT,
+            can_proceed=False,
+            miner_name=miner_name,
+            target_preset=target_preset,
+            reason=(
+                f"Límite de silicio de hardware individual para {miner_name}: techo fijado en {hw_max}. "
+                f"No se autoriza escalamiento a {target_preset} por inestabilidad de PLL/autotune comprobada."
+            ),
+            remaining_settle_seconds=0.0,
+            projected_group_power_w=calculate_group_wattage(group_presets),
+            max_authorized_budget_w=sched.max_elevator_budget_w,
+        )
+
+    # Gate 3 — Solar Thermal Envelope Check (Spec 078 / PROP-013)
+    solar_eval = evaluate_solar_thermal_envelope(now_dt, max_chip_temp_c=max_chip_temp_c, config=config)
+    solar_max_idx = find_preset_index(solar_eval.max_authorized_preset)
+    if solar_eval.is_solar_window and solar_max_idx >= 0 and target_idx > solar_max_idx:
+        return StaggeredDecision(
+            action=ACTION_HOLD_SOLAR_ENVELOPE,
+            can_proceed=False,
+            miner_name=miner_name,
+            target_preset=target_preset,
+            reason=f"Límite térmico solar activo: {solar_eval.reason}",
+            remaining_settle_seconds=0.0,
+            projected_group_power_w=calculate_group_wattage(group_presets),
+            max_authorized_budget_w=sched.max_elevator_budget_w,
+        )
+
+    # Gate 3.1 — Thermal Headroom Gate for Presets > 2500W
+    limit_2500_idx = find_preset_index("2500W")
+    if limit_2500_idx >= 0 and target_idx > limit_2500_idx:
+        max_th_temp = float(
+            config.get("valley_step_up_max_chip_temp_c", DEFAULT_VALLEY_STEP_UP_MAX_CHIP_TEMP_C)
+            if config else DEFAULT_VALLEY_STEP_UP_MAX_CHIP_TEMP_C
+        )
+        if max_chip_temp_c > 0.0 and max_chip_temp_c >= max_th_temp:
+            return StaggeredDecision(
+                action=ACTION_HOLD_THERMAL_HEADROOM,
+                can_proceed=False,
+                miner_name=miner_name,
+                target_preset=target_preset,
+                reason=(
+                    f"Margen térmico insuficiente para {miner_name}: chip a {max_chip_temp_c:.1f}°C >= {max_th_temp:.1f}°C. "
+                    f"Se requiere chip < {max_th_temp:.1f}°C antes de permitir escalamiento a {target_preset}."
+                ),
+                remaining_settle_seconds=0.0,
+                projected_group_power_w=calculate_group_wattage(group_presets),
+                max_authorized_budget_w=sched.max_elevator_budget_w,
+            )
+
+    # Gate 4 — Schedule ceiling check (Soft-Contingency Peak)
     sched_max_idx = find_preset_index(sched.max_individual_preset)
     if sched_max_idx >= 0 and target_idx > sched_max_idx:
         return StaggeredDecision(
@@ -370,7 +639,7 @@ def evaluate_facility_transition_permission(
             max_authorized_budget_w=sched.max_elevator_budget_w,
         )
 
-    # Gate 3 — Group Power Budget
+    # Gate 5 — Group Power Budget
     budget_ok, proj_w, budget_msg = can_step_up_within_budget(
         candidate_miner=miner_name,
         target_preset=target_preset,
@@ -389,7 +658,7 @@ def evaluate_facility_transition_permission(
             max_authorized_budget_w=sched.max_elevator_budget_w,
         )
 
-    # Gate 4 — Symmetric Balance Preference
+    # Gate 6 — Symmetric Balance Preference
     symm_ok, symm_msg = evaluate_symmetric_balance_preference(
         candidate_miner=miner_name,
         target_preset=target_preset,
@@ -413,7 +682,7 @@ def evaluate_facility_transition_permission(
         can_proceed=True,
         miner_name=miner_name,
         target_preset=target_preset,
-        reason="Autorizado: cumple presupuesto de elevador, simetría y reposo de bajada compartida",
+        reason="Autorizado: cumple presupuesto de elevador, simetría, límites de silicio y reposo de bajada compartida",
         remaining_settle_seconds=0.0,
         projected_group_power_w=proj_w,
         max_authorized_budget_w=sched.max_elevator_budget_w,

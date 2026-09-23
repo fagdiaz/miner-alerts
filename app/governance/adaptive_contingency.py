@@ -449,7 +449,9 @@ def evaluate_canary_contingency(
             # Check canary
             canary_name = cmap.get(group_name, "")
             canary_curr = current_presets.get(canary_name, "")
-            canary_init = state.canary_initial_preset
+            canary_init = state.canary_initial_preset or DEFAULT_MAX_CEILING
+            if find_preset_index(canary_init) < find_preset_index("2500W"):
+                canary_init = "2500W"
 
             # Check partner miner in group
             partner_name = ""
@@ -459,15 +461,30 @@ def evaluate_canary_contingency(
                     partner_name = m_k
                     partner_curr = p_k
                     break
-            partner_init = state.partner_initial_preset
+            partner_init = state.partner_initial_preset or DEFAULT_MAX_CEILING
+            if find_preset_index(partner_init) < find_preset_index("2500W"):
+                partner_init = "2500W"
 
-            # Priority 1: Step up canary if it is below its recorded initial preset
-            if canary_curr and canary_init and find_preset_index(canary_curr) < find_preset_index(canary_init):
+            canary_needs_up = bool(canary_curr and find_preset_index(canary_curr) < find_preset_index(canary_init))
+            partner_needs_up = bool(partner_curr and find_preset_index(partner_curr) < find_preset_index(partner_init))
+
+            if canary_needs_up and partner_needs_up:
+                # Both need step up: pick the one with lower preset for symmetric balance
+                c_idx = find_preset_index(canary_curr)
+                p_idx = find_preset_index(partner_curr)
+                if p_idx < c_idx:
+                    target_miner_cand = partner_name
+                    init_preset = partner_init
+                    curr_p = partner_curr
+                else:
+                    target_miner_cand = canary_name
+                    init_preset = canary_init
+                    curr_p = canary_curr
+            elif canary_needs_up:
                 target_miner_cand = canary_name
                 init_preset = canary_init
                 curr_p = canary_curr
-            # Priority 2: Step up partner if canary is nominal but partner is below its recorded initial preset
-            elif partner_curr and partner_init and find_preset_index(partner_curr) < find_preset_index(partner_init):
+            elif partner_needs_up:
                 target_miner_cand = partner_name
                 init_preset = partner_init
                 curr_p = partner_curr
@@ -475,7 +492,7 @@ def evaluate_canary_contingency(
             if target_miner_cand:
                 next_tier = find_next_preset_tier(curr_p, max_ceiling=init_preset)
                 if next_tier:
-                    # Full restore only if both canary and partner are at or above their initial presets
+                    # Full restore only if both canary and partner are at or above their target presets
                     canary_restored = True
                     if canary_init and canary_curr:
                         if target_miner_cand == canary_name:
@@ -522,6 +539,30 @@ def evaluate_canary_contingency(
                         notification_msg=notif,
                         updated_group_state=new_state,
                     )
+            else:
+                # Neither miner needs step up (both are already at or above target recovery preset)
+                reset_state = GroupContingencyState(
+                    group_name=group_name,
+                    active=False,
+                    trigger_miner="",
+                    started_ts=None,
+                    last_restart_ts=None,
+                    step_down_count=0,
+                    canary_initial_preset=None,
+                    partner_initial_preset=None,
+                    soak_duration_seconds=soak_seconds,
+                )
+                return ContingencyDecision(
+                    action=ACTION_RESTORE_NOMINAL,
+                    group_name=group_name,
+                    target_miner="",
+                    previous_preset="",
+                    target_preset="",
+                    reason=f"Ambos mineros operan en o sobre la meta ({canary_init}/{partner_init}): contingencia finalizada.",
+                    requires_write=False,
+                    notification_msg=f"✅ *CONTINGENCIA FINALIZADA [{group_name}]*\n• Elevador restablecido completamente a operación nominal estable.",
+                    updated_group_state=reset_state,
+                )
 
     return ContingencyDecision(
         action=ACTION_NO_ACTION,

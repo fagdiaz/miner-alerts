@@ -335,6 +335,55 @@ class TestAdaptiveContingencyPolicy(unittest.TestCase):
         loaded = GroupContingencyState.from_dict(d)
         self.assertEqual(st, loaded)
 
+    def test_soak_recovery_with_low_initial_preset_and_symmetric_choice(self):
+        """Verify that when initial presets were degraded (<2500W), soak recovery targets 2500W floor and picks lowest miner first."""
+        # Elevator 2 with both miners degraded to 2150W and 2000W
+        init_state = GroupContingencyState(
+            group_name="elevator_2",
+            active=True,
+            trigger_miner="S19JPRO-25",
+            started_ts=10000.0,
+            last_restart_ts=10000.0,
+            step_down_count=2,
+            canary_initial_preset="2150W",
+            partner_initial_preset="2150W",
+            soak_duration_seconds=7200.0,
+        )
+        presets = {
+            "S19JPRO-25": "2150W",  # Canary
+            "S19JPRO-26": "2000W",  # Partner (lower!)
+        }
+        # Soak tick after 2h: partner is lowest (2000W vs 2150W), so partner must step up to 2150W!
+        dec_1 = evaluate_canary_contingency(
+            event_type="soak_tick",
+            miner_name="",
+            group_name="elevator_2",
+            current_presets=presets,
+            now_ts=17201.0,
+            group_state=init_state,
+        )
+        self.assertEqual(dec_1.action, ACTION_STEP_UP_SOAK)
+        self.assertEqual(dec_1.target_miner, "S19JPRO-26")
+        self.assertEqual(dec_1.target_preset, "2150W")
+        self.assertTrue(dec_1.updated_group_state.active)
+
+        # Both at 2500W: contingency must complete and active must become False
+        presets_nominal = {
+            "S19JPRO-25": "2500W",
+            "S19JPRO-26": "2500W",
+        }
+        dec_done = evaluate_canary_contingency(
+            event_type="soak_tick",
+            miner_name="",
+            group_name="elevator_2",
+            current_presets=presets_nominal,
+            now_ts=30000.0,
+            group_state=dec_1.updated_group_state,
+        )
+        self.assertEqual(dec_done.action, ACTION_RESTORE_NOMINAL)
+        self.assertFalse(dec_done.updated_group_state.active)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -46,6 +46,11 @@ class GovernorConfig:
     summer_target_temp_c: float = 80.0
     summer_min_duty_percent: int = 65
     summer_step_up_percent: int = 5
+    power_floor_2700w: int = 70
+    power_floor_2500w: int = 60
+    power_floor_2300w: int = 50
+    power_floor_1800w: int = 40
+    recovery_max_cooling_timeout_seconds: float = 900.0
 
 
 @dataclass(frozen=True)
@@ -149,6 +154,41 @@ def resolve_seasonal_parameters(
     )
 
 
+def resolve_power_fan_floor(
+    current_power_w: Optional[float],
+    target_power_w: Optional[float] = None,
+    is_warming_up: bool = False,
+    floor_2700w: Optional[int] = None,
+    floor_2500w: Optional[int] = None,
+    floor_2300w: Optional[int] = None,
+    floor_1800w: Optional[int] = None,
+) -> int:
+    """Determine physical minimum fan duty to prevent thermal runaway when hashing.
+    
+    When an ASIC draws 2400W-2700W, running fans at 30%-60% causes rapid chip heating
+    (>0.5°C/s) leading to emergency thermal tripwires (84°C-86°C).
+    Floor is strictly based on real consumed power (current_power_w).
+    """
+    f2700 = floor_2700w if floor_2700w is not None else 70
+    f2500 = floor_2500w if floor_2500w is not None else 60
+    f2300 = floor_2300w if floor_2300w is not None else 50
+    f1800 = floor_1800w if floor_1800w is not None else 40
+
+    if current_power_w is None or current_power_w < 500.0:
+        return 30
+    if is_warming_up and current_power_w < 1700.0:
+        return 30
+    if current_power_w >= 2600.0:
+        return max(30, f2700)
+    elif current_power_w >= 2400.0:
+        return max(30, f2500)
+    elif current_power_w >= 2100.0:
+        return max(30, f2300)
+    elif current_power_w >= 1700.0:
+        return max(30, f1800)
+    return 30
+
+
 def compute_governor_step(
     max_temp_c: Optional[float],
     current_duty: Optional[int],
@@ -161,6 +201,7 @@ def compute_governor_step(
     ambient_temp_c: Optional[float] = None,
     is_warming_up: bool = False,
     boost_cooling: bool = False,
+    recovery_cooling_seconds: float = 0.0,
 ) -> GovernorDecision:
     """
     Pure mathematical decision engine for Vnish closed-loop fan modulation.
@@ -170,7 +211,19 @@ def compute_governor_step(
     cfg = config or GovernorConfig()
     seasonal = resolve_seasonal_parameters(ambient_temp_c, cfg)
 
-    eff_min_duty = max(30, min(seasonal.min_duty_percent, cfg.max_fan_duty_percent))
+    pwr_floor = resolve_power_fan_floor(
+        current_power_w,
+        target_power_w,
+        is_warming_up=is_warming_up,
+        floor_2700w=cfg.power_floor_2700w,
+        floor_2500w=cfg.power_floor_2500w,
+        floor_2300w=cfg.power_floor_2300w,
+        floor_1800w=cfg.power_floor_1800w,
+    )
+    eff_min_duty = min(
+        cfg.max_fan_duty_percent,
+        max(30, cfg.min_fan_duty_percent, pwr_floor, seasonal.min_duty_percent),
+    )
     raw_duty = int(current_duty) if current_duty is not None else cfg.max_fan_duty_percent
     curr_duty = max(eff_min_duty, min(cfg.max_fan_duty_percent, raw_duty))
 
@@ -245,8 +298,11 @@ def compute_governor_step(
     # If miner is hashing below its established autoswitch ceiling (e.g. 2300W < 2500W or 2700W),
     # fans MUST be at 100% to lower chip temp <= 79°C and allow Vnish autoswitch to step up.
     # We NEVER modulate fans down when the miner is working under its power limit!
-    # Guard: Do not trigger 100% cooling when miner is warming up post-reboot or has not started hashing (<500W),
+    # Guard 1: Do not trigger 100% cooling when miner is warming up post-reboot or has not started hashing (<500W),
     # to allow the ASIC silicon to reach operational temperature without cold-chip autotuning faults.
+    # Guard 2 (Safety Timeout): If recovery cooling has exceeded recovery_max_cooling_timeout_seconds (default 900s)
+    # and chip temp is within safe operating range (<= deadband_high_c), do not hold 100% indefinitely.
+    # Allow the governor to proceed with normal thermal modulation (respecting power fan floors).
     if (
         not is_warming_up
         and target_power_w is not None
@@ -255,20 +311,26 @@ def compute_governor_step(
         and current_power_w >= 500.0
     ):
         if current_power_w < (target_power_w - cfg.power_margin_w):
-            needs_write = curr_duty < cfg.max_fan_duty_percent
-            return GovernorDecision(
-                action=ACTION_RECOVERY_MAX_COOLING,
-                target_duty=cfg.max_fan_duty_percent,
-                current_duty=curr_duty,
-                reason=(
-                    f"Bajo potencia objetivo ({current_power_w:.0f}W < {target_power_w:.0f}W): "
-                    "100% PWM para permitir subida de autoswitch Vnish"
-                ),
-                dwell_effective=0,
-                is_emergency=False,
-                requires_write=needs_write,
-                seasonal_mode=seasonal.mode,
+            is_timed_out = (
+                recovery_cooling_seconds >= cfg.recovery_max_cooling_timeout_seconds
+                and max_temp_c is not None
+                and max_temp_c <= seasonal.deadband_high_c
             )
+            if not is_timed_out:
+                needs_write = curr_duty < cfg.max_fan_duty_percent
+                return GovernorDecision(
+                    action=ACTION_RECOVERY_MAX_COOLING,
+                    target_duty=cfg.max_fan_duty_percent,
+                    current_duty=curr_duty,
+                    reason=(
+                        f"Bajo potencia objetivo ({current_power_w:.0f}W < {target_power_w:.0f}W): "
+                        "100% PWM para permitir subida de autoswitch Vnish"
+                    ),
+                    dwell_effective=0,
+                    is_emergency=False,
+                    requires_write=needs_write,
+                    seasonal_mode=seasonal.mode,
+                )
 
     # 6b. Headroom Chilling (Spec 075 / PROP-010):
     # If the balancer requests boost cooling to enable stepping up preset (e.g. from 2500W to 2700W),
@@ -337,6 +399,21 @@ def compute_governor_step(
         )
 
     # 10. Cool regime: Adaptive Gradient Step Down
+    # Guard: During warmup / post-reboot autotuning, chips are artificially cold because hashing
+    # just started or has not started yet. Stepping down fans during warmup causes thermal runaway
+    # (heat surge to 86°C) as soon as hashboards reach full power. Hold dwell and preserve fans!
+    if is_warming_up:
+        return GovernorDecision(
+            action=ACTION_HOLD_DWELL,
+            target_duty=curr_duty,
+            current_duty=curr_duty,
+            reason="Fase de calentamiento post-arranque activa: inhibiendo desescalada de ventiladores para prevenir saturación térmica",
+            dwell_effective=dwell_effective,
+            is_emergency=False,
+            requires_write=False,
+            seasonal_mode=seasonal.mode,
+        )
+
     delta_cool = seasonal.deadband_low_c - max_temp_c
     if delta_cool >= 5.0:
         # Deep cold regime: agile step-down (-5%)

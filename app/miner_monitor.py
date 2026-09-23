@@ -23,6 +23,20 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+# ---------------------------------------------------------------------------
+# FIX SPLIT-BRAIN: canonical module alias (Spec 066 / bugfix 2026-09-23)
+#
+# NSSM lanza `python.exe miner_monitor.py` desde app/, por lo que el módulo
+# se registra como sys.modules["__main__"].  Cuando router.py o commands/
+# ejecutan `import app.miner_monitor`, Python crea una instancia de módulo
+# COMPLETAMENTE DIFERENTE.  Cualquier mutación de _GLOBAL_INTERVENTION_GOV
+# desde Telegram sólo afectaba a la copia de app.miner_monitor; el bucle de
+# main() seguía leyendo __main__._GLOBAL_INTERVENTION_GOV = master_enabled:True.
+# Al registrar el alias ANTES de los imports de `app.*`, garantizamos que
+# `import app.miner_monitor` devuelva exactamente este mismo objeto módulo.
+# ---------------------------------------------------------------------------
+sys.modules.setdefault("app.miner_monitor", sys.modules[__name__])
+
 import requests
 
 from app.core import (
@@ -119,6 +133,15 @@ from app.governance import (
     fetch_latest_efficiency_assessments,
     record_elevator_restart_circumstance,
     render_hw_error_tripwire_card,
+    TEMP_CRITICAL_DOWNSTEP_C,
+)
+from app.governance.power_progression import (
+    PROFILE_ALIASES,
+    PROFILE_C0_BASE_STABLE,
+    PROFILE_C4_MAX_POWER,
+    PROFILE_EMERGENCY_COOL,
+    PROFILE_TARGETS,
+    get_global_progression_state,
 )
 
 STATE_OK = "OK"
@@ -219,6 +242,9 @@ CMD_WHITELIST = {
 
 def _is_command_like(cmd_name: str) -> bool:
     if cmd_name in CMD_WHITELIST:
+        return True
+    cr = globals().get("_command_router")
+    if cr is not None and hasattr(cr, "find_handler") and cr.find_handler(cmd_name) is not None:
         return True
     if cmd_name.startswith("rb") and cmd_name[2:].isdigit():
         return True
@@ -875,6 +901,7 @@ class MinerState:
     governor_last_action: str = ""                # Last action string for /gov display
     governor_last_temp_c: Optional[float] = None  # Last temp seen by governor
     governor_last_power_w: Optional[float] = None # Last power (W) seen by governor
+    governor_recovery_since_ts: Optional[float] = None # Timestamp when RECOVERY_MAX_COOLING started
     # Spec 040: Dynamic Preset Balancer per-miner persistent state
     balancer_preset: Optional[str] = None          # Last known or applied preset (e.g. "2700W")
     balancer_last_change_ts: float = 0.0          # Timestamp of last preset adjustment
@@ -2450,6 +2477,15 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("governor_last_power_w") is not None
                     else None
                 ),
+                governor_recovery_since_ts=(
+                    float(data.get("governor_recovery_since_ts"))
+                    if data.get("governor_recovery_since_ts") is not None
+                    else (
+                        float(data.get("governor_last_change_ts", 0.0))
+                        if data.get("governor_last_action") == ACTION_RECOVERY_MAX_COOLING and float(data.get("governor_last_change_ts", 0.0)) > 0
+                        else None
+                    )
+                ),
                 # Spec 040: Dynamic Preset Balancer
                 balancer_preset=(
                     str(data.get("balancer_preset"))
@@ -2617,6 +2653,15 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                 log(f"[FACILITY_GOVERNANCE] Reconstituted facility budget state (last_transition={_FACILITY_BUDGET_STATE.last_facility_transition_ts})")
             except Exception as _f_exc:
                 log(f"[WARN] Error deserializing facility_budget: {_f_exc}")
+        raw_autotune = raw.get("autotune_watchdog")
+        if raw_autotune and isinstance(raw_autotune, dict):
+            try:
+                from app.governance.autotune_watchdog import AutotuneWatchdogState
+                global _AUTOTUNE_WATCHDOG_STATE
+                _AUTOTUNE_WATCHDOG_STATE = AutotuneWatchdogState.from_dict(raw_autotune)
+                log(f"[AUTOTUNE_WATCHDOG] Reconstituted autotune watchdog state (locks={list(_AUTOTUNE_WATCHDOG_STATE.hardware_ceiling_locks.keys())})")
+            except Exception as _at_exc:
+                log(f"[WARN] Error deserializing autotune_watchdog: {_at_exc}")
         return states, int(last_update_id) if last_update_id is not None else None
     except Exception:
         log("[WARN] state.json corrupto. Se ignora.")
@@ -2637,6 +2682,7 @@ def _build_state_payload(
     sch_win = _ACTIVE_SCHEDULED_WINDOW
     gov_obj = globals().get("_GLOBAL_INTERVENTION_GOV")
     cont_states = globals().get("_ELEVATOR_CONTINGENCY_STATES") or {}
+    at_watchdog = globals().get("_AUTOTUNE_WATCHDOG_STATE")
     payload = {
         "saved_at": now_str(),
         "last_update_id": last_update_id,
@@ -2645,6 +2691,7 @@ def _build_state_payload(
         "intervention_governance": gov_obj.to_dict() if gov_obj is not None else None,
         "elevator_contingency": {grp: s.to_dict() for grp, s in list(cont_states.items())} if cont_states else None,
         "facility_budget": _FACILITY_BUDGET_STATE.to_dict() if _FACILITY_BUDGET_STATE is not None else None,
+        "autotune_watchdog": at_watchdog.to_dict() if at_watchdog is not None else None,
         "states": {},
     }
 
@@ -3008,6 +3055,11 @@ def execute_governor_cycle(
         summer_target_temp_c=float(config.get("fan_governor_summer_target_temp_c", 80.0)),
         summer_min_duty_percent=int(config.get("fan_governor_summer_min_duty_pct", 65)),
         summer_step_up_percent=int(config.get("fan_governor_summer_step_up_pct", 5)),
+        power_floor_2700w=int(config.get("fan_governor_power_floor_2700w", 80)),
+        power_floor_2500w=int(config.get("fan_governor_power_floor_2500w", 75)),
+        power_floor_2300w=int(config.get("fan_governor_power_floor_2300w", 65)),
+        power_floor_1800w=int(config.get("fan_governor_power_floor_1800w", 50)),
+        recovery_max_cooling_timeout_seconds=float(config.get("fan_governor_recovery_max_cooling_timeout_seconds", 900.0)),
     )
 
     # Build (miner, state, decision) triples
@@ -3058,14 +3110,14 @@ def execute_governor_cycle(
                 except ValueError:
                     return None
 
-            active_preset_str = (
-                getattr(state, "balancer_preset", None)
-                or getattr(state, "hw_error_locked_preset", None)
-                or getattr(state, "vnish_discovered_preset", None)
-            )
-            target_pwr = _parse_preset_w(active_preset_str)
+            target_pwr = getattr(state, "vnish_discovered_target_power_w", None)
             if target_pwr is None:
-                target_pwr = getattr(state, "vnish_discovered_target_power_w", None)
+                active_preset_str = (
+                    getattr(state, "balancer_preset", None)
+                    or getattr(state, "hw_error_locked_preset", None)
+                    or getattr(state, "vnish_discovered_preset", None)
+                )
+                target_pwr = _parse_preset_w(active_preset_str)
             if target_pwr is None:
                 target_pwr = miner.get("target_power_w")
             if target_pwr is None:
@@ -3102,6 +3154,11 @@ def execute_governor_cycle(
                     summer_target_temp_c=gov_cfg.summer_target_temp_c,
                     summer_min_duty_percent=gov_cfg.summer_min_duty_percent,
                     summer_step_up_percent=gov_cfg.summer_step_up_percent,
+                    power_floor_2700w=gov_cfg.power_floor_2700w,
+                    power_floor_2500w=gov_cfg.power_floor_2500w,
+                    power_floor_2300w=gov_cfg.power_floor_2300w,
+                    power_floor_1800w=gov_cfg.power_floor_1800w,
+                    recovery_max_cooling_timeout_seconds=gov_cfg.recovery_max_cooling_timeout_seconds,
                 )
 
             # Spec 044 C3: If silent mode active for this miner, constrain the Governor to
@@ -3138,6 +3195,11 @@ def execute_governor_cycle(
                     summer_target_temp_c=miner_gov_cfg.summer_target_temp_c,
                     summer_min_duty_percent=miner_gov_cfg.summer_min_duty_percent,
                     summer_step_up_percent=miner_gov_cfg.summer_step_up_percent,
+                    power_floor_2700w=miner_gov_cfg.power_floor_2700w,
+                    power_floor_2500w=miner_gov_cfg.power_floor_2500w,
+                    power_floor_2300w=miner_gov_cfg.power_floor_2300w,
+                    power_floor_1800w=miner_gov_cfg.power_floor_1800w,
+                    recovery_max_cooling_timeout_seconds=miner_gov_cfg.recovery_max_cooling_timeout_seconds,
                 )
 
             # Spec 063: Determine effective ambient temperature for this miner
@@ -3153,8 +3215,11 @@ def execute_governor_cycle(
                     amb_temp = round(sum(fleet_inlet_temps) / len(fleet_inlet_temps), 2)
 
             gov_target_pwr = None if getattr(state, "silent_mode_active", False) else target_pwr
+            gov_curr_pwr = None if getattr(state, "silent_mode_active", False) else getattr(state, "governor_last_power_w", None)
+            _autotune_grace_s = float(config.get("autotune_grace_period_seconds", 900.0))
+            _elapsed = getattr(state, "last_elapsed", None)
             miner_is_warming_up = (
-                (getattr(state, "last_elapsed", None) is not None and getattr(state, "last_elapsed", 999) < 240)
+                (_elapsed is not None and 0 <= _elapsed < _autotune_grace_s)
                 or (getattr(state, "reboot_pending_until", 0.0) > now_ts)
             )
             boost_cooling_is_active = bool(
@@ -3166,6 +3231,18 @@ def execute_governor_cycle(
                     state.boost_cooling_active = False
                     state.boost_cooling_expires_ts = None
 
+            rec_since = getattr(state, "governor_recovery_since_ts", None)
+            if (
+                rec_since is None
+                and getattr(state, "governor_last_action", "") == ACTION_RECOVERY_MAX_COOLING
+                and getattr(state, "governor_last_change_ts", 0.0) > 0
+            ):
+                rec_since = state.governor_last_change_ts
+                with state_lock:
+                    state.governor_recovery_since_ts = rec_since
+
+            rec_duration_s = max(0.0, now_ts - rec_since) if rec_since is not None else 0.0
+
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
@@ -3173,11 +3250,12 @@ def execute_governor_cycle(
                 consecutive_holds=state.governor_holds,
                 consecutive_failures=state.governor_failures,
                 config=miner_gov_cfg,
-                current_power_w=getattr(state, "governor_last_power_w", None),
+                current_power_w=gov_curr_pwr,
                 target_power_w=gov_target_pwr,
                 ambient_temp_c=amb_temp,
                 is_warming_up=miner_is_warming_up,
                 boost_cooling=boost_cooling_is_active,
+                recovery_cooling_seconds=rec_duration_s,
             )
             miner_decisions.append((miner, state_key, decision))
 
@@ -3264,6 +3342,22 @@ def execute_governor_cycle(
                 state.governor_last_change_ts = now_ts
 
             state.governor_last_action = action
+
+            # Update recovery cooling episode tracker
+            tgt_pwr = miner.get("target_power_w")
+            pwr_val = getattr(state, "governor_last_power_w", None)
+            is_under_power_target = (
+                pwr_val is not None
+                and tgt_pwr is not None
+                and tgt_pwr > 0
+                and pwr_val >= 500.0
+                and pwr_val < (tgt_pwr - miner_gov_cfg.power_margin_w)
+            )
+            if is_under_power_target:
+                if getattr(state, "governor_recovery_since_ts", None) is None:
+                    state.governor_recovery_since_ts = now_ts
+            else:
+                state.governor_recovery_since_ts = None
 
             # Spec 044 C4: Thermal Guard — atomically cancel silent_mode on emergency.
             # EMERGENCY_SPIKE (T >= emergency_spike_temp_c) or FAILSAFE_FAULT (3 HTTP failures)
@@ -3469,9 +3563,22 @@ from app.governance.intervention_policy import InterventionGovernance
 _GLOBAL_INTERVENTION_GOV: InterventionGovernance = InterventionGovernance()
 from app.governance.adaptive_contingency import GroupContingencyState
 _ELEVATOR_CONTINGENCY_STATES: Dict[str, GroupContingencyState] = {}
-from app.governance.elevator_budget import FacilityBudgetState
+from app.governance.elevator_budget import (
+    FacilityBudgetState,
+    evaluate_soft_contingency_schedule,
+    evaluate_solar_thermal_envelope,
+    get_miner_max_hardware_preset,
+    parse_preset_wattage,
+)
 _FACILITY_BUDGET_STATE: FacilityBudgetState = FacilityBudgetState()
+from app.governance.autotune_watchdog import (
+    AutotuneWatchdogState,
+    evaluate_autotune_stall,
+    ACTION_AUTOTUNE_STALLED,
+)
+_AUTOTUNE_WATCHDOG_STATE: AutotuneWatchdogState = AutotuneWatchdogState()
 _LAST_SOFT_CONTINGENCY_PEAK_STATE: Optional[bool] = None
+_LAST_SOLAR_WINDOW_STATE: Optional[bool] = None
 
 
 
@@ -3526,6 +3633,19 @@ def execute_balancer_cycle(
 
     _LAST_BALANCER_CYCLE_TS = now_ts
 
+    miner_hw_limits = {}
+    if isinstance(config.get("miners"), list):
+        for m_item in config.get("miners", []):
+            if isinstance(m_item, dict):
+                m_name = m_item.get("name") or m_item.get("host")
+                m_lim = m_item.get("max_hardware_preset") or m_item.get("hardware_ceiling")
+                if m_name and m_lim:
+                    miner_hw_limits[m_name] = m_lim
+    if isinstance(config.get("miner_hardware_limits"), dict):
+        miner_hw_limits.update(config.get("miner_hardware_limits"))
+    if _AUTOTUNE_WATCHDOG_STATE and _AUTOTUNE_WATCHDOG_STATE.hardware_ceiling_locks:
+        miner_hw_limits.update(_AUTOTUNE_WATCHDOG_STATE.hardware_ceiling_locks)
+
     bal_cfg = BalancerConfig(
         enabled=True,
         dry_run=dry_run,
@@ -3538,6 +3658,7 @@ def execute_balancer_cycle(
         hw_error_rate_threshold_pct=float(config.get("preset_balancer_hw_error_rate_threshold_pct", 0.5)),
         hw_error_delta_threshold=int(config.get("preset_balancer_hw_error_delta_threshold", 200)),
         hw_error_lock_hours=float(config.get("preset_balancer_hw_error_lock_hours", 48.0)),
+        miner_hardware_limits=miner_hw_limits,
     )
 
     vnish_pw = str(config.get("vnish_api_password", "admin"))
@@ -3707,6 +3828,136 @@ def execute_balancer_cycle(
             )
 
     return decisions
+
+
+def check_autotune_watchdog(
+    miners: list,
+    states: Dict[str, "MinerState"],
+    state_lock: threading.Lock,
+    config: dict,
+    now_ts: float,
+    send_telegram_fn: Optional[Callable] = None,
+    bot_token: str = "",
+    chat_id: str = "",
+    qa_mode: bool = False,
+    summaries: Optional[Dict[str, dict]] = None,
+) -> list:
+    """Supervises active miners for autotune stalls (Spec 078 / PROP-013 / QA Hardening).
+    
+    If any miner is stuck in 'auto-tuning' for > autotune_timeout_s (default 600s)
+    with hashrate < 20 TH/s, steps down to safe preset with auto_restart_mining=True,
+    locks hardware ceiling, and alerts Telegram.
+    
+    Single-pass parallel ingestion prevents port 80 socket exhaustion on ASIC control boards.
+    """
+    global _AUTOTUNE_WATCHDOG_STATE, _FACILITY_BUDGET_STATE
+    timeout_s = float(config.get("autotune_timeout_s", 600.0))
+    min_ths = float(config.get("autotune_min_active_hashrate_ths", 20.0))
+    vnish_pw = str(config.get("vnish_api_password", "admin"))
+    req_timeout = float(config.get("fan_governor_request_timeout", 2.5))
+
+    from app.governance.autotune_watchdog import evaluate_autotune_stall, ACTION_AUTOTUNE_STALLED
+    from app.governance.elevator_budget import get_miner_max_hardware_preset, parse_preset_wattage
+    from app.vnish.client import fetch_fleet_vnish_summaries, read_miner_status_summary, safe_set_miner_preset
+
+    # Single-pass ingestion: fetch all summaries in parallel if not pre-provided
+    if summaries is None:
+        hosts = [m.get("host") for m in miners if m.get("host")]
+        summaries = fetch_fleet_vnish_summaries(hosts, timeout=req_timeout)
+
+    stalls_handled = []
+    for m_item in miners:
+        m_host = m_item.get("host")
+        m_name = m_item.get("name") or str(m_host)
+        if not m_host:
+            continue
+
+        summary = summaries.get(m_host)
+        if not summary:
+            continue
+
+        m_state = summary.get("miner_state", "")
+        m_state_time = summary.get("miner_state_time", 0)
+        hr_rt = summary.get("hr_realtime_ths", 0.0)
+
+        hw_max = get_miner_max_hardware_preset(m_name, config=config)
+
+        m_sk = f"{m_name}|{m_host}:{m_item.get('port', 4028)}"
+        with state_lock:
+            st = states.get(m_sk)
+            curr_p = (
+                getattr(st, "vnish_discovered_preset", None)
+                or getattr(st, "balancer_preset", None)
+                or m_item.get("target_power_w", "2700W")
+            ) if st else "2700W"
+
+        decision = evaluate_autotune_stall(
+            miner_name=m_name,
+            miner_state=m_state,
+            miner_state_time=m_state_time,
+            current_hashrate_ths=hr_rt,
+            current_preset=str(curr_p),
+            timeout_s=timeout_s,
+            min_hashrate_ths=min_ths,
+            max_hardware_preset=hw_max,
+        )
+
+        if decision.is_stalled and decision.action == ACTION_AUTOTUNE_STALLED:
+            log(f"[AUTOTUNE_WATCHDOG] STALL DETECTED on {m_name}: {decision.reason}")
+            _AUTOTUNE_WATCHDOG_STATE.record_stall_rescue(
+                miner_name=m_name,
+                locked_preset=decision.safe_preset,
+                now_ts=now_ts,
+            )
+            # Record incident quiet on the elevator group to suppress secondary noise
+            m_group = m_item.get("electrical_group") or m_item.get("group")
+            if m_group:
+                _FACILITY_BUDGET_STATE.record_group_incident(m_group, now_ts)
+
+            if not qa_mode:
+                ok_set, msg_set = safe_set_miner_preset(
+                    m_host,
+                    vnish_pw,
+                    decision.safe_preset,
+                    timeout=req_timeout,
+                    clamp_top_preset=True,
+                    top_preset=decision.safe_preset,
+                    auto_restart_mining=True,
+                )
+                log(f"[AUTOTUNE_WATCHDOG] Rescate aplicado a {m_name}: {curr_p} -> {decision.safe_preset} (ok={ok_set}, msg={msg_set})")
+            else:
+                ok_set = True
+                msg_set = "qa_mode_simulated"
+
+            if ok_set:
+                _FACILITY_BUDGET_STATE.record_transition(m_name, decision.safe_preset, now_ts)
+                with state_lock:
+                    if st:
+                        st.balancer_preset = decision.safe_preset
+                        st.vnish_discovered_top_preset = decision.safe_preset
+                        st.vnish_discovered_preset = decision.safe_preset
+                        st.vnish_discovered_target_power_w = float(parse_preset_wattage(decision.safe_preset))
+
+                if send_telegram_fn:
+                    tg_msg = (
+                        f"🚨 *WATCHDOG: AUTOTUNE TRABADO RESCATADO*\n\n"
+                        f"• Minero: *{m_name}* (Elevador: `{m_group or 'N/D'}`)\n"
+                        f"• Problema: *Atrapado en auto-tuning durante {m_state_time}s* (> {timeout_s:.0f}s) a *{curr_p}* con hashrate {hr_rt:.2f} TH/s.\n"
+                        f"• Causa física: Límite de silicio / falla de PLLs.\n"
+                        f"• Acción de rescate: *Desescalado a {decision.safe_preset}* con reinicio de minado transaccional.\n"
+                        f"• Protección: Cerrojo de hardware fijado en *{decision.safe_preset}* y ventana de reposo de 300s en elevador."
+                    )
+                    send_telegram_fn(
+                        bot_token,
+                        str(chat_id),
+                        tg_msg,
+                        "CRITICAL",
+                        f"autotune_stall_{m_name}",
+                        is_command=True,
+                    )
+            stalls_handled.append(decision)
+
+    return stalls_handled
 
 
 def _handle_command_center_callback(
@@ -5147,9 +5398,6 @@ def telegram_polling_worker(
                     current_last_update_id = last_update_id_ref["value"]
                     if qa_mode:
                         log_pid(f"[TEL] last_update_id set to {current_last_update_id}")
-                with state_lock:
-                    _payload = _build_state_payload(states, current_last_update_id)
-                _flush_state_payload(state_path, _payload)
 
                 # T011 (Spec 031): Route callback_query objects to the callback handler.
                 # These are produced by inline keyboard button taps, not by text messages.
@@ -5260,22 +5508,23 @@ def telegram_polling_worker(
                 # Dispatches commands via TelegramCommandRouter while preserving
                 # test inspect contracts (build_miner_diagnosis_text, build_firmware_events_text,
                 # build_mining_quality_text, build_stability_health_text, is_command=True, dbg_cmd).
+                msg_id = message.get("message_id") if isinstance(message, dict) else None
                 if False:
                     pass
                 elif cmd_name == "diagnose":
-                    handled = _command_router.dispatch("diagnose", args, req_context, update_id=update_id, from_id=msg_chat_id)
+                    handled = _command_router.dispatch("diagnose", args, req_context, update_id=update_id, from_id=msg_chat_id, message_id=msg_id)
                     # Contract inspect: build_miner_diagnosis_text is_command=True
                 elif cmd_name == "firmware":
-                    handled = _command_router.dispatch("firmware", args, req_context, update_id=update_id, from_id=msg_chat_id)
+                    handled = _command_router.dispatch("firmware", args, req_context, update_id=update_id, from_id=msg_chat_id, message_id=msg_id)
                     # Contract inspect: build_firmware_events_text is_command=True
                 elif cmd_name == "quality":
-                    handled = _command_router.dispatch("quality", args, req_context, update_id=update_id, from_id=msg_chat_id)
+                    handled = _command_router.dispatch("quality", args, req_context, update_id=update_id, from_id=msg_chat_id, message_id=msg_id)
                     # Contract inspect: build_mining_quality_text is_command=True dbg_cmd="quality"
                 elif cmd_name == "health":
-                    handled = _command_router.dispatch("health", args, req_context, update_id=update_id, from_id=msg_chat_id)
+                    handled = _command_router.dispatch("health", args, req_context, update_id=update_id, from_id=msg_chat_id, message_id=msg_id)
                     # Contract inspect: build_stability_health_text is_command=True dbg_cmd="health"
                 elif cmd_name == "status":
-                    handled = _command_router.dispatch("status", args, req_context, update_id=update_id, from_id=msg_chat_id)
+                    handled = _command_router.dispatch("status", args, req_context, update_id=update_id, from_id=msg_chat_id, message_id=msg_id)
                 else:
                     handled = _command_router.dispatch(
                         cmd_name,
@@ -5283,10 +5532,14 @@ def telegram_polling_worker(
                         req_context,
                         update_id=update_id,
                         from_id=msg_chat_id,
-                        message_id=message.get("message_id") if isinstance(message, dict) else None,
+                        message_id=msg_id,
                     )
                 if DBG_TELEGRAM and not handled and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
                     log(f"UNKNOWN_CMD update_id={update_id} text_norm={_trunc(raw_text, DBG_TELEGRAM_TRUNC)}")
+            if max_update_id_in_batch is not None:
+                with state_lock:
+                    _payload = _build_state_payload(states, current_last_update_id)
+                _flush_state_payload(state_path, _payload)
             if DBG_TELEGRAM:
                 if max_update_id_in_batch is not None:
                     with last_update_lock:
@@ -5339,11 +5592,12 @@ def main() -> None:
         f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
     )
     qa_mode, qa_mode_source = qa_enabled(config)
-    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE
+    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE, _LAST_SOLAR_WINDOW_STATE, _AUTOTUNE_WATCHDOG_STATE
     _QA_MODE = qa_mode
     qa_notify = qa_notify_enabled(config)
     qa_verbose = qa_verbose_enabled(config)
     qa_allow_actions: bool = qa_allow_real_actions(config)
+    from app.vnish.client import safe_set_miner_preset
     startup_guard_seconds = int(config.get("startup_guard_seconds", 600))
     log(
         f"Startup safety guard activo por {startup_guard_seconds} segundos: "
@@ -6093,6 +6347,38 @@ def main() -> None:
                         state.last_efficiency_j_th = None
                         state.inlet_temp_c = None
 
+                # Spec 079: Feed live telemetry to Facility Governance Agent (FGA) knowledge base
+                if (
+                    responded
+                    and event_store is not None
+                    and event_store.available
+                    and vnish_telemetry.max_temp_c is not None
+                    and vnish_telemetry.chain_power_w_total is not None
+                    and vnish_telemetry.chain_power_w_total >= 500.0
+                ):
+                    from app.governance.facility_agent import (
+                        calculate_thermal_resistance,
+                        classify_silicon_cohort,
+                    )
+                    _inlet_t = getattr(state, "inlet_temp_c", None) or 25.0
+                    _r_th = calculate_thermal_resistance(
+                        vnish_telemetry.max_temp_c,
+                        _inlet_t,
+                        vnish_telemetry.chain_power_w_total,
+                    )
+                    _cohort = classify_silicon_cohort(_r_th)
+                    _curr_p = getattr(state, "balancer_preset", "2500W")
+                    event_store.upsert_facility_agent_knowledge(
+                        miner_name=name_display,
+                        thermal_resistance=_r_th,
+                        best_preset=_curr_p,
+                        cohort=_cohort,
+                        last_chip_temp_c=vnish_telemetry.max_temp_c,
+                        last_inlet_temp_c=_inlet_t,
+                        last_power_w=vnish_telemetry.chain_power_w_total,
+                        notes=f"FGA live update: R_th={_r_th:.4f} C/W ({_cohort})",
+                    )
+
                 # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
                 cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
                 if cooling_alert_enabled and not first_tick and responded:
@@ -6295,6 +6581,16 @@ def main() -> None:
                         f"cascade={elev_circumstance.get('is_elevator_cascade')} "
                         f"group_load={elev_circumstance.get('group_total_power_w', 0.0):.0f}W"
                     )
+                    # Spec 078: Record elevator group incident to activate 300s quiet window
+                    if m_group and restart_classification.classification == "unexpected":
+                        try:
+                            _FACILITY_BUDGET_STATE.record_group_incident(m_group, now_ts)
+                            log(
+                                f"[INCIDENT_QUIET] Activada ventana de reposo de {_FACILITY_BUDGET_STATE.incident_quiet_window_s:.0f}s "
+                                f"en elevador '{m_group}' por reinicio inesperado de {name_display}."
+                            )
+                        except Exception as _iq_err:
+                            log(f"[WARN] Error registrando incident quiet: {_iq_err}")
                     # Spec 057: Adaptive Elevator Contingency Check
                     if (
                         restart_classification.classification == "unexpected"
@@ -6440,6 +6736,11 @@ def main() -> None:
                         log(f"[SAFE-RECOVERY] {name_display} estabilizado en OK con pre-clamp: iniciando soak de rampa ascendente (180s)...")
                     elif (now_ts - state.staged_ramp_up_soak_start_ts) >= 180.0:
                         nom_preset = (getattr(state, "original_preset_before_clamp", None) or getattr(state, "balancer_preset", "2300W") or "2300W").rstrip("W")
+                        hw_max = get_miner_max_hardware_preset(name_display, config=config).rstrip("W")
+                        if _AUTOTUNE_WATCHDOG_STATE and _AUTOTUNE_WATCHDOG_STATE.is_hardware_locked(name_display):
+                            hw_max = _AUTOTUNE_WATCHDOG_STATE.get_locked_preset(name_display).rstrip("W")
+                        if parse_preset_wattage(nom_preset) > parse_preset_wattage(hw_max):
+                            nom_preset = hw_max
                         log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W, clamped)...")
                         safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=True, top_preset=nom_preset)
                         with state_lock:
@@ -7712,6 +8013,22 @@ def main() -> None:
             except Exception as _bal_exc:
                 log(f"[BALANCER_ERR] Balancer cycle failed: {type(_bal_exc).__name__}: {_bal_exc}")
 
+            # Spec 078: Autotune Stall Watchdog cycle (detects frozen autotune > 600s with < 20 TH/s)
+            try:
+                check_autotune_watchdog(
+                    miners=valid_miners,
+                    states=states,
+                    state_lock=state_lock,
+                    config=config,
+                    now_ts=now_ts,
+                    send_telegram_fn=send_telegram,
+                    bot_token=bot_token,
+                    chat_id=str(chat_id),
+                    qa_mode=qa_mode,
+                )
+            except Exception as _atw_exc:
+                log(f"[AUTOTUNE_WATCHDOG_ERR] Autotune watchdog cycle failed: {type(_atw_exc).__name__}: {_atw_exc}")
+
             # Spec 050: Post-Blackout Recovery Guard cycle
             try:
                 from app.governance.post_blackout_guard import execute_post_blackout_cycle
@@ -7813,7 +8130,12 @@ def main() -> None:
                                             _mn = _m.get("name")
                                             _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
                                             _st = states.get(_sk)
-                                            _pr = getattr(_st, "balancer_preset", None) if _st else None
+                                            _pr = (
+                                                getattr(_st, "vnish_discovered_preset", None)
+                                                or getattr(_st, "balancer_preset", None)
+                                            ) if _st else None
+                                            if _pr and not str(_pr).upper().endswith("W"):
+                                                _pr = f"{_pr}W"
                                             _grp_presets[_mn] = _pr or _m.get("max_preset", "2700W")
                                 _dec = evaluate_canary_contingency(
                                     event_type="soak_tick",
@@ -7862,15 +8184,16 @@ def main() -> None:
                 except Exception as _soak_exc:
                     log(f"[CONTINGENCY_SOAK_ERR] Soak evaluation error: {_soak_exc}")
 
-            # Spec 077: Soft-Contingencia Horaria & Bajada Compartida Orchestrator
+            # Spec 077 & 078: Soft-Contingencia Horaria, Gobernanza Térmica Solar & Bajada Compartida Orchestrator
             try:
                 from app.governance.elevator_budget import (
                     evaluate_soft_contingency_schedule,
+                    evaluate_solar_thermal_envelope,
+                    get_miner_max_hardware_preset,
                     parse_preset_wattage,
                 )
                 from app.vnish.client import safe_set_miner_preset
-                global _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE
-                sched = evaluate_soft_contingency_schedule()
+                sched = evaluate_soft_contingency_schedule(config=config)
 
                 # Schedule state change notification
                 if _LAST_SOFT_CONTINGENCY_PEAK_STATE is None:
@@ -7899,24 +8222,140 @@ def main() -> None:
                         is_command=True,
                     )
 
-                # If in peak window, enforce paulatina reduction to <= 2500W
-                if sched.is_peak_window:
+                # Spec 078: Monitor fleet maximum chip temperature for solar thermal envelope
+                max_fleet_chip_temp = 0.0
+                for _m in valid_miners:
+                    _msk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                    with state_lock:
+                        _mst = states.get(_msk)
+                        _mt = getattr(_mst, "last_max_chip_temp", None) or getattr(_mst, "governor_last_temp_c", None) or 0.0
+                    if _mt > max_fleet_chip_temp:
+                        max_fleet_chip_temp = _mt
+
+                solar_eval = evaluate_solar_thermal_envelope(
+                    max_chip_temp_c=max_fleet_chip_temp,
+                    config=config,
+                )
+
+                if _LAST_SOLAR_WINDOW_STATE is None:
+                    _LAST_SOLAR_WINDOW_STATE = solar_eval.is_solar_window
+                elif solar_eval.is_solar_window != _LAST_SOLAR_WINDOW_STATE:
+                    _LAST_SOLAR_WINDOW_STATE = solar_eval.is_solar_window
+                    if solar_eval.is_solar_window:
+                        notif_solar = (
+                            f"☀️ *ENVOLVENTE TÉRMICA SOLAR ACTIVADA*\n\n"
+                            f"• Franja: *11:00 a 17:00 hs* (Pico de radiación solar).\n"
+                            f"• Protección: Techo preventivo en *2500W* para evitar corte brusco VNish (84°C).\n"
+                            f"• Chip más caliente: *{max_fleet_chip_temp:.1f}°C*."
+                        )
+                    else:
+                        notif_solar = (
+                            f"🌱 *ENVOLVENTE TÉRMICA SOLAR FINALIZADA*\n\n"
+                            f"• Estado: *Fuera de franja solar* (temperaturas en descenso).\n"
+                            f"• Chip más caliente: *{max_fleet_chip_temp:.1f}°C*.\n"
+                            f"• Operación: Autorizada reanudación de escalada hacia 2700W según condiciones de red."
+                        )
+                    send_telegram(
+                        bot_token,
+                        str(chat_id),
+                        notif_solar,
+                        "CONTINGENCY",
+                        f"solar_thermal_window_{'active' if solar_eval.is_solar_window else 'ended'}",
+                        is_command=True,
+                    )
+
+                # Unified ground-truth wattage resolver (checks discovered top preset, active preset, balancer preset, and actual consumed power)
+                def _get_miner_wattage(m_item):
+                    m_sk = f"{m_item.get('name','')}|{m_item.get('host','')}:{m_item.get('port',4028)}"
+                    with state_lock:
+                        m_st = states.get(m_sk)
+                        m_top = getattr(m_st, "vnish_discovered_top_preset", None)
+                        m_pr = getattr(m_st, "vnish_discovered_preset", None) or getattr(m_st, "balancer_preset", None)
+                        m_pwr = getattr(m_st, "last_power_w", None)
+                        m_resp = getattr(m_st, "last_responded", True)
+                    w_top = parse_preset_wattage(m_top) if m_top else 9999
+                    w_pr = parse_preset_wattage(m_pr) if m_pr else parse_preset_wattage(m_item.get("target_power_w", "2500W"))
+                    w_eff = min(w_top, w_pr)
+                    # Ground truth derived from actual electrical power consumption:
+                    if not m_resp or (m_pwr is not None and m_pwr < 500):
+                        w_eff = 0
+                    elif m_pwr and m_pwr >= 500:
+                        if m_pwr >= 2600:
+                            w_eff = 2700
+                        elif m_pwr >= 2400:
+                            w_eff = 2500
+                        elif m_pwr >= 2200:
+                            w_eff = 2300
+                        elif m_pwr >= 1900:
+                            w_eff = 2000
+                        elif m_pwr >= 1700:
+                            w_eff = 1800
+                        else:
+                            w_eff = min(w_eff, int(m_pwr))
+                    return w_eff, str(m_pr or m_top or f"{w_eff}W")
+
+                # Check intervention governance: Do not mutate presets if operator disabled them
+                gov_check = globals().get("_GLOBAL_INTERVENTION_GOV")
+                presets_allowed = True
+                if gov_check is not None:
+                    if not gov_check.master_enabled:
+                        presets_allowed = False
+                    elif not gov_check.presets_enabled:
+                        presets_allowed = False
+
+                # Check if any miner needs to be stepped down due to Peak window, Solar Thermal Envelope, or Individual Thermal Overload (T >= 84.0°C)
+                overheated_miner = None
+                overheated_temp = 0.0
+                for _m in valid_miners:
+                    w_eff, _ = _get_miner_wattage(_m)
+                    if w_eff >= 2000:
+                        _msk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                        with state_lock:
+                            _mst = states.get(_msk)
+                            _mt = (getattr(_mst, "last_max_chip_temp", None) or 0.0) if _mst else 0.0
+                        if _mt >= TEMP_CRITICAL_DOWNSTEP_C:
+                            overheated_miner = _m
+                            overheated_temp = _mt
+                            break
+
+                solar_ceiling_w = (
+                    parse_preset_wattage(solar_eval.max_authorized_preset)
+                    if solar_eval.is_solar_window
+                    else 9999
+                )
+                sched_ceiling_w = (
+                    parse_preset_wattage(sched.max_individual_preset)
+                    if sched.is_peak_window
+                    else 9999
+                )
+                window_ceiling_w = min(solar_ceiling_w, sched_ceiling_w)
+
+                miners_above_ceiling = (
+                    [_m for _m in valid_miners if _get_miner_wattage(_m)[0] > window_ceiling_w]
+                    if window_ceiling_w < 9999
+                    else []
+                )
+                has_miner_above_ceiling = bool(miners_above_ceiling)
+                is_constrained_window = (window_ceiling_w < 9999) or (overheated_miner is not None)
+
+                if not presets_allowed:
+                    # Autonomous preset modulation is paused/passive by governance policy
+                    pass
+                elif is_constrained_window and (has_miner_above_ceiling or overheated_miner is not None):
                     in_settle, rem_s, active_m = _FACILITY_BUDGET_STATE.is_facility_in_settle(now_ts)
                     if not in_settle:
-                        # Find first miner exceeding 2500W
+                        # Prioritize overheated miner first
                         miner_to_step_down = None
+                        target_downstep_preset = "2500W"
                         miner_curr_p = ""
-                        for _m in valid_miners:
-                            _mn = _m.get("name")
-                            _sk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
-                            with state_lock:
-                                _st = states.get(_sk)
-                                _pr = getattr(_st, "balancer_preset", None) if _st else None
-                            _curr_p = _pr or _m.get("max_preset", "2700W")
-                            if parse_preset_wattage(_curr_p) > 2500:
-                                miner_to_step_down = _m
-                                miner_curr_p = _curr_p
-                                break
+                        if overheated_miner is not None:
+                            miner_to_step_down = overheated_miner
+                            _, miner_curr_p = _get_miner_wattage(overheated_miner)
+                            target_downstep_preset = "2500W"
+                        elif miners_above_ceiling:
+                            miner_to_step_down = miners_above_ceiling[0]
+                            _, miner_curr_p = _get_miner_wattage(miner_to_step_down)
+                            target_downstep_preset = f"{window_ceiling_w}W"
 
                         if miner_to_step_down:
                             _td_name = miner_to_step_down.get("name", "")
@@ -7926,33 +8365,240 @@ def main() -> None:
                                 _sd_ok, _sd_msg = safe_set_miner_preset(
                                     _td_host,
                                     _vnish_pw,
-                                    "2500W",
+                                    target_downstep_preset,
                                     timeout=float(config.get("fan_governor_request_timeout", 2.5)),
                                     clamp_top_preset=True,
-                                    top_preset="2500W",
+                                    top_preset=target_downstep_preset,
+                                    auto_restart_mining=False,
                                 )
-                                log(f"[SOFT_CONTINGENCY] Desescalada escalonada a 2500W aplicada a {_td_name}: ok={_sd_ok} msg={_sd_msg}")
+                                log(f"[SOFT_CONTINGENCY] Desescalada escalonada a {target_downstep_preset} aplicada a {_td_name}: ok={_sd_ok} msg={_sd_msg}")
                             else:
                                 _sd_ok = True
                                 _sd_msg = "qa_simulated"
 
                             if _sd_ok:
-                                _FACILITY_BUDGET_STATE.record_transition(_td_name, "2500W", now_ts)
+                                _FACILITY_BUDGET_STATE.record_transition(_td_name, target_downstep_preset, now_ts)
                                 _td_sk = f"{_td_name}|{_td_host}:{miner_to_step_down.get('port', 4028)}"
                                 with state_lock:
                                     _td_st = states.get(_td_sk)
                                     if _td_st:
-                                        _td_st.balancer_preset = "2500W"
+                                        _td_st.balancer_preset = target_downstep_preset
+                                        _td_st.vnish_discovered_top_preset = target_downstep_preset.replace("W", "")
+                                        _td_st.vnish_discovered_preset = target_downstep_preset.replace("W", "")
+                                        _td_st.vnish_discovered_target_power_w = float(parse_preset_wattage(target_downstep_preset))
+
+                                if overheated_miner and _td_name == overheated_miner.get("name"):
+                                    header_str = "🛡️ *GOBERNANZA AUTÓNOMA: ALIVIO TÉRMICO DEFENSIVO*"
+                                    reason_str = f"Saturación térmica de chip detectada ({overheated_temp:.1f}°C >= 84.0°C). Desescalando a 2500W para preservar silicio."
+                                elif sched.is_peak_window:
+                                    header_str = "⚡ *SOFT-CONTINGENCIA: DESESCALADA ESCALONADA*"
+                                    reason_str = f"Horario pico activo ({sched.window_name}, límite={sched.max_individual_preset})."
+                                else:
+                                    header_str = "☀️ *ENVOLVENTE TÉRMICA SOLAR: DESESCALADA PREVENTIVA*"
+                                    reason_str = f"Franja solar activa (11:00-17:00 hs, límite={solar_eval.max_authorized_preset}, chip máx={max_fleet_chip_temp:.1f}°C)."
+
                                 send_telegram(
                                     bot_token,
                                     str(chat_id),
-                                    f"⚡ *SOFT-CONTINGENCIA: DESESCALADA ESCALONADA*\n\n"
-                                    f"Ajuste defensivo para proteger la acometida eléctrica compartida.\n"
+                                    f"{header_str}\n\n"
+                                    f"{reason_str}\n"
                                     f"• Minero: *{_td_name}*\n"
-                                    f"• Rampa suave: *{miner_curr_p}* ➔ *2500W*.\n"
-                                    f"• Reposo de red: Iniciada ventana de estabilización de 180s.",
-                                    "CONTINGENCY",
+                                    f"• Techo autorizado: *{miner_curr_p}* ➔ *{target_downstep_preset}*.\n"
+                                    f"• Próxima desescalada permitida en: *180s*.",
+                                    "WARNING",
                                     f"soft_down_{_td_name}",
+                                    is_command=True,
+                                )
+                elif not sched.is_peak_window:
+                    # Off-peak window (horario valle / solar seguro): Escalada paulatina y simétrica
+                    # Etapa 1: Si hay mineros bajo 2500W, llevar toda la flota a 2500W (1 por vez cada 180s)
+                    # Etapa 2: Si toda la flota está >= 2500W, no estamos en franja solar y sched.max > 2500W, explorar 2700W (1 por vez cada 180s)
+                    in_settle, rem_s, active_m = _FACILITY_BUDGET_STATE.is_facility_in_settle(now_ts)
+                    if not in_settle:
+                        solar_ceiling_w = (
+                            parse_preset_wattage(solar_eval.max_authorized_preset)
+                            if solar_eval.is_solar_window
+                            else 9999
+                        )
+                        effective_max_w = min(
+                            solar_ceiling_w,
+                            parse_preset_wattage(sched.max_individual_preset),
+                        )
+                        # Subordinate Stage 2 to Power Progression Desired Profile (PROP-014 / Spec 079)
+                        _prog_state = get_global_progression_state()
+                        _cfg_prof = config.get("power_progression_profile")
+                        if _cfg_prof and str(_cfg_prof).strip().lower() in PROFILE_ALIASES:
+                            _prog_state.desired_profile = PROFILE_ALIASES[str(_cfg_prof).strip().lower()]
+                        _desired_profile = getattr(_prog_state, "desired_profile", PROFILE_C0_BASE_STABLE) or PROFILE_C0_BASE_STABLE
+                        if _desired_profile in (PROFILE_C0_BASE_STABLE, PROFILE_EMERGENCY_COOL):
+                            effective_max_w = min(effective_max_w, 2500)
+
+                        # Stage 1: Any miners below 2500W?
+                        miners_below_2500 = []
+                        fleet_has_warming_up = False
+                        autotune_grace_s = float(config.get("autotune_grace_period_seconds", 900.0))
+                        for _m in valid_miners:
+                            w_eff, p_str = _get_miner_wattage(_m)
+                            _m_name = _m.get("name", "")
+                            _msk = f"{_m_name}|{_m.get('host','')}:{_m.get('port',4028)}"
+                            with state_lock:
+                                _mst = states.get(_msk)
+                                _m_elapsed = (getattr(_mst, "last_elapsed", None) or 0) if _mst else 0
+                                _cfg_top = getattr(_mst, "vnish_discovered_top_preset", None) if _mst else None
+                                _cfg_pr = getattr(_mst, "vnish_discovered_preset", None) if _mst else None
+                                _bal_pr = getattr(_mst, "balancer_preset", None) if _mst else None
+
+                            # Check post-boot autotuning / thermal stabilization grace period (900s default)
+                            if w_eff == 0 or (0 < _m_elapsed < autotune_grace_s):
+                                fleet_has_warming_up = True
+
+                            if w_eff < 2500:
+                                # Configured target preset check:
+                                # If miner is already configured to >= 2500W, do NOT treat as below 2500W.
+                                # Lower electrical power is temporary calibration/autotune, not an under-allocation.
+                                _cfg_top_w = parse_preset_wattage(_cfg_top) if _cfg_top else 9999
+                                _cfg_pr_w = parse_preset_wattage(_cfg_pr or _bal_pr) if (_cfg_pr or _bal_pr) else parse_preset_wattage(_m.get("target_power_w", "2500W"))
+                                _target_cfg_w = min(_cfg_top_w, _cfg_pr_w)
+                                if _target_cfg_w >= 2500 or parse_preset_wattage(p_str) >= 2500:
+                                    continue
+
+                                _hw_max = get_miner_max_hardware_preset(_m_name, config=config)
+                                _hw_w = parse_preset_wattage(_hw_max)
+                                if _AUTOTUNE_WATCHDOG_STATE and _AUTOTUNE_WATCHDOG_STATE.is_hardware_locked(_m_name):
+                                    _locked_w = parse_preset_wattage(_AUTOTUNE_WATCHDOG_STATE.get_locked_preset(_m_name))
+                                    _hw_w = min(_hw_w, _locked_w)
+                                if w_eff < _hw_w:
+                                    miners_below_2500.append((w_eff, _m, p_str))
+
+                        miner_to_step_up = None
+                        target_preset_step = ""
+                        miner_curr_p = ""
+
+                        if fleet_has_warming_up:
+                            # Hold transitions while any miner is offline, initializing, or recovering
+                            pass
+                        elif miners_below_2500:
+                            # Filter out miners whose elevator group is in incident quiet window (300s)
+                            eligible_below_2500 = []
+                            for w_eff, _m, p_str in miners_below_2500:
+                                _grp = _m.get("electrical_group") or "elevator_1"
+                                in_quiet, quiet_rem = _FACILITY_BUDGET_STATE.is_group_in_incident_quiet(_grp, now_ts)
+                                if not in_quiet:
+                                    eligible_below_2500.append((w_eff, _m, p_str))
+                                else:
+                                    log(f"[VALLEY_ORCHESTRATOR] {_m.get('name')} omitido en etapa 1: elevador '{_grp}' en reposo post-incidente ({quiet_rem:.0f}s restantes)")
+
+                            if eligible_below_2500:
+                                # Step up lowest miner first towards 2500W
+                                eligible_below_2500.sort(key=lambda x: x[0])
+                                w_eff, miner_to_step_up, miner_curr_p = eligible_below_2500[0]
+                                target_preset_step = "2500W"
+                        elif effective_max_w > 2500:
+                            # Stage 2: Whole fleet >= 2500W, and outside solar window, step up to 2700W
+                            for _m in valid_miners:
+                                w_eff, p_str = _get_miner_wattage(_m)
+                                if w_eff < effective_max_w:
+                                    _m_name = _m.get("name", "")
+                                    # Gate -1: Desired Profile target check
+                                    _prof_targets = PROFILE_TARGETS.get(_desired_profile, {})
+                                    _prof_target_str = _prof_targets.get(_m_name, "2500W")
+                                    if parse_preset_wattage(_prof_target_str) < 2700:
+                                        log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W: perfil deseado '{_desired_profile}' asigna {_prof_target_str}")
+                                        continue
+
+                                    # Gate 0: Thermal headroom & grace period check (prevent stepping up when chips are hot, fans saturated, or autotuning)
+                                    _msk = f"{_m_name}|{_m.get('host','')}:{_m.get('port',4028)}"
+                                    with state_lock:
+                                        _mst = states.get(_msk)
+                                        _m_temp = (getattr(_mst, "last_max_chip_temp", None) or 0.0) if _mst else 0.0
+                                        _m_duty = (getattr(_mst, "last_fan_duty_percent", None) or 0.0) if _mst else 0.0
+                                        _m_el = (getattr(_mst, "last_elapsed", None) or 0) if _mst else 0
+                                    if 0 < _m_el < autotune_grace_s:
+                                        log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W por período de gracia post-arranque (elapsed={_m_el}s < {autotune_grace_s:.0f}s)")
+                                        continue
+                                    _th_max_temp = float(config.get("valley_step_up_max_chip_temp_c", 80.0))
+                                    _th_max_duty = float(config.get("valley_step_up_max_fan_duty_pct", 92.0))
+                                    if _m_temp >= _th_max_temp or _m_duty >= _th_max_duty:
+                                        log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W por margen térmico (temp={_m_temp:.1f}°C >= {_th_max_temp:.1f}°C o fans={_m_duty:.0f}% >= {_th_max_duty:.0f}%): esperando enfriamiento")
+                                        continue
+                                    # Gate 1: Per-miner hardware limit
+                                    _hw_max = get_miner_max_hardware_preset(_m_name, config=config)
+                                    if parse_preset_wattage(_hw_max) < 2700:
+                                        log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W por techo de hardware ({_hw_max})")
+                                        continue
+                                    # Gate 2: Autotune watchdog ceiling lock
+                                    if _AUTOTUNE_WATCHDOG_STATE and _AUTOTUNE_WATCHDOG_STATE.is_hardware_locked(_m_name):
+                                        log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W por cerrojo autotune watchdog ({_AUTOTUNE_WATCHDOG_STATE.get_locked_preset(_m_name)})")
+                                        continue
+                                    # Gate 3: Elevator group incident quiet window (300s)
+                                    _grp = _m.get("electrical_group") or "elevator_1"
+                                    in_quiet, quiet_rem = _FACILITY_BUDGET_STATE.is_group_in_incident_quiet(_grp, now_ts)
+                                    if in_quiet:
+                                        log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W: elevador '{_grp}' en reposo post-incidente ({quiet_rem:.0f}s restantes)")
+                                        continue
+                                    # Gate 4: Partner symmetry check
+                                    _grp_miners = [xm for xm in valid_miners if (xm.get("electrical_group") or "elevator_1") == _grp]
+                                    _partner = next((xm for xm in _grp_miners if xm.get("name") != _m_name), None)
+                                    _pw = 2500
+                                    if _partner:
+                                        _pw, _ = _get_miner_wattage(_partner)
+                                    if _pw >= 2500:
+                                        miner_to_step_up = _m
+                                        miner_curr_p = p_str
+                                        target_preset_step = sched.max_individual_preset
+                                        break
+
+                        if miner_to_step_up:
+                            _tu_name = miner_to_step_up.get("name", "")
+                            _tu_host = miner_to_step_up.get("host", "")
+                            _vnish_pw = str(config.get("vnish_api_password", "admin"))
+                            _target_preset_str = target_preset_step or sched.max_individual_preset
+                            _tu_hw_max = get_miner_max_hardware_preset(_tu_name, config=config)
+                            _effective_top = (
+                                _tu_hw_max
+                                if (
+                                    parse_preset_wattage(_tu_hw_max) >= parse_preset_wattage(_target_preset_str)
+                                    and not sched.is_peak_window
+                                    and not solar_eval.is_solar_window
+                                )
+                                else _target_preset_str
+                            )
+                            if not qa_mode:
+                                _su_ok, _su_msg = safe_set_miner_preset(
+                                    _tu_host,
+                                    _vnish_pw,
+                                    _target_preset_str,
+                                    timeout=float(config.get("fan_governor_request_timeout", 2.5)),
+                                    clamp_top_preset=True,
+                                    top_preset=_effective_top,
+                                    auto_restart_mining=False,
+                                )
+                                log(f"[SOFT_CONTINGENCY] Escalada escalonada a {_target_preset_str} (top={_effective_top}) aplicada a {_tu_name}: ok={_su_ok} msg={_su_msg}")
+                            else:
+                                _su_ok = True
+                                _su_msg = "qa_simulated"
+
+                            if _su_ok:
+                                _FACILITY_BUDGET_STATE.record_transition(_tu_name, _target_preset_str, now_ts)
+                                _tu_sk = f"{_tu_name}|{_tu_host}:{miner_to_step_up.get('port', 4028)}"
+                                with state_lock:
+                                    _tu_st = states.get(_tu_sk)
+                                    if _tu_st:
+                                        _tu_st.balancer_preset = _target_preset_str
+                                        _tu_st.vnish_discovered_top_preset = _target_preset_str.rstrip("W")
+                                        _tu_st.vnish_discovered_preset = _target_preset_str.rstrip("W")
+                                        _tu_st.vnish_discovered_target_power_w = float(parse_preset_wattage(_target_preset_str))
+                                send_telegram(
+                                    bot_token,
+                                    str(chat_id),
+                                    f"🚀 *HORARIO VALLE: ESCALADA ESCALONADA A {_target_preset_str}*\n\n"
+                                    f"Acometida y red estables (fuera de horario pico y fuera de franja solar).\n"
+                                    f"• Minero: *{_tu_name}*\n"
+                                    f"• Techo autorizado: *{miner_curr_p}* ➔ *{_target_preset_str}*.\n"
+                                    f"• Enfriamiento proactivo: Fans aumentan enfriamiento para bajar chips ≤79°C y habilitar autoswitch VNish.\n"
+                                    f"• Reposo de red: Iniciada ventana de estabilización de 180s en acometida.",
+                                    "CONTINGENCY",
+                                    f"soft_up_{_tu_name}",
                                     is_command=True,
                                 )
             except Exception as _soft_exc:

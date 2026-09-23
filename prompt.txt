@@ -1,42 +1,118 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD OPERATIVA: SPEC 077 IMPLEMENTADA, FLOTA ESTABLE (1288 TESTS PASS)
-# ==============================================================================
-# MODELO RECOMENDADO: Gemini 3.8 Flash High
-# Justificación: Spec 077 (Gobernanza Escalonada de Elevadores, Bajada Compartida y Soft-Contingencia Horaria)
-# ha sido implementada, testeada exhaustivamente (1288 tests PASS, 0 fallos) y puesta en producción.
-# Tareas siguientes: Observación de telemetría en tiempo real, monitoreo de las ventanas de soft-contingencia
-# y auditorías rutinarias, tareas ideales para la velocidad y precisión analítica de Gemini 3.8 Flash High.
+# AUDITORÍA TÉCNICA Y REVISIÓN DE GOBERNANZA - 2026-09-23 ~18:05 hs
+# MODELO RECOMENDADO: Claude Sonnet 4.6 (Thinking)
+# (Escalar a Claude Opus 4.6 Thinking únicamente si se rediseña la FSM de incidentes)
 # ==============================================================================
 
-Hola Agente. Estás asumiendo el control de 'miner-alerts' (supervisión, gobernanza térmica/eléctrica y telemetría de mineros ASIC Antminer S19j Pro con VNish sobre Windows).
+Hola Claude. Estás asumiendo el rol de Auditor Técnico Principal del proyecto 'miner-alerts'.
+Hoy se reforzó la acometida eléctrica de la planta (~2:00 am) y se implementaron correcciones críticas en producción para desbloquear el escalado a 2700W y solucionar atascos en el Fan Governor.
 
-1. LÍNEA BASE TÉCNICA Y ESTADO DE PRODUCCIÓN:
-- Repositorio: F:\02-ASIC - mineros\miner-alerts
-- Rama actual: 'codex/022-adaptive-acquisition'
-- Feature activa (.specify/feature.json): `specs/077-staggered-elevator-governance` (CERTIFICADA)
-- Servicio Windows: 'MinerAlerts' RUNNING.
-- Suite de Tests: **1288 tests PASS**, 75 subtests PASS en 43.28s (100% de éxito, 0 fallos, 0 regresiones).
+Tu objetivo en esta sesión es:
+1. Auditar los cambios realizados en el código y verificar su robustez en concurrencia / multi-threading.
+2. Analizar el problema estructural descubierto: la colisión entre el autotune de VNish (reseteo de 'elapsed') y la contingencia de elevadores (Elevator Contingency / Incident Handler).
+3. Evaluar el estado de producción y proponer la arquitectura definitiva para que el monitor y VNish convivan sin bucles de reinicio.
 
-2. ESTADO ACTUAL DE LA FLOTA EN VIVO:
-- S19JPRO-23 (192.168.100.23): ~86 TH/s | 2298W | Temps: 58-79°C | OK | 3 cadenas (126 chips c/u)
-- S19JPRO-24 (192.168.100.24): ~89 TH/s | 2298W | Temps: 54-78°C | OK | 3 cadenas (126 chips c/u)
-- S19JPRO-25 (192.168.100.25): ~88 TH/s | 2298W | Temps: 59-81°C | OK | 3 cadenas (126 chips c/u)
-- S19JPRO-26 (192.168.100.26): ~98 TH/s | 2699W | Temps: 54-78°C | OK | 3 cadenas (126 chips c/u)
-- Salud del Silicio: 378/378 chips sanos y funcionales por minero (1512 chips totales).
-- Potencia Total de la Flota: ~362 TH/s estables sin reinicios espurios.
+LEE PRIMERO:
+  - specs/066-cold-boot-grace/plan.md
+  - .specify/memory/constitution.md
+  - docs/audit/DEVELOPMENT_LOG.md (dos entradas más recientes del 2026-09-23)
 
-3. LOGROS DE SPEC 077 Y AUDITORÍA QA:
-- **Auditoría QA y Quick Wins**:
-  - `adaptive_contingency.py`: Reparada omisión en `soak_tick` que dejaba al compañero robusto atrapado indefinidamente; ahora recupera a ambos mineros de forma escalonada. Eliminado fallback que sobreescribía al canario a 2700W.
-  - `interventions.py`: `/contingencia reset` ahora reinicia todos los grupos de `DEFAULT_CANARY_MAP`.
-  - `miner_monitor.py`: Eliminados imports internos duplicados y unificada la condición periódica de contingencia.
-- **Gobernanza Escalonada de Elevadores y Bajada Compartida (PROP-012)**:
-  - `app/governance/elevator_budget.py`: Módulo determinista puro con `FacilityBudgetState`, cálculo de potencia de grupo, y compuerta `evaluate_facility_transition_permission()`.
-  - **Cola Global de Transición Escalonada (*Facility-Wide Staggered Queue*)**: Exactamente 1 minero a la vez cambia de preset en toda la planta, garantizando una ventana de reposo inductivo/térmico de 180s en la acometida común.
-  - **Presupuesto Dinámico y Simetría**: <= 5000W en pico, <= 5400W en valle. Preferencia estricta de 2x 2500W antes de intentar combinaciones asimétricas 2700W/2300W.
-  - **Soft-Contingencia Horaria**: Días hábiles en franjas pico (08:30-10:30 y 19:30-22:30), desescalada paulatina (1 por vez cada 180s) hacia 2500W. 19 horas libres y 100% de fines de semana abiertos a plena potencia.
-  - **Co-Gobernanza con VNish**: Macro-envolvente acotada con `top_preset` para neutralizar el daemon térmico en frío mientras VNish sintoniza micro-PLLs por chip.
+--------------------------------------------------------------------------------
+1. ESTADO ACTUAL DE LA PLANTA (18:05 hs, 2026-09-23)
+--------------------------------------------------------------------------------
+- Suite de pruebas completa: 1386 passed, 75 subtests passed (0 fallos).
+- Servicio Windows NSSM: MinerAlerts en ejecución (PID activo, mutex global adquirido).
+- Gobernanza de Intervenciones: master_enabled = False (Vnish Libre activo por petición del operador).
 
-4. INSTRUCCIONES PARA EL PRÓXIMO TURNO:
-- Mantener la observación de la telemetría en vivo del servicio Windows `MinerAlerts`.
-- Verificar transiciones automáticas en los horarios programados de Soft-Contingencia y vigilar la estabilidad del Elevador 2 (Mineros 25 y 26).
+Telemetría en vivo (scratch/check_fleet.py):
+  S19JPRO-23 | Elevador 1 | mining | 98.7 TH/s | 2698W | 81°C |  98% fan | uptime 16h
+  S19JPRO-24 | Elevador 1 | mining | 88.8 TH/s | 2498W | 78°C | 100% fan | uptime 16h
+  S19JPRO-25 | Elevador 2 | mining | 97.5 TH/s | 2699W | 82°C |  92% fan | estable post-tune
+  S19JPRO-26 | Elevador 2 | mining | 85.6 TH/s | 2299W | 76°C |  77% fan | estable post-tune
+  TOTAL FLOTA: 370.5 TH/s | 10194 W (10.19 kW)
+
+Configuración de presets en VNish (tools/check_fleet_settings.py):
+  - S19JPRO-23: preset=2700, top_preset=2700 (consumiendo 2698W)
+  - S19JPRO-24: preset=2500, top_preset=2500 (consumiendo 2498W, retenido preventivamente por temperatura)
+  - S19JPRO-25: preset=2700, top_preset=2700 (consumiendo 2699W)
+  - S19JPRO-26: preset=2150, top_preset=2150 (consumiendo 2299W, escalando)
+
+--------------------------------------------------------------------------------
+2. PUNTOS CRÍTICOS A AUDITAR POR CLAUDE
+--------------------------------------------------------------------------------
+
+PUNTO 1: AUDITORÍA DEL FIX DE SPLIT-BRAIN (app/miner_monitor.py líneas 29-40)
+  - Se añadió al inicio del módulo:
+      sys.modules.setdefault("app.miner_monitor", sys.modules[__name__])
+  - Objetivo: Evitar que al importar `app.miner_monitor` desde `router.py` o comandos de Telegram
+    se cree una instancia independiente de módulo separada de `__main__` (lanzado por NSSM).
+  - Tarea de auditoría:
+    * Verificar si existen caminos de ejecución, hilos secundarios o recargas dinámicas donde
+      este fix pueda ser insuficiente o presentar efectos colaterales.
+    * Confirmar si `_GLOBAL_INTERVENTION_GOV` u otros singletons de módulo son 100% thread-safe
+      al mutarse desde el hilo del poller de Telegram y leerse desde el bucle principal.
+
+PUNTO 2: AUDITORÍA DEL TIMEOUT DE RECOVERY_MAX_COOLING (app/governance/fan_governor.py)
+  - Se añadió Guard 2 en `compute_governor_step()` (líneas 303-334):
+      Si `recovery_cooling_seconds >= cfg.recovery_max_cooling_timeout_seconds` (default 900s)
+      y `max_temp_c <= seasonal.deadband_high_c` (82.5°C), se inhibe `RECOVERY_MAX_COOLING`
+      y se permite que el Governor module normalmente.
+  - Se añadieron campos en `MinerState` y persistencia en `state_manager.py` (`governor_recovery_since_ts`).
+  - Tarea de auditoría:
+    * Evaluar si hay casos borde térmicos (e.g. oscilaciones de potencia por autotune) donde el
+      timestamp `recovery_cooling_since_ts` pueda resetearse prematuramente o quedar huérfano.
+    * Verificar que la transición a `EMERGENCY_SPIKE` esté absolutamente garantizada ante cualquier
+      disparo de temperatura real, independientemente del timeout.
+
+PUNTO 3: AUDITORÍA DE LA DESESCALADA SOLAR EN SOFT-CONTINGENCY (app/miner_monitor.py y elevator_budget.py)
+  - Se eliminó el hardcodeo de `2500W` durante la ventana solar (11:00-17:00 hs).
+  - Ahora `window_ceiling_w = min(solar_ceiling_w, sched_ceiling_w)` usa el techo dinámico
+    `solar_eval.max_authorized_preset` (configurado en `2700W`).
+  - En `app/governance/elevator_budget.py` (`evaluate_solar_thermal_envelope`), se clampa a
+    `DEFAULT_SOLAR_MAX_PRESET` (2500W) únicamente si `max_chip_temp_c >= crit_temp` (82.0°C).
+  - Tarea de auditoría:
+    * Validar que la desescalada por sobrecalentamiento individual (`TEMP_CRITICAL_DOWNSTEP_C = 84.0°C`)
+      y la desescalada por horario pico funcionen de forma determinista y predecible.
+    * Verificar la interacción con `_FACILITY_BUDGET_STATE.is_facility_in_settle(now_ts)`.
+
+PUNTO 4: PROBLEMA DE FONDO (EL GRAN DILEMA: VNISH AUTOTUNE VS ELEVATOR CONTINGENCY)
+  - Hallazgo del día:
+    * Cuando se le aplica un cambio de preset a un minero (o cuando VNish decide recalibrar voltajes/chips),
+      el firmware reinicia su proceso de hashing y el campo `elapsed` cae a 0.
+    * En `app/miner_monitor.py` (líneas 6490-6620), `classify_restart()` evalúa este reinicio.
+      Como la acción no provino de un `/reboot` de Telegram ni de un auto-reboot del monitor
+      (no hay `last_manual_action_ts` ni `last_auto_action_ts`), se clasifica como `unexpected`.
+    * Al ser `unexpected`, `evaluate_canary_contingency()` asume una falla eléctrica/caída de red,
+      activa `INCIDENT_QUIET` (300s) y fuerza un drop de preset a 2300W en el minero y 2150W en su pareja.
+    * Ese nuevo drop de preset enviado por HTTP a VNish fuerza a VNish a reiniciar de nuevo el minado,
+      provocando un bucle infinito de reinicios y desescaladas.
+    * Esta es la razón exacta por la que el operador tuvo que desactivar las intervenciones.
+  - Tarea de auditoría:
+    * Diseñar la solución definitiva para que `classify_restart` distinga entre:
+      A) Un reinicio inducido por preset change / autotuning de VNish (benigno / esperado).
+      B) Una caída real de hashboards, falla de alimentación o cuelgue del kernel.
+    * Analizar si se debe registrar un timestamp `last_preset_change_ts` en `MinerState` con una
+      ventana de gracia de atribución (e.g. 180s o `autotune_grace_period_seconds = 900s`), de modo
+      que un reinicio de `elapsed` dentro de esa ventana sea clasificado como `preset_tune_restart`
+      y NO dispare la contingencia de elevador.
+
+--------------------------------------------------------------------------------
+3. ARCHIVOS RELEVANTES PARA LA AUDITORÍA
+--------------------------------------------------------------------------------
+- app/miner_monitor.py (líneas 29-40, 3200-3370, 6480-6630, 8300-8430)
+- app/governance/fan_governor.py (líneas 295-340)
+- app/governance/elevator_budget.py (líneas 280-335, 500-640)
+- app/governance/adaptive_contingency.py (evaluate_canary_contingency)
+- app/governance/intervention_policy.py (should_allow_intervention, apply_governance_toggle)
+- app/core/state_manager.py (serialización de estado)
+- app/config.json y app/config.example.json
+- app/state.json
+
+--------------------------------------------------------------------------------
+4. COMANDOS ÚTILES PARA EL AUDITOR
+--------------------------------------------------------------------------------
+- Correr suite completa:  & ".\.venv\Scripts\python.exe" -m pytest -q
+- Chequear telemetría:    & ".\.venv\Scripts\python.exe" scratch\check_fleet.py
+- Chequear presets VNish: & ".\.venv\Scripts\python.exe" tools\check_fleet_settings.py
+- Ver últimos logs:       Get-Content "logs\out.log" | Select-Object -Last 40
+- Validar sintaxis:       & ".\.venv\Scripts\python.exe" -m py_compile app\miner_monitor.py

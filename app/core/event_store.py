@@ -473,6 +473,19 @@ class EventStore:
                     ON chain_telemetry_samples(chain_id, sensors_error_count);
                 CREATE INDEX IF NOT EXISTS ix_chain_telemetry_time
                     ON chain_telemetry_samples(observed_ts DESC);
+
+                -- Spec 079: additive facility agent knowledge table
+                CREATE TABLE IF NOT EXISTS facility_agent_knowledge (
+                    miner_name TEXT PRIMARY KEY,
+                    thermal_resistance REAL NOT NULL,
+                    best_preset TEXT NOT NULL,
+                    cohort TEXT NOT NULL,
+                    last_chip_temp_c REAL,
+                    last_inlet_temp_c REAL,
+                    last_power_w REAL,
+                    last_updated_ts REAL NOT NULL,
+                    notes TEXT NOT NULL DEFAULT ''
+                );
                 """
             )
 
@@ -1577,6 +1590,87 @@ class EventStore:
                 return _cursor_rows_to_dicts(cursor)
         except sqlite3.Error as exc:
             self._report_error("fetch_chain_samples_window", exc)
+            return []
+
+    def upsert_facility_agent_knowledge(
+        self,
+        miner_name: str,
+        thermal_resistance: float,
+        best_preset: str,
+        cohort: str,
+        last_chip_temp_c: Optional[float] = None,
+        last_inlet_temp_c: Optional[float] = None,
+        last_power_w: Optional[float] = None,
+        notes: str = "",
+    ) -> bool:
+        """Persist or update learned thermal/hardware profile for a miner (Spec 079)."""
+        connection = self._connection
+        if connection is None:
+            return False
+        now_ts = time.time()
+        try:
+            with self._lock, connection:
+                connection.execute(
+                    """
+                    INSERT INTO facility_agent_knowledge (
+                        miner_name, thermal_resistance, best_preset, cohort,
+                        last_chip_temp_c, last_inlet_temp_c, last_power_w,
+                        last_updated_ts, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(miner_name) DO UPDATE SET
+                        thermal_resistance=excluded.thermal_resistance,
+                        best_preset=excluded.best_preset,
+                        cohort=excluded.cohort,
+                        last_chip_temp_c=excluded.last_chip_temp_c,
+                        last_inlet_temp_c=excluded.last_inlet_temp_c,
+                        last_power_w=excluded.last_power_w,
+                        last_updated_ts=excluded.last_updated_ts,
+                        notes=excluded.notes
+                    """,
+                    (
+                        str(miner_name),
+                        float(thermal_resistance),
+                        str(best_preset),
+                        str(cohort),
+                        float(last_chip_temp_c) if last_chip_temp_c is not None else None,
+                        float(last_inlet_temp_c) if last_inlet_temp_c is not None else None,
+                        float(last_power_w) if last_power_w is not None else None,
+                        now_ts,
+                        str(notes),
+                    ),
+                )
+            return True
+        except sqlite3.Error as exc:
+            self._report_error("upsert_facility_agent_knowledge", exc)
+            return False
+
+    def get_facility_agent_knowledge(
+        self, miner_name: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Retrieve stored empirical knowledge for one or all miners (Spec 079)."""
+        connection = self._connection
+        if connection is None:
+            return []
+        try:
+            with self._lock:
+                if miner_name:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM facility_agent_knowledge
+                        WHERE miner_name = ?
+                        """,
+                        (str(miner_name),),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM facility_agent_knowledge
+                        ORDER BY miner_name ASC
+                        """
+                    ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            self._report_error("get_facility_agent_knowledge", exc)
             return []
 
 

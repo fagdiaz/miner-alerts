@@ -237,9 +237,15 @@ Herramienta de auditoría continua: `tools/audit_contingency_night.py`.
    - ✅ **PROP-008** (`Telemetría Profunda por Cadena & Diagnóstico Chain Break`) -> Implementada y certificada en **Spec 069**.
    - Ver detalle de ejecución en [`docs/speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md`](../speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md).
 
-3. **Iniciativas en Evaluación y Recopilación Activa**:
-   - 🔬 **PROP-009** (`Contingencia Coordinada de Pares y Estabilización de Elevadores`) -> Documento específico en [`docs/proposals/PROP-009-contingency-stabilization-hypotheses.md`](PROP-009-contingency-stabilization-hypotheses.md). Herramienta de auditoría operativa en [`tools/audit_contingency_night.py`](../../tools/audit_contingency_night.py).
+3. **Iniciativas Recientes y en Ejecución Activa**:
+   - ✅ **PROP-010** (`Soft-Landing Recovery & PSU Latch-Off Defense`) -> Certificada en **Spec 075**.
+   - ✅ **PROP-011** (`Autonomous Firmware Reflash & Hardware Safety Ladder`) -> Certificada en **Spec 076**.
+   - ✅ **PROP-012** (`Staggered Elevator Governance & Soft-Contingency Schedule`) -> Certificada en **Spec 077**.
+   - ✅ **PROP-013** (`Elevator Noise Suppression, Autotune Stall Watchdog & Solar Thermal Governance`) -> Certificada en **Spec 078**.
+   - 🔬 **PROP-014** (`Roadmap Experimental de Combinaciones de Máxima Potencia y Estabilidad en Elevadores`) -> Documento activo en [`docs/proposals/PROP-014-maximum-power-and-asymmetric-combination-roadmap.md`](PROP-014-maximum-power-and-asymmetric-combination-roadmap.md). En ejecución en producción (Combinación C1).
+   - 🤖 **PROP-015** (`Agente Autónomo de Gobernanza de Planta y Supervisor Conversacional Interactivo`) -> Documento activo en [`docs/proposals/PROP-015-autonomous-facility-agent-and-interactive-supervisor.md`](PROP-015-autonomous-facility-agent-and-interactive-supervisor.md). Motor de decisiones determinístico 24/7 + interfaz conversacional on-demand en Telegram.
 
 ---
 
 *Documento archivado en `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md` como repositorio formal de iniciativas técnicas del proyecto Miner Alerts.*
+

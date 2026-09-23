@@ -3,6 +3,288 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-23] - Hardening Timeout Fan Governor Recovery y Desacople Dinámico de Envolvente Solar
+
+* **Contexto & Diagnóstico Forense**:
+  - Tras el split-brain fix y la configuración inicial de la acometida reforzada a 2700W, se manifestaron dos comportamientos anómalos en planta:
+    1. **Atasco en RECOVERY_MAX_COOLING en M23**: S19JPRO-23 permanecía con ventiladores forzados al 100% de PWM con chips a 77°C. La causa raíz en `app/governance/fan_governor.py` era que `current_power_w < (target_power_w - power_margin_w)` evaluaba a True durante el autotune de VNish, sin existir un timeout de seguridad para reanudar la modulación térmica normal.
+    2. **Desescalada Involuntaria a 2500W en Franja Solar**: En `app/miner_monitor.py` (líneas 8321 y 8403), el código forzaba hardcodeado `2500W` durante la ventana solar (11:00-17:00 hs) si `solar_eval.is_solar_window` era True, ignorando `solar_thermal_max_preset: "2700W"` de `config.json`. A las 15:14-15:20 hs, Soft-Contingency desescaló a los mineros M24, M25 y M26 a 2500W por este motivo.
+
+* **Componentes Modificados & Correcciones**:
+  1. `app/governance/fan_governor.py`:
+     - **Guard 2 (Safety Timeout)**: En `compute_governor_step`, si `recovery_cooling_seconds >= recovery_max_cooling_timeout_seconds` (default 900s) y `max_temp_c <= deadband_high_c` (82.5°C), se inhibe `ACTION_RECOVERY_MAX_COOLING` y se permite que el Governor retome la modulación PID normal.
+     - Añadido `recovery_cooling_seconds: float = 0.0` y parámetro `recovery_max_cooling_timeout_seconds: float = 900.0` a `GovernorConfig`.
+  2. `app/core/state_manager.py`:
+     - Persistencia y serialización de `governor_recovery_since_ts` en `serialize_miner_state`.
+  3. `app/miner_monitor.py`:
+     - Incorporado `governor_recovery_since_ts` en `MinerState` y deserialización en `load_state`.
+     - Inyección de `recovery_max_cooling_timeout_seconds` en todas las instancias de `GovernorConfig`.
+     - Desacople de techo en franja solar: `window_ceiling_w = min(solar_ceiling_w, sched_ceiling_w)` y cálculo dinámico de `effective_max_w`, respetando `solar_thermal_max_preset: "2700W"` cuando los chips no están en condición crítica (>=82.0°C).
+  4. `app/governance/elevator_budget.py`:
+     - `evaluate_solar_thermal_envelope()`: Clampa preventivamente a `DEFAULT_SOLAR_MAX_PRESET` (2500W) únicamente si `max_chip_temp_c >= crit_temp` (82.0°C). De lo contrario, respeta `solar_thermal_max_preset` ("2700W").
+  5. `tests/test_fan_governor.py`:
+     - 3 nuevas pruebas deterministas: verificación de recovery cooling bajo timeout, expiración de timeout reanudando modulación, y preservación de `EMERGENCY_SPIKE`.
+
+* **Resultados & Verificación**:
+  - **Sintaxis**: `py_compile app/miner_monitor.py app/governance/fan_governor.py app/governance/elevator_budget.py` OK.
+  - **Tests**: **1386 passed, 75 subtests passed in 39.89s** (0 fallos).
+  - **Producción en vivo**: Servicio `MinerAlerts` reiniciado. M23 salió inmediatamente de `RECOVERY_MAX_COOLING`, bajando de 100% a 97% -> 92% -> 84% fan duty a 78-79°C.
+  - **Gobernanza**: Soft-Contingency estabilizada sin desescaladas forzadas a 2500W. Flota operando de forma continua y segura a 9.99 kW.
+
+## [2026-09-23] - Fix Crítico Split-Brain Módulo y Configuración de Operación a 2700W
+
+* **Contexto & Diagnóstico Forense**:
+  - El operador reportó que tras enviar `/interventions off` o pulsar "all_off" en Telegram, las restricciones parecían reactivarse solas (mineros quedaban en 2500W en lugar de 2700W).
+  - Investigación forense identificó la causa raíz: **Split-Brain de Importación Dual** (`__main__` vs `app.miner_monitor`).
+  - NSSM lanza `python.exe miner_monitor.py` desde `app/`, por lo que el módulo se registra en `sys.modules` como `__main__`. Cuando `router.py` y `commands/interventions.py` ejecutan `import app.miner_monitor`, Python creaba una instancia de módulo **completamente independiente**. Las mutaciones de `_GLOBAL_INTERVENTION_GOV` desde Telegram afectaban únicamente la copia `app.miner_monitor`, mientras el bucle en `__main__` seguía operando con `master_enabled=True`. Cada 30s, `save_state()` sobreescribía `state.json` con `master_enabled: true` desde el bucle principal.
+  - Adicionalmente, se identificó que `solar_thermal_max_preset: "2500W"` y `soft_contingency_peak_max_preset: "2500W"` + `fan_governor_power_floor_2700w: 80` causaban bajadas automáticas y oscilaciones térmicas con la acometida eléctrica limitada (ahora reforzada).
+
+* **Componentes Modificados & Correcciones**:
+  1. `app/miner_monitor.py`:
+     - **Fix split-brain (líneas 21-40)**: Añadido `sys.modules.setdefault("app.miner_monitor", sys.modules[__name__])` en nivel de módulo, inmediatamente después del bloque `_REPO_ROOT`. Garantiza que cualquier `import app.miner_monitor` subsiguiente obtenga el mismo objeto que `__main__`, resolviendo el split-brain permanentemente.
+  2. `app/config.example.json`:
+     - `fan_governor_power_floor_2700w`: 80 → **85** (evita bajada de fans a <85% a 2700W, previniendo spikes térmicos a 84-86°C).
+     - `soft_contingency_peak_max_preset`: "2500W" → **"2700W"** (elimina bajadas forzadas en horarios pico 08:30-09:30 y 20:00-21:15).
+     - `solar_thermal_max_preset`: "2500W" → **"2700W"** (elimina bajadas forzadas en ventana solar 11:00-17:00).
+  3. `app/config.json` (producción):
+     - Mismo ajuste de las 3 configuraciones anteriores. Config BOM corregido (PowerShell había añadido UTF-8 BOM que causaba `UnicodeDecodeError` al cargar).
+  4. `scratch/scale_to_2700w.py`:
+     - Nuevo script de escalado secuencial a 2700W: verifica temperatura (<84°C) y fans (<92%) antes de escalar, aplica preset equipo por equipo con pausa configurable (`--settle N`), y realiza verificación post-escala.
+
+* **Resultados & Verificación**:
+  - **Sintaxis**: `py_compile app/miner_monitor.py` OK.
+  - **Tests**: `1383 passed, 75 subtests passed in 39.88s` (0 fallos — baseline mantenido).
+  - **Servicio**: `MinerAlerts` reiniciado con `SERVICE_RUNNING` tras fix de BOM.
+  - **Dry-run de escalado**: 4/4 mineros detectados en ~2500W, temperatura 81-82°C, fans 75-90% — sin bloqueos térmicos. Escalado real ejecutado secuencialmente.
+  - **Split-brain**: Verificado en log de arranque — `[INTERVENTIONS] Reconstituted intervention governance: master=True reason=` — la próxima vez que el operador pulse "all_off", el estado se mantendrá en `master=False` de forma permanente en `__main__`.
+
+## [2026-09-20] - Hardening del Fan Governor: Inhibición de Desescalada en Warmup y Pisos Térmicos Seguros por Potencia
+
+* **Contexto & Diagnóstico Forense**:
+  - El operador detectó en producción que el Minero 25 alcanzó 86°C antes de que los ventiladores reaccionaran saltando bruscamente al 100% (`EMERGENCY_SPIKE`).
+  - La inspección de trazas en `logs/out.log` (22:10 a 22:14 hs) confirmó el mecanismo exacto de la falla:
+    1. **Asfixia de Flujo por Desescalada en Warmup**: Tras reiniciar a las 22:08, los chips de M25 estaban fríos (<75°C). La Sección 10 (`Cool regime`) de `compute_governor_step` no comprobaba `is_warming_up`, interpretando la baja temperatura transitoria como margen térmico excesivo y reduciendo los ventiladores agresivamente cada 60 segundos: 87% ➔ 77% ➔ 72% ➔ 67% ➔ 62%.
+    2. **Surge Térmico Inevitable a 2500W**: Al concluir el autotuning e inyectar 2499W de potencia eléctrica continua con los ventiladores en 62%, la tasa de generación de calor superó con creces la disipación térmica. La temperatura de los chips se disparó en 60 segundos desde 72°C hasta 86°C, alcanzando el umbral de emergencia donde recién se forzó el 100% de PWM.
+    3. **Pisos Físicos de Potencia Insuficientes**: `resolve_power_fan_floor` permitía descender hasta el 60% de PWM en 2500W y 70% en 2700W, valores insuficientes en planta que conducían inexorablemente a oscilaciones en diente de sierra (100% ➔ baja a 62% ➔ pico a 86°C ➔ spike a 100%).
+* **Componentes Modificados & Correcciones**:
+  1. `app/governance/fan_governor.py`:
+     - **Inhibición Estricta de Desescalada en Calentamiento**: En Sección 10, si `is_warming_up` es `True`, se retorna inmediatamente `ACTION_HOLD_DWELL`, bloqueando cualquier reducción de ventiladores durante la fase de arranque y reteniendo la capacidad refrigerante plena (85-100%).
+     - **Pisos Físicos Configurables por Potencia**: En `GovernorConfig` y `resolve_power_fan_floor`, se añadieron pisos térmicos configurables (`power_floor_2700w: 80`, `power_floor_2500w: 75`, `power_floor_2300w: 65`, `power_floor_1800w: 50`), impidiendo que un minero a 2500W baje jamás del 75% de PWM.
+  2. `app/miner_monitor.py`:
+     - **Ventana de Warmup Realista**: Se extendió la guarda de calentamiento del minero de 240s a 900s (`autotune_grace_period_seconds = 900.0`), cubriendo los 15 minutos necesarios para la estabilización térmica y de PLLs de VNish.
+     - Conexión de los nuevos pisos de potencia desde la configuración hacia `GovernorConfig` y sus variantes de silenciado/overrides.
+  3. `app/config.json` & `app/config.example.json`:
+     - Agregados parámetros `fan_governor_power_floor_2700w: 80`, `fan_governor_power_floor_2500w: 75`, `fan_governor_power_floor_2300w: 65`, `fan_governor_power_floor_1800w: 50`.
+  4. `tests/test_fan_governor.py`:
+     - 3 nuevas pruebas unitarias deterministas verificando: inhibición estricta de step-down en warmup, resolución de pisos configurables y enforzamiento del piso del 75% a 2500W.
+* **Resultados & Verificación**:
+  - Suite de regresión completa: **1383/1383 tests PASS, 75 subtests PASS** (100% de éxito en 44.21s).
+  - Servicio Windows `MinerAlerts` reiniciado y en estado `Running`.
+  - Trazas operativas en vivo (`logs/out.log` a las 22:24 hs): S19JPRO-25 reteniendo firmemente `duty=90%` en `HOLD_DWELL` a 2499W; S19JPRO-26 a `duty=75%` a 2498W. Cero picos térmicos a 86°C.
+
+## [2026-09-20] - Eliminación de Bucle Límite en Soft-Contingencia, Período de Gracia de Autotune y Techo Seguro en Elevador 2
+
+* **Contexto & Diagnóstico Forense**:
+  - En horarios valle/fin de semana (domingo por la noche), se diagnosticaron oscilaciones de preset y reinicios en Elevador 2 (Mineros 25 y 26) producidos por colisión entre el monitor y el firmware interno de VNish:
+    1. **Bucle Límite de 180s en `soft_contingency`**: Durante la calibración inicial de autotune a 2500W, el consumo eléctrico del minero desciende a ~2298W. La función `_get_miner_wattage()` mapeaba 2298W a `w_eff = 2300`, interpretando erróneamente que el equipo requería ser escalado a 2500W. Esto provocaba llamadas reiteradas a `safe_set_miner_preset("2500W")` cada 180s, abortando el autotune y trabando los ventiladores al 100%.
+    2. **Sobrecarga Asimétrica en Elevador 2**: El Minero 26 contaba con `max_hardware_preset: 2700W`. Tras estabilizarse brevemente, la Etapa 2 de soft-contingencia lo escalaba a 2700W ($5200\text{W}$ en Elevador 2), ocasionando caída de tensión por impedancia de contactor tras ~40 minutos y caída de placas de hash.
+    3. **Ausencia de Ventana de Gracia Post-Arranque**: Mineros recién booteados (`elapsed < 900s`) eran evaluados prematuramente mientras sus lazos PLL y frecuencias aún calibraban.
+* **Componentes Modificados & Correcciones**:
+  1. `app/miner_monitor.py`:
+     - **Discriminación de Target Configurado en Etapa 1**: Se verifica `_target_cfg_w >= 2500` y `p_str >= 2500W`. Si el minero ya tiene configurado $\ge 2500\text{W}$, no se ingresa en `miners_below_2500`, suprimiendo los despachos redundantes durante el autotuning.
+     - **Período de Gracia Post-Arranque (`autotune_grace_period_seconds = 900.0`)**: Si algún minero tiene `0 < last_elapsed < 900`, `fleet_has_warming_up = True` congela cualquier transición automática de preset en la flota.
+     - **Subordinación de Etapa 2 al Perfil Deseado de Progresión**: Si `desired_profile` es `C0_BASE_STABLE` o `EMERGENCY_COOL`, `effective_max_w` se clampa a 2500W, impidiendo la escalada autónoma a 2700W.
+     - **Gate 0 de Etapa 2 con Guarda de Calentamiento**: Se bloquea la promoción a 2700W si el minero tiene `elapsed < 900s`, evitando escaladas en chips fríos por reinicio reciente.
+  2. `app/config.json` & `app/config.example.json`:
+     - S19JPRO-26 alineado con S19JPRO-25: `target_power_w = 2500.0`, `max_hardware_preset = "2500W"`. Elevador 2 simetrizado en 5000W máximos continuos.
+     - Configurado `"autotune_grace_period_seconds": 900.0`.
+  3. `app/governance/power_progression.py`:
+     - `ProgressionOrchestratorState` default establecido canónicamente en `PROFILE_C0_BASE_STABLE` (2500W base en toda la flota).
+  4. `tests/test_autotune_grace_soft_contingency.py`:
+     - Nueva suite de 6 pruebas unitarias deterministas verificando los 4 gates, discriminación de autotuning y estabilidad.
+* **Resultados & Verificación**:
+  - Suite de regresión: **1380/1380 tests PASS, 75 subtests PASS** (100% PASS en 41.58s).
+  - Servicio `MinerAlerts` reiniciado y verificado en estado `Running`.
+  - Trazas operativas en vivo (`logs/out.log`): Mineros 23, 24, 25 y 26 en `action=HOLD_DWELL`, operando a 2500W sin despachos espurios a VNish.
+
+## [2026-09-20] - Hardening de QA Fase 2: Escalera Térmica Canónica, Ingesta Paralela y Neutralización de Conflicto Multicabezal
+
+* **Contexto & Justificación (Derivado del Informe de Auditoría QA)**:
+  - Siguiendo el orden recomendado de la auditoría técnica de QA (`docs/audit/QA_SYSTEM_AUDIT_2026_09_20.md`), se implementaron las mejoras de Dominio Térmico (Hallazgo 7), Red/ASICs (Hallazgo 3) y Gobernanza Multicabezal (Hallazgo 1).
+* **Componentes Modificados & Mejoras Aplicadas**:
+  1. `app/governance/thermal_policy.py`:
+     - **Escalera Térmica Canónica**: Centralización de los umbrales críticos de silicio (`TEMP_STEP_UP_CEILING_C = 80.0°C`, `TEMP_TARGET_OPERATING_C = 81.0°C`, `TEMP_DEADBAND_HIGH_C = 82.5°C`, `TEMP_SUSTAINED_TRIPWIRE_C = 83.0°C`, `TEMP_IMMEDIATE_TRIPWIRE_C = 83.5°C`, `TEMP_CRITICAL_DOWNSTEP_C = 84.0°C`).
+     - Eliminación de constantes mágicas dispersas en `miner_monitor.py` (`_mt >= 84.0`), `facility_agent.py`, `power_progression.py` y `fan_governor.py`.
+     - Funciones puras de dominio: `evaluate_chip_thermal_state()`, `is_safe_for_step_up()`, `get_canonical_thermal_ladder()`.
+  2. `app/vnish/client.py` & `app/miner_monitor.py`:
+     - **Ingesta Paralela de Paso Único (Single-Pass Ingestion)**: Implementación de `fetch_fleet_vnish_summaries(hosts, timeout)`. Consulta `/api/v1/summary` para todos los mineros concurrentemente en un solo pool de hilos, reduciendo el tiempo de adquisición de $4 \times 2.5\text{s} = 10\text{s}$ seriales a $\approx 200\text{ms}$ y eliminando el agotamiento de sockets efímeros en el puerto 80 de las controladoras.
+     - `check_autotune_watchdog` ahora consume los resúmenes en paralelo o de forma pre-provista sin llamadas HTTP redundantes.
+  3. `app/governance/preset_balancer.py`:
+     - **Neutralización de Conflicto Multicabezal (Uptime Sustentado)**: Se introdujo `recent_restart_window_hours = 4.0` y la acción `ACTION_HOLD_STABILIZED`. Si un minero posee reinicios antiguos en las últimas 24h pero su uptime continuo es $\ge 4.0\text{ horas}$ (como Mineros 23, 25 y 26 que superan 14-17 horas de uptime continuo), el balanceador NO desescala a 2300W, reteniendo el preset establemente y evitando el bucle oscilatorio con la soft-contingencia.
+* **Resultados & Verificación**:
+  - Suite de pruebas de regresión completa: **1374/1374 tests PASS, 75 subtests PASS** (100% de éxito en 42.69s, +16 tests nuevos sin ninguna regresión).
+  - Servicio Windows `MinerAlerts` reiniciado y verificado en estado `Running`.
+  - Trazas de producción en vivo confirman la neutralización del conflicto:
+    `[BALANCER DRY] miner=S19JPRO-23 action=HOLD_STABILIZED reason='Uptime continuo estabilizado (16.6h >= 4.0h): reteniendo preset 1800W pese a 6 reinicios antiguos'`
+    `[BALANCER DRY] miner=S19JPRO-25 action=HOLD_STABILIZED reason='Uptime continuo estabilizado (14.4h >= 4.0h): reteniendo preset 2500W pese a 7 reinicios antiguos'`
+    `[BALANCER DRY] miner=S19JPRO-26 action=HOLD_STABILIZED reason='Uptime continuo estabilizado (14.4h >= 4.0h): reteniendo preset 2700W pese a 8 reinicios antiguos'`
+  - Uptime continuo de planta preservado al 100%: Minero 24 supera 24.2 horas continuas; Minero 23 en 16.5 horas; Mineros 25 y 26 en 14.4 horas continuas sin reinicios.
+
+
+## [2026-09-20] - Hardening de QA Fase 1: Optimización de E/S en Disco y Uniformidad en Telegram
+
+* **Contexto & Justificación (Derivado del Informe de Auditoría QA)**:
+  - Tras la auditoría exhaustiva documentada en `docs/audit/QA_SYSTEM_AUDIT_2026_09_20.md`, se ejecutó la Fase 1 del plan de mejoras recomendadas (Quick Wins de riesgo nulo y alto impacto).
+* **Componentes Modificados & Correcciones**:
+  1. `app/miner_monitor.py`:
+     - **Optimización de E/S en Disco (`state.json` Churn)**: Se extrajo la invocación de `_flush_state_payload()` fuera del bucle de mensajes individuales `for item in result:`. Ahora la escritura atómica, la copia `.bak` y el `os.fsync` se ejecutan exactamente **una sola vez por lote de mensajes**, eliminando la contención de descriptores de archivo en Windows NTFS ante ráfagas de mensajes.
+     - **Despacho Dinámico en `_is_command_like`**: Se integró la consulta directa a `_command_router.find_handler(cmd_name)`. Esto garantiza que comandos nuevos (`/agent`, `/strategy`, `/fwhy`, `/progression`) no sean filtrados de los logs de depuración cuando `DBG_TELEGRAM_COMMANDS_ONLY=1`.
+     - **Uniformidad de Despacho de Comandos**: Se eliminó la omisión de `message_id` en las ramas de despacho de Telegram (`diagnose`, `firmware`, `quality`, `health`, `status`), pasando `message_id` consistentemente a todos los comandos y preservando los contratos de inspección para pruebas unitarias.
+* **Resultados & Verificación**:
+  - Suite de pruebas completa: **1358/1358 tests PASS** (100% de éxito en 42.99s).
+  - Servicio Windows `MinerAlerts` reiniciado y verificado en estado `Running`.
+  - Uptime continuo de planta preservado al 100%: Minero 24 alcanzando 24 horas continuas de minado; Mineros 23, 25 y 26 superando 14-16 horas continuas sin reinicios.
+
+## [2026-09-20] - PROP-014 / Spec 079 Addendum: Orquestador de Progresión de Potencia y Comando Telegram `/progression`
+
+* **Contexto & Mandato**:
+  - El operador solicitó un algoritmo robusto y profesional para gobernar el avance hacia 2700W con alternativas de contingencia inmediatas ante cualquier inconveniente térmico, de saturación de ventiladores o de estrés eléctrico en elevadores.
+  - Objetivo: Permitir que el sistema explore de forma determinística la maximización a 2700W sin tokens, con compuertas de seguridad física no negociables y control interactivo en Telegram.
+* **Componentes Implementados**:
+  1. `app/governance/power_progression.py`:
+     - Perfiles discretos de planta: `C4_MAX_POWER` (4x 2700W), `C1_ASYMMETRIC` (2700/2700/2500/2700), `C2_ELEV1_BALANCED` (2700/2500/2500/2700), `C0_BASE_STABLE` (4x 2500W), `EMERGENCY_COOL` (4x 2300W).
+     - Compuertas de seguridad: Desescalada inmediata a 2500W si chip $\ge 83.5^\circ\text{C}$; desescalada acumulada si chip $> 83.0^\circ\text{C}$ por $> 60\text{s}$.
+     - Bloqueo de reposo térmico post-desescalada de 30 minutos (`thermal_lockout_until_ts`).
+     - Ventana de remojo térmico e inrush de 15 minutos (`soak_seconds = 900.0`) entre promociones individuales a lo largo de la planta.
+     - Compuerta de reserva de ventiladores: Bloquea escalada a 2700W si PWM $\ge 90\%$.
+     - Presupuesto de elevador: Límite $\le 5400\text{W}$ continuo por elevador.
+  2. `app/telegram/commands/progression.py`:
+     - Comando interactivo `/progression` (alias: `/prog`, `/perfil`, `/profiles`).
+     - Visualización en vivo: Perfil activo vs objetivo, telemetría por elevador, estado de compuertas (fans saturados, techo HW, etc.) y decisión del orquestador.
+     - Control de perfil deseado: `/progression c0`, `/progression c1`, `/progression c2`, `/progression c4`.
+  3. `app/telegram/router.py`: Registro de `ProgressionCommand` en el despachador de Telegram.
+* **Verificación de Pruebas**:
+  - `tests/test_power_progression.py`: 7 tests unitarios PASS.
+  - `tests/test_progression_command.py`: 5 tests unitarios PASS.
+  - Suite de regresión global: **1358/1358 tests PASS** (100% de éxito, 0 fallos, 0 regresiones en 41.50s).
+* **Verificación Operativa en Producción (Madrugada 01:40 hs)**:
+  - S19JPRO-23: 2499W | 93.5 TH/s | Chip: 79°C | Fans: 97% | Uptime: ~7.4 horas continuas (mining).
+  - S19JPRO-24: 2498W | 93.0 TH/s | Chip: 81°C | Fans: 100% | Uptime: ~15.1 horas ininterrumpidas (mining).
+  - S19JPRO-25: 2499W | 93.7 TH/s | Chip: 81°C | Fans: 92% | Uptime: ~5.3 horas ininterrumpidas (mining).
+  - S19JPRO-26: 2699W | 98.0 TH/s | Chip: 81°C | Fans: 92% | Uptime: ~5.2 horas ininterrumpidas a 2700W (mining).
+  - Flota global: 10.19 kW, 378 TH/s, 0 reinicios en >5 horas continuas.
+
+## [2026-09-19] - Estabilización de Flota: Diagnóstico Forense y Neutralización de Sobre-Intervención
+
+* **Contexto & Diagnóstico Forense (Hipótesis del Operador Confirmada)**:
+  1. El operador reportó con total precisión técnica una inestabilidad recurrente en los mineros (múltiples reinicios en 23, 25 y 26) que no ocurría bajo operación manual estática (23 y 24 a 2700W/2500W, 25 y 26 a 2500W).
+  2. El análisis de trazas de `out.log` y base de datos correlacionó de manera unívoca cada reinicio con una llamada previa de modulación de preset en `soft_contingency`:
+     - **Causa Interna (Crítica)**: `safe_set_miner_preset` en `miner_monitor.py` invocaba `auto_restart_mining=True`. En firmware VNish, cualquier mutación de overclock vía `/api/v1/settings` retorna `restart_required: true`. Al recibir `auto_restart_mining=True`, el cliente forzaba de inmediato un `restart_mining()` (`/api/v1/mining/restart`), interrumpiendo abruptamente el hashboard backend, reseteando el `elapsed` a 0s y precipitando autotuning desde 0W.
+     - **Lazo de Oscilación por Histéresis Estrecha**: Al subir a 2700W, los chips rozaban 84°C; la compuerta de alivio desescalaba a 2500W forzando otro reinicio; al enfriarse (<80°C), la orquestación de valle volvía a escalar a 2700W forzando otro reinicio en ciclos continuos de 3 a 7 minutos.
+     - **Desincronización de Caché de Potencia en `_get_miner_wattage`**: La función usaba `m_st.balancer_preset` o `m_top` en lugar de la potencia consumida real de la fuente (`m_pwr`). Si un minero operaba a 2699W pero el estado guardaba 2300W, el monitor creía que estaba por debajo de 2500W y le despachaba una "escalada a 2500W", provocando el reinicio innecesario de un minero que ya estaba hasheando establemente.
+     - **Causa Externa Coadyuvante**: El relé físico del Elevador 2 presentaba pegado/micro-arcos mecánicos (requiriendo lijado por el operador). Los ciclos bruscos de $0\text{W} \leftrightarrow 2500\text{W}$ inducidos por los reinicios del monitor amplificaban las caídas inductivas de tensión ($L \frac{di}{dt}$), botando la placa de control del Minero 25.
+* **Correcciones Aplicadas & Desplegadas en Producción**:
+  - `app/miner_monitor.py`:
+    * `_get_miner_wattage`: Resolución de potencia basada en consumo eléctrico real medido en tiempo real ($P \ge 2600\text{W} \to 2700\text{W}$; $P \ge 2400\text{W} \to 2500\text{W}$; etc.). Previene desincronizaciones de caché.
+    * `auto_restart_mining=False`: Modificado en todas las ramas de soft-contingencia y orquestación. El monitor NUNCA más mata el proceso de minería durante modulaciones rutinarias.
+    * Respeto estricto a `_GLOBAL_INTERVENTION_GOV`: La evaluación de escalamiento y desescalamiento verifica `presets_enabled` y `master_enabled`. Si el operador desactiva presets, el sistema opera en **Modo Pasivo** (cero llamadas de mutación a la API de VNish).
+* **Resultados & Verificación Operativa**:
+  - Suite de regresión completa: **1343/1343 tests PASS** (100% de éxito, 0 fallos, 0 regresiones en 43.05s).
+  - Servicio `MinerAlerts` reiniciado y verificado en Windows.
+  - Flota estabilizada en vivo (20:28 hs):
+    * S19JPRO-23: 2499W | 93.7 TH/s | Chip: 82°C | State: mining (Uptime: 132 min).
+    * S19JPRO-24: 2498W | 92.3 TH/s | Chip: 83°C | State: mining (Uptime: 10 horas sostenidas).
+    * S19JPRO-25: 2499W | 90.4 TH/s | Chip: 77°C | State: mining (Estable a 2500W).
+    * S19JPRO-26: 2699W | 97.3 TH/s | Chip: 73°C | State: mining (Estable a 2700W).
+    * Potencia de planta: 10.19 kW. Hashrate de planta: 373.6 TH/s. Cero reinicios.
+
+## [2026-09-19] - Spec 079: Agente Autónomo de Gobernanza de Planta (FGA) y Optimizador Asimétrico de Potencia (PROP-014 / PROP-015)
+
+* **Objetivo**:
+  1. Materializar el Agente Autónomo de Gobernanza de Planta (FGA) solicitado por el operador: un lazo determinístico de control cerrado 24/7 de zero-token cost, memoria persistente en SQLite y una interfaz supervisora conversacional en Telegram (`/agent`, `/strategy`, `/fwhy`).
+  2. Implementar el modelo físico de resistencia térmica de silicio ($R_{th} = (T_{chip} - T_{inlet}) / P_{active}$) y predicción térmica ($T_{pred} = T_{inlet} + R_{th} \cdot P_{target}$) para clasificar el silicio en cohortes (`COOL`, `STANDARD`, `HOT`) y bloquear matemáticamente cualquier escalamiento de potencia que prediga chips $> 82.5^\circ\text{C}$.
+  3. Resolver la fuerte asimetría empírica de disipación observada en planta: Elevador 2 opera frío (77°C a 2500W, prime para 2700W) mientras Elevador 1 opera caliente (85°C a 2500W, requiere permanecer en 2500W).
+  4. Integrar la tabla SQLite `facility_agent_knowledge` para almacenar la curva de aprendizaje de cada ASIC y su evolución a lo largo del tiempo.
+  5. Desplegar los comandos interactivos en Telegram (`/agent`, `/strategy`, `/fwhy`) registrados en el despachador desacoplado `TelegramCommandRouter`.
+* **Componentes Implementados / Modificados**:
+  - `app/governance/facility_agent.py`: Motor determinístico central con `calculate_thermal_resistance`, `predict_chip_temperature`, `classify_silicon_cohort`, `build_thermal_profile`, `evaluate_asymmetric_allocation` y `explain_miner_state`.
+  - `app/core/event_store.py`: Nueva tabla `facility_agent_knowledge` y métodos `upsert_facility_agent_knowledge` y `get_facility_agent_knowledge`.
+  - `app/telegram/commands/agent.py`: Comandos `/agent`, `/strategy` y `/fwhy`.
+  - `app/telegram/router.py`: Registro de `AgentCommand`, `StrategyCommand` y `AgentWhyCommand` en `create_default_command_router`.
+  - `app/miner_monitor.py`: Actualización en vivo de la base de conocimiento del FGA en cada tick para cada minero que responda con telemetría válida.
+  - `tests/test_facility_agent.py` & `tests/test_agent_commands.py`: 16 nuevas pruebas unitarias cubriendo cálculos, asignación asimétrica, persistencia SQLite y comandos de Telegram.
+* **Resultados & Verificación**:
+  - Suite de regresión completa: **1343/1343 tests PASS** (100% de éxito, 0 fallos, 0 regresiones en 43.37s).
+  - Servicio de producción `MinerAlerts` actualizado, reiniciado y operando en estado RUNNING.
+  - Base de conocimiento verificada en producción en `data/miner_alerts.db`: Mineros 24, 25 y 26 catalogados con $R_{th} \approx 0.021-0.022^\circ\text{C/W}$ y cohorte `STANDARD`.
+
+## [2026-09-19] - Spec 078 Addendum: Compuerta de Margen Térmico (Gate 0) en Etapa 2 de Orquestación de Valle
+
+* **Objetivo**:
+  1. Proteger a la flota de escalamientos prematuros a 2700W post-franja solar (17:00 hs) si la inercia térmica ambiental o el régimen de ventiladores aún no ha disipado el calor de la tarde.
+  2. Evitar que un minero con chips a $\ge 80.0^\circ\text{C}$ o ventiladores saturados ($\ge 92\%$ PWM) salte a 2700W (+200W de disipación), lo cual induciría un sobrepaso inmediato de la compuerta de seguridad de VNish (`decrease_temp: 84°C`).
+  3. Establecer la compuerta `ACTION_HOLD_THERMAL_HEADROOM` en `app/governance/elevator_budget.py` (`evaluate_facility_transition_permission`) y el filtro de telemetría en vivo (Gate 0) en Stage 2 de `app/miner_monitor.py`.
+* **Componentes Modificados**:
+  - `app/governance/elevator_budget.py`: Constante `ACTION_HOLD_THERMAL_HEADROOM`, umbral por defecto `DEFAULT_VALLEY_STEP_UP_MAX_CHIP_TEMP_C = 80.0`, y Gate 3.1 en `evaluate_facility_transition_permission`.
+  - `app/miner_monitor.py`: Gate 0 en la Etapa 2 del bucle de soft-contingencia orquestada de valle, validando `temp < valley_step_up_max_chip_temp_c` (80.0°C) y `duty < valley_step_up_max_fan_duty_pct` (92.0%) antes de autorizar el ascenso de cualquier minero.
+  - `app/config.example.json` & `app/config.json`: Añadidos parámetros configurables `valley_step_up_max_chip_temp_c: 80.0` y `valley_step_up_max_fan_duty_pct: 92.0`.
+  - `tests/test_elevator_budget.py`: Añadidos `test_thermal_headroom_blocks_step_up_to_2700_when_hot` y `test_thermal_headroom_allows_step_up_to_2700_when_cool`.
+* **Resultados & Verificación**:
+  - Suite de regresión completa: **1324/1324 tests PASS** (100% de éxito, 0 fallos, 0 regresiones en 42.48s).
+  - Servicio de producción `MinerAlerts` actualizado, reiniciado y operando en estado RUNNING.
+  - Comportamiento validado: Mineros 23, 24 y 26 quedan protegidos y sólo subirán a 2700W de manera escalonada (1 cada 180s) a medida que el ambiente nocturno descienda los chips $\le 79.5^\circ\text{C}$ y ventiladores $< 92\%$. Minero 25 permanece resguardado a 2500W.
+
+
+## [2026-09-19] - Spec 078: Supresión de Ruido Eléctrico en Elevadores, Watchdog Anti-Autotune Stall y Gobernanza Térmica Solar (PROP-013)
+
+* **Objetivo**:
+  1. Erradicar el estancamiento térmico y de consumo del Minero 25 en `auto-tuning` a 2700W (observado durante 2708s con 0.0 TH/s y colapso de firmware a reinicio inesperado `event_id=1873`).
+  2. Implementar un Watchdog anti-autotune stall en `app/governance/autotune_watchdog.py` y `app/miner_monitor.py` que detecte atrapamientos en autotuning (> 600s con hashrate < 20 TH/s), rescate al equipo a un preset seguro con `safe_set_miner_preset(auto_restart_mining=True)`, alerte por Telegram y active un cerrojo de preset de silicio.
+  3. Establecer techos individuales de capacidad de hardware por silicio (`max_hardware_preset: "2500W"` en Minero 25 y `"2700W"` en 23, 24, 26) para que ningún algoritmo intente promover a un equipo más allá de su capacidad física comprobada.
+  4. Mitigar el ruido eléctrico inductivo ($V = -L \frac{di}{dt}$) que acopla a ambos transformadores elevadores en la bajada compartida: extender la ventana de reposo post-incidente a 300 segundos (5 minutos) por elevador ante cualquier reinicio o incidente.
+  5. Implementar la Envolvente Térmica Solar (Solar Thermal Envelope) para la franja 11:00 a 17:00 hs: limitar el techo de la flota a 2500W con corte preventivo si cualquier chip alcanza $\ge 82.0^\circ\text{C}$, blindando a la flota contra el corte brusco interno de VNish a 84°C (`decrease_temp: 84°C`).
+* **Componentes Implementados / Modificados**:
+  - `app/governance/elevator_budget.py`: Ventana de reposo extendida de 300s (`incident_quiet_window_s = 300.0`, `record_group_incident`, `is_group_in_incident_quiet`), compuerta determinística de 6 niveles (`evaluate_facility_transition_permission`), función pura `evaluate_solar_thermal_envelope`, y resolución de techo físico individual `get_miner_max_hardware_preset`.
+  - `app/governance/preset_balancer.py`: Integración de compuertas `ACTION_HOLD_HARDWARE_LIMIT` y `ACTION_HOLD_INCIDENT_QUIET`.
+  - `app/vnish/client.py`: Función `read_miner_status_summary` para sondeo seguro y ligero de telemetría de autotune (`miner_state`, `miner_state_time`, `hr_realtime_ths`).
+  - `app/governance/autotune_watchdog.py`: Módulo autónomo de supervisión de autotune con `evaluate_autotune_stall`, `determine_safe_rescue_preset`, y dataclass serializable `AutotuneWatchdogState`.
+  - `app/miner_monitor.py`: Integración de `check_autotune_watchdog` en el ciclo principal, registro de incidentes de grupo ante reinicios inesperados, protección de techo de hardware en soak restore de ramp-up, orquestación de envolvente térmica solar (11:00-17:00 hs) y filtrado por reposo de elevador (300s) y límite de silicio en etapas 1 y 2 de escalada de valle.
+  - `app/config.example.json` & `app/config.json`: Documentados y configurados `max_hardware_preset` por minero (2500W en Minero 25), `autotune_timeout_s: 600.0`, `incident_quiet_window_s: 300.0` y parámetros de la envolvente solar.
+  - Suites de pruebas: `tests/test_elevator_budget.py` (38 tests), `tests/test_preset_balancer.py` (26 tests), `tests/test_vnish_client.py` (22 tests), `tests/test_autotune_watchdog.py` (9 tests).
+* **Resultados & Verificación**:
+  - Compilación: `py_compile` en `miner_monitor.py` y `miner_diagnostics.py` exitoso (código 0).
+  - Suite de regresión global: **1322/1322 tests PASS**, 75 subtests PASS en 40.18s (0 fallos, 0 errores, 0 regresiones).
+  - Blindaje de hardware: Minero 25 garantizado en $\le 2500\text{W}$, suprimiendo el 100% de los cuelgues en auto-tuning a 2700W.
+
+## [2026-09-19] - Auditoría de Producción: Resolución de Bucle de Soak, Desbloqueo de Soft-Contingencia y Recarga Transaccional de Minado en VNish
+
+* **Objetivo**:
+  1. Diagnosticar la pérdida de hashrate observada en la flota durante el sábado por la mañana (flota en ~352 TH/s a 2000-2300W a pesar de temperaturas ambiente favorables).
+  2. Identificar y erradicar la causa raíz del bucle infinito de 2h en el soak timer de contingencia y el deadlock en el orquestador de soft-contingencia.
+  3. Resolver el problema de estancamiento del Minero 23 en 1800W y del Minero 24 en 2300W al interactuar con el firmware VNish.
+  4. Restablecer la flota de manera escalonada (1 minero cada 180s para cuidar la acometida eléctrica compartida) primero a 2500W y luego explorar 2700W.
+  5. Auditar y relevar la actividad del laboratorio de telemetría SQLite (`data/miner_alerts.db`).
+* **Hallazgos Subsanados & Causa Raíz**:
+  - *Bucle Infinito en Soak Timer de Contingencia (`app/governance/adaptive_contingency.py`)*: El techo de recuperación del temporizador de soak de 2 horas estaba acotado a `canary_initial_preset` (que tras incidentes nocturnos había quedado en 2150W). Cada 2 horas reaplicaba 2150W en bucle infinito impidiendo ascender a 2300W o 2500W. Solución: Se estableció que el piso nominal de recuperación sea 2500W (`find_preset_index(init) < find_preset_index("2500W") -> "2500W"`), se prioriza simétricamente al minero con menor preset, y al alcanzar la meta se marca `active = False` devolviendo `ACTION_RESTORE_NOMINAL`.
+  - *Deadlock de Soft-Contingencia Off-Peak (`app/miner_monitor.py`)*: La condición de escalada exigía que el compañero del elevador ya estuviese en $\ge 2500\text{W}$ antes de autorizar el ascenso del candidato. Si ambos mineros estaban degradados (ej: 2150W y 2000W), ninguno calificaba, bloqueando permanentemente la escalada. Solución: Se dividió la escalada en dos etapas limpias:
+    - Etapa 1: Elevar a todos los mineros $< 2500\text{W}$ hacia 2500W de a 1 por vez cada 180s.
+    - Etapa 2: Solo cuando toda la flota está en $\ge 2500\text{W}$, explorar 2700W de a 1 por vez cada 180s con comprobación de salud del compañero.
+  - *Bloqueo de Minero 23 en 1800W / Minero 24 en 2300W por `restart_required` en API VNish (`app/vnish/client.py`)*: Al cambiar presets con salto significativo de voltaje/frecuencia mediante `POST /api/v1/settings`, VNish guarda la configuración pero responde `{"restart_required": true}`. Al no enviarse `POST /api/v1/mining/restart`, el proceso `cgminer` permanecía corriendo indefinidamente en el perfil antiguo. Solución: Se implementó `auto_restart_mining: bool` en `set_miner_preset` y `safe_set_miner_preset`. Si VNish responde `restart_required=True`, se invoca de inmediato `restart_mining()` de forma transaccional, recargando las cadenas en 20-30s sin reiniciar el sistema operativo ni el control board.
+  - *Inferencia de Potencia por Telemetría Real (`_get_miner_wattage` en `app/miner_monitor.py`)*: Si un minero tenía configurado `top_preset=2700` pero físicamente consumía 1800W o 2300W, el orquestador lo trataba erróneamente como si ya estuviese a 2700W. Se unificó la función `_get_miner_wattage` para ambas ventanas (pico y valle), cotejando `last_power_w` con los escalones reales (1800W, 2300W, 2500W, 2700W).
+  - *Acometida Eléctrica Protegida (180s Settle Window)*: Todo cambio de escalón de potencia (tanto subida como bajada) se ejecuta estrictamente de a 1 minero cada 180s respetando la ventana compartida de reposo térmico/inductivo.
+* **Componentes Implementados / Modificados**:
+  - `app/governance/adaptive_contingency.py`: Fix de soak tick para recuperación nominal a 2500W y terminación de contingencia.
+  - `app/vnish/client.py`: Soporte de `auto_restart_mining` en `set_miner_preset` y `safe_set_miner_preset`.
+  - `app/miner_monitor.py`: Desacoplamiento de escalada en 2 etapas, unificación de `_get_miner_wattage` con cotejo de potencia real `last_power_w`, y pase de `auto_restart_mining=True`.
+  - `tests/test_adaptive_contingency.py`: Test unitario `test_soak_recovery_with_low_initial_preset_and_symmetric_choice`.
+  - `tests/test_vnish_client.py`: 3 nuevos tests unitarios verificando `auto_restart_mining` cuando `restart_required` es True y False.
+* **Resultados & Verificación**:
+  - Suite de regresión global: **1293/1293 tests PASS**, 75 subtests PASS en 41.53s (0 fallos, 0 errores, 0 regresiones).
+  - Potencia de flota: restablecida de 9.200W a **10.797W** (+1.6 kW recuperados de forma balanceada y segura).
+  - Hashrate de flota: elevado de 352 TH/s a **388.5 TH/s** (+36.5 TH/s de ganancia neta).
+  - Auditoría de Base de Datos SQLite (`data/miner_alerts.db`): 66.424 muestras de telemetría, 8.745 muestras por placa (12/12 placas con 126/126 chips sanos, 0 errores), 11.315 decisiones de reinicio, 10.448 eventos de firmware, 1.691 eventos operacionales.
+  - Archivo `logs/err.log`: 0 nuevas excepciones. Servicio Windows `MinerAlerts` RUNNING.
+
 ## [2026-09-18] - Auditoría QA y Spec 077: Gobernanza Escalonada de Elevadores, Bajada Compartida y Soft-Contingencia Horaria (PROP-012)
 
 * **Objetivo**:

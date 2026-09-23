@@ -912,12 +912,33 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Módulos dedicados `app/governance/elevator_budget.py`, tests `test_elevator_budget.py` (21 tests PASS) y validación de regresión global (**1288/1288 tests PASS**).
 - [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
 
+### Iniciativa 30 — Supresión de Ruido Eléctrico en Elevadores, Watchdog Anti-Autotune Stall y Gobernanza Térmica Solar (Spec 078 - PROP-013 - Completada & Certificada)
+- Especificación: [`specs/078-electrical-noise-and-autotune-protection/spec.md`](../../specs/078-electrical-noise-and-autotune-protection/spec.md) | Plan: [`specs/078-electrical-noise-and-autotune-protection/plan.md`](../../specs/078-electrical-noise-and-autotune-protection/plan.md) | Evidencia: [`specs/078-electrical-noise-and-autotune-protection/evidence.md`](../../specs/078-electrical-noise-and-autotune-protection/evidence.md) | Propuesta: [`docs/proposals/PROP-013-elevator-noise-autotune-stall-and-thermal-protection.md`](../proposals/PROP-013-elevator-noise-autotune-stall-and-thermal-protection.md)
+- **Estado**: Implementación, Verificación y Certificación Completadas (T001-T008). 1322/1322 tests PASS.
+- [x] Watchdog Anti-Autotune Stall (`app/governance/autotune_watchdog.py`): detecta cuelgues en `auto-tuning` (> 600s con $< 20\text{ TH/s}$), rescata con `safe_set_miner_preset(auto_restart_mining=True)`, emite alerta a Telegram y fija cerrojo de preset de silicio.
+- [x] Techo individual de capacidad de hardware (`max_hardware_preset: "2500W"` en Minero 25) suprimiendo permanentemente el 100% de los cuelgues térmicos en 2700W.
+- [x] Ventana de reposo extendida de 300s post-incidente (`incident_quiet_window_s = 300.0`, `record_group_incident`, `is_group_in_incident_quiet`) para disipar el ruido transitorio inductivo ($L \frac{di}{dt}$) en la bajada común compartida por los dos elevadores.
+- [x] Envolvente Térmica Solar (Solar Thermal Envelope, 11:00 a 17:00 hs): techo preventivo fijado a 2500W con corte preventivo a $\ge 82.0^\circ\text{C}$, blindando a la flota contra el corte destructivo interno de VNish a 84°C (`decrease_temp: 84°C`).
+- [x] Suite de pruebas dedicadas (`test_autotune_watchdog.py`, extensiones en `test_elevator_budget.py`, `test_preset_balancer.py`, `test_vnish_client.py`) y suite global: **1322/1322 tests PASS** (0 fallos, 0 regresiones).
+
+### Iniciativa 31 — Agente Autónomo de Gobernanza de Planta (FGA) y Optimizador Asimétrico de Potencia (Spec 079 - PROP-014 / PROP-015 - Completada & Certificada)
+- Especificación: [`specs/079-facility-governance-agent/spec.md`](../../specs/079-facility-governance-agent/spec.md) | Plan: [`specs/079-facility-governance-agent/plan.md`](../../specs/079-facility-governance-agent/plan.md) | Evidencia: [`specs/079-facility-governance-agent/evidence.md`](../../specs/079-facility-governance-agent/evidence.md) | Propuestas: [`docs/proposals/PROP-014-maximum-power-and-asymmetric-combination-roadmap.md`](../proposals/PROP-014-maximum-power-and-asymmetric-combination-roadmap.md) y [`docs/proposals/PROP-015-autonomous-facility-agent-and-interactive-supervisor.md`](../proposals/PROP-015-autonomous-facility-agent-and-interactive-supervisor.md)
+- **Estado**: Implementación, Verificación y Certificación en Producción Completadas (T001-T008). 1343/1343 tests PASS.
+- [x] Arquitectura de Agente en 3 capas: Motor determinístico 24/7 (zero token cost), memoria persistente SQLite `facility_agent_knowledge` e interfaz de supervisión interactiva en Telegram (`/agent`, `/strategy`, `/fwhy`).
+- [x] Modelo físico de resistencia térmica de silicio ($R_{th} = (T_{chip} - T_{inlet}) / P$) y predicción térmica ($T_{pred} = T_{inlet} + R_{th} \cdot P$) para clasificación en cohortes (`COOL`, `STANDARD`, `HOT`) y bloqueo predictivo de sobrecalentamientos.
+- [x] Optimizador asimétrico inter-elevador: asignación de 2700W a mineros fríos (Elevador 2: Miners 25 y 26) y 2500W a mineros cálidos (Elevador 1: Miners 23 y 24), maximizando hashrate (~385 TH/s) con 100% de estabilidad térmica y eléctrica.
+- [x] Comandos Telegram `/agent` (dashboard ejecutivo), `/strategy` (selección de modos macro) y `/fwhy` (explicación causal de asignación por silicio).
+- [x] Pisos físicos de ventiladores por nivel de potencia (`resolve_power_fan_floor` en `fan_governor.py`) erradicando caídas a 30% en frío a 2700W.
+- [x] Suites de pruebas dedicadas (`tests/test_facility_agent.py`, `tests/test_agent_commands.py`) y suite global del proyecto: **1346/1346 tests PASS** (0 fallos, 0 regresiones).
+- [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
+- [x] **Hito de Estabilización de Flota (Neutralización de Sobre-Intervención)**: Erradicado el lazo de oscilación térmica y reinicios forzados en VNish mediante `auto_restart_mining=False` en orquestación rutinaria, resolución de potencia por consumo real medido de fuente en `_get_miner_wattage`, y Modo Pasivo estricto al desactivar presets vía gobernanza. Flota 100% operativa a 380 TH/s continuos.
+
 ---
 
 ## Governance
 
-- All 77 specifications in the program (Specs 001 through 077) are tracked and maintained.
-- Version 5.1.0 + State Unification + Predictive Chain Break Diagnostics (Spec 069) + Paired Elevator Contingency (Spec 074) + Soft-Landing Recovery & APW12 Defense (Spec 075) + Autonomous Firmware Reflash & Hardware Ladder Calibration (Spec 076) + Staggered Elevator Governance & Soft-Contingency (Spec 077) is verified with 1288/1288 tests PASS (0 failures, 0 regressions).
+- All 79 specifications in the program (Specs 001 through 079) are tracked and maintained.
+- Version 5.1.0 + FGA Facility Governance Agent (Spec 079) is verified with 1346/1346 tests PASS (0 failures, 0 regressions).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
 

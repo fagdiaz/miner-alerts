@@ -230,10 +230,14 @@ def create_default_command_router() -> TelegramCommandRouter:
     )
     from app.telegram.commands.help import HelpCommand, MenuCommand, DigestCommand
     from app.telegram.commands.flash import FlashVnishCommand
+    from app.telegram.commands.agent import AgentCommand, StrategyCommand, AgentWhyCommand
+    from app.telegram.commands.progression import ProgressionCommand
 
     router = TelegramCommandRouter()
     # Status & Info
     router.register(StatusCommand()).register(InfoCommand())
+    # Facility Governance Agent & Power Progression (Spec 079 / PROP-014)
+    router.register(AgentCommand()).register(StrategyCommand()).register(AgentWhyCommand()).register(ProgressionCommand())
     # Fans & Governor
     router.register(FansCommand()).register(SilentCommand()).register(GovernorCommand())
     # Interventions, Balancer, Elevators

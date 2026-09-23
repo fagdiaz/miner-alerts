@@ -11,6 +11,7 @@ from app.governance.fan_governor import (
     ACTION_UNKNOWN,
     GovernorConfig,
     compute_governor_step,
+    resolve_power_fan_floor,
 )
 
 
@@ -294,6 +295,134 @@ class TestFanGovernor(unittest.TestCase):
         )
         self.assertEqual(dec.action, ACTION_EMERGENCY_SPIKE)
         self.assertTrue(dec.is_emergency)
+
+    def test_resolve_power_fan_floor(self):
+        # 2700W requires 70% min duty
+        self.assertEqual(resolve_power_fan_floor(2699.0), 70)
+        # 2500W requires 60% min duty
+        self.assertEqual(resolve_power_fan_floor(2498.0), 60)
+        # 2300W requires 50% min duty
+        self.assertEqual(resolve_power_fan_floor(2299.0), 50)
+        # 1800W requires 40% min duty
+        self.assertEqual(resolve_power_fan_floor(1800.0), 40)
+        # Low power / warmup returns 30%
+        self.assertEqual(resolve_power_fan_floor(1000.0, is_warming_up=True), 30)
+        self.assertEqual(resolve_power_fan_floor(2700.0, is_warming_up=True), 70)
+        self.assertEqual(resolve_power_fan_floor(None), 30)
+
+    def test_governor_enforces_power_fan_floor_at_2700w(self):
+        # Even if temp is low (60°C), governor must NEVER step down below 70% when drawing 2700W
+        dec = compute_governor_step(
+            max_temp_c=60.0,
+            current_duty=70,
+            seconds_since_last_change=150.0,
+            config=self.cfg,
+            current_power_w=2699.0,
+        )
+        self.assertEqual(dec.target_duty, 70)
+        self.assertFalse(dec.requires_write)
+
+    def test_governor_steps_up_to_power_floor_if_hardware_below(self):
+        # If hardware starts at 30% duty while drawing 2700W, governor immediately steps up to 70%
+        dec = compute_governor_step(
+            max_temp_c=60.0,
+            current_duty=30,
+            seconds_since_last_change=150.0,
+            config=self.cfg,
+            current_power_w=2699.0,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_UP)
+        self.assertEqual(dec.target_duty, 70)
+        self.assertTrue(dec.requires_write)
+
+    def test_step_down_strictly_inhibited_during_warmup(self):
+        # Critical safety invariant: When a miner is warming up post-reboot,
+        # chips are cold (70°C). Governor must NEVER step down fans, preventing
+        # thermal surge to 86°C once hashboards reach full power.
+        dec = compute_governor_step(
+            max_temp_c=70.0,
+            current_duty=85,
+            seconds_since_last_change=200.0,
+            config=self.cfg,
+            is_warming_up=True,
+            current_power_w=2499.0,
+        )
+        self.assertEqual(dec.action, ACTION_HOLD_DWELL)
+        self.assertEqual(dec.target_duty, 85)
+        self.assertFalse(dec.requires_write)
+        self.assertIn("calentamiento post-arranque", dec.reason)
+
+    def test_resolve_power_fan_floor_custom_values(self):
+        # Configurable floors: 2700W -> 80%, 2500W -> 75%
+        floor_2500 = resolve_power_fan_floor(2498.0, floor_2500w=75)
+        self.assertEqual(floor_2500, 75)
+        floor_2700 = resolve_power_fan_floor(2700.0, floor_2700w=82)
+        self.assertEqual(floor_2700, 82)
+
+    def test_governor_enforces_75_pct_floor_at_2500w(self):
+        # With power_floor_2500w=75, governor must never lower fans below 75% at 2500W
+        custom_cfg = GovernorConfig(power_floor_2500w=75)
+        dec = compute_governor_step(
+            max_temp_c=70.0,
+            current_duty=75,
+            seconds_since_last_change=200.0,
+            config=custom_cfg,
+            current_power_w=2499.0,
+        )
+        self.assertEqual(dec.target_duty, 75)
+        self.assertFalse(dec.requires_write)
+
+    def test_recovery_max_cooling_active_under_timeout(self):
+        # Deficit power triggers RECOVERY_MAX_COOLING while under timeout
+        cfg = GovernorConfig(recovery_max_cooling_timeout_seconds=900.0)
+        dec = compute_governor_step(
+            max_temp_c=77.0,
+            current_duty=100,
+            seconds_since_last_change=200.0,
+            config=cfg,
+            current_power_w=2499.0,
+            target_power_w=2700.0,
+            recovery_cooling_seconds=300.0,
+        )
+        self.assertEqual(dec.action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(dec.target_duty, 100)
+
+    def test_recovery_max_cooling_times_out_and_modulates_normally(self):
+        # After timeout (> 900s) and chip temp <= deadband (77°C <= 81°C),
+        # governor exits RECOVERY_MAX_COOLING and steps down towards power floor
+        cfg = GovernorConfig(
+            recovery_max_cooling_timeout_seconds=900.0,
+            power_floor_2700w=85,
+        )
+        dec = compute_governor_step(
+            max_temp_c=77.0,
+            current_duty=100,
+            seconds_since_last_change=200.0,
+            config=cfg,
+            current_power_w=2499.0,
+            target_power_w=2700.0,
+            recovery_cooling_seconds=950.0,
+        )
+        self.assertNotEqual(dec.action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(dec.action, ACTION_STEP_DOWN)
+        self.assertTrue(dec.target_duty < 100)
+        self.assertGreaterEqual(dec.target_duty, 85)
+
+    def test_recovery_max_cooling_timeout_preserves_emergency_spike(self):
+        # Even after timeout, an emergency thermal spike (>= 83°C) forces 100%
+        cfg = GovernorConfig(recovery_max_cooling_timeout_seconds=900.0)
+        dec = compute_governor_step(
+            max_temp_c=83.5,
+            current_duty=85,
+            seconds_since_last_change=200.0,
+            config=cfg,
+            current_power_w=2499.0,
+            target_power_w=2700.0,
+            recovery_cooling_seconds=1200.0,
+        )
+        self.assertEqual(dec.action, ACTION_EMERGENCY_SPIKE)
+        self.assertEqual(dec.target_duty, 100)
+        self.assertTrue(dec.requires_write)
 
 
 if __name__ == "__main__":

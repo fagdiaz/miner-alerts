@@ -135,11 +135,13 @@
     "restart_args_template": ["restart", "{host}-{host}"]
   },
   "miners": [
-    { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028, "electrical_group": "elevator_1", "target_power_w": 2700 },
-    { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028, "electrical_group": "elevator_1", "target_power_w": 2700 },
-    { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028, "electrical_group": "elevator_2", "target_power_w": 2500 },
-    { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028, "electrical_group": "elevator_2", "target_power_w": 2500 }
+    { "name": "S19JPRO-1", "host": "192.168.1.101", "port": 4028, "electrical_group": "elevator_1", "target_power_w": 2700, "max_hardware_preset": "2700W" },
+    { "name": "S19JPRO-2", "host": "192.168.1.102", "port": 4028, "electrical_group": "elevator_1", "target_power_w": 2700, "max_hardware_preset": "2700W" },
+    { "name": "S19JPRO-3", "host": "192.168.1.103", "port": 4028, "electrical_group": "elevator_2", "target_power_w": 2500, "max_hardware_preset": "2500W" },
+    { "name": "S19JPRO-4", "host": "192.168.1.104", "port": 4028, "electrical_group": "elevator_2", "target_power_w": 2500, "max_hardware_preset": "2500W" }
   ],
+  "power_progression_profile": "c4",
+  "_comment_progression": "Perfil de progresión de potencia (Spec 079 / PROP-014): c0 (base 2500W), c1 (asym 2700/2700/2500/2700), c2 (elev1 balanced 2700/2500/2500/2700), c4 (max power 4x 2700W)",
   "metrics_snapshot_enabled": false,
   "metrics_snapshot_path": "diagnostics/metrics/current.json",
   "metrics_snapshot_stale_seconds": 60,
@@ -183,6 +185,11 @@
   "fan_governor_summer_target_temp_c": 80.0,
   "fan_governor_summer_min_duty_pct": 65,
   "fan_governor_summer_step_up_pct": 5,
+  "fan_governor_power_floor_2700w": 85,
+  "fan_governor_power_floor_2500w": 75,
+  "fan_governor_power_floor_2300w": 65,
+  "fan_governor_power_floor_1800w": 50,
+  "fan_governor_recovery_max_cooling_timeout_seconds": 900.0,
   "preset_balancer_enabled": true,
   "preset_balancer_dry_run": true,
   "_comment_preset_balancer": "Balanceador dinámico de presets Vnish y protección de elevadores sensibles (Spec 040). Activo por defecto con step-down por reinicios/temperatura. Desactivable con /balancer off.",
@@ -228,5 +235,24 @@
   "watchdog_ipc_pipe_name": "\\\\.\\pipe\\MinerAlertsWatchdog",
   "watchdog_ipc_fallback_port": 4029,
   "watchdog_ipc_timeout_ms": 100,
-  "watchdog_ipc_max_deadlock_tick_age_s": 60.0
+  "watchdog_ipc_max_deadlock_tick_age_s": 60.0,
+  "_comment_soft_contingency": "Spec 077: Soft-Contingencia Horaria y Gobernanza de Bajada Compartida. Permite acotar las franjas pico para que la contingencia dure lo menos posible y maximizar el hasheo.",
+  "soft_contingency_morning_start": "08:30",
+  "soft_contingency_morning_end": "09:30",
+  "soft_contingency_evening_start": "20:00",
+  "soft_contingency_evening_end": "21:15",
+  "soft_contingency_peak_max_preset": "2700W",
+  "soft_contingency_valley_max_preset": "2700W",
+  "_comment_spec_078": "Spec 078: Supresión de Ruido Eléctrico en Elevadores, Watchdog Anti-Autotune Stall y Gobernanza Térmica Solar (PROP-013).",
+  "autotune_timeout_s": 600.0,
+  "autotune_min_active_hashrate_ths": 20.0,
+  "incident_quiet_window_s": 300.0,
+  "solar_thermal_start": "11:00",
+  "solar_thermal_end": "17:00",
+  "solar_thermal_max_preset": "2700W",
+  "solar_thermal_critical_temp_c": 82.0,
+  "valley_step_up_max_chip_temp_c": 80.0,
+  "valley_step_up_max_fan_duty_pct": 92.0,
+  "autotune_grace_period_seconds": 900.0
 }
+

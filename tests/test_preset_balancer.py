@@ -6,8 +6,12 @@ from app.governance.preset_balancer import (
     ACTION_HOLD_ASYMMETRY_PREFERENCE,
     ACTION_HOLD_BUDGET_LIMIT,
     ACTION_HOLD_FACILITY_SETTLE,
+    ACTION_HOLD_HARDWARE_LIMIT,
+    ACTION_HOLD_INCIDENT_QUIET,
     ACTION_HOLD_SCHEDULE_CEILING,
+    ACTION_HOLD_SOLAR_ENVELOPE,
     ACTION_HOLD_STABLE,
+    ACTION_HOLD_STABILIZED,
     ACTION_LOCKED_MAX,
     ACTION_LOCKED_MIN,
     ACTION_STEP_DOWN_CASCADE,
@@ -98,6 +102,26 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertEqual(dec.target_preset, "2500W")
         self.assertTrue(dec.requires_write)
         self.assertIn("desescalando a 2500W", dec.reason)
+
+    def test_hold_stabilized_when_uptime_exceeds_recent_window(self):
+        # 7 restarts in 24h at 2500W, but continuous uptime is 8.0h (>= 4.0h recent window)
+        # Proven stable! Must NOT step down to 2300W.
+        metrics = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=7,
+            restarts_72h=7,
+            hours_since_last_restart=8.0,
+            avg_hashrate_24h_ths=90.0,
+            downtime_minutes_24h=30.0,
+            thermal_headroom_c=6.0,
+        )
+        dec = evaluate_balancer_step(metrics, self.cfg)
+        self.assertEqual(dec.action, ACTION_HOLD_STABILIZED)
+        self.assertEqual(dec.target_preset, "2500W")
+        self.assertFalse(dec.requires_write)
+        self.assertIn("estabilizado", dec.reason)
 
     def test_step_down_at_minimum_preset_locks(self):
         # In minimum tier (1740W) with restarts -> cannot step down further
@@ -551,7 +575,7 @@ class TestPresetBalancer(unittest.TestCase):
         from datetime import datetime
         from app.governance.elevator_budget import FacilityBudgetState
         fac_st = FacilityBudgetState()
-        off_peak_dt = datetime(2026, 9, 21, 14, 0)  # Off-peak
+        off_peak_dt = datetime(2026, 9, 21, 23, 0)  # Night off-peak (outside solar window)
 
         m24 = StabilityMetrics(
             miner_name="S19JPRO-24",
@@ -583,6 +607,115 @@ class TestPresetBalancer(unittest.TestCase):
         self.assertEqual(dec.action, ACTION_HOLD_ASYMMETRY_PREFERENCE)
         self.assertFalse(dec.requires_write)
         self.assertIn("Preferencia simétrica de elevador", dec.reason)
+
+    def test_step_up_held_by_hardware_limit(self):
+        """Spec 078: Miner 25 clamped to 2500W hardware limit cannot step up to 2700W."""
+        from datetime import datetime
+        from app.governance.elevator_budget import FacilityBudgetState
+        fac_st = FacilityBudgetState()
+        night_dt = datetime(2026, 9, 21, 23, 0)
+
+        cfg_with_limits = BalancerConfig(
+            enabled=True,
+            soak_hours_step_up=72.0,
+            miner_hardware_limits={"25": "2500W", "26": "2700W"},
+        )
+        m25 = StabilityMetrics(
+            miner_name="S19JPRO-25",
+            electrical_group="elevator_2",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            thermal_headroom_c=8.0,
+            current_temp_c=77.0,
+        )
+        m26 = StabilityMetrics(
+            miner_name="S19JPRO-26",
+            electrical_group="elevator_2",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+        )
+        dec = evaluate_balancer_step(
+            m25,
+            cfg_with_limits,
+            group_metrics=[m25, m26],
+            current_time=3000.0,
+            facility_state=fac_st,
+            now_dt=night_dt,
+        )
+        self.assertEqual(dec.action, ACTION_HOLD_HARDWARE_LIMIT)
+        self.assertFalse(dec.requires_write)
+        self.assertIn("Límite de silicio de hardware individual", dec.reason)
+
+    def test_step_up_held_by_incident_quiet(self):
+        """Spec 078: Elevator 2 in 300s incident quiet window blocks step up."""
+        from datetime import datetime
+        from app.governance.elevator_budget import FacilityBudgetState
+        fac_st = FacilityBudgetState()
+        fac_st.record_group_incident("elevator_2", now_ts=1000.0)
+        night_dt = datetime(2026, 9, 21, 23, 0)
+
+        m26 = StabilityMetrics(
+            miner_name="S19JPRO-26",
+            electrical_group="elevator_2",
+            current_preset="2300W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            thermal_headroom_c=8.0,
+            current_temp_c=75.0,
+        )
+        dec = evaluate_balancer_step(
+            m26,
+            self.cfg,
+            group_metrics=[m26],
+            current_time=1050.0,  # 50s into 300s incident quiet window
+            facility_state=fac_st,
+            now_dt=night_dt,
+        )
+        self.assertEqual(dec.action, ACTION_HOLD_INCIDENT_QUIET)
+        self.assertFalse(dec.requires_write)
+        self.assertIn("reposo post-incidente", dec.reason)
+
+    def test_step_up_held_by_solar_envelope(self):
+        """Spec 078: Midday solar window clamps step up to 2700W."""
+        from datetime import datetime
+        from app.governance.elevator_budget import FacilityBudgetState
+        fac_st = FacilityBudgetState()
+        solar_dt = datetime(2026, 9, 21, 13, 0)  # 13:00 (midday solar)
+
+        m24 = StabilityMetrics(
+            miner_name="S19JPRO-24",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+            thermal_headroom_c=8.0,
+            current_temp_c=78.0,
+        )
+        m23 = StabilityMetrics(
+            miner_name="S19JPRO-23",
+            electrical_group="elevator_1",
+            current_preset="2500W",
+            restarts_24h=0,
+            restarts_72h=0,
+            hours_since_last_restart=80.0,
+        )
+        dec = evaluate_balancer_step(
+            m24,
+            self.cfg,
+            group_metrics=[m23, m24],
+            current_time=3000.0,
+            facility_state=fac_st,
+            now_dt=solar_dt,
+        )
+        self.assertEqual(dec.action, ACTION_HOLD_SOLAR_ENVELOPE)
+        self.assertFalse(dec.requires_write)
+        self.assertIn("Límite térmico solar activo", dec.reason)
 
 
 if __name__ == "__main__":

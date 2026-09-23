@@ -49,7 +49,7 @@ Credenciales*.txt
 scratch/
 *.tmp
 *.temp
-*.bak
+*.bak*
 *.swp
 ~$*
 Thumbs.db

@@ -5,6 +5,7 @@ import requests
 
 from app.vnish.client import (
     DEFAULT_HTTP_TIMEOUT,
+    fetch_fleet_vnish_summaries,
     get_available_presets,
     get_cooling_settings,
     get_overclock_settings,
@@ -330,8 +331,140 @@ class TestVnishClient(unittest.TestCase):
         mock_get_oc.assert_called_once_with("192.168.100.25", "tok_xyz", timeout=DEFAULT_HTTP_TIMEOUT)
         mock_lock.assert_called_once_with("192.168.100.25", "tok_xyz", timeout=DEFAULT_HTTP_TIMEOUT)
 
+    @patch("app.vnish.client.restart_mining")
+    @patch("requests.post")
+    def test_set_miner_preset_auto_restart_when_required(self, mock_post, mock_restart):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"restart_required": True, "reboot_required": False}
+        mock_post.return_value = mock_resp
+        mock_restart.return_value = (True, None)
+
+        ok, err = set_miner_preset("192.168.100.23", "tok_1", "2500W", auto_restart_mining=True)
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        mock_restart.assert_called_once_with("192.168.100.23", "tok_1", timeout=DEFAULT_HTTP_TIMEOUT, session=None)
+
+    @patch("app.vnish.client.restart_mining")
+    @patch("requests.post")
+    def test_set_miner_preset_no_restart_when_not_required(self, mock_post, mock_restart):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"restart_required": False, "reboot_required": False}
+        mock_post.return_value = mock_resp
+
+        ok, err = set_miner_preset("192.168.100.23", "tok_1", "2500W", auto_restart_mining=True)
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        mock_restart.assert_not_called()
+
+    @patch("app.vnish.client.restart_mining")
+    @patch("requests.post")
+    def test_set_miner_preset_does_not_restart_when_auto_restart_false(self, mock_post, mock_restart):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"restart_required": True, "reboot_required": False}
+        mock_post.return_value = mock_resp
+
+        # When auto_restart_mining=False (default for routine soft contingency), restart_mining is NOT called!
+        ok, err = set_miner_preset("192.168.100.23", "tok_1", "2500W", auto_restart_mining=False)
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        mock_restart.assert_not_called()
+
+    @patch("app.vnish.client.lock_miner")
+    @patch("app.vnish.client.set_miner_preset")
+    @patch("app.vnish.client.unlock_miner")
+    def test_safe_set_miner_preset_forwards_auto_restart(self, mock_unlock, mock_set, mock_lock):
+        mock_unlock.return_value = (True, "tok_abc", None)
+        mock_set.return_value = (True, None)
+        mock_lock.return_value = True
+
+        ok, err = safe_set_miner_preset("192.168.100.23", "admin", "2500W", auto_restart_mining=True)
+        self.assertTrue(ok)
+        mock_set.assert_called_once_with(
+            "192.168.100.23",
+            "tok_abc",
+            "2500W",
+            timeout=DEFAULT_HTTP_TIMEOUT,
+            clamp_top_preset=True,
+            auto_restart_mining=True,
+        )
+
+    @patch("requests.get")
+    def test_read_miner_status_summary_success(self, mock_get):
+        from app.vnish.client import read_miner_status_summary
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "miner": {
+                "miner_status": {"miner_state": "auto-tuning", "miner_state_time": 2708},
+                "hr_realtime": 15000.0,  # 15 TH/s
+                "power_usage": 2700,
+                "chip_temp": {"min": 55, "max": 82},
+            }
+        }
+        mock_get.return_value = mock_resp
+
+        ok, summary, err = read_miner_status_summary("192.168.100.25")
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        self.assertEqual(summary["miner_state"], "auto-tuning")
+        self.assertEqual(summary["miner_state_time"], 2708)
+        self.assertAlmostEqual(summary["hr_realtime_ths"], 15.0)
+        self.assertEqual(summary["power_usage_w"], 2700)
+
+    @patch("requests.get")
+    def test_fetch_fleet_vnish_summaries_success(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "miner": {
+                "miner_status": {"miner_state": "mining", "miner_state_time": 1000},
+                "hr_realtime": 95000.0,
+                "power_usage": 2500,
+            }
+        }
+        mock_get.return_value = mock_resp
+
+        hosts = ["192.168.100.23", "192.168.100.24"]
+        res = fetch_fleet_vnish_summaries(hosts)
+        self.assertEqual(len(res), 2)
+        self.assertIn("192.168.100.23", res)
+        self.assertIn("192.168.100.24", res)
+        self.assertEqual(res["192.168.100.23"]["miner_state"], "mining")
+
+    @patch("requests.get")
+    def test_fetch_fleet_vnish_summaries_partial_timeout(self, mock_get):
+        def side_effect(url, timeout=None):
+            if "192.168.100.25" in url:
+                raise requests.exceptions.Timeout("Unreachable")
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {
+                "miner": {
+                    "miner_status": {"miner_state": "mining", "miner_state_time": 500},
+                    "hr_realtime": 90000.0,
+                    "power_usage": 2500,
+                }
+            }
+            return resp
+
+        mock_get.side_effect = side_effect
+
+        hosts = ["192.168.100.23", "192.168.100.25"]
+        res = fetch_fleet_vnish_summaries(hosts)
+        self.assertEqual(len(res), 1)
+        self.assertIn("192.168.100.23", res)
+        self.assertNotIn("192.168.100.25", res)
+
+    def test_fetch_fleet_vnish_summaries_empty_hosts(self):
+        self.assertEqual(fetch_fleet_vnish_summaries([]), {})
+        self.assertEqual(fetch_fleet_vnish_summaries(["", None]), {})
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
 

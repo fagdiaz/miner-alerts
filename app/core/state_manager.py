@@ -228,6 +228,7 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "governor_last_action": getattr(state, "governor_last_action", ""),
         "governor_last_temp_c": getattr(state, "governor_last_temp_c", None),
         "governor_last_power_w": getattr(state, "governor_last_power_w", None),
+        "governor_recovery_since_ts": getattr(state, "governor_recovery_since_ts", None),
         # Spec 040: Dynamic Preset Balancer
         "balancer_preset": getattr(state, "balancer_preset", None),
         "balancer_last_change_ts": getattr(state, "balancer_last_change_ts", 0.0),

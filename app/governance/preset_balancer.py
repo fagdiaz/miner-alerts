@@ -13,6 +13,7 @@ from app.telegram.fleet_cards import MOBILE_CARD_SEPARATOR
 from app.telegram.help_center import wrap_mobile_lines
 
 ACTION_HOLD_STABLE = "HOLD_STABLE"
+ACTION_HOLD_STABILIZED = "HOLD_STABILIZED"
 ACTION_STEP_DOWN_RESTARTS = "STEP_DOWN_RESTARTS"
 ACTION_STEP_DOWN_CASCADE = "STEP_DOWN_CASCADE"
 ACTION_STEP_DOWN_THERMAL = "STEP_DOWN_THERMAL"
@@ -25,6 +26,9 @@ ACTION_HOLD_FACILITY_SETTLE = "HOLD_FACILITY_SETTLE"
 ACTION_HOLD_BUDGET_LIMIT = "HOLD_BUDGET_LIMIT"
 ACTION_HOLD_ASYMMETRY_PREFERENCE = "HOLD_ASYMMETRY_PREFERENCE"
 ACTION_HOLD_SCHEDULE_CEILING = "HOLD_SCHEDULE_CEILING"
+ACTION_HOLD_INCIDENT_QUIET = "HOLD_INCIDENT_QUIET"
+ACTION_HOLD_HARDWARE_LIMIT = "HOLD_HARDWARE_LIMIT"
+ACTION_HOLD_SOLAR_ENVELOPE = "HOLD_SOLAR_ENVELOPE"
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,7 @@ class BalancerConfig:
     enabled: bool = False
     dry_run: bool = True
     restarts_threshold_step_down: int = 2     # >= 2 restarts in 24h forces step down
+    recent_restart_window_hours: float = 4.0  # Only step down if last restart occurred within last 4 hours
     soak_hours_step_up: float = 72.0          # 72 hours without restarts to consider step up
     group_cascade_threshold: int = 2          # 2 miners restarting in group window triggers cascade step down
     group_cascade_window_s: float = 1800.0    # 30-minute cascade correlation window
@@ -87,6 +92,8 @@ class BalancerConfig:
     hw_error_rate_threshold_pct: float = 0.5  # HW error rate > 0.5% triggers tripwire
     hw_error_delta_threshold: int = 200       # Min 200 HW errors in 10m to trigger tripwire
     hw_error_lock_hours: float = 48.0         # Lockout duration in hours post-tripwire
+    # Spec 078: Individual silicon hardware limits per miner
+    miner_hardware_limits: Optional[Dict[str, str]] = None
 
 
 @dataclass(frozen=True)
@@ -296,26 +303,38 @@ def evaluate_balancer_step(
 
     # 2. Individual Step-Down: restarts in last 24h exceed threshold
     if metrics.restarts_24h >= cfg.restarts_threshold_step_down:
-        if curr_idx > 0:
-            target_tier = tiers[curr_idx - 1]
-            return BalancerDecision(
-                action=ACTION_STEP_DOWN_RESTARTS,
-                miner_name=metrics.miner_name,
-                electrical_group=metrics.electrical_group,
-                current_preset=current_tier.name,
-                target_preset=target_tier.name,
-                reason=f"Inestabilidad eléctrica ({metrics.restarts_24h} reinicios en 24h >= {cfg.restarts_threshold_step_down}): desescalando a {target_tier.name}",
-                requires_write=True,
-                estimated_effective_hashrate=eff_current,
-            )
+        if metrics.hours_since_last_restart < cfg.recent_restart_window_hours:
+            if curr_idx > 0:
+                target_tier = tiers[curr_idx - 1]
+                return BalancerDecision(
+                    action=ACTION_STEP_DOWN_RESTARTS,
+                    miner_name=metrics.miner_name,
+                    electrical_group=metrics.electrical_group,
+                    current_preset=current_tier.name,
+                    target_preset=target_tier.name,
+                    reason=f"Inestabilidad eléctrica reciente ({metrics.restarts_24h} reinicios en 24h >= {cfg.restarts_threshold_step_down}, último hace {metrics.hours_since_last_restart:.1f}h < {cfg.recent_restart_window_hours:.1f}h): desescalando a {target_tier.name}",
+                    requires_write=True,
+                    estimated_effective_hashrate=eff_current,
+                )
+            else:
+                return BalancerDecision(
+                    action=ACTION_LOCKED_MIN,
+                    miner_name=metrics.miner_name,
+                    electrical_group=metrics.electrical_group,
+                    current_preset=current_tier.name,
+                    target_preset=current_tier.name,
+                    reason=f"Ya en preset mínimo ({current_tier.name}) pese a {metrics.restarts_24h} reinicios",
+                    requires_write=False,
+                    estimated_effective_hashrate=eff_current,
+                )
         else:
             return BalancerDecision(
-                action=ACTION_LOCKED_MIN,
+                action=ACTION_HOLD_STABILIZED,
                 miner_name=metrics.miner_name,
                 electrical_group=metrics.electrical_group,
                 current_preset=current_tier.name,
                 target_preset=current_tier.name,
-                reason=f"Ya en preset mínimo ({current_tier.name}) pese a {metrics.restarts_24h} reinicios",
+                reason=f"Uptime continuo estabilizado ({metrics.hours_since_last_restart:.1f}h >= {cfg.recent_restart_window_hours:.1f}h): reteniendo preset {current_tier.name} pese a {metrics.restarts_24h} reinicios antiguos",
                 requires_write=False,
                 estimated_effective_hashrate=eff_current,
             )
@@ -336,6 +355,14 @@ def evaluate_balancer_step(
                         for m in (group_metrics or [metrics])
                         if m.electrical_group == metrics.electrical_group
                     }
+                    hw_limit = None
+                    if cfg.miner_hardware_limits:
+                        from app.governance.adaptive_contingency import normalize_miner_name
+                        norm_m = normalize_miner_name(metrics.miner_name)
+                        for k, v in cfg.miner_hardware_limits.items():
+                            if normalize_miner_name(k) == norm_m:
+                                hw_limit = v
+                                break
                     staggered_dec = evaluate_facility_transition_permission(
                         miner_name=metrics.miner_name,
                         current_preset=current_tier.name,
@@ -345,6 +372,8 @@ def evaluate_balancer_step(
                         now_ts=current_time,
                         facility_state=facility_state,
                         now_dt=now_dt,
+                        max_chip_temp_c=metrics.current_temp_c,
+                        miner_hardware_max_preset=hw_limit,
                     )
                     if not staggered_dec.can_proceed:
                         return BalancerDecision(
@@ -695,7 +724,7 @@ def build_balancer_table_text(
         lines.append(f"  {' | '.join(meta_parts)}")
 
         for m, d in items:
-            action_icon = "🟢" if d.action == ACTION_HOLD_STABLE else ("⬆️" if d.action == ACTION_STEP_UP_OPTIMIZE else "⚠️")
+            action_icon = "🟢" if d.action in (ACTION_HOLD_STABLE, ACTION_HOLD_STABILIZED) else ("⬆️" if d.action == ACTION_STEP_UP_OPTIMIZE else "⚠️")
             target_str = f" ➔ {d.target_preset}" if d.requires_write else ""
             lines.append(f"• {m.miner_name}: {m.current_preset}{target_str}")
             lines.append(f"  R: {m.restarts_24h}(24h)/{m.restarts_72h}(72h) • Up: {m.hours_since_last_restart:.0f}h")

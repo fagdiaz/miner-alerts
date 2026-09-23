@@ -203,6 +203,85 @@ def get_summary_cooling(
         return False, None, f"request_error: {type(exc).__name__}"
 
 
+def read_miner_status_summary(
+    host: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    session: Optional[requests.Session] = None,
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Read unauthenticated miner status and operational summary from /api/v1/summary.
+    
+    Used by autotune stall watchdog (Spec 078) to monitor live miner_state,
+    continuous state duration (miner_state_time), and realtime hashrate.
+    
+    Returns: (success: bool, summary_dict: Optional[dict], error_message: Optional[str])
+    """
+    url = f"http://{host}/api/v1/summary"
+    requester = session or requests
+    try:
+        resp = requester.get(url, timeout=timeout)
+        if resp.status_code == 200:
+            data = resp.json()
+            m = data.get("miner", {})
+            mst = m.get("miner_status", {})
+            state = mst.get("miner_state", "")
+            state_time = int(mst.get("miner_state_time", 0))
+            hr_realtime = float(m.get("hr_realtime", 0.0)) / 1e3
+            power_usage = int(m.get("power_usage", 0) or m.get("power_consumption", 0))
+            return True, {
+                "miner_state": state,
+                "miner_state_time": state_time,
+                "hr_realtime_ths": hr_realtime,
+                "power_usage_w": power_usage,
+                "cooling": m.get("cooling", {}),
+                "chip_temp": m.get("chip_temp", {}),
+                "pcb_temp": m.get("pcb_temp", {}),
+                "raw_miner": m,
+            }, None
+        return False, None, f"http_status_{resp.status_code}"
+    except requests.exceptions.Timeout:
+        return False, None, "connection_timeout"
+    except Exception as exc:
+        return False, None, f"request_error: {type(exc).__name__}"
+
+
+def fetch_fleet_vnish_summaries(
+    hosts: List[str],
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+    max_workers: int = 4,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Query /api/v1/summary in parallel across multiple miner hosts (Single-Pass Ingestion).
+    
+    Guarantees non-blocking execution bounded by a single timeout window,
+    avoiding port 80 socket exhaustion on ASIC control boards.
+    
+    Returns: Dict[host_ip, summary_dict] (contains entries only for reachable hosts).
+    """
+    valid_hosts = [h for h in hosts if h]
+    if not valid_hosts:
+        return {}
+
+    import concurrent.futures
+
+    results: Dict[str, Dict[str, Any]] = {}
+    workers = min(max_workers, len(valid_hosts))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_host = {
+            executor.submit(read_miner_status_summary, host, timeout=timeout): host
+            for host in valid_hosts
+        }
+        for future in concurrent.futures.as_completed(future_to_host, timeout=timeout * 1.5):
+            h = future_to_host[future]
+            try:
+                ok, summary, _ = future.result()
+                if ok and summary:
+                    results[h] = summary
+            except Exception:
+                pass
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Spec 040: Dynamic Power & Preset Balancer API methods
 # ---------------------------------------------------------------------------
@@ -245,6 +324,7 @@ def set_miner_preset(
     session: Optional[requests.Session] = None,
     clamp_top_preset: bool = True,
     top_preset: Optional[str] = None,
+    auto_restart_mining: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
     Update active overclocking preset on Vnish miner.
@@ -252,6 +332,7 @@ def set_miner_preset(
     If top_preset is specified, explicitly sets preset_switcher.top_preset to that value.
     Otherwise if clamp_top_preset is True, clamps preset_switcher.top_preset to preset_name
     to prevent the internal Vnish temperature daemon from overriding the contingency preset in cold weather.
+    If auto_restart_mining is True and Vnish returns restart_required=True, automatically restarts mining.
     
     Returns: (success: bool, error_message: Optional[str])
     """
@@ -282,6 +363,15 @@ def set_miner_preset(
     try:
         resp = requester.post(url, headers=headers, json=payload, timeout=timeout)
         if resp.status_code == 200:
+            if auto_restart_mining:
+                try:
+                    data = resp.json()
+                    if isinstance(data, dict) and data.get("restart_required"):
+                        restart_ok, restart_err = restart_mining(host, token, timeout=timeout, session=session)
+                        if not restart_ok:
+                            return True, f"preset_set_but_restart_failed: {restart_err}"
+                except Exception:
+                    pass
             return True, None
         return False, f"http_status_{resp.status_code}"
     except requests.exceptions.Timeout:
@@ -297,6 +387,7 @@ def safe_set_miner_preset(
     timeout: float = DEFAULT_HTTP_TIMEOUT,
     clamp_top_preset: bool = True,
     top_preset: Optional[str] = None,
+    auto_restart_mining: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
     Transactional wrapper for preset change:
@@ -311,6 +402,9 @@ def safe_set_miner_preset(
         ok, token, err = unlock_miner(host, password, timeout=timeout)
         if not ok or not token:
             return False, f"unlock_failed: {err}"
+        kwargs = {}
+        if auto_restart_mining:
+            kwargs["auto_restart_mining"] = auto_restart_mining
         if top_preset is not None:
             return set_miner_preset(
                 host,
@@ -319,6 +413,7 @@ def safe_set_miner_preset(
                 timeout=timeout,
                 clamp_top_preset=clamp_top_preset,
                 top_preset=top_preset,
+                **kwargs,
             )
         return set_miner_preset(
             host,
@@ -326,6 +421,7 @@ def safe_set_miner_preset(
             preset_name,
             timeout=timeout,
             clamp_top_preset=clamp_top_preset,
+            **kwargs,
         )
     finally:
         if token:

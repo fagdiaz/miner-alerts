@@ -1,7 +1,7 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-24 ~13:35 hs
+# PROMPT DE CONTINUIDAD - 2026-09-24 ~18:14 hs
 # MODELO RECOMENDADO: Gemini 3.8 Flash High (monitoreo / dominio puro) o Claude Sonnet 4.6 (Thinking) (concurrencia)
-# TAREA: Verificación de ciclo VNish 79-84°C y supervisión de contingencia adaptativa
+# TAREA: Supervisión activa de alertas de Telegram, watchdog local de hashrate y régimen de 377 TH/s
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
@@ -12,38 +12,38 @@ LEE PRIMERO:
   - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-24)
 
 --------------------------------------------------------------------------------
-1. ESTADO ACTUAL Y ALINEACIÓN DE GOBERNANZA
+1. RESOLUCIÓN DE FALLA EN S19JPRO-26, ALERTAS Y GOBERNANZA
 --------------------------------------------------------------------------------
-El operador acordó la directiva técnica:
-1. El ciclo térmico 79°C - 84°C lo gobierna VNish nativamente (menor fricción, cero reinicios).
-   - Cuando T <= 79°C: VNish sube potencia hacia top_preset (2700W).
-   - Cuando T >= 84°C: VNish baja potencia (a 2500W) para proteger el silicio.
-2. Toda la flota está configurada en la flash de VNish con:
-   - top_preset: "2700" (en M23, M24, M25, M26).
-   - ignore_fan_speed: True (desbloqueado en toda la flota para permitir escalar con fans al 100%).
-   - rise_temp: 79°C, decrease_temp: 84°C, check_time: 300s.
-3. Monitor Alerts actúa como guardián pasivo y supervisor de contingencia (Spec 057):
-   - Registra telemetría continua en SQLite (data/miner_alerts.db).
-   - Blindaje P0 activo: check_autotune_watchdog y post_blackout interbloqueados por gobernanza.
-   - Si ocurre un disturbio eléctrico en el Elevador 2, desescala de forma asimétrica (1 minero).
+El operador reportó que M26 tenía bajo hash y que no fue alertado ni se intervino.
+1. Causa Raíz:
+   - A las 17:50:51 hs, S19JPRO-25 (Elevador 2) tuvo un reinicio. El transitorio de carga en la línea
+     glitcheó la comunicación de hashboards de M26. A las 17:54:53 hs, VNish reportó "Hashrate dropped 0.00%".
+   - Por qué no hubo alerta: `telegram_alerts_enabled: false` estaba en config.json.
+   - Por qué no hubo auto-reboot: `master_enabled: false` (modo Vnish Libre) bloqueó la intervención a los 600s.
+   - Por qué VNish no se reinició solo: `restart_hashrate` estaba en 0 (deshabilitado).
+2. Soluciones Aplicadas:
+   - Rescate en caliente: `safe_restart_mining` enviado a M26 (18:06 hs). Los 126 chips de las 3 cadenas sanos.
+   - Alertas Telegram: `telegram_alerts_enabled: true` activado en app/config.json.
+   - Gobernanza de Intervención: `master_enabled: true`, `reboots_enabled: true`, `contingency_enabled: true` en state.json.
+   - Watchdog Local en VNish: `restart_hashrate: 40` configurado en toda la flota (M23, M24, M25, M26).
+     Cualquier caída a 0 TH/s o < 40 TH/s ahora provocará un reinicio local de minería inmediato en VNish en 60s.
 
 --------------------------------------------------------------------------------
-2. TELEMETRÍA EN VIVO DE LA FLOTA (13:35 hs)
+2. TELEMETRÍA EN VIVO DE LA FLOTA (18:12 hs)
 --------------------------------------------------------------------------------
-- Servicio Windows NSSM: MinerAlerts SERVICE_RUNNING (PID 31180, modo VNish Libre, 0 errores).
-- Total Flota: ~380 TH/s | 10.19 kW | Cero mineros caídos | Silicio 100% sano (0 chips rojos).
+- Servicio Windows NSSM: MinerAlerts SERVICE_RUNNING (18:11 hs, master=True, alerts=True, 0 errores).
+- Total Flota: ~377.2 TH/s | ~10.19 kW | Cero mineros caídos | Silicio 100% sano.
 
-Telemetría viva de la flota (scratch/check_fleet.py):
-  S19JPRO-23 | Elevador 1 | mining | 99.9 TH/s | 2698W | 87°C | 100% fan | uptime 11.5h
-  S19JPRO-24 | Elevador 1 | mining | 94.5 TH/s | 2498W | 83°C | 100% fan | uptime 16.9h
-  S19JPRO-25 | Elevador 2 | mining | 93.1 TH/s | 2498W | 79°C | 100% fan | uptime 3.5h
-  S19JPRO-26 | Elevador 2 | mining | 92.3 TH/s | 2498W | 79°C |  95% fan | uptime 3.4h
+Telemetría viva de la flota:
+  S19JPRO-23 | Elevador 1 | mining | 91.7 TH/s | 2499W | 80°C max | 100% fan | startup: 2500 | top: 2700
+  S19JPRO-24 | Elevador 1 | mining | 94.0 TH/s | 2498W | 79°C max | 100% fan | startup: 2500 | top: 2700
+  S19JPRO-25 | Elevador 2 | mining | 101.8 TH/s| 2699W | 80°C max | 100% fan | escaló a 2700W (switcher VNish)
+  S19JPRO-26 | Elevador 2 | mining | 89.7 TH/s | 2498W | 73°C max |  95% fan | recuperada y estable
 
 --------------------------------------------------------------------------------
 3. COMANDOS ÚTILES
 --------------------------------------------------------------------------------
-- Telemetría en vivo:  & ".\.venv\Scripts\python.exe" scratch\check_fleet.py
-- Overclock settings:  & ".\.venv\Scripts\python.exe" tools\check_fleet_settings.py
-- Suite de tests:      & ".\.venv\Scripts\python.exe" -m pytest -q
-- Logs del servicio:   Get-Content "logs\out.log" | Select-Object -Last 35
-- NSSM status:         nssm status MinerAlerts
+- Resumen en vivo:       & ".\.venv\Scripts\python.exe" -c "from app.miner_monitor import load_config; from app.vnish.client import unlock_miner; import requests; cfg=load_config(); pwd=cfg.get('vnish_api_password'); [(print(m['name'], requests.get(f\"http://{m['host']}/api/v1/summary\", headers={'Authorization': f\"Bearer {unlock_miner(m['host'], pwd)[1]}\"}).json()['miner']['hr_realtime']/1000.0, 'TH/s')) for m in cfg['miners']]"
+- Suite de tests:        & ".\.venv\Scripts\python.exe" -m pytest -q
+- Logs del monitor:      Get-Content "logs\out.log" -Tail 30
+- NSSM status:           nssm status MinerAlerts

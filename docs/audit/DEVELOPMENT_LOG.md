@@ -3,6 +3,97 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-24] - Diagnóstico Forense y Rescate de S19JPRO-26 (Glitch Eléctrico en Elevador 2, Watchdog y Reactivación de Alertas)
+
+* **Contexto & Alerta del Operador**:
+  - El operador detectó que S19JPRO-26 se encontraba con bajo hash ("algo se rompió o está chocando en la 26... no me enteré ni se intervino?"), solicitando diagnosticar la causa raíz y resolver tanto la caída como la falta de alerta e intervención.
+
+* **Reconstrucción Forense de la Falla en M26**:
+  1. **Disparo en Elevador 2 (17:50:51 hs)**:
+     - S19JPRO-25 (compañera de circuito de M26 en Elevador 2) sufrió un reinicio inesperado de minería.
+     - La caída instantánea de 2500W en la línea causó un transitorio eléctrico / perturbación en el bus de comunicación de M26.
+  2. **Colapso de Hashing en M26 (17:54:53 hs)**:
+     - VNish registró en `miner` log: `WARN: Hashrate is dropped, current percent 0.00`.
+     - Todos los chips entraron en estado rojo (`chips: {'red': 126, 'orange': 0, 'grey': 0}`) y el hashrate cayó a 0.0 TH/s con la máquina consumiendo 2498W.
+  3. **¿Por qué VNish no se auto-reinició?**:
+     - En la configuración de firmware de VNish (`miner.misc`), `restart_hashrate` estaba fijado en `0` (deshabilitado de fábrica). VNish no tenía habilitado el watchdog interno de hashrate bajo.
+  4. **¿Por qué el operador no recibió alerta en Telegram?**:
+     - En `app/config.json`, la directiva `telegram_alerts_enabled` estaba en `false`.
+  5. **¿Por qué el monitor no intervino con auto-reboot?**:
+     - El monitor detectó `LOW` y esperó los 600s reglamentarios. A las 18:00:51 hs intentó intervenir, pero la acción fue bloqueada por:
+       `[AUTO-REBOOT] blocked_by=intervention_governance miner=26 reason=master_interventions_disabled:vnish_libre(vnish_libre_operator_request)`.
+
+* **Solución y Mitigación Aplicada**:
+  1. **Rescate en Caliente de M26**:
+     - Vía API REST se ejecutó `safe_restart_mining(host, password)` a las 18:06:05 hs.
+     - VNish re-inicializó las 3 cadenas (`126 chips detected` en cada una) y comenzó la rampa normal a 488 MHz.
+  2. **Reactivación de Alertas de Telegram**:
+     - Configurado `telegram_alerts_enabled: true` en `app/config.json`.
+  3. **Reactivación de Gobernanza Activa (`master_enabled = True`)**:
+     - Reestablecido `master_enabled: true` y `reboots_enabled: true` en `app/state.json` (dejando `governor_enabled: false` para respetar ventilación nativa de VNish).
+  4. **Watchdog Local en Firmware VNish (`restart_hashrate = 40`)**:
+     - Inyectado `miner.misc.restart_hashrate: 40` en los 4 mineros (`192.168.100.23` a `26`). Si el hashrate colapsa por debajo de 40 TH/s, VNish ahora reiniciará la minería automáticamente en 60s sin requerir intervención externa.
+
+* **Telemetría Viva Post-Recuperación (18:12 hs)**:
+  - S19JPRO-23: `mining` | **91.7 TH/s** | 2499W | 80°C | 488 MHz
+  - S19JPRO-24: `mining` | **94.0 TH/s** | 2498W | 79°C | 483 MHz
+  - S19JPRO-25: `mining` | **101.8 TH/s** | 2699W | 80°C | 518 MHz (escaló libremente a 2700W)
+  - S19JPRO-26: `mining` | **89.7 TH/s** | 2498W | 73°C | 483 MHz (recuperada, 126 chips sanos)
+  - **TOTAL FLOTA**: **377.2 TH/s** | **10.19 kW** | 0 mineros caídos.
+
+## [2026-09-24] - Reinicio Simultáneo de Flota y Configuración de Arranque Base en 2500W con Tope Libre en 2700W
+
+* **Contexto & Directiva del Operador**:
+  - Tras observarse inestabilidades térmicas en la tarde, el operador ordenó configurar todos los mineros para que arranquen en 2500W y reiniciarlos todos a la vez, manteniendo los topes libres a 2700W en operación normal según el ciclo nativo de VNish (79°C - 84°C).
+
+* **Acciones Ejecutadas en Flash y API REST de VNish**:
+  1. **Configuración de Perfil Base de Arranque**:
+     - Se guardó en la memoria flash de VNish de toda la flota (M23, M24, M25, M26) el preset base de arranque en `"2500"` (`preset: "2500"` con 488 MHz nominales).
+     - Se configuró el `preset_switcher` en toda la flota con:
+       * `top_preset: "2700"` (tope libre para escalar a 2700W en condiciones óptimas).
+       * `rise_temp: 79` y `decrease_temp: 84` (ciclo térmico estándar de VNish).
+       * `ignore_fan_speed: True` (evita bloqueos del switcher cuando los fans operan al 100%).
+       * `check_time: 300` (evaluación cada 5 minutos).
+  2. **Reinicio de Sistema Concurrente**:
+     - Vía `ThreadPoolExecutor(max_workers=4)`, se envió `POST /api/v1/system/reboot` de forma simultánea a las 4 direcciones IP (`192.168.100.23` a `26`).
+     - Todas respondieron `status_200: {"after": 3}` y entraron al ciclo de reinicio de control board en el mismo segundo.
+
+* **Comportamiento y Validación en Vivo**:
+  - **Arranque Controlado**: Los 4 mineros completaron el boot de Linux, pasaron la fase de cooldown en `initializing` (~120s) y arrancaron minería limpiamente en el preset 2500W (`chains` a 488 MHz).
+  - **Protección del Monitor**: `miner_monitor.py` aplicó las ventanas pasivas de settle (`blocked_by=not_sustained` y startup guard) sin disparar falsas alarmas ni reboots espurios.
+  - **Estado Operativo Post-Reinicio (17:16 hs)**:
+    * S19JPRO-23: `state=mining` | 2499W | 488 MHz | 58°C max
+    * S19JPRO-24: `state=mining` | 2498W | 482 MHz | 58°C max
+    * S19JPRO-25: `state=mining` | 2498W | 484 MHz | 58°C max
+    * S19JPRO-26: `state=mining` | 2498W | 483 MHz | 55°C max
+    * Flota Total: **9.99 kW** | Rampa en progreso hacia ~370-380 TH/s | Temperaturas extremadamente frías (<60°C).
+
+## [2026-09-24] - Diagnóstico Forense y Reparación en Caliente de S19JPRO-23 (Preset 2500 Corrupto a 1800W)
+
+* **Contexto & Diagnóstico Forense**:
+  - El operador detectó que S19JPRO-23 oscilaba y caía periódicamente a **~78-79 TH/s a 2500W con coolers al 100% y 77°C**, solicitando diagnosticar la causa y resolverlo sin romper nada ni causar colisiones con VNish.
+  - **Inspección Forense de la Flash de VNish (`/api/v1/autotune/presets` y `/api/v1/settings`)**:
+    1. Se descubrió una discrepancia crítica en la memoria no volátil de M23: el perfil guardado en el slot `"2500"` tenía `modified: true` con `volt: 12030 mV` (12.03V), `freq: 385 MHz` y cadenas fijadas en `[409, 409, 409] MHz`.
+    2. ¡Eran exactamente los parámetros eléctricos y de frecuencia del perfil de **1800W**! En contraste, M24/M25/M26 tenían en 2500W frecuencias de `488 MHz` y tensiones de `12.44V - 12.78V` entregando **~92-94 TH/s**.
+    3. **Mecanismo del Bucle Térmico Oscilatorio**:
+       - En las horas cálidas de la tarde, a 2700W (521 MHz), M23 superaba los 84°C (`decrease_temp: 84`).
+       - VNish conmutaba nativamente al perfil inferior (`"2500"`), pero al cargar 409 MHz, el hashrate se desplomaba de 100 TH/s a 78-79 TH/s.
+       - A 78 TH/s (1800W reales), los chips se enfriaban rápidamente a 76-77°C.
+       - Al caer por debajo de 79°C (`rise_temp: 79`), VNish detectaba temperatura segura y ordenaba saltar inmediatamente de vuelta a 2700W (+900W de golpe).
+       - Este salto térmico repentino provocaba un sobrecalentamiento acelerado hasta 90°C (`restart_temp: 90`), forzando reinicios térmicos de hardware (`Restarting (3 of 3) - Miner is overheated`).
+
+* **Reparación en Caliente (Zero Downtime / Zero Colisiones)**:
+  - Vía REST API `POST /api/v1/settings`, se inyectaron los parámetros nominales de 2500W en M23:
+    * `globals`: `volt: 1250 mV (12.5V)`, `freq: 488 MHz`.
+    * `chains`: `[488, 488, 488] MHz` con offsets limpios (126 chips a 0).
+    * `preset_switcher`: `top_preset: "2700"`, `rise_temp: 79`, `decrease_temp: 84`, `check_time: 300`.
+  - **Respuesta de VNish**: `{"restart_required": false, "reboot_required": false}`.
+  - **Transición en Vivo de VNish**: A las 17:04:49 hs registró `INFO: Switching preset to 2500 watt ~ 92 TH` y realizó el ramp dinámico de frecuencias de 409 MHz a 488 MHz sin reiniciar minería.
+
+* **Validación en Vivo (17:06 hs)**:
+  - S19JPRO-23: Minando de forma continua a **94.8 TH/s | 2499W | 78.0°C max chip temp** (completamente dentro del rango de confort térmico y por debajo del umbral de subida).
+  - Flota Total: **~370 TH/s | 9.99 kW | 0 caídas | 0 reinicios | Silicio 100% sano**.
+
 ## [2026-09-24] - Alineación Flota Completa al Ciclo VNish 79°C-84°C y Desbloqueo ignore_fan_speed a 2700W
 
 * **Contexto & Diagnóstico**:

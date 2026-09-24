@@ -138,7 +138,7 @@ def evaluate_safe_recovery(
                     RecoveryDecision(
                         action=ACTION_STAGED_RAMP_UP,
                         target_preset=restored_preset,
-                        clamp_top_preset=True,
+                        clamp_top_preset=False,
                         trigger_restart=False,
                         reason=f"Soak de {ramp_up_soak_seconds:.0f}s completado: restaurando preset nominal {restored_preset}W",
                         soak_seconds_remaining=0.0,

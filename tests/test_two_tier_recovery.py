@@ -566,6 +566,7 @@ class TestTwoTierEscalationLifecycle(unittest.TestCase):
         elapsed_l2 = now_ts - hashboard_since_ts
         self.assertGreaterEqual(elapsed_l2, auto_reboot_hashboard_sustained_seconds)
 
+    @patch("app.miner_monitor.safe_set_miner_preset", return_value=(True, None))
     @patch("app.miner_monitor.safe_restart_mining")
     @patch("app.miner_monitor.send_telegram")
     @patch("app.miner_monitor.record_action_outcome")
@@ -574,12 +575,13 @@ class TestTwoTierEscalationLifecycle(unittest.TestCase):
         mock_record: MagicMock,
         mock_tg: MagicMock,
         mock_restart: MagicMock,
+        mock_set_preset: MagicMock,
     ) -> None:
         mock_restart.return_value = (True, None)
-        miner = {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028}
+        miner = {"name": "S19JPRO-23", "host": "192.0.2.23", "port": 4028, "max_hardware_preset": "2700W"}
 
         _async_execute_mining_restart(
-            host="192.168.100.23",
+            host="192.0.2.23",
             password="admin",
             miner_name="S19JPRO-23",
             miner_dict=miner,
@@ -593,13 +595,15 @@ class TestTwoTierEscalationLifecycle(unittest.TestCase):
             event_store=None,
         )
 
-        mock_restart.assert_called_once_with("192.168.100.23", "admin")
+        mock_set_preset.assert_called_once()
+        mock_restart.assert_called_once_with("192.0.2.23", "admin")
         mock_tg.assert_called_once()
         self.assertIn("Nivel 1", mock_tg.call_args[0][2])
         self.assertIn("23", mock_tg.call_args[0][2])
         mock_record.assert_called_once()
         self.assertTrue(mock_record.call_args[1]["ok"])
 
+    @patch("app.miner_monitor.safe_set_miner_preset", return_value=(True, None))
     @patch("app.miner_monitor.safe_restart_mining")
     @patch("app.miner_monitor.send_telegram")
     @patch("app.miner_monitor.record_action_outcome")
@@ -608,12 +612,13 @@ class TestTwoTierEscalationLifecycle(unittest.TestCase):
         mock_record: MagicMock,
         mock_tg: MagicMock,
         mock_restart: MagicMock,
+        mock_set_preset: MagicMock,
     ) -> None:
         mock_restart.return_value = (False, "unlock_failed: timeout")
-        miner = {"name": "S19JPRO-23", "host": "192.168.100.23", "port": 4028}
+        miner = {"name": "S19JPRO-23", "host": "192.0.2.23", "port": 4028, "max_hardware_preset": "2700W"}
 
         _async_execute_mining_restart(
-            host="192.168.100.23",
+            host="192.0.2.23",
             password="admin",
             miner_name="S19JPRO-23",
             miner_dict=miner,
@@ -627,7 +632,8 @@ class TestTwoTierEscalationLifecycle(unittest.TestCase):
             event_store=None,
         )
 
-        mock_restart.assert_called_once_with("192.168.100.23", "admin")
+        mock_set_preset.assert_called_once()
+        mock_restart.assert_called_once_with("192.0.2.23", "admin")
         mock_tg.assert_called_once()
         self.assertIn("AUTO-RESTART FAILED", mock_tg.call_args[0][2])
         mock_record.assert_called_once()

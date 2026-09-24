@@ -207,6 +207,7 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "hashboard_since_ts": getattr(state, "hashboard_since_ts", None),
         "last_manual_reboot_ts": state.last_manual_reboot_ts,
         "last_auto_reboot_ts": state.last_auto_reboot_ts,
+        "last_preset_change_ts": getattr(state, "last_preset_change_ts", None),
         "last_auto_restart_ts": getattr(state, "last_auto_restart_ts", None),
         "auto_restart_count": getattr(state, "auto_restart_count", 0),
         "auto_reboot_timestamps": list(getattr(state, "auto_reboot_timestamps", None) or []),

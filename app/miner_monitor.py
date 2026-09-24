@@ -881,6 +881,7 @@ class MinerState:
     auto_restart_count: int = 0                   # Spec 056: Soft mining restart attempts
     last_manual_reboot_ts: Optional[float] = None
     last_auto_reboot_ts: Optional[float] = None
+    last_preset_change_ts: Optional[float] = None  # Timestamp del último preset/restart enviado por el monitor
     auto_reboot_timestamps: list = field(default_factory=list)
     degraded_mode: bool = False
     last_hourly_status_ts: Optional[float] = None
@@ -948,8 +949,11 @@ class MinerState:
     stock_firmware_fallback_notified: bool = False
 
 
+_GLOBAL_LOADED_CONFIG: Optional[Dict[str, Any]] = None
+
 
 def load_config() -> Dict[str, Any]:
+    global _GLOBAL_LOADED_CONFIG
     config_env = os.getenv("MINER_ALERTS_CONFIG") or os.getenv("CONFIG_PATH")
     if config_env:
         config_path = Path(config_env).expanduser()
@@ -993,6 +997,7 @@ def load_config() -> Dict[str, Any]:
             f"CONFIG path={config_path} exists=true size={size_bytes} mtime={mtime_str} "
             f"sha={sha_short} qa_mode_raw={qa_mode_raw} type={qa_mode_type}"
         )
+        _GLOBAL_LOADED_CONFIG = config
         return config
     except Exception as exc:
         log(
@@ -1259,8 +1264,10 @@ def _async_execute_mining_restart(
         log(f"[AUTO-RESTART] {disp_name} ({host}) iniciando soft restart de minado (intento {attempt}/{max_attempts}, razon={trigger_reason})...")
 
         # Spec 075 / FR-01: Soft-Landing Pre-Clamp to safe floor (1800W) before restarting
+        # Note: top_preset is preserved at hw_max (2700W) so VNish is not permanently trapped at 1800W
         log(f"[SAFE-RECOVERY] {disp_name} ({host}) aplicando pre-clamp defensivo a {pre_clamp_preset}W para proteger fuente APW12...")
-        clamp_ok, clamp_err = safe_set_miner_preset(host, password, pre_clamp_preset, clamp_top_preset=True)
+        _pre_hw_max = miner_dict.get("max_hardware_preset", "2700W").rstrip("W") if isinstance(miner_dict, dict) else "2700"
+        clamp_ok, clamp_err = safe_set_miner_preset(host, password, pre_clamp_preset, clamp_top_preset=False, top_preset=_pre_hw_max)
         if clamp_ok:
             log(f"[SAFE-RECOVERY] {disp_name} ({host}) pre-clamp a {pre_clamp_preset}W aplicado con exito. Asentando voltajes (2.0s)...")
             time.sleep(2.0)
@@ -1330,6 +1337,9 @@ def send_telegram(
 ) -> None:
     if not msg_type:
         msg_type = "ERROR"
+    if not is_command:
+        if _GLOBAL_LOADED_CONFIG is not None and not bool(_GLOBAL_LOADED_CONFIG.get("telegram_alerts_enabled", True)):
+            return
     parts = split_telegram_message(message)
     delivery_class = classify_delivery(msg_type, is_command=is_command)
     if _TELEGRAM_QUEUE is None:
@@ -2416,6 +2426,11 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("last_auto_reboot_ts") is not None
                     else None
                 ),
+                last_preset_change_ts=(
+                    float(data.get("last_preset_change_ts"))
+                    if data.get("last_preset_change_ts") is not None
+                    else None
+                ),
                 last_auto_restart_ts=(
                     float(data.get("last_auto_restart_ts"))
                     if data.get("last_auto_restart_ts") is not None
@@ -3487,10 +3502,16 @@ def refresh_vnish_overclock_settings(
                                         lock_w = int(lock_digits[0]) if lock_digits else 0
                                         is_higher = (curr_w > lock_w > 0)
                                     if is_higher:
-                                        log(
-                                            f"[TRIPWIRE_INTERLOCK] miner={m_name} detecto preset superior ({st.vnish_discovered_preset}) "
-                                            f"a candado ({st.hw_error_locked_preset}). Forzando restauracion defensiva."
-                                        )
+                                        gov_obj = globals().get("_GLOBAL_INTERVENTION_GOV")
+                                        allowed_tw = True
+                                        if gov_obj is not None:
+                                            from app.governance.intervention_policy import ACTION_PRESET_BALANCER, should_allow_intervention
+                                            allowed_tw, _ = should_allow_intervention(ACTION_PRESET_BALANCER, gov_obj, current_ts)
+                                        if allowed_tw:
+                                            log(
+                                                f"[TRIPWIRE_INTERLOCK] miner={m_name} detecto preset superior ({st.vnish_discovered_preset}) "
+                                                f"a candado ({st.hw_error_locked_preset}). Forzando restauracion defensiva."
+                                            )
                                         def _async_restore_tripwire_preset(
                                             _h=m_host,
                                             _pw=vnish_pw,
@@ -3791,6 +3812,7 @@ def execute_balancer_cycle(
                 if decision.requires_write and (dry_run or write_ok):
                     st.balancer_preset = decision.target_preset
                     st.balancer_last_change_ts = now_ts
+                    st.last_preset_change_ts = now_ts  # Spec: atribuir reinicios post-preset a esta acción
                     if decision.action == ACTION_STEP_DOWN_HW_ERRORS:
                         if not st.hw_error_lock_until_ts or st.hw_error_lock_until_ts <= now_ts:
                             st.hw_error_lock_until_ts = now_ts + (bal_cfg.hw_error_lock_hours * 3600.0)
@@ -3851,6 +3873,15 @@ def check_autotune_watchdog(
     Single-pass parallel ingestion prevents port 80 socket exhaustion on ASIC control boards.
     """
     global _AUTOTUNE_WATCHDOG_STATE, _FACILITY_BUDGET_STATE
+
+    # Spec 057: Check intervention governance for Autotune Watchdog
+    from app.governance.intervention_policy import ACTION_AUTOTUNE_WATCHDOG, should_allow_intervention
+    gov_obj = globals().get("_GLOBAL_INTERVENTION_GOV")
+    if gov_obj is not None:
+        allowed, reason = should_allow_intervention(ACTION_AUTOTUNE_WATCHDOG, gov_obj, now_ts)
+        if not allowed:
+            return []
+
     timeout_s = float(config.get("autotune_timeout_s", 600.0))
     min_ths = float(config.get("autotune_min_active_hashrate_ths", 20.0))
     vnish_pw = str(config.get("vnish_api_password", "admin"))
@@ -3937,6 +3968,7 @@ def check_autotune_watchdog(
                         st.vnish_discovered_top_preset = decision.safe_preset
                         st.vnish_discovered_preset = decision.safe_preset
                         st.vnish_discovered_target_power_w = float(parse_preset_wattage(decision.safe_preset))
+                        st.last_preset_change_ts = now_ts
 
                 if send_telegram_fn:
                     tg_msg = (
@@ -6164,8 +6196,14 @@ def main() -> None:
                         state.low_since_ts = None
                         state.hashboard_since_ts = None
                         # Spec 062: Anti-Cascade Post-Reboot Interlock
+                        gov_obj = getattr(state, "intervention_gov", None) or globals().get("_GLOBAL_INTERVENTION_GOV")
+                        allowed_tw = True
+                        if gov_obj is not None:
+                            from app.governance.intervention_policy import ACTION_PRESET_BALANCER, should_allow_intervention
+                            allowed_tw, _ = should_allow_intervention(ACTION_PRESET_BALANCER, gov_obj, now_ts)
                         if (
-                            state.hw_error_lock_until_ts
+                            allowed_tw
+                            and state.hw_error_lock_until_ts
                             and now_ts < state.hw_error_lock_until_ts
                             and state.hw_error_locked_preset
                         ):
@@ -6203,6 +6241,16 @@ def main() -> None:
                                 name=f"ChainTelemetryReactive_{name}",
                             ).start()
                     state.last_elapsed = elapsed
+                    # Retroactive init: if monitor just restarted and miner elapsed is low (within grace window),
+                    # seed last_preset_change_ts so that any immediate elapsed=0 VNish sees is attributed
+                    # to the service restart/preset activity rather than classified as "unexpected".
+                    _autotune_grace_s = float(config.get("autotune_grace_period_seconds", 900.0))
+                    if (
+                        state.last_preset_change_ts is None
+                        and elapsed is not None
+                        and elapsed < float(config.get("autotune_grace_period_seconds", 900.0))
+                    ):
+                        state.last_preset_change_ts = now_ts - elapsed
 
 
 
@@ -6497,6 +6545,7 @@ def main() -> None:
                         detected_ts=now_ts,
                         last_manual_action_ts=state.last_manual_reboot_ts,
                         last_auto_action_ts=state.last_auto_reboot_ts,
+                        last_preset_change_ts=getattr(state, "last_preset_change_ts", None),
                         attribution_window_seconds=restart_attribution_window_seconds,
                     )
                     incident_id = None
@@ -6649,6 +6698,7 @@ def main() -> None:
                                             _t_st = states.get(_t_sk)
                                             if _t_st:
                                                 _t_st.balancer_preset = _decision.target_preset
+                                                _t_st.last_preset_change_ts = now_ts
                                 if _decision.partner_requires_write and _decision.partner_miner and not qa_mode:
                                     from app.governance.adaptive_contingency import normalize_miner_name
                                     _pt_miner = next(
@@ -6672,6 +6722,7 @@ def main() -> None:
                                             _pt_st = states.get(_pt_sk)
                                             if _pt_st:
                                                 _pt_st.balancer_preset = _decision.partner_target_preset
+                                                _pt_st.last_preset_change_ts = now_ts
                                 if _decision.notification_msg:
                                     send_telegram(
                                         bot_token,
@@ -6735,19 +6786,33 @@ def main() -> None:
                             state.staged_ramp_up_soak_start_ts = now_ts
                         log(f"[SAFE-RECOVERY] {name_display} estabilizado en OK con pre-clamp: iniciando soak de rampa ascendente (180s)...")
                     elif (now_ts - state.staged_ramp_up_soak_start_ts) >= 180.0:
-                        nom_preset = (getattr(state, "original_preset_before_clamp", None) or getattr(state, "balancer_preset", "2300W") or "2300W").rstrip("W")
-                        hw_max = get_miner_max_hardware_preset(name_display, config=config).rstrip("W")
-                        if _AUTOTUNE_WATCHDOG_STATE and _AUTOTUNE_WATCHDOG_STATE.is_hardware_locked(name_display):
-                            hw_max = _AUTOTUNE_WATCHDOG_STATE.get_locked_preset(name_display).rstrip("W")
-                        if parse_preset_wattage(nom_preset) > parse_preset_wattage(hw_max):
-                            nom_preset = hw_max
-                        log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W, clamped)...")
-                        safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=True, top_preset=nom_preset)
-                        with state_lock:
-                            state.is_pre_clamped = False
-                            state.staged_ramp_up_pending = False
-                            state.staged_ramp_up_soak_start_ts = None
-                            state.original_preset_before_clamp = None
+                        gov_obj = getattr(state, "intervention_gov", None) or globals().get("_GLOBAL_INTERVENTION_GOV")
+                        allowed_ramp = True
+                        if gov_obj is not None:
+                            from app.governance.intervention_policy import ACTION_REBOOT_L1, should_allow_intervention
+                            allowed_ramp, _ = should_allow_intervention(ACTION_REBOOT_L1, gov_obj, now_ts)
+                        if not allowed_ramp:
+                            log(f"[SAFE-RECOVERY] {name_display} soak completado pero intervenciones desactivadas por gobernanza; suprimiendo mutacion de preset.")
+                            with state_lock:
+                                state.is_pre_clamped = False
+                                state.staged_ramp_up_pending = False
+                                state.staged_ramp_up_soak_start_ts = None
+                                state.original_preset_before_clamp = None
+                        else:
+                            nom_preset = (getattr(state, "original_preset_before_clamp", None) or getattr(state, "balancer_preset", "2300W") or "2300W").rstrip("W")
+                            hw_max = get_miner_max_hardware_preset(name_display, config=config).rstrip("W")
+                            if _AUTOTUNE_WATCHDOG_STATE and _AUTOTUNE_WATCHDOG_STATE.is_hardware_locked(name_display):
+                                hw_max = _AUTOTUNE_WATCHDOG_STATE.get_locked_preset(name_display).rstrip("W")
+                            if parse_preset_wattage(nom_preset) > parse_preset_wattage(hw_max):
+                                nom_preset = hw_max
+                            log(f"[SAFE-RECOVERY] {name_display} soak de 180s completado: restaurando preset nominal ({nom_preset}W, top_preset={hw_max}W)...")
+                            safe_set_miner_preset(host, vnish_api_password, nom_preset, clamp_top_preset=False, top_preset=hw_max)
+                            with state_lock:
+                                state.is_pre_clamped = False
+                                state.staged_ramp_up_pending = False
+                                state.staged_ramp_up_soak_start_ts = None
+                                state.original_preset_before_clamp = None
+                                state.last_preset_change_ts = now_ts
 
                 # Spec 056 & Spec 075: Two-Tier Mining Recovery - Level 1 (Soft Auto-Restart & Soft-Landing)
                 is_hash_degraded = (
@@ -8055,6 +8120,7 @@ def main() -> None:
                     chat_id=str(chat_id),
                     qa_mode=qa_mode,
                     qa_notify=qa_notify,
+                    gov_obj=_GLOBAL_INTERVENTION_GOV,
                 )
             except Exception as _pbr_exc:
                 log(f"[PBR_ERR] Post-blackout recovery cycle failed: {type(_pbr_exc).__name__}: {_pbr_exc}")
@@ -8159,12 +8225,17 @@ def main() -> None:
                                         if _tgt:
                                             vnish_pw = str(config.get("vnish_api_password", "admin"))
                                             from app.vnish.client import safe_set_miner_preset
+                                            from app.governance.adaptive_contingency import ACTION_RESTORE_NOMINAL, ACTION_RESTORE_INRUSH_DAMPENER
+                                            _is_restore = _dec.action in (ACTION_RESTORE_NOMINAL, ACTION_RESTORE_INRUSH_DAMPENER)
+                                            _soak_hw_max = get_miner_max_hardware_preset(_dec.target_miner, config=config).rstrip("W")
+                                            _soak_top = _soak_hw_max if _is_restore else _dec.target_preset
                                             _s_ok, _s_msg = safe_set_miner_preset(
                                                 _tgt.get("host", ""),
                                                 vnish_pw,
                                                 _dec.target_preset,
                                                 timeout=float(config.get("fan_governor_request_timeout", 2.5)),
-                                                clamp_top_preset=True,
+                                                clamp_top_preset=not _is_restore,
+                                                top_preset=_soak_top,
                                             )
                                             log(f"[CONTINGENCY_SOAK] Preset {_dec.target_preset} applied to {_dec.target_miner}: ok={_s_ok} msg={_s_msg}")
                                             _t_sk = f"{_tgt.get('name','')}|{_tgt.get('host','')}:{_tgt.get('port',4028)}"
@@ -8172,6 +8243,7 @@ def main() -> None:
                                                 _t_st = states.get(_t_sk)
                                                 if _t_st:
                                                     _t_st.balancer_preset = _dec.target_preset
+                                                    _t_st.last_preset_change_ts = now_ts
                                     if _dec.notification_msg:
                                         send_telegram(
                                             bot_token,
@@ -8386,6 +8458,7 @@ def main() -> None:
                                         _td_st.vnish_discovered_top_preset = target_downstep_preset.replace("W", "")
                                         _td_st.vnish_discovered_preset = target_downstep_preset.replace("W", "")
                                         _td_st.vnish_discovered_target_power_w = float(parse_preset_wattage(target_downstep_preset))
+                                        _td_st.last_preset_change_ts = now_ts
 
                                 if overheated_miner and _td_name == overheated_miner.get("name"):
                                     header_str = "🛡️ *GOBERNANZA AUTÓNOMA: ALIVIO TÉRMICO DEFENSIVO*"
@@ -8588,6 +8661,7 @@ def main() -> None:
                                         _tu_st.vnish_discovered_top_preset = _target_preset_str.rstrip("W")
                                         _tu_st.vnish_discovered_preset = _target_preset_str.rstrip("W")
                                         _tu_st.vnish_discovered_target_power_w = float(parse_preset_wattage(_target_preset_str))
+                                        _tu_st.last_preset_change_ts = now_ts
                                 send_telegram(
                                     bot_token,
                                     str(chat_id),

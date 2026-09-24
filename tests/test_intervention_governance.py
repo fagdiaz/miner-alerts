@@ -8,6 +8,7 @@ from app.governance.intervention_policy import (
     ACTION_PRESET_BALANCER,
     ACTION_REBOOT_L1,
     ACTION_REBOOT_L2,
+    ACTION_AUTOTUNE_WATCHDOG,
     InterventionGovernance,
     apply_governance_toggle,
     format_governance_summary,
@@ -25,7 +26,7 @@ class TestInterventionGovernancePolicy(unittest.TestCase):
     def test_default_state_all_allowed(self):
         gov = InterventionGovernance()
         now_ts = 1000.0
-        for act in (ACTION_REBOOT_L1, ACTION_REBOOT_L2, ACTION_FAN_GOVERNOR, ACTION_PRESET_BALANCER, ACTION_CONTINGENCY):
+        for act in (ACTION_REBOOT_L1, ACTION_REBOOT_L2, ACTION_FAN_GOVERNOR, ACTION_PRESET_BALANCER, ACTION_CONTINGENCY, ACTION_AUTOTUNE_WATCHDOG):
             allowed, reason = should_allow_intervention(act, gov, now_ts)
             self.assertTrue(allowed, f"Action {act} should be allowed by default")
             self.assertEqual(reason, "allowed")
@@ -33,7 +34,7 @@ class TestInterventionGovernancePolicy(unittest.TestCase):
     def test_master_disable_blocks_all_actuators(self):
         gov = InterventionGovernance(master_enabled=False, disabled_reason="test_freeze")
         now_ts = 1000.0
-        for act in (ACTION_REBOOT_L1, ACTION_REBOOT_L2, ACTION_FAN_GOVERNOR, ACTION_PRESET_BALANCER, ACTION_CONTINGENCY):
+        for act in (ACTION_REBOOT_L1, ACTION_REBOOT_L2, ACTION_FAN_GOVERNOR, ACTION_PRESET_BALANCER, ACTION_CONTINGENCY, ACTION_AUTOTUNE_WATCHDOG):
             allowed, reason = should_allow_intervention(act, gov, now_ts)
             self.assertFalse(allowed, f"Action {act} should be blocked under master disabled")
             self.assertIn("master_interventions_disabled:vnish_libre", reason)

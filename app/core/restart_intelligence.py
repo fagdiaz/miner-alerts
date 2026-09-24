@@ -18,6 +18,7 @@ def classify_restart(
     detected_ts: float,
     last_manual_action_ts: Optional[float],
     last_auto_action_ts: Optional[float],
+    last_preset_change_ts: Optional[float] = None,
     attribution_window_seconds: int,
     skew_tolerance_seconds: int = 10,
 ) -> RestartClassification:
@@ -25,6 +26,7 @@ def classify_restart(
     for action_source, action_ts in (
         ("manual", last_manual_action_ts),
         ("auto", last_auto_action_ts),
+        ("preset", last_preset_change_ts),
     ):
         if action_ts is None:
             continue

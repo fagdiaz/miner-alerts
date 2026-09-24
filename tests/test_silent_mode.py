@@ -1,4 +1,4 @@
-﻿"""tests/test_silent_mode.py
+"""tests/test_silent_mode.py
 T014: Spec 044 - Silent Mode / Visitor Mode with Persistent Timer and Thermal Guard.
 
 Covers all 4 constitutional conditions:
@@ -419,6 +419,7 @@ class TestSilentModeIndependentElevators(unittest.TestCase):
             max_fan_duty_percent=50,
             deadband_low_c=81.0,
             deadband_high_c=82.5,
+            emergency_spike_temp_c=85.0,
             step_up_percent=3,
             dwell_seconds=90,
         )

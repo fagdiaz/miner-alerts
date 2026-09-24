@@ -149,8 +149,8 @@ class TestFanGovernor(unittest.TestCase):
             self.assertEqual(dec.target_duty, 84)
             self.assertFalse(dec.requires_write)
 
-    def test_step_up_when_warm(self):
-        # 82.5°C < T < 83.0°C -> step up by 3%
+    def test_step_up_proportional_urgency_zone(self):
+        # 82.5°C < T < 83.0°C with emergency at 83.0°C -> margin 0.3°C <= 0.5°C -> +15%
         dec = compute_governor_step(
             max_temp_c=82.7,
             current_duty=84,
@@ -158,7 +158,46 @@ class TestFanGovernor(unittest.TestCase):
             config=self.cfg,
         )
         self.assertEqual(dec.action, ACTION_STEP_UP)
-        self.assertEqual(dec.target_duty, 87)
+        self.assertEqual(dec.target_duty, 99)  # 84 + 15
+        self.assertTrue(dec.requires_write)
+
+    def test_step_up_proportional_alert_zone(self):
+        # Margin <= 1.0°C (e.g. emergency at 83.5°C, temp at 82.7°C -> margin 0.8°C) -> +8%
+        cfg_alert = GovernorConfig(emergency_spike_temp_c=83.5)
+        dec = compute_governor_step(
+            max_temp_c=82.7,
+            current_duty=84,
+            seconds_since_last_change=100.0,
+            config=cfg_alert,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_UP)
+        self.assertEqual(dec.target_duty, 92)  # 84 + 8
+        self.assertTrue(dec.requires_write)
+
+    def test_step_up_proportional_standard_zone(self):
+        # Margin > 1.0°C (e.g. emergency at 85.0°C, temp at 82.7°C -> margin 2.3°C) -> +3%
+        cfg_std = GovernorConfig(emergency_spike_temp_c=85.0)
+        dec = compute_governor_step(
+            max_temp_c=82.7,
+            current_duty=84,
+            seconds_since_last_change=100.0,
+            config=cfg_std,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_UP)
+        self.assertEqual(dec.target_duty, 87)  # 84 + 3
+        self.assertTrue(dec.requires_write)
+
+    def test_asymmetrical_dwell_bypasses_dwell_on_heating(self):
+        # Inside dwell (10s < 90s), but temp 82.7°C > deadband_high_c (82.5°C):
+        # Dwell must NOT block step up!
+        dec = compute_governor_step(
+            max_temp_c=82.7,
+            current_duty=84,
+            seconds_since_last_change=10.0,
+            config=self.cfg,
+        )
+        self.assertEqual(dec.action, ACTION_STEP_UP)
+        self.assertEqual(dec.target_duty, 99)
         self.assertTrue(dec.requires_write)
 
     def test_step_up_capped_at_100(self):

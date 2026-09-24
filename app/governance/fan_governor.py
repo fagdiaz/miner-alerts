@@ -359,26 +359,44 @@ def compute_governor_step(
         dwell_effective = min(dwell_effective, 60)
 
     if seconds_since_last_change < dwell_effective:
-        return GovernorDecision(
-            action=ACTION_HOLD_DWELL,
-            target_duty=curr_duty,
-            current_duty=curr_duty,
-            reason=f"Ventana de asentamiento activa ({seconds_since_last_change:.0f}s < {dwell_effective}s)",
-            dwell_effective=dwell_effective,
-            is_emergency=False,
-            requires_write=False,
-            seasonal_mode=seasonal.mode,
-        )
+        # Spec 063/GOV: Dwell asimétrico - Si la temperatura ya superó el deadband,
+        # NO bloquear con dwell: el STEP_UP del paso 8 debe ejecutarse inmediatamente
+        # para frenar el calentamiento antes de alcanzar decrease_temp (84°C) o emergency spike.
+        if max_temp_c is None or max_temp_c <= seasonal.deadband_high_c:
+            return GovernorDecision(
+                action=ACTION_HOLD_DWELL,
+                target_duty=curr_duty,
+                current_duty=curr_duty,
+                reason=f"Ventana de asentamiento activa ({seconds_since_last_change:.0f}s < {dwell_effective}s)",
+                dwell_effective=dwell_effective,
+                is_emergency=False,
+                requires_write=False,
+                seasonal_mode=seasonal.mode,
+            )
+        # Si temp > deadband_high_c: ignorar dwell y proceder al paso 8 (STEP_UP inmediato)
 
-    # 8. Moderate heating: Step Up
+    # 8. Heating: Step Up Proporcional a Urgencia Térmica
     if max_temp_c > seasonal.deadband_high_c:
-        new_duty = min(cfg.max_fan_duty_percent, curr_duty + seasonal.step_up_percent)
+        thermal_margin = cfg.emergency_spike_temp_c - max_temp_c
+        if thermal_margin <= 0.5:
+            # Zona de urgencia (ej: margen <= 0.5°C antes de emergency spike / VNish decrease_temp): salto agresivo (+15%)
+            eff_step_up = min(cfg.max_fan_duty_percent - curr_duty, 15)
+        elif thermal_margin <= 1.0:
+            # Zona de alerta (ej: margen <= 1.0°C): paso moderado (+8%)
+            eff_step_up = max(seasonal.step_up_percent, 8)
+        else:
+            # Calentamiento suave con buen margen: paso estándar
+            eff_step_up = seasonal.step_up_percent
+        new_duty = min(cfg.max_fan_duty_percent, curr_duty + eff_step_up)
         needs_write = new_duty != curr_duty
         return GovernorDecision(
             action=ACTION_STEP_UP,
             target_duty=new_duty,
             current_duty=curr_duty,
-            reason=f"Calentamiento ({max_temp_c:.1f}°C > {seasonal.deadband_high_c:.1f}°C): subiendo PWM a {new_duty}%",
+            reason=(
+                f"Calentamiento ({max_temp_c:.1f}°C > {seasonal.deadband_high_c:.1f}°C, "
+                f"margen={thermal_margin:.1f}°C): subiendo PWM a {new_duty}% (+{eff_step_up}%)"
+            ),
             dwell_effective=dwell_effective,
             is_emergency=False,
             requires_write=needs_write,

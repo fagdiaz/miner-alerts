@@ -3,6 +3,152 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-24] - Alineación Flota Completa al Ciclo VNish 79°C-84°C y Desbloqueo ignore_fan_speed a 2700W
+
+* **Contexto & Diagnóstico**:
+  - El operador solicitó clarificar el manejo del ciclo 79°C - 84°C de VNish (aumentar potencia al bajar de 79°C, disminuir al tocar 84°C), cuestionando por qué aparecieron bloqueos si el sistema funcionaba bien, y estableciendo que el tope nominal debe ser 2700W para todos sin chocar con VNish ni causar reinicios.
+  - **Diagnóstico del Ciclo Térmico de VNish**:
+    1. En S19JPRO-23 se demostró empíricamente que el demonio `preset_switcher` de VNish conmuta entre 2700W y 2500W en caliente **sin reiniciar el proceso de minería** (11.5 horas de uptime continuo). A las 11:09, 11:54, 12:39 y 13:24 hs, VNish subió automáticamente a 2700W (99.8 TH/s) al enfriarse por debajo de 79°C.
+    2. **Causa Raíz de Bloqueo en M24, M25 y M26**: Se inspeccionó la configuración interna de `/api/v1/settings`:
+       - M23 tenía `ignore_fan_speed: True`, lo que le permitía subir a 2700W aun con coolers al 100%.
+       - M24, M25 y M26 tenían `ignore_fan_speed: False`. Al estar los coolers al 100%, el firmware de VNish se negaba a subir a 2700W a pesar de tener `top_preset: 2700` y temperatura favorable (<79°C).
+       - M26 además tenía `top_preset: 2500` por la intervención previa del autotune watchdog.
+
+* **Alineación Ejecutada en Caliente (Zero Downtime / Zero Restarts)**:
+  - Vía API REST de VNish en M24, M25 y M26:
+    * Inyectado `preset_switcher.ignore_fan_speed: True`.
+    * Inyectado `preset_switcher.top_preset: "2700"`.
+    * Preservados `rise_temp: 79` y `decrease_temp: 84`.
+    * Respuesta de VNish: `{"restart_required": false, "reboot_required": false}` (cero reinicios de minería).
+  - Estado Unificado de la Flota en Flash de VNish:
+    * **M23**: `top_preset=2700 | enabled=True | ignore_fan=True | rise=79 | decrease=84`
+    * **M24**: `top_preset=2700 | enabled=True | ignore_fan=True | rise=79 | decrease=84`
+    * **M25**: `top_preset=2700 | enabled=True | ignore_fan=True | rise=79 | decrease=84`
+    * **M26**: `top_preset=2700 | enabled=True | ignore_fan=True | rise=79 | decrease=84`
+
+* **Arquitectura de Gobernanza Acordada**:
+  - **VNish gobierna el ciclo 79°C - 84°C localmente**: Menor fricción, cero llamadas HTTP invasivas, cero reinicios.
+  - **Monitor Alerts actúa como guardián pasivo y red de contingencia**: Supervisión continua, registro de telemetría en SQLite y contingencia asimétrica escalonada únicamente ante emergencias de infraestructura o fallas de línea.
+
+* **Telemetría Viva de la Flota (13:30 hs)**:
+  - S19JPRO-23: `mining` | **99.9 TH/s** | **2698W** | 87.0°C | 100% fan | uptime 11.5h
+  - S19JPRO-24: `mining` | **94.5 TH/s** | **2498W** | 83.0°C | 100% fan | uptime 16.9h
+  - S19JPRO-25: `mining` | **93.1 TH/s** | **2498W** | 79.0°C | 100% fan | uptime 3.5h
+  - S19JPRO-26: `mining` | **92.3 TH/s** | **2498W** | 79.0°C |  95% fan | uptime 3.4h
+  - TOTAL FLOTA: **379.8 TH/s** | **10.19 kW** | Cero mineros caídos.
+
+## [2026-09-24] - Diagnóstico Forense Nocturno (M25/M26), Blindaje P0 de Autotune Watchdog en Modo VNish Libre
+
+* **Contexto & Diagnóstico Forense**:
+  - El operador reportó dos mineros con problemas tras la noche: S19JPRO-25 con error de hashboard y S19JPRO-26 con bajo hashrate, consultando si nuestro sistema intervino a pesar de estar en modo *VNish Libre* (`master_enabled = False`).
+  - **Reconstrucción Forense de Eventos (02:25 a 10:15 hs)**:
+    1. *02:25 - 04:53*: Flota operó impecable a 10.79 kW (4x 2700W) entregando ~395-400 TH/s.
+    2. *04:53 & 08:52 (Disturbios de Línea en Elevador 2)*: En ambos momentos de alto consumo del edificio/ascensor, M25 y M26 sufrieron *chain breaks* simultáneos (`Restarting (3 of 3) - Chain break detected`). Cuando ambos demandan 2700W (5400W en Elevador 2), la tensión de línea cae. VNish reinició ambos mineros e inició autotuning autónomo.
+    3. *09:59:08 (Falla de Tensión en Silicio de M25)*: En M25 se produjo una caída crítica de tensión en cadenas 2 y 3 (`actual volt 11497 mV` y `10048 mV` < 11.5V umbral de apagado). VNish cortó la alimentación a las placas para proteger los chips ASIC (`boards=0/3` temporal en logs) y reinició el minero para redetección de silicio. **No fue intervención de nuestro monitor**, fue auto-protección pura de hardware de VNish.
+    4. *09:59:26 (FUGA DE ACTUADOR EN NUESTRO MONITOR - S19JPRO-26)*:
+       - En `app/miner_monitor.py:3849`, la función `check_autotune_watchdog` detectó a M26 en `auto-tuning` durante 3873s con 15.77 TH/s (< 20 TH/s).
+       - **Fallo arquitectónico**: La función `check_autotune_watchdog` carecía de verificación de `_GLOBAL_INTERVENTION_GOV.master_enabled` o `should_allow_intervention`.
+       - Despachó un HTTP POST a la API REST de VNish en M26: `safe_set_miner_preset(host="192.168.100.26", preset="2500W", clamp_top_preset=True, top_preset="2500W", auto_restart_mining=True)`.
+       - **Veredicto**: Sí hubo intervención sobre M26 por falta de cerrojo de gobernanza en `check_autotune_watchdog`. M25 no fue intervenido por software.
+
+* **Blindaje Implementado (P0)**:
+  1. `app/governance/intervention_policy.py`:
+     - Definida nueva constante de acción `ACTION_AUTOTUNE_WATCHDOG = "autotune_watchdog"` en `ALL_ACTIONS`.
+     - Integrada en `should_allow_intervention`: bloqueada si `master_enabled=False`, `presets_enabled=False` o `reboots_enabled=False`.
+  2. `app/miner_monitor.py`:
+     - `check_autotune_watchdog`: Interbloqueada al inicio con `should_allow_intervention(ACTION_AUTOTUNE_WATCHDOG, gov_obj, now_ts)`. Si `master_enabled=False`, retorna `[]` de inmediato sin peticiones de red.
+     - `_async_restore_tripwire_preset` (línea 3504) y `_async_restore_locked_preset` (línea 6198): Protegidas con `should_allow_intervention(ACTION_PRESET_BALANCER)`.
+     - Soak de rampa nominal (línea 6788): Protegido con `should_allow_intervention(ACTION_REBOOT_L1)`.
+  3. `app/governance/post_blackout_guard.py`:
+     - `execute_post_blackout_cycle`: Ahora acepta `gov_obj` y suprime `auto_resume` si la gobernanza tiene bloqueada la reanudación (`master_enabled=False`).
+  4. Tests:
+     - `tests/test_autotune_watchdog.py`: Añadido test determinístico `test_check_autotune_watchdog_suppressed_by_intervention_governance`.
+     - `tests/test_intervention_governance.py`: Añadida validación de `ACTION_AUTOTUNE_WATCHDOG` en estados `all_allowed` y `master_disabled`.
+     - Suite completa: **1393 passed, 75 subtests passed (100% PASS en 43.20s)**.
+
+* **Estado de la Flota en Vivo (Post-Recuperación)**:
+  - S19JPRO-23: `mining` | **98.4 TH/s** | **2698W** | 83°C | 100% fan | uptime > 8.3h (2700W)
+  - S19JPRO-24: `mining` | **100.9 TH/s** | **2698W** | 83°C | 100% fan | uptime > 13.6h (2700W)
+  - S19JPRO-25: `auto-tuning` | **92.3 TH/s** | **2499W** | 74°C | 100% fan | 126 chips activos por cadena, 12.3V estables (2500W)
+  - S19JPRO-26: `mining` | **92.6 TH/s** | **2498W** | 74°C | 95% fan | 12.49V estables (2500W)
+  - TOTAL FLOTA: **384.2 TH/s** | **10.39 kW** | Cero mineros caídos.
+
+## [2026-09-24] - Desbloqueo Definitivo de Techo 2700W en Toda la Flota y Fix Anti-Atasco clamp_top_preset
+
+* **Contexto & Diagnóstico Forense**:
+  - La flota estaba operando con Elevador 1 (M23/M24) topado artificialmente en 2500W (y M23 atrapado periódicamente en 1800W), a pesar de que la instalación eléctrica (`config.json`, perfil `c4`) está presupuestada para 4x 2700W.
+  - **Causa Raíz Identificada**:
+    1. *Atasco en Pre-Clamp*: En `app/miner_monitor.py:1268`, el pre-clamp a 1800W previo a auto-restarts forzaba `clamp_top_preset=True`, sobreescribiendo permanentemente `preset_switcher.top_preset: "1800"` en la memoria flash de VNish.
+    2. *Atasco en Restauración de Soak*: En `app/miner_monitor.py:6773` y `app/governance/safe_recovery.py:141`, al completar el soak de 180s y restaurar el preset nominal, se forzaba `clamp_top_preset=True, top_preset=nom_preset`. Si el minero venía operando en 2500W, `top_preset` quedaba clavado en 2500W, impidiendo que el demonio térmico de VNish subiera jamás a 2700W.
+    3. *Atasco en Restauración de Contingencia*: En `app/miner_monitor.py:8196`, la restauración nominal post-soak de contingencia pasaba `clamp_top_preset=True` sin especificar `top_preset`, fijando el techo en el preset de contingencia.
+  - **Validación Operativa**: VNish posee su propio switcher térmico (`rise_temp=79°C`, `decrease_temp=84°C`). Al liberar `top_preset=2700` sin intervenciones externas, VNish escaló automáticamente M23 y M24 a 2700W manteniendo chips estables a 78-81°C.
+
+* **Componentes Modificados**:
+  1. `app/miner_monitor.py`:
+     - Línea 1268 (`_async_execute_mining_restart`): Soft-landing pre-clamp preserva `top_preset = hw_max` (`clamp_top_preset=False`) para no aplastar el techo del minero a 1800W.
+     - Línea 6773 (Safe-recovery soak ramp-up): Restaura nominal con `clamp_top_preset=False, top_preset=hw_max` (2700W).
+     - Línea 8196 (Contingency soak tick): Al ejecutar `ACTION_RESTORE_NOMINAL` o `ACTION_RESTORE_INRUSH_DAMPENER`, abre `top_preset` a `hw_max` con `clamp_top_preset=False`.
+  2. `app/governance/safe_recovery.py`:
+     - Línea 141: Al completar el soak de rampa y restaurar el nominal, emite `clamp_top_preset=False`.
+  3. Firmware de Mineros (en vivo vía API REST VNish):
+     - `top_preset: "2700"` restaurado en M23, M24, M25 y M26.
+
+* **Resultados & Verificación Operativa**:
+  - **Potencia Total en Vivo**: **10.79 kW (4x 2700W nominal)**.
+    - S19JPRO-23: **2699W** | 81°C | 100% FAN
+    - S19JPRO-24: **2698W** | **100.4 TH/s** | 81°C | 100% FAN
+    - S19JPRO-25: **2699W** | **100.6 TH/s** | 80°C | 100% FAN
+    - S19JPRO-26: **2699W** | **100.5 TH/s** | 79°C | 95% FAN
+  - **Tests**: **1392 passed, 75 subtests passed** (100% PASS en 39.99s).
+  - **Servicio Windows**: `SERVICE_RUNNING` (PID 27328, tick sequence 86+, queue depth 0).
+
+## [2026-09-24] - Fix Reinicios Falsos: last_preset_change_ts + Dwell Asimétrico + Config Auditada
+
+* **Contexto & Diagnóstico**:
+  - Dos reinicios clasificados como `unexpected` en Elevador 1 en la sesión del 23/09:
+    1. Gemini envió `restart_mining` a M24 → VNish reinicia hashing → `elapsed=0` → `classify_restart()` sin contexto → `INCIDENT_QUIET` 300s.
+    2. `nssm restart` para aplicar código → monitor pierde elapsed previo de M23 → mismo resultado.
+  - Ambos son instancias del mismo bug: `classify_restart()` no distingue reinicios inducidos por el monitor de fallas reales.
+  - También: M23/M24 en Elevador 1 no pueden disipar 2700W (chips a 85°C con fans 100%). Bajados a 2500W.
+  - M25 llega a EMERGENCY_SPIKE durante el warmup post-arranque (82.5°C con emergency_temp=82.5°C).
+
+* **Componentes Modificados**:
+  1. `app/core/restart_intelligence.py`:
+     - Añadido parámetro `last_preset_change_ts: Optional[float] = None` a `classify_restart()`.
+     - Nueva fuente de candidatos: `("preset", last_preset_change_ts)`.
+     - Reinicios dentro de `attribution_window_seconds` de un preset enviado por el monitor → `"expected_preset"`, no dispara contingencia.
+  2. `app/miner_monitor.py` (MinerState):
+     - Nuevo campo `last_preset_change_ts: Optional[float] = None` en `MinerState`.
+     - Deserialización en `load_state` con patrón estándar `float(data.get(...)) if ... else None`.
+     - `last_preset_change_ts` pasado en la llamada a `classify_restart()` en el bucle principal.
+     - Timestamp registrado en 6 sitios de `safe_set_miner_preset`: contingencia principal (target + partner), soak-tick contingency, autotune watchdog rescue, soft-contingency step-down, soft-contingency step-up.
+     - Inicialización retroactiva en primer tick: si `elapsed < autotune_grace_period_seconds` y `last_preset_change_ts is None` → inicializar retroactivamente para cubrir el caso `nssm restart`.
+  3. `app/core/state_manager.py`:
+     - `"last_preset_change_ts"` añadido a `_serialise_miner_state()` (persiste en state.json).
+  4. `app/governance/fan_governor.py`:
+     - **Dwell asimétrico**: el dwell ya no bloquea `STEP_UP` cuando `max_temp_c > seasonal.deadband_high_c`. Tiempo de reacción: 90s → 30s.
+     - **Step-up proporcional**: si margen al emergency spike ≤ 0.5°C → salto de +15%; ≤ 1.0°C → +8%; resto → estándar.
+  5. `tests/test_restart_intelligence.py`:
+     - 3 tests nuevos: `test_recent_preset_change_is_expected_preset`, `test_expired_preset_change_falls_back_to_unexpected`, `test_preset_ts_wins_over_older_auto_action`.
+  6. `app/config.json` y `app/config.example.json`:
+     - `fan_governor_emergency_temp_c`: 82.5 → **83.0°C** (establece escalón de 0.5°C sobre deadband_high 82.5°C para step-up proporcional previo a emergencia)
+     - `fan_governor_power_floor_2700w`: 85 → **92%**
+     - `fan_governor_power_floor_2500w`: 75 → **90%**
+     - `fan_governor_dwell_seconds`: 90 → **60s**
+     - `solar_thermal_critical_temp_c`: 82.0 → **84.0°C**
+
+* **Resultados & Verificación**:
+  - **Sintaxis**: `py_compile miner_monitor.py restart_intelligence.py state_manager.py fan_governor.py` OK.
+  - **Corrección en caliente**: Se definió `_autotune_grace_s` en scope de inicialización retroactiva (evitando NameError en loop principal).
+  - **Supresión de alertas**: `telegram_alerts_enabled: false` implementado en config y `send_telegram()` para modo silencioso puro.
+  - **Tests**: **1392 passed, 75 subtests passed** (0 fallos). +3 tests nuevos sobre baseline 1389.
+  - **Servicio**: SERVICE_RUNNING verificado en Windows NSSM (modo almacenamiento, master=False por decisión del operador).
+
+* **Estado de planta al cierre**:
+  - M23/M24 Elevador 1: 2499W, 80°C (techo físico ~2500W con ambiente actual).
+  - M25/M26 Elevador 2: 2699W, 79-80°C, estables.
+  - contingency_enabled: False (mantener hasta observar primer ciclo completo con el fix).
+
 ## [2026-09-23] - Hardening Timeout Fan Governor Recovery y Desacople Dinámico de Envolvente Solar
 
 * **Contexto & Diagnóstico Forense**:

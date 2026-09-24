@@ -152,6 +152,41 @@ class TestAutotuneWatchdogState(unittest.TestCase):
         )
         self.assertEqual(res, [])
 
+    def test_check_autotune_watchdog_suppressed_by_intervention_governance(self):
+        from app.miner_monitor import check_autotune_watchdog
+        import app.miner_monitor as mm
+        from app.governance.intervention_policy import InterventionGovernance
+        import threading
+
+        miners = [{"name": "S19JPRO-26", "host": "192.168.100.26", "port": 4028}]
+        states = {}
+        state_lock = threading.Lock()
+        config = {"autotune_timeout_s": 600.0}
+        summaries = {
+            "192.168.100.26": {
+                "miner_state": "auto-tuning",
+                "miner_state_time": 4000,
+                "hr_realtime_ths": 10.0,
+                "power_usage_w": 2500,
+            }
+        }
+
+        old_gov = getattr(mm, "_GLOBAL_INTERVENTION_GOV", None)
+        try:
+            mm._GLOBAL_INTERVENTION_GOV = InterventionGovernance(master_enabled=False, disabled_reason="vnish_libre")
+            res = check_autotune_watchdog(
+                miners=miners,
+                states=states,
+                state_lock=state_lock,
+                config=config,
+                now_ts=1000.0,
+                qa_mode=False,
+                summaries=summaries,
+            )
+            self.assertEqual(res, [])
+        finally:
+            mm._GLOBAL_INTERVENTION_GOV = old_gov
+
 
 if __name__ == "__main__":
     unittest.main()

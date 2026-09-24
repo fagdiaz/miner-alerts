@@ -91,5 +91,53 @@ class RestartIntelligenceTests(unittest.TestCase):
         self.assertEqual("unexpected", result.classification)
 
 
+    def test_recent_preset_change_is_expected_preset(self) -> None:
+        """Un reinicio dentro de la ventana de gracia de un preset enviado por el monitor
+        debe clasificarse como 'expected_preset', no 'unexpected'."""
+        result = classify_restart(
+            restart_reason="elapsed_reset",
+            detected_ts=10_000.0,
+            last_manual_action_ts=None,
+            last_auto_action_ts=None,
+            last_preset_change_ts=9_800.0,  # 200s antes del reinicio, dentro de 900s
+            attribution_window_seconds=900,
+        )
+
+        self.assertEqual("expected_preset", result.classification)
+        self.assertEqual("info", result.severity)
+        self.assertEqual("preset", result.action_source)
+        self.assertEqual(200.0, result.action_age_seconds)
+
+    def test_expired_preset_change_falls_back_to_unexpected(self) -> None:
+        """Un preset enviado hace más tiempo que la ventana de atribución no debe
+        proteger contra la clasificación 'unexpected'."""
+        result = classify_restart(
+            restart_reason="elapsed_reset",
+            detected_ts=10_000.0,
+            last_manual_action_ts=None,
+            last_auto_action_ts=None,
+            last_preset_change_ts=9_000.0,  # hace 1000s, fuera de la ventana de 900s
+            attribution_window_seconds=900,
+        )
+
+        self.assertEqual("unexpected", result.classification)
+        self.assertEqual("critical", result.severity)
+
+    def test_preset_ts_wins_over_older_auto_action(self) -> None:
+        """Cuando tanto auto como preset son candidatos, el más reciente (preset) debe ganar."""
+        result = classify_restart(
+            restart_reason="elapsed_reset",
+            detected_ts=10_000.0,
+            last_manual_action_ts=None,
+            last_auto_action_ts=9_500.0,   # 500s antes
+            last_preset_change_ts=9_800.0,  # 200s antes — más reciente
+            attribution_window_seconds=900,
+        )
+
+        self.assertEqual("expected_preset", result.classification)
+        self.assertEqual("preset", result.action_source)
+        self.assertEqual(9_800.0, result.action_ts)
+
+
 if __name__ == "__main__":
     unittest.main()

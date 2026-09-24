@@ -264,6 +264,7 @@ def execute_post_blackout_cycle(
     chat_id: str = "",
     qa_mode: bool = False,
     qa_notify: bool = False,
+    gov_obj: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Supervise fleet for stopped ASICs post-boot/blackout.
@@ -356,6 +357,13 @@ def execute_post_blackout_cycle(
 
     # Check auto-resume condition
     auto_resumed_names: List[str] = []
+    if auto_resume:
+        if gov_obj is not None:
+            from app.governance.intervention_policy import ACTION_REBOOT_L1, should_allow_intervention
+            allowed, reason = should_allow_intervention(ACTION_REBOOT_L1, gov_obj, now_ts)
+            if not allowed:
+                _log(f"[POST_BLACKOUT] Auto-resume suppressed by intervention governance: {reason}")
+                auto_resume = False
     if auto_resume:
         earliest_ts = min((q.first_stopped_ts or now_ts) for q in qualifying)
         if (now_ts - earliest_ts) >= grace_period:

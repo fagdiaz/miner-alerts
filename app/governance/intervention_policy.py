@@ -19,6 +19,7 @@ ACTION_REBOOT_L2 = "reboot_l2"
 ACTION_FAN_GOVERNOR = "fan_governor"
 ACTION_PRESET_BALANCER = "preset_balancer"
 ACTION_CONTINGENCY = "contingency"
+ACTION_AUTOTUNE_WATCHDOG = "autotune_watchdog"
 
 ALL_ACTIONS = frozenset({
     ACTION_REBOOT_L1,
@@ -26,6 +27,7 @@ ALL_ACTIONS = frozenset({
     ACTION_FAN_GOVERNOR,
     ACTION_PRESET_BALANCER,
     ACTION_CONTINGENCY,
+    ACTION_AUTOTUNE_WATCHDOG,
 })
 
 
@@ -95,6 +97,11 @@ def should_allow_intervention(
     elif action_type == ACTION_PRESET_BALANCER:
         if not gov.presets_enabled:
             return False, "presets_disabled"
+    elif action_type == ACTION_AUTOTUNE_WATCHDOG:
+        if not gov.presets_enabled:
+            return False, "presets_disabled"
+        if not gov.reboots_enabled:
+            return False, "reboots_disabled"
 
     return True, "allowed"
 

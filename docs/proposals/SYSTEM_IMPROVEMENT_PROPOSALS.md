@@ -27,6 +27,8 @@ Este documento consolida y prioriza **7 propuestas técnicas de mejora** derivad
 | **PROP-008** | Telemetría Profunda por Cadena & Diagnóstico Predictivo Chain Break | **P1 (Alta)** | Medio | **Completado (Spec 069)** | Diagnóstico predictivo de fallas de bus I2C y degradación de placas. |
 | **PROP-009** | Contingencia Coordinada de Pares y Estabilización de Elevadores | **P1 (Alta)** | Medio | **En Recopilación / Hipótesis Activa** | Eliminación de reinicios múltiples y cascadas de elevador durante arranques. |
 | **PROP-010** | Recuperación Suave de Hasheo y Blindaje Anticolapso de Fuentes APW12 | **P1 (Alta)** | Medio | **Documentado / Base de Futura Spec** | Supresión de bloqueos de fuentes APW12 (Latch-Off) mediante desescalada pre-reinicio. |
+| **PROP-016** | Motor Autónomo de Autopsia de Incidentes y Supervisor Conversacional Q&A | **P1 (Alta)** | Medio | **Documentado / Base de Futura Spec** | Detección de causa raíz en <2.5s (VNish/Kernel) y chat Q&A en Telegram. |
+
 
 ---
 
@@ -244,6 +246,7 @@ Herramienta de auditoría continua: `tools/audit_contingency_night.py`.
    - ✅ **PROP-013** (`Elevator Noise Suppression, Autotune Stall Watchdog & Solar Thermal Governance`) -> Certificada en **Spec 078**.
    - 🔬 **PROP-014** (`Roadmap Experimental de Combinaciones de Máxima Potencia y Estabilidad en Elevadores`) -> Documento activo en [`docs/proposals/PROP-014-maximum-power-and-asymmetric-combination-roadmap.md`](PROP-014-maximum-power-and-asymmetric-combination-roadmap.md). En ejecución en producción (Combinación C1).
    - 🤖 **PROP-015** (`Agente Autónomo de Gobernanza de Planta y Supervisor Conversacional Interactivo`) -> Documento activo en [`docs/proposals/PROP-015-autonomous-facility-agent-and-interactive-supervisor.md`](PROP-015-autonomous-facility-agent-and-interactive-supervisor.md). Motor de decisiones determinístico 24/7 + interfaz conversacional on-demand en Telegram.
+    - 🧠 **PROP-016** (Motor Autónomo de Autopsia de Incidentes y Supervisor Conversacional Q&A en Telegram) -> Documento activo en [docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md](PROP-016-autonomous-incident-autopsy-and-conversational-qa.md). Recolección asíncrona de WebSockets VNish y dmesg ante reinicios, clasificación de causa raíz y chat Q&A en Telegram.
 
 ---
 

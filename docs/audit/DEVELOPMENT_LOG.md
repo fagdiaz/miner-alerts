@@ -3,7 +3,33 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-25] - Diagnóstico Forense de Reinicio en S19JPRO-25 (Falla Física de Enlace Ethernet), Reparación de Cable y Formulación de la Propuesta PROP-016 (Autopsia Autónoma & Chatbot Q&A)
+
+* **Contexto & Solicitud del Operador**:
+  - A las 15:46 hs se detectó un reinicio inesperado en el minero S19JPRO-25 (`192.168.100.25`). El operador instruyó:
+    1. Auditar forensemente si el reinicio fue provocado por alguna intervención del monitor o choque con el firmware VNish.
+    2. Identificar la causa raíz real y evaluar formas de evitarlo.
+    3. Supervisar la desconexión física momentánea para reparar/reajustar el cable de red RJ45 y certificar la estabilidad de la conexión.
+    4. Diseñar y documentar la arquitectura para que el monitor mismo realice estas autopsias de forma 100% autónoma y funcione como un chatbot conversacional de preguntas y respuestas en Telegram sin requerir intervención manual en el IDE.
+
+* **Auditoría Forense del Reinicio de las 15:45:49 hs**:
+  - **Inocencia Absoluta del Monitor**: Cero escrituras HTTP POST/PUT, cero comandos de cambio de preset y cero reinicios enviados. El Fan Governor estuvo pasivo (`HOLD_DWELL`) con ventiladores al 100%. Ante la pérdida momentánea de telemetría térmica, el gobernador pasó limpiamente a `action=UNKNOWN` con `requires_write=False`. Al detectar la caída de `elapsed: 12507 -> 10s`, el monitor activó la ventana pasiva de `safe-recovery (120s)` sin forzar pre-clamps destructivos a 1800W ni disparar contingencias. En la interfaz web de VNish `restart_required` se mantuvo en `False` (cero aparición del botón "Apply").
+  - **Causa Raíz Directa en VNish**: Disparo del watchdog interno de hashrate en VNish (`WARN: Low hashrate (cur=17.40% min=30%)` -> `INFO: Restarting (3 of 3) - Hashrate is too low`).
+  - **Causa Raíz Física en Kernel (`dmesg` / `libphy`)**: El minero S19JPRO-25 acumuló más de 100 caídas de enlace Ethernet físico (`libphy: Link is Down / Link is Up`) durante el día (mientras M24 y M26 tuvieron 0, y M23 tuvo 1 al encender). Entre las 15:40 y 15:45 hs, el cable de red se desconectó y reconectó 8 veces en 5 minutos, cortando la sesión Stratum TCP con el pool y provocando el colapso transitorio del hashrate al 17.4%.
+
+* **Verificación de la Reparación Física del Cable de Red (16:53 - 16:55 hs)**:
+  - El operador manipuló y reajustó el conector RJ45 de S19JPRO-25:
+    - Desconexión registrada en kernel a las 16:53:57 hs (`Link is Down`), reconexión a las 16:54:26 hs, reajuste a las 16:54:39 hs y calce final estable a las 16:55:25 hs (`Link is Up - 100/Full`).
+  - **Estabilidad Certificada**: Cero caídas de enlace posteriores en `dmesg`. Sonda de 10 paquetes socket con 100% de éxito, 0% de pérdidas y latencia promedio de **7.98 ms**.
+  - El minero **no se reinició** durante la maniobra rápida (`Elapsed > 4100s`, hashrate recuperado a **92-94 TH/s** y silicio 100% sano).
+
+* **Documentación de la Propuesta Técnica PROP-016**:
+  - Redactado el documento formal de arquitectura [`docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md`](docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md).
+  - Define la arquitectura del **`IncidentAutopsyEngine`** (trabajador asíncrono en segundo plano que consulta WebSockets de VNish y dmesg ante reinicios para enviar tarjetas forenses enriquecidas a Telegram) y el **Supervisor Conversacional Q&A en Telegram** (motor RAG determinístico para preguntas frecuentes + capa LLM opcional con Function Calling).
+  - Registrado formalmente en [`docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`](docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md).
+
 ## [2026-09-25] - Creación de la Skill 'speckit-stabilize': Auditoría Exhaustiva de QA, Normalización Documental, Depuración Segura y Cierre Certificado con Bloqueo por Reporte
+
 
 * **Contexto & Solicitud del Operador**:
   - El operador instruyó crear una skill de SpecKit súper robusta para:

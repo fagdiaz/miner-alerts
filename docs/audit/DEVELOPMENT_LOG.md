@@ -30,10 +30,10 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   3. **Resumen Diario Enriquecido con Diagnóstico de Hardware y Sensores Degradados**:
      - En `app/telegram/daily_digest.py` (`fetch_daily_digest_metrics`), se incorporó la consulta de cadenas con anomalías de sensores en la ventana de 24h.
      - En `format_daily_digest`, se incorporó la sección `• Hardware / Sensores: ⚠️ M24 C2 (loc 28)` respetando el límite visual móvil (<= 32 columnas).
-  4. **Soporte de Horarios Múltiples de Resumen Diario (`08:00,20:00`)**:
-     - En `app/telegram/daily_digest.py` se implementó `get_due_digest_slot()` soportando cadenas multi-horario (ej. `"08:00,20:00"`).
-     - En `app/miner_monitor.py` se actualizó la invocación periódica del digest para registrar los slots de envío individuales (`today@08:00`, `today@20:00`).
-     - En `app/config.json` se fijó `"daily_digest_time": "08:00,20:00"`.
+  4. **Soporte de Horarios Múltiples de Resumen Diario (`10:00,22:00`)**:
+     - En `app/telegram/daily_digest.py` se implementó `get_due_digest_slot()` soportando cadenas multi-horario (ej. `"10:00,22:00"`).
+     - En `app/miner_monitor.py` se actualizó la invocación periódica del digest para registrar los slots de envío individuales (`today@10:00`, `today@22:00`).
+     - En `app/config.json` y `app/config.example.json` se fijó `"daily_digest_time": "10:00,22:00"`.
 
 * **Validación de Calidad**:
   - Suite de pruebas de regresión: **1397 tests PASS en 42.43s** (100% de éxito, 0 regresiones).

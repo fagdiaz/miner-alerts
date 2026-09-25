@@ -38,7 +38,7 @@
     ],
     "persistent_outage_repeat_seconds": 3600,
     "daily_digest_enabled": true,
-    "daily_digest_time": "08:00,20:00",
+    "daily_digest_time": "10:00,22:00",
     "chain_health_sensor_alerts_enabled": false,
     "cooling_alert_enabled": true,
     "cooling_saturate_temp_c": 84.0,

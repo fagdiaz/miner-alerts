@@ -27,7 +27,7 @@ Soluciones Aplicadas y Validadas:
    `evaluate_chain_health_streak` suprime alertas de Telegram cuando solo falla un sensor I2C en una placa que mina nominalmente al 100%, pero mantiene alerta inmediata ante fallas físicas reales (STATUS_CHAIN_FAULT).
 3. Resumen Diario Enriquecido con Diagnóstico de Hardware:
    `fetch_daily_digest_metrics` y `format_daily_digest` agregan la sección `• Hardware / Sensores: ⚠️ M24 C2 (loc 28)` dentro de los límites móviles (<=32 cols).
-4. Multi-Horario de Digest: `daily_digest_time = "08:00,20:00"`.
+4. Multi-Horario de Digest: `daily_digest_time = "10:00,22:00"`.
 5. Servicio Windows NSSM: `MinerAlerts` reiniciado limpiamente (PID activo, 0 errores).
 6. Suite de Tests: 1397 tests PASS (100%).
 

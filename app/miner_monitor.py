@@ -2793,11 +2793,13 @@ def _async_collect_chain_telemetry(
                     streak_data = _CHAIN_HEALTH_STREAKS.setdefault(m_name, {})
                     min_streak = int(config.get("chain_health_min_streak", 2)) if config else 2
                     cooldown = float(config.get("chain_health_cooldown_s", 7200.0)) if config else 7200.0
+                    sensor_alerts_enabled = bool(config.get("chain_health_sensor_alerts_enabled", False)) if config else False
                     should_alert, alert_card = evaluate_chain_health_streak(
                         streak_data,
                         assessment,
                         min_streak=min_streak,
                         cooldown_s=cooldown,
+                        alert_on_sensor_error=sensor_alerts_enabled,
                     )
                     if should_alert and alert_card:
                         if bot_token and chat_id and ((not qa_mode) or qa_notify):
@@ -7944,8 +7946,9 @@ def main() -> None:
             daily_digest_time = str(config.get("daily_digest_time", "08:00"))
             if daily_digest_enabled and not first_tick and ((not qa_mode) or qa_notify):
                 ar_now = argentina_now()
-                from app.telegram.daily_digest import is_digest_due, fetch_daily_digest_metrics, format_daily_digest
-                if is_digest_due(ar_now, daily_digest_time, _LAST_DAILY_DIGEST_DATE):
+                from app.telegram.daily_digest import get_due_digest_slot, fetch_daily_digest_metrics, format_daily_digest
+                due_slot = get_due_digest_slot(ar_now, daily_digest_time, _LAST_DAILY_DIGEST_DATE)
+                if due_slot is not None:
                     try:
                         db_p = resolve_db_path(config)
                         b_root = config.get("backup_root", "backups")
@@ -7966,8 +7969,11 @@ def main() -> None:
                             "DIGEST",
                             "scheduled_daily_digest",
                         )
-                        _LAST_DAILY_DIGEST_DATE = today_ar_str
-                        log(f"DAILY_DIGEST_SENT date={today_ar_str} time={daily_digest_time}")
+                        if _LAST_DAILY_DIGEST_DATE and today_ar_str in _LAST_DAILY_DIGEST_DATE:
+                            _LAST_DAILY_DIGEST_DATE = f"{_LAST_DAILY_DIGEST_DATE},{due_slot}"
+                        else:
+                            _LAST_DAILY_DIGEST_DATE = due_slot
+                        log(f"DAILY_DIGEST_SENT slot={due_slot} date={today_ar_str} time={daily_digest_time}")
                     except Exception as exc:
                         log(f"DAILY_DIGEST_ERR exc={exc}")
 

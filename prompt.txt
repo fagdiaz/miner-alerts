@@ -1,7 +1,7 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-24 ~18:14 hs
+# PROMPT DE CONTINUIDAD - 2026-09-25 ~09:25 hs
 # MODELO RECOMENDADO: Gemini 3.8 Flash High (monitoreo / dominio puro) o Claude Sonnet 4.6 (Thinking) (concurrencia)
-# TAREA: Supervisión activa de alertas de Telegram, watchdog local de hashrate y régimen de 377 TH/s
+# TAREA: Supervisión activa de flujo de alertas optimizado (anti-spam), 2 digests diarios y régimen de 385 TH/s
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
@@ -9,36 +9,39 @@ Hola. Estás asumiendo el control técnico de 'miner-alerts'.
 LEE PRIMERO:
   - specs/066-cold-boot-grace/plan.md
   - .specify/memory/constitution.md
-  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-24)
+  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-24 y 2026-09-25)
 
 --------------------------------------------------------------------------------
-1. RESOLUCIÓN DE FALLA EN S19JPRO-26, ALERTAS Y GOBERNANZA
+1. OPTIMIZACIÓN DE ALERTAS TELEGRAM Y SUPRESIÓN DE SPAM
 --------------------------------------------------------------------------------
-El operador reportó que M26 tenía bajo hash y que no fue alertado ni se intervino.
-1. Causa Raíz:
-   - A las 17:50:51 hs, S19JPRO-25 (Elevador 2) tuvo un reinicio. El transitorio de carga en la línea
-     glitcheó la comunicación de hashboards de M26. A las 17:54:53 hs, VNish reportó "Hashrate dropped 0.00%".
-   - Por qué no hubo alerta: `telegram_alerts_enabled: false` estaba en config.json.
-   - Por qué no hubo auto-reboot: `master_enabled: false` (modo Vnish Libre) bloqueó la intervención a los 600s.
-   - Por qué VNish no se reinició solo: `restart_hashrate` estaba en 0 (deshabilitado).
-2. Soluciones Aplicadas:
-   - Rescate en caliente: `safe_restart_mining` enviado a M26 (18:06 hs). Los 126 chips de las 3 cadenas sanos.
-   - Alertas Telegram: `telegram_alerts_enabled: true` activado en app/config.json.
-   - Gobernanza de Intervención: `master_enabled: true`, `reboots_enabled: true`, `contingency_enabled: true` en state.json.
-   - Watchdog Local en VNish: `restart_hashrate: 40` configurado en toda la flota (M23, M24, M25, M26).
-     Cualquier caída a 0 TH/s o < 40 TH/s ahora provocará un reinicio local de minería inmediato en VNish en 60s.
+El operador solicitó reducir el flujo de mensajes en Telegram (~35 msgs/14h recibidos):
+- Alarmas inmediatas únicamente para incidentes concretos y reales.
+- Dos resúmenes diarios (08:00 y 20:00 hs) para reporte del estado general.
+- Reportar fallas de componentes persistentes (como el sensor térmico loc 28 de M24 C2) dentro del resumen del día, sin omitir datos pero sin spamear alertas cada 2 horas.
+
+Soluciones Aplicadas y Validadas:
+1. Histeresis Anti-Flap: `fails_before_alert = 3` en app/config.json (90s de silencio continuo para OFFLINE).
+   Elimina los 16 mensajes de flapping por micro-cortes transitorios de socket. Protección de corte eléctrico instantánea (<3s) preservada vía phase_drop_discriminator.
+2. Supresión de Alertas Standalone de Sensores Secundarios:
+   `chain_health_sensor_alerts_enabled = false` en app/config.json.
+   `evaluate_chain_health_streak` suprime alertas de Telegram cuando solo falla un sensor I2C en una placa que mina nominalmente al 100%, pero mantiene alerta inmediata ante fallas físicas reales (STATUS_CHAIN_FAULT).
+3. Resumen Diario Enriquecido con Diagnóstico de Hardware:
+   `fetch_daily_digest_metrics` y `format_daily_digest` agregan la sección `• Hardware / Sensores: ⚠️ M24 C2 (loc 28)` dentro de los límites móviles (<=32 cols).
+4. Multi-Horario de Digest: `daily_digest_time = "08:00,20:00"`.
+5. Servicio Windows NSSM: `MinerAlerts` reiniciado limpiamente (PID activo, 0 errores).
+6. Suite de Tests: 1397 tests PASS (100%).
 
 --------------------------------------------------------------------------------
-2. TELEMETRÍA EN VIVO DE LA FLOTA (18:12 hs)
+2. TELEMETRÍA EN VIVO DE LA FLOTA (09:22 hs)
 --------------------------------------------------------------------------------
-- Servicio Windows NSSM: MinerAlerts SERVICE_RUNNING (18:11 hs, master=True, alerts=True, 0 errores).
-- Total Flota: ~377.2 TH/s | ~10.19 kW | Cero mineros caídos | Silicio 100% sano.
+- Servicio Windows NSSM: MinerAlerts SERVICE_RUNNING (master=True, alerts=True, 0 errores).
+- Total Flota: ~384.9 TH/s | ~10.39 kW | Cero mineros caídos | Silicio 100% sano (1512 chips).
 
 Telemetría viva de la flota:
-  S19JPRO-23 | Elevador 1 | mining | 91.7 TH/s | 2499W | 80°C max | 100% fan | startup: 2500 | top: 2700
-  S19JPRO-24 | Elevador 1 | mining | 94.0 TH/s | 2498W | 79°C max | 100% fan | startup: 2500 | top: 2700
-  S19JPRO-25 | Elevador 2 | mining | 101.8 TH/s| 2699W | 80°C max | 100% fan | escaló a 2700W (switcher VNish)
-  S19JPRO-26 | Elevador 2 | mining | 89.7 TH/s | 2498W | 73°C max |  95% fan | recuperada y estable
+  S19JPRO-23 | Elevador 1 | mining | 91.0 TH/s | 2499W | 81°C max | 100% fan | startup: 2500 | top: 2700 | uptime: 16h
+  S19JPRO-24 | Elevador 1 | mining | 94.1 TH/s | 2498W | 80°C max | 100% fan | startup: 2500 | top: 2700 | uptime: 16h
+  S19JPRO-25 | Elevador 2 | mining | 102.0 TH/s| 2699W | 80°C max | 100% fan | escaló a 2700W (switcher VNish) | uptime: 12h
+  S19JPRO-26 | Elevador 2 | mining | 97.9 TH/s | 2698W | 78°C max |  95% fan | escaló a 2700W (switcher VNish) | uptime: 12h
 
 --------------------------------------------------------------------------------
 3. COMANDOS ÚTILES
@@ -47,3 +50,4 @@ Telemetría viva de la flota:
 - Suite de tests:        & ".\.venv\Scripts\python.exe" -m pytest -q
 - Logs del monitor:      Get-Content "logs\out.log" -Tail 30
 - NSSM status:           nssm status MinerAlerts
+

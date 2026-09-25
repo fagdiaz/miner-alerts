@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from app.telegram.daily_digest import (
     is_digest_due,
+    get_due_digest_slot,
     inspect_latest_backup,
     fetch_daily_digest_metrics,
     format_daily_digest,
@@ -44,6 +45,34 @@ class TestDailyDigestScheduling(unittest.TestCase):
 
         dt_after = datetime.datetime(2026, 9, 8, 9, 45, 0, tzinfo=ARGENTINA_TZ)
         self.assertTrue(is_digest_due(dt_after, target_time_str="09:30", last_sent_date=None))
+
+    def test_multi_slot_scheduling(self):
+        target = "08:00,20:00"
+        # 07:59 -> not due
+        dt_early = datetime.datetime(2026, 9, 8, 7, 59, 0, tzinfo=ARGENTINA_TZ)
+        self.assertFalse(is_digest_due(dt_early, target_time_str=target, last_sent_date=None))
+        self.assertIsNone(get_due_digest_slot(dt_early, target_time_str=target, last_sent_date=None))
+
+        # 08:00 -> morning slot due
+        dt_morning = datetime.datetime(2026, 9, 8, 8, 0, 0, tzinfo=ARGENTINA_TZ)
+        self.assertTrue(is_digest_due(dt_morning, target_time_str=target, last_sent_date=None))
+        slot_m = get_due_digest_slot(dt_morning, target_time_str=target, last_sent_date=None)
+        self.assertEqual(slot_m, "2026-09-08@08:00")
+
+        # After morning sent -> not due in afternoon
+        dt_noon = datetime.datetime(2026, 9, 8, 14, 0, 0, tzinfo=ARGENTINA_TZ)
+        self.assertFalse(is_digest_due(dt_noon, target_time_str=target, last_sent_date=slot_m))
+
+        # 20:05 -> evening slot due!
+        dt_evening = datetime.datetime(2026, 9, 8, 20, 5, 0, tzinfo=ARGENTINA_TZ)
+        self.assertTrue(is_digest_due(dt_evening, target_time_str=target, last_sent_date=slot_m))
+        slot_e = get_due_digest_slot(dt_evening, target_time_str=target, last_sent_date=slot_m)
+        self.assertEqual(slot_e, "2026-09-08@20:00")
+
+        # After evening sent -> not due rest of night
+        sent_both = f"{slot_m},{slot_e}"
+        dt_night = datetime.datetime(2026, 9, 8, 22, 0, 0, tzinfo=ARGENTINA_TZ)
+        self.assertFalse(is_digest_due(dt_night, target_time_str=target, last_sent_date=sent_both))
 
 
 class TestDailyDigestBackupInspection(unittest.TestCase):
@@ -230,6 +259,26 @@ class TestDailyDigestMetricsAndFormatting(unittest.TestCase):
         self.assertIn("202.0 TH/s", formatted)
         self.assertIn("1 anomalías", formatted)
         self.assertIn("J/TH", formatted)
+
+    def test_format_daily_digest_with_degraded_sensors(self):
+        metrics = {
+            "fleet_uptime_pct": 100.0,
+            "active_miners_count": 4,
+            "total_miners_count": 4,
+            "avg_hashrate_ths": 384.0,
+            "nominal_hashrate_ths": 400.0,
+            "avg_efficiency_j_th": 27.0,
+            "shares_accepted_pct": 99.9,
+            "shares_rejected_pct": 0.1,
+            "incidents_24h": 0,
+            "reboots_24h": 0,
+            "backup_status": {"verified": True, "size_mb": 1.5, "time_str": "03:00"},
+            "snoozed_miners": [],
+            "degraded_sensors": ["M24 C2 (loc 28)"],
+        }
+        card = format_daily_digest(metrics, date_str="25/09/2026")
+        self.assertIn("Hardware / Sensores", card)
+        self.assertIn("M24 C2 (loc 28)", card)
 
 
 class TestDailyDigestIntegration(unittest.TestCase):

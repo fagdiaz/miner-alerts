@@ -166,6 +166,45 @@ class ChainHealthAssessmentTests(unittest.TestCase):
         evaluate_chain_health_streak(streak_data, healthy_ass, min_streak=2, now_ts=1200.0)
         self.assertEqual(streak_data["fault_streak"], 0)
 
+    def test_evaluate_chain_health_sensor_alerts_disabled(self):
+        miner_ass = assess_miner_chains("S19JPRO-24", [self.sensor_fault_chain])
+        streak_data = {}
+        # Sensor alert suppressed when alert_on_sensor_error=False
+        alert, card = evaluate_chain_health_streak(
+            streak_data,
+            miner_ass,
+            min_streak=1,
+            alert_on_sensor_error=False,
+            now_ts=1000.0,
+        )
+        self.assertFalse(alert)
+        self.assertIsNone(card)
+
+        # But physical chain fault STILL alerts even when alert_on_sensor_error=False
+        dead_ass = assess_miner_chains("S19JPRO-24", [self.stopped_chain])
+        alert_dead, card_dead = evaluate_chain_health_streak(
+            streak_data,
+            dead_ass,
+            min_streak=1,
+            alert_on_sensor_error=False,
+            now_ts=1010.0,
+        )
+        self.assertTrue(alert_dead)
+        self.assertIsNotNone(card_dead)
+
+    def test_evaluate_chain_health_snoozed(self):
+        dead_ass = assess_miner_chains("S19JPRO-24", [self.stopped_chain])
+        streak_data = {}
+        alert, card = evaluate_chain_health_streak(
+            streak_data,
+            dead_ass,
+            min_streak=1,
+            is_snoozed=True,
+            now_ts=1000.0,
+        )
+        self.assertFalse(alert)
+        self.assertIsNone(card)
+
     def test_build_chain_alert_card_format(self):
         miner_ass = assess_miner_chains("S19JPRO-24", [self.sensor_fault_chain])
         card = build_chain_alert_card("S19JPRO-24", miner_ass)

@@ -299,18 +299,26 @@ def evaluate_chain_health_streak(
     min_streak: int = 2,
     cooldown_s: float = 7200.0,
     now_ts: Optional[float] = None,
+    alert_on_sensor_error: bool = True,
+    is_snoozed: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """Evaluate consecutive fault streaks and cooldown to avoid alert spam.
 
     Returns:
         (should_alert: bool, alert_card_text: Optional[str])
     """
+    if is_snoozed:
+        return False, None
+
     now = now_ts if now_ts is not None else time.time()
 
     if assessment.overall_status in (STATUS_CHAIN_SENSOR_ERROR, STATUS_CHAIN_FAULT):
         current_streak = int(streak_data.get("fault_streak", 0)) + 1
         streak_data["fault_streak"] = current_streak
         last_alert_ts = float(streak_data.get("last_alert_ts", 0.0))
+
+        if assessment.overall_status == STATUS_CHAIN_SENSOR_ERROR and not alert_on_sensor_error:
+            return False, None
 
         if current_streak >= min_streak:
             if last_alert_ts == 0.0 or (now - last_alert_ts) >= cooldown_s:

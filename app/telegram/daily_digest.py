@@ -20,29 +20,52 @@ from app.telegram.help_center import visible_line_width, wrap_mobile_lines
 ARGENTINA_TZ = datetime.timezone(datetime.timedelta(hours=-3))
 
 
+def get_due_digest_slot(
+    now_dt: datetime.datetime,
+    target_time_str: str = "08:00",
+    last_sent_date: Optional[str] = None,
+) -> Optional[str]:
+    """Return slot identifier (e.g. '2026-09-25@08:00') if a digest is due, else None."""
+    today_str = now_dt.strftime("%Y-%m-%d")
+    raw = (target_time_str or "08:00").strip()
+    raw_slots = [s.strip() for s in raw.split(",") if s.strip()]
+    if not raw_slots:
+        raw_slots = ["08:00"]
+
+    parsed_slots = []
+    for s in raw_slots:
+        try:
+            parts = s.split(":")
+            h = int(parts[0])
+            m = int(parts[1]) if len(parts) > 1 else 0
+            parsed_slots.append((h, m, f"{h:02d}:{m:02d}"))
+        except Exception:
+            continue
+    parsed_slots.sort()
+
+    last_sent = str(last_sent_date or "")
+
+    for h, m, slot_str in reversed(parsed_slots):
+        is_past = (now_dt.hour > h) or (now_dt.hour == h and now_dt.minute >= m)
+        if is_past:
+            slot_id = f"{today_str}@{slot_str}"
+            if len(parsed_slots) == 1 and last_sent == today_str:
+                return None
+            if slot_id in last_sent:
+                return None
+            if last_sent == today_str and slot_str == parsed_slots[0][2]:
+                return None
+            return slot_id
+    return None
+
+
 def is_digest_due(
     now_dt: datetime.datetime,
     target_time_str: str = "08:00",
     last_sent_date: Optional[str] = None,
 ) -> bool:
     """Return True if local time is at or after target_time_str and not yet sent today."""
-    today_str = now_dt.strftime("%Y-%m-%d")
-    if last_sent_date == today_str:
-        return False
-
-    raw = (target_time_str or "08:00").strip()
-    try:
-        parts = raw.split(":")
-        t_hour = int(parts[0])
-        t_minute = int(parts[1]) if len(parts) > 1 else 0
-    except (ValueError, IndexError):
-        t_hour, t_minute = 8, 0
-
-    if now_dt.hour > t_hour:
-        return True
-    if now_dt.hour == t_hour and now_dt.minute >= t_minute:
-        return True
-    return False
+    return get_due_digest_slot(now_dt, target_time_str, last_sent_date) is not None
 
 
 def inspect_latest_backup(backup_root: Optional[Path | str] = None) -> Dict[str, Any]:
@@ -291,6 +314,43 @@ def fetch_daily_digest_metrics(
             reboots = max(reboots, dec_row[0])
         res["reboots_24h"] = reboots
 
+        # 7. Persistent degraded hardware / sensor anomalies in 24h
+        res["degraded_sensors"] = []
+        try:
+            execute_readonly_with_retry(
+                cursor,
+                """
+                SELECT miner_key, chain_id, sensors_json, count(id)
+                FROM chain_telemetry_samples
+                WHERE observed_ts >= ? AND observed_ts <= ?
+                  AND sensors_error_count > 0
+                GROUP BY miner_key, chain_id
+                HAVING count(id) >= 3
+                """,
+                (start_ts, curr_ts),
+            )
+            degraded_rows = cursor.fetchall()
+            for r in degraded_rows:
+                m_key, c_id, s_raw, _ = r
+                disp_m = str(m_key).replace("S19JPRO-", "").replace("s19jpro-", "")
+                err_locs = []
+                if s_raw:
+                    try:
+                        s_data = json.loads(s_raw)
+                        err_locs = [
+                            str(s.get("loc"))
+                            for s in s_data
+                            if isinstance(s, dict)
+                            and str(s.get("state")).lower() in ("error", "err", "fault")
+                            and s.get("loc") is not None
+                        ]
+                    except Exception:
+                        pass
+                loc_str = f"loc {','.join(err_locs)}" if err_locs else "I2C"
+                res["degraded_sensors"].append(f"M{disp_m} C{c_id} ({loc_str})")
+        except Exception:
+            pass
+
     except Exception:
         pass
     finally:
@@ -343,6 +403,7 @@ def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None)
         ]
 
     snoozed = metrics.get("snoozed_miners", [])
+    degraded = metrics.get("degraded_sensors", [])
 
     header = f"☀️ *Reporte Diario* ({date_str})"
     if visible_line_width(header) > 32:
@@ -362,6 +423,12 @@ def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None)
         f"  ({reboots} reinicios)",
     ]
     lines.extend(backup_lines)
+
+    if degraded:
+        lines.append("• Hardware / Sensores:")
+        for item in degraded:
+            for s_line in wrap_mobile_lines(f"⚠️ {item}", width=28, indent="  "):
+                lines.append(s_line)
 
     if snoozed:
         lines.append(f"• Mantenimiento: 🔕 {len(snoozed)}")

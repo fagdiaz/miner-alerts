@@ -3,6 +3,43 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-25] - Optimización del Flujo de Notificaciones Telegram y Supresión de Spam (Histeresis OFFLINE, Silenciado de Sensores Secundarios y Reporte Diario Enriquecido)
+
+* **Contexto & Solicitud del Operador**:
+  - Tras la observación de 14.5 horas de la flota (384.9 TH/s, 100% silicio sano), el operador reportó volumen excesivo de mensajes en Telegram (~35 mensajes recibidos, ~2.4/h), instruyendo:
+    1. Mantener alarmas inmediatas únicamente para incidentes concretos y reales.
+    2. Establecer 1 o 2 resúmenes diarios (mañana y noche).
+    3. No omitir información sobre fallas persistentes (como el sensor térmico defectuoso de M24 C2), sino canalizarlas dentro del resumen del día en vez de generar spam repetitivo.
+
+* **Auditoría Forense del Tráfico Notificado (14.5 horas evaluadas)**:
+  - **16 mensajes (46%)**: Flapping `OFFLINE <-> OK` en S19JPRO-25 provocado por micro-cortes de red/latencia de socket de 30-60s. En `config.json`, `"fails_before_alert": 1` disparaba una alarma ante un solo paquete perdido y otra al recuperar.
+  - **8 mensajes (23%)**: Alerta de salud de cadena repetida cada 2 horas (120 min) por la falla permanente del sensor térmico `loc: 28` en Cadena 2 de S19JPRO-24, pese a que la placa mina nominalmente al 100% (31 TH/s, 126 chips).
+  - **8 mensajes (23%)**: Incidente real en Elevador 2 a las 21:02 hs (reinicio imprevisto de M25, amortiguación por contingencia de M26 y autorecuperación en 4 min).
+  - **3 mensajes (8%)**: Cold boot grace (18:11 hs) y resumen diario matutino (08:00 hs).
+
+* **Acciones Técnicas Implementadas**:
+  1. **Histeresis Anti-Flap en Monitoreo (`fails_before_alert: 3`)**:
+     - Configurado `"fails_before_alert": 3` en `app/config.json` (estandarizado con `app/config.example.json` y la spec 051).
+     - Exige 90 segundos continuos sin respuesta antes de alertar `OFFLINE`, eliminando los 16 mensajes de flapping por micro-cortes de red.
+     - *Seguridad intacta*: La detección y alerta ante cortes eléctricos reales de elevador o flota completa (<3s) sigue activa de forma instantánea vía `phase_drop_discriminator`.
+  2. **Supresión de Alertas Standalone para Sensores Secundarios**:
+     - En `app/governance/chain_health.py` (`evaluate_chain_health_streak`), se añadió soporte para `alert_on_sensor_error: bool = True` e `is_snoozed: bool = False`.
+     - Si la cadena tiene solo error de sensor térmico (`STATUS_CHAIN_SENSOR_ERROR`) y `alert_on_sensor_error` es `False`, se suprime la tarjeta de alerta de Telegram y se continúa registrando en SQLite.
+     - Si la cadena sufre una falla física real (`STATUS_CHAIN_FAULT`, corte de cadena, pérdida de chips o detención de placa), la alerta inmediata de Telegram SÍ se dispara.
+     - En `app/config.json` y `app/config.example.json` se añadió `"chain_health_sensor_alerts_enabled": false`.
+  3. **Resumen Diario Enriquecido con Diagnóstico de Hardware y Sensores Degradados**:
+     - En `app/telegram/daily_digest.py` (`fetch_daily_digest_metrics`), se incorporó la consulta de cadenas con anomalías de sensores en la ventana de 24h.
+     - En `format_daily_digest`, se incorporó la sección `• Hardware / Sensores: ⚠️ M24 C2 (loc 28)` respetando el límite visual móvil (<= 32 columnas).
+  4. **Soporte de Horarios Múltiples de Resumen Diario (`08:00,20:00`)**:
+     - En `app/telegram/daily_digest.py` se implementó `get_due_digest_slot()` soportando cadenas multi-horario (ej. `"08:00,20:00"`).
+     - En `app/miner_monitor.py` se actualizó la invocación periódica del digest para registrar los slots de envío individuales (`today@08:00`, `today@20:00`).
+     - En `app/config.json` se fijó `"daily_digest_time": "08:00,20:00"`.
+
+* **Validación de Calidad**:
+  - Suite de pruebas de regresión: **1397 tests PASS en 42.43s** (100% de éxito, 0 regresiones).
+  - Servicio Windows NSSM `MinerAlerts` reiniciado limpiamente (SERVICE_RUNNING, PID 29992, `err.log` en 0 bytes nuevos).
+  - Validado en vivo: Telemetría de cadenas insertada sin emitir spam de Telegram para M24; el digest renderiza el reporte de hardware con 100% de fidelidad.
+
 ## [2026-09-24] - Diagnóstico Forense y Rescate de S19JPRO-26 (Glitch Eléctrico en Elevador 2, Watchdog y Reactivación de Alertas)
 
 * **Contexto & Alerta del Operador**:

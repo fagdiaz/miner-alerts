@@ -300,5 +300,6 @@
     "valley_step_up_max_chip_temp_c": 80.0,
     "valley_step_up_max_fan_duty_pct": 92.0,
     "autotune_grace_period_seconds": 900.0,
-    "telegram_alerts_enabled": true
+    "telegram_alerts_enabled": true,
+    "adaptive_contingency_enabled": false
 }

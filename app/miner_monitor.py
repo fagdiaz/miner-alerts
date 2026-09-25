@@ -1265,14 +1265,24 @@ def _async_execute_mining_restart(
 
         # Spec 075 / FR-01: Soft-Landing Pre-Clamp to safe floor (1800W) before restarting
         # Note: top_preset is preserved at hw_max (2700W) so VNish is not permanently trapped at 1800W
-        log(f"[SAFE-RECOVERY] {disp_name} ({host}) aplicando pre-clamp defensivo a {pre_clamp_preset}W para proteger fuente APW12...")
-        _pre_hw_max = miner_dict.get("max_hardware_preset", "2700W").rstrip("W") if isinstance(miner_dict, dict) else "2700"
-        clamp_ok, clamp_err = safe_set_miner_preset(host, password, pre_clamp_preset, clamp_top_preset=False, top_preset=_pre_hw_max)
-        if clamp_ok:
-            log(f"[SAFE-RECOVERY] {disp_name} ({host}) pre-clamp a {pre_clamp_preset}W aplicado con exito. Asentando voltajes (2.0s)...")
-            time.sleep(2.0)
+        from app.governance.intervention_policy import ACTION_PRESET_BALANCER, should_allow_intervention
+        gov_obj = globals().get("_GLOBAL_INTERVENTION_GOV")
+        presets_allowed = True
+        if gov_obj is not None:
+            allowed, _ = should_allow_intervention(ACTION_PRESET_BALANCER, gov_obj, ts)
+            presets_allowed = allowed
+
+        if presets_allowed and pre_clamp_preset:
+            log(f"[SAFE-RECOVERY] {disp_name} ({host}) aplicando pre-clamp defensivo a {pre_clamp_preset}W para proteger fuente APW12...")
+            _pre_hw_max = miner_dict.get("max_hardware_preset", "2700W").rstrip("W") if isinstance(miner_dict, dict) else "2700"
+            clamp_ok, clamp_err = safe_set_miner_preset(host, password, pre_clamp_preset, clamp_top_preset=False, top_preset=_pre_hw_max)
+            if clamp_ok:
+                log(f"[SAFE-RECOVERY] {disp_name} ({host}) pre-clamp a {pre_clamp_preset}W aplicado con exito. Asentando voltajes (2.0s)...")
+                time.sleep(2.0)
+            else:
+                log(f"[WARN] [SAFE-RECOVERY] {disp_name} ({host}) no se pudo aplicar pre-clamp ({clamp_err}); procediendo con soft restart de minado directo.")
         else:
-            log(f"[WARN] [SAFE-RECOVERY] {disp_name} ({host}) no se pudo aplicar pre-clamp ({clamp_err}); procediendo con soft restart de minado directo.")
+            log(f"[SAFE-RECOVERY] {disp_name} ({host}) pre-clamp suprimido por gobernanza (presets_enabled=False); procediendo con soft restart directo.")
 
         ok, err = safe_restart_mining(host, password)
         if ok:
@@ -6647,6 +6657,7 @@ def main() -> None:
                         restart_classification.classification == "unexpected"
                         and m_group
                         and m_group in ("elevator_1", "elevator_2")
+                        and bool(config.get("adaptive_contingency_enabled", True))
                     ):
                         try:
                             from app.governance.intervention_policy import ACTION_CONTINGENCY, should_allow_intervention
@@ -6791,8 +6802,8 @@ def main() -> None:
                         gov_obj = getattr(state, "intervention_gov", None) or globals().get("_GLOBAL_INTERVENTION_GOV")
                         allowed_ramp = True
                         if gov_obj is not None:
-                            from app.governance.intervention_policy import ACTION_REBOOT_L1, should_allow_intervention
-                            allowed_ramp, _ = should_allow_intervention(ACTION_REBOOT_L1, gov_obj, now_ts)
+                            from app.governance.intervention_policy import ACTION_PRESET_BALANCER, should_allow_intervention
+                            allowed_ramp, _ = should_allow_intervention(ACTION_PRESET_BALANCER, gov_obj, now_ts)
                         if not allowed_ramp:
                             log(f"[SAFE-RECOVERY] {name_display} soak completado pero intervenciones desactivadas por gobernanza; suprimiendo mutacion de preset.")
                             with state_lock:
@@ -8184,7 +8195,7 @@ def main() -> None:
                 )
 
             # Spec 057: Adaptive Elevator Contingency - Periodic Step-Up Soak Evaluation
-            if _ELEVATOR_CONTINGENCY_STATES:
+            if _ELEVATOR_CONTINGENCY_STATES and bool(config.get("adaptive_contingency_enabled", True)):
                 try:
                     from app.governance.intervention_policy import ACTION_CONTINGENCY, should_allow_intervention
                     from app.governance.adaptive_contingency import evaluate_canary_contingency, ACTION_NO_ACTION

@@ -3,7 +3,43 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-09-25] - Optimización del Flujo de Notificaciones Telegram y Supresión de Spam (Histeresis OFFLINE, Silenciado de Sensores Secundarios y Reporte Diario Enriquecido)
+## [2026-09-25] - Neutralización de Mutaciones de Presets en Caliente, Eliminación del Bucle 'Apply' de VNish y Alineación de Flota a 2500W Base / 2700W Tope
+
+* **Contexto & Solicitud del Operador**:
+  - Tras una fluctuación de mediodía donde cayeron transitoriamente mineros de la flota y el operador observó pedidos de "Apply" con reinicio en la interfaz web de VNish, instruyó:
+    1. Auditar forensemente si el sistema cometió algún error o bug en el reinicio previo a tocar "Apply".
+    2. Eliminar la causa raíz que dejaba a VNish con cambios pendientes pidiendo "Apply" / reboot al entrar a monitorear.
+    3. Fijar a todos los mineros en base 2500W con tope (`top_preset`) a 2700W para recuperación y operación normal.
+    4. Cesar todas las intervenciones de cambio de preset en caliente y dejar activo únicamente el control de ventiladores (**Fan Governor**) y la seguridad crítica.
+
+* **Auditoría Forense del Incidente de las 12:01 hs**:
+  - **Inocencia del monitor en la caída inicial**: Cero comandos de reboot por hardware ejecutados en todo el día. Cero soft restarts hacia M23 o M24 (el único soft restart previo fue a M25 a las 11:52 hs por corte físico de silicio `chip_addr 0xFA` donde VNish se apagó solo).
+  - **Causa física de la caída de M23 y M24**: Oscilación de tensión e inductancia en la línea compartida de elevadores provocada por el apagón y reconexión violenta de 5 kW en Elevador 2 (M25 + M26) en pleno mediodía solar (chips a 81-82°C con ventiladores al 100%). La fuente APW12 / supervisor de VNish reinició cgminer por autoprotección.
+  - **Comportamiento defectuoso de las automatizaciones (El lío/bug)**:
+    Inmediatamente tras el reinicio de cgminer, `adaptive_contingency` (Spec 057) detectó `unexpected_restart` y asumió una emergencia, bajando M23 a 2300W y M24 a 2150W con `clamp_top_preset=True` vía `POST /api/v1/settings` en caliente.
+    Esto dejó a VNish con `restart_required=True` en staging, provocó un segundo reinicio en M24 a las 12:03 hs e hizo aparecer el cartel amarillo de **"Apply"** en el navegador. Al presionar "Apply" el operador, el navegador disparó otro reinicio de minado.
+
+* **Acciones Técnicas Implementadas**:
+  1. **Alineación de Flota a 2500W Base / 2700W Tope**:
+     - Configurados los 4 mineros homogéneamente: `Preset: 2500W`, `Top Preset: 2700W`, `Preset Switcher: True`.
+     - Verificado en flash y en caliente: los 4 mineros minando nominalmente a ~360 TH/s combinados.
+  2. **Supresión de Mutaciones de Presets en Caliente en `app/miner_monitor.py`**:
+     - En `_async_execute_mining_restart` (línea 1266): incorporada guarda con `should_allow_intervention(ACTION_PRESET_BALANCER)`. Si `presets_enabled` es `False`, se suprime el pre-clamp destructivo a 1800W y el minero reinicia de forma suave en su preset existente.
+     - En `safe_recovery` (línea 6802): la restauración de preset tras soak de 180s ahora consulta `ACTION_PRESET_BALANCER` en lugar de `ACTION_REBOOT_L1`, evitando saltos bruscos de potencia en caliente si las mutaciones de preset están deshabilitadas.
+     - En `main` (líneas 6647 y 8187): la contingencia adaptativa y su soak periódico quedan condicionados por `"adaptive_contingency_enabled": false`.
+  3. **Ajuste de Gobernanza y Configuración**:
+     - En `app/config.json` y `app/config.example.json` se añadió `"adaptive_contingency_enabled": false`.
+     - En `app/state.json`: gobernanza fijada con `presets_enabled: false`, `contingency_enabled: false`, `governor_enabled: true` (Fan Governor activo modulando a 82°C) y `reboots_enabled: true` (protección de silicio activa).
+     - Estado de contingencia de elevadores reseteado a inactivo.
+  4. **Protocolo Operativo de Interfaz Web**:
+     - VNish ya no recibe escrituras de configuración no solicitadas en caliente, eliminando la aparición del botón "Apply". El operador utiliza la web puramente como visor de telemetría pasivo.
+
+* **Validación de Calidad**:
+  - Suite de pruebas completa: **1397 tests PASS en 43.53s** (100% éxito, 0 fallos).
+  - Compilación Python: `py_compile app\miner_monitor.py` exitoso (código 0).
+  - Servicio NSSM `MinerAlerts` reiniciado y verificado: `INTERVENTIONS master=True reason=operator_lock_fans_only`, Fan Governor activo con `[GOV]` modulando coolers según temperatura y cero escrituras en presets.
+
+
 
 * **Contexto & Solicitud del Operador**:
   - Tras la observación de 14.5 horas de la flota (384.9 TH/s, 100% silicio sano), el operador reportó volumen excesivo de mensajes en Telegram (~35 mensajes recibidos, ~2.4/h), instruyendo:

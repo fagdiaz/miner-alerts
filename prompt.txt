@@ -1,7 +1,7 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-25 ~09:25 hs
-# MODELO RECOMENDADO: Gemini 3.8 Flash High (monitoreo / dominio puro) o Claude Sonnet 4.6 (Thinking) (concurrencia)
-# TAREA: Supervisión activa de flujo de alertas optimizado (anti-spam), 2 digests diarios y régimen de 385 TH/s
+# PROMPT DE CONTINUIDAD - 2026-09-25 ~14:38 hs
+# MODELO RECOMENDADO: Gemini 3.8 Flash High (monitoreo / auditoría / dominio puro)
+# TAREA: Flota estabilizada en 2500W base / 2700W tope libre. Monitor en modo Centinela Térmico (Fan Governor activo, mutaciones de presets neutralizadas, bucle 'Apply' eliminado)
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
@@ -12,42 +12,34 @@ LEE PRIMERO:
   - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-24 y 2026-09-25)
 
 --------------------------------------------------------------------------------
-1. OPTIMIZACIÓN DE ALERTAS TELEGRAM Y SUPRESIÓN DE SPAM
+1. ESTABILIZACIÓN Y NEUTRALIZACIÓN DE MUTACIONES EN CALIENTE (IMPLEMENTADO)
 --------------------------------------------------------------------------------
-El operador solicitó reducir el flujo de mensajes en Telegram (~35 msgs/14h recibidos):
-- Alarmas inmediatas únicamente para incidentes concretos y reales.
-- Dos resúmenes diarios (08:00 y 20:00 hs) para reporte del estado general.
-- Reportar fallas de componentes persistentes (como el sensor térmico loc 28 de M24 C2) dentro del resumen del día, sin omitir datos pero sin spamear alertas cada 2 horas.
+1. Flota completa configurada y verificada:
+   - S19JPRO-23 | Preset: 2500W | Top: 2700W | Switcher: True | ~88 TH/s
+   - S19JPRO-24 | Preset: 2500W | Top: 2700W | Switcher: True | ~90 TH/s
+   - S19JPRO-25 | Preset: 2500W | Top: 2700W | Switcher: True | ~90 TH/s
+   - S19JPRO-26 | Preset: 2500W | Top: 2700W | Switcher: True | ~93 TH/s
+   Total Flota: ~361 TH/s | Silicio 100% sano (1512 chips activos, 0 cadenas caídas).
 
-Soluciones Aplicadas y Validadas:
-1. Histeresis Anti-Flap: `fails_before_alert = 3` en app/config.json (90s de silencio continuo para OFFLINE).
-   Elimina los 16 mensajes de flapping por micro-cortes transitorios de socket. Protección de corte eléctrico instantánea (<3s) preservada vía phase_drop_discriminator.
-2. Supresión de Alertas Standalone de Sensores Secundarios:
-   `chain_health_sensor_alerts_enabled = false` en app/config.json.
-   `evaluate_chain_health_streak` suprime alertas de Telegram cuando solo falla un sensor I2C en una placa que mina nominalmente al 100%, pero mantiene alerta inmediata ante fallas físicas reales (STATUS_CHAIN_FAULT).
-3. Resumen Diario Enriquecido con Diagnóstico de Hardware:
-   `fetch_daily_digest_metrics` y `format_daily_digest` agregan la sección `• Hardware / Sensores: ⚠️ M24 C2 (loc 28)` dentro de los límites móviles (<=32 cols).
-4. Multi-Horario de Digest: `daily_digest_time = "10:00,22:00"`.
-5. Servicio Windows NSSM: `MinerAlerts` reiniciado limpiamente (PID activo, 0 errores).
-6. Suite de Tests: 1397 tests PASS (100%).
+2. Neutralización de Mutaciones de Presets en caliente en miner_monitor:
+   - Gobernanza activa: `INTERVENTIONS master=True reason=operator_lock_fans_only`
+     - `presets_enabled = False`: no se tocan ni escalan presets en caliente.
+     - `contingency_enabled = False`: sin bajadas automáticas ni clampeos destructivos de topes.
+     - `governor_enabled = True`: Fan Governor activo modulando ventiladores a 82°C para proteger térmicamente la flota.
+     - `reboots_enabled = True`: protecciones críticas y alarmas de silicio preservadas.
+   - `adaptive_contingency_enabled: false` configurado en app/config.json y app/config.example.json.
+   - En _async_execute_mining_restart y safe_recovery: pre-clamp a 1800W y restauración de soak suprimidos cuando presets_enabled=False.
+   - Bucle de 'Apply' en VNish: ELIMINADO de raíz. VNish no recibe escrituras de configuración no solicitadas en caliente y el operador utiliza la web puramente como visor de monitoreo.
 
---------------------------------------------------------------------------------
-2. TELEMETRÍA EN VIVO DE LA FLOTA (09:22 hs)
---------------------------------------------------------------------------------
-- Servicio Windows NSSM: MinerAlerts SERVICE_RUNNING (master=True, alerts=True, 0 errores).
-- Total Flota: ~384.9 TH/s | ~10.39 kW | Cero mineros caídos | Silicio 100% sano (1512 chips).
-
-Telemetría viva de la flota:
-  S19JPRO-23 | Elevador 1 | mining | 91.0 TH/s | 2499W | 81°C max | 100% fan | startup: 2500 | top: 2700 | uptime: 16h
-  S19JPRO-24 | Elevador 1 | mining | 94.1 TH/s | 2498W | 80°C max | 100% fan | startup: 2500 | top: 2700 | uptime: 16h
-  S19JPRO-25 | Elevador 2 | mining | 102.0 TH/s| 2699W | 80°C max | 100% fan | escaló a 2700W (switcher VNish) | uptime: 12h
-  S19JPRO-26 | Elevador 2 | mining | 97.9 TH/s | 2698W | 78°C max |  95% fan | escaló a 2700W (switcher VNish) | uptime: 12h
+3. Validación de Calidad:
+   - 1397 tests unitarios PASS en 43.53s (100%).
+   - py_compile app/miner_monitor.py: PASS (código 0).
+   - Servicio Windows NSSM: RUNNING (PID activo, err.log sin excepciones).
 
 --------------------------------------------------------------------------------
-3. COMANDOS ÚTILES
+2. COMANDOS ÚTILES
 --------------------------------------------------------------------------------
-- Resumen en vivo:       & ".\.venv\Scripts\python.exe" -c "from app.miner_monitor import load_config; from app.vnish.client import unlock_miner; import requests; cfg=load_config(); pwd=cfg.get('vnish_api_password'); [(print(m['name'], requests.get(f\"http://{m['host']}/api/v1/summary\", headers={'Authorization': f\"Bearer {unlock_miner(m['host'], pwd)[1]}\"}).json()['miner']['hr_realtime']/1000.0, 'TH/s')) for m in cfg['miners']]"
-- Suite de tests:        & ".\.venv\Scripts\python.exe" -m pytest -q
-- Logs del monitor:      Get-Content "logs\out.log" -Tail 30
-- NSSM status:           nssm status MinerAlerts
-
+- Telemetría en vivo: & ".\.venv\Scripts\python.exe" -c "import urllib.request, json; from app.vnish.client import unlock_miner; pwd=json.load(open('app/config.json'))['vnish_api_password']; [(print(ip, json.loads(urllib.request.urlopen(f'http://{ip}/api/v1/summary').read())['miner']['instant_hashrate'], 'TH/s', json.loads(urllib.request.urlopen(urllib.request.Request(f'http://{ip}/api/v1/settings', headers={'Authorization': f'Bearer {unlock_miner(ip, pwd)[1]}'})).read())['miner']['overclock']['preset'], 'W top:', json.loads(urllib.request.urlopen(urllib.request.Request(f'http://{ip}/api/v1/settings', headers={'Authorization': f'Bearer {unlock_miner(ip, pwd)[1]}'})).read())['miner']['overclock']['preset_switcher']['top_preset'])) for ip in ['192.168.100.23','192.168.100.24','192.168.100.25','192.168.100.26']]"
+- Suite de pruebas:   & ".\.venv\Scripts\python.exe" -m pytest -q
+- NSSM status:         nssm status MinerAlerts
+- Ver logs recientes:  Get-Content "logs\out.log" -Tail 30

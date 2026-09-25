@@ -1,25 +1,39 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-25 ~14:38 hs
-# MODELO RECOMENDADO: Gemini 3.8 Flash High (monitoreo / auditoría / dominio puro)
-# TAREA: Flota estabilizada en 2500W base / 2700W tope libre. Monitor en modo Centinela Térmico (Fan Governor activo, mutaciones de presets neutralizadas, bucle 'Apply' eliminado)
+# PROMPT DE CONTINUIDAD - 2026-09-25 ~15:00 hs
+# MODELO RECOMENDADO: Gemini 3.8 Flash High (monitoreo / auditoría / arquitectura / SpecKit)
+# TAREA: Implementación y certificación de la skill 'speckit-stabilize'. Flota estabilizada en 2500W base / 2700W tope libre. Monitor en modo Centinela Térmico.
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
 
 LEE PRIMERO:
+  - .agents/skills/speckit-stabilize/SKILL.md
+  - AGENTS.md
   - specs/066-cold-boot-grace/plan.md
   - .specify/memory/constitution.md
-  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-24 y 2026-09-25)
+  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-25)
 
 --------------------------------------------------------------------------------
-1. ESTABILIZACIÓN Y NEUTRALIZACIÓN DE MUTACIONES EN CALIENTE (IMPLEMENTADO)
+1. SKILL 'speckit-stabilize' IMPLEMENTADA Y CERTIFICADA
+--------------------------------------------------------------------------------
+Se ha creado y probado la skill integral de estabilización, cierre, normalización documental, depuración segura y release gate:
+  - Skill Definition: .agents/skills/speckit-stabilize/SKILL.md
+  - Script Preflight QA: .agents/skills/speckit-stabilize/scripts/preflight_stabilize.ps1 (7 compuertas deterministas: compilación, git diff, fugas de secretos, alineación de config, test suite, servicio NSSM, conectividad ASIC).
+  - Script Cleanup Seguro: .agents/skills/speckit-stabilize/scripts/cleanup_transients.ps1 (purga logs >48h y cachés __pycache__ con aserción explícita de inmunidad para docs/audit/DEVELOPMENT_LOG.md, config.json y logs activos).
+  - Template de Reporte de Bloqueo: .agents/skills/speckit-stabilize/references/report-template.md (genera docs/audit/STABILIZATION_REPORT_<timestamp>.md si hay fallos para iterar antes de commit/push).
+  - Checklist Exhaustivo: .agents/skills/speckit-stabilize/references/stabilization-checklist.md
+  - Integración: Hooks before_stabilize y after_stabilize en .specify/extensions.yml y DoD #7 en AGENTS.md.
+  - Commit remoto: 54199ba pusheado a origin/codex/022-adaptive-acquisition.
+
+--------------------------------------------------------------------------------
+2. ESTADO OPERATIVO DE LA FLOTA Y GOBERNANZA
 --------------------------------------------------------------------------------
 1. Flota completa configurada y verificada:
-   - S19JPRO-23 | Preset: 2500W | Top: 2700W | Switcher: True | ~88 TH/s
-   - S19JPRO-24 | Preset: 2500W | Top: 2700W | Switcher: True | ~90 TH/s
-   - S19JPRO-25 | Preset: 2500W | Top: 2700W | Switcher: True | ~90 TH/s
-   - S19JPRO-26 | Preset: 2500W | Top: 2700W | Switcher: True | ~93 TH/s
-   Total Flota: ~361 TH/s | Silicio 100% sano (1512 chips activos, 0 cadenas caídas).
+   - S19JPRO-23 | Preset: 2500W | Top: 2700W | Switcher: True | ~83-90 TH/s
+   - S19JPRO-24 | Preset: 2500W | Top: 2700W | Switcher: True | ~88-90 TH/s
+   - S19JPRO-25 | Preset: 2500W | Top: 2700W | Switcher: True | ~96 TH/s
+   - S19JPRO-26 | Preset: 2500W | Top: 2700W | Switcher: True | ~94 TH/s
+   Total Flota: ~362 TH/s | Silicio 100% sano (1512 chips activos, 0 cadenas caídas).
 
 2. Neutralización de Mutaciones de Presets en caliente en miner_monitor:
    - Gobernanza activa: `INTERVENTIONS master=True reason=operator_lock_fans_only`
@@ -28,18 +42,23 @@ LEE PRIMERO:
      - `governor_enabled = True`: Fan Governor activo modulando ventiladores a 82°C para proteger térmicamente la flota.
      - `reboots_enabled = True`: protecciones críticas y alarmas de silicio preservadas.
    - `adaptive_contingency_enabled: false` configurado en app/config.json y app/config.example.json.
-   - En _async_execute_mining_restart y safe_recovery: pre-clamp a 1800W y restauración de soak suprimidos cuando presets_enabled=False.
-   - Bucle de 'Apply' en VNish: ELIMINADO de raíz. VNish no recibe escrituras de configuración no solicitadas en caliente y el operador utiliza la web puramente como visor de monitoreo.
+   - Bucle de 'Apply' en VNish: ELIMINADO. VNish no recibe escrituras en caliente.
 
 3. Validación de Calidad:
-   - 1397 tests unitarios PASS en 43.53s (100%).
+   - 1397 tests unitarios PASS, 75 subtests PASS en 43.11s (100%).
    - py_compile app/miner_monitor.py: PASS (código 0).
    - Servicio Windows NSSM: RUNNING (PID activo, err.log sin excepciones).
 
 --------------------------------------------------------------------------------
-2. COMANDOS ÚTILES
+3. COMANDOS ÚTILES
 --------------------------------------------------------------------------------
-- Telemetría en vivo: & ".\.venv\Scripts\python.exe" -c "import urllib.request, json; from app.vnish.client import unlock_miner; pwd=json.load(open('app/config.json'))['vnish_api_password']; [(print(ip, json.loads(urllib.request.urlopen(f'http://{ip}/api/v1/summary').read())['miner']['instant_hashrate'], 'TH/s', json.loads(urllib.request.urlopen(urllib.request.Request(f'http://{ip}/api/v1/settings', headers={'Authorization': f'Bearer {unlock_miner(ip, pwd)[1]}'})).read())['miner']['overclock']['preset'], 'W top:', json.loads(urllib.request.urlopen(urllib.request.Request(f'http://{ip}/api/v1/settings', headers={'Authorization': f'Bearer {unlock_miner(ip, pwd)[1]}'})).read())['miner']['overclock']['preset_switcher']['top_preset'])) for ip in ['192.168.100.23','192.168.100.24','192.168.100.25','192.168.100.26']]"
-- Suite de pruebas:   & ".\.venv\Scripts\python.exe" -m pytest -q
-- NSSM status:         nssm status MinerAlerts
-- Ver logs recientes:  Get-Content "logs\out.log" -Tail 30
+- Correr Preflight QA de estabilización:
+    powershell -ExecutionPolicy Bypass -File ".agents/skills/speckit-stabilize/scripts/preflight_stabilize.ps1" -RunTests $false -CheckFleet $true
+- Limpieza segura de transitorios:
+    powershell -ExecutionPolicy Bypass -File ".agents/skills/speckit-stabilize/scripts/cleanup_transients.ps1"
+- Telemetría en vivo:
+    & ".\.venv\Scripts\python.exe" -c "import urllib.request, json; [(print(ip, json.loads(urllib.request.urlopen(f'http://{ip}/api/v1/summary', timeout=3).read())['miner']['instant_hashrate'], 'TH/s')) for ip in ['192.168.100.23','192.168.100.24','192.168.100.25','192.168.100.26']]"
+- Suite de pruebas completa:
+    & ".\.venv\Scripts\python.exe" -m pytest -q
+- NSSM status:
+    nssm status MinerAlerts

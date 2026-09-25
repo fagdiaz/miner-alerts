@@ -147,3 +147,19 @@ hooks:
     prompt: Commit after syncing issues?
     description: Auto-commit after tasks-to-issues conversion
     condition: null
+  before_stabilize:
+  - extension: git
+    command: speckit.git.validate
+    enabled: true
+    optional: false
+    prompt: Validate branch before stabilization?
+    description: Validate current branch before stabilization closeout
+    condition: null
+  after_stabilize:
+  - extension: git
+    command: speckit.git.commit
+    enabled: false
+    optional: true
+    prompt: Commit after stabilization?
+    description: Auto-commit after stabilization closeout
+    condition: null

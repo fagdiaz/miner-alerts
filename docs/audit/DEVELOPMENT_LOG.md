@@ -3,7 +3,49 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-09-25] - Creación de la Skill 'speckit-stabilize': Auditoría Exhaustiva de QA, Normalización Documental, Depuración Segura y Cierre Certificado con Bloqueo por Reporte
+
+* **Contexto & Solicitud del Operador**:
+  - El operador instruyó crear una skill de SpecKit súper robusta para:
+    1. Estabilización, cierre de ciclo, normalización documental, depuración de artefactos transitorios (con estricta inmunidad de `DEVELOPMENT_LOG.md`) y actualización/sincronización con el repositorio remoto.
+    2. Ejecutar de forma previa la skill `speckit-qa` y un análisis exhaustivo de calidad desde la última estabilización.
+    3. Si se detecta cualquier problema, inconsistencia, fallo en tests o riesgo de producción, **bloquear inmediatamente el commit y push**, generando un documento detallado de auditoría (`docs/audit/STABILIZATION_REPORT_<timestamp>.md`) con los pendientes a abordar, iterando con el operador hasta que el sistema esté certificado 100% limpio y estable antes de proceder al commit/push.
+    4. Desarrollar la solución de forma robusta e integrada con el ecosistema SpecKit y las demás skills del proyecto.
+
+* **Arquitectura y Componentes Implementados**:
+  1. **Definición de Skill SpecKit (`.agents/skills/speckit-stabilize/SKILL.md`)**:
+     - Workflow formal de 6 fases: Ingestión & QA Preflight -> Decision Gate con bifurcación de bloqueo -> Normalización Documental & Depuración Segura -> Verificación de Servicio NSSM & Hardware -> Commit & Push Seguro -> Sincronización de `prompt.txt` y Protocolo de Handoff.
+  2. **Script de Auditoría Preflight (`preflight_stabilize.ps1`)**:
+     - Ubicado en `.agents/skills/speckit-stabilize/scripts/preflight_stabilize.ps1`.
+     - Ejecuta 7 compuertas deterministas:
+       - Compilación estricta de sintaxis Python (`py_compile`).
+       - Inspección de diffs del árbol de trabajo (`git status`, `git diff`).
+       - Detección de fugas de credenciales y secretos (rechaza passwords o tokens en staging/working tree).
+       - Alineación y validación de esquemas de configuración (`config.json` vs `config.example.json`).
+       - Ejecución completa de la suite de pruebas (`pytest`).
+       - Verificación del servicio Windows NSSM (`nssm status MinerAlerts` sanitizando bytes UTF-16).
+       - Comprobación de sockets y puertos ASIC (puerto 4028 en la flota).
+     - Emite salida estructurada en JSON (`Status: PASS` o `BLOCKED`).
+  3. **Script de Depuración Determinista y Segura (`cleanup_transients.ps1`)**:
+     - Ubicado en `.agents/skills/speckit-stabilize/scripts/cleanup_transients.ps1`.
+     - Purga logs forenses obsoletos (`logs/deadlock_forensics_*.log` mayores a 48 hs), trazas temporales de diagnóstico (`diagnostics/task-*.log`) y cachés de Python (`__pycache__`, `.pytest_cache`).
+     - **Inmunidad Garantizada**: Aserción explícita de `ProtectedIntegrity` que valida la preservación intacta de `docs/audit/DEVELOPMENT_LOG.md`, `app/config.json`, `app/state.json` y los logs activos del servicio NSSM (`out.log`, `err.log`, `watchdog.log`).
+  4. **Plantilla de Informe de Bloqueo (`report-template.md`) y Lista de Verificación (`stabilization-checklist.md`)**:
+     - Ubicados en `.agents/skills/speckit-stabilize/references/`.
+     - `report-template.md`: Estructura estándar para `STABILIZATION_REPORT_<timestamp>.md` con desglose de severidad (P0/P1/P2), enlaces a archivos con línea (`file:///...`), checklist de remediación y comando de reintento.
+     - `stabilization-checklist.md`: 5 categorías críticas (Actuadores y Seguridad, Armonía con Firmware VNish anti-bucle Apply, UX y Mensajería Telegram, Configuración y Secretos, Trazabilidad SpecKit DoD).
+  5. **Integración con SpecKit y Gobernanza**:
+     - Hooks `before_stabilize` (validación de rama) y `after_stabilize` (commit opcional) registrados en `.specify/extensions.yml`.
+     - Regla de cierre y compuerta formal documentada en `AGENTS.md` (Spec Definition of Done #7).
+
+* **Validación de Calidad**:
+  - `preflight_stabilize.ps1`: Ejecutado exitosamente con 7/7 compuertas en PASS.
+  - `cleanup_transients.ps1`: Ejecutado en modo DryRun y Real; liberó más de 6 MB de logs antiguos garantizando integridad 100% de archivos protegidos.
+  - Suite completa de pruebas: **1397 tests PASS, 75 subtests PASS en 43.11s** (100% éxito, 0 fallos).
+  - Servicio Windows NSSM: `SERVICE_RUNNING` (PID activo, telemetría de flota intacta en ~367 TH/s).
+
 ## [2026-09-25] - Neutralización de Mutaciones de Presets en Caliente, Eliminación del Bucle 'Apply' de VNish y Alineación de Flota a 2500W Base / 2700W Tope
+
 
 * **Contexto & Solicitud del Operador**:
   - Tras una fluctuación de mediodía donde cayeron transitoriamente mineros de la flota y el operador observó pedidos de "Apply" con reinicio en la interfaz web de VNish, instruyó:

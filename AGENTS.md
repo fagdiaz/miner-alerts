@@ -65,5 +65,7 @@ Every implemented spec must:
 4. Update `docs/speckit/ROADMAP.md` when backlog state changes.
 5. Leave unverified behavior explicitly marked as unverified or blocked.
 6. Keep commits manual and feature-scoped.
+7. Execute `speckit-stabilize` as the authoritative quality, documentary normalization, and safe release closeout gate before final commit/push. If any gate fails, address the findings in the generated `STABILIZATION_REPORT_*.md` before proceeding.
+
 
 <!-- SPECKIT END -->

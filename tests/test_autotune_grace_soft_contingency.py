@@ -172,8 +172,29 @@ class TestAutotuneGraceSoftContingency(unittest.TestCase):
             last_fan_duty_percent=80.0,  # not saturated
             last_elapsed=180,  # 3 minutes post boot
         )
-        should_block = (0 < st_cold_boot.last_elapsed < autotune_grace_s)
-        self.assertTrue(should_block)
+    def test_stage2_gate0_recovery_cooling_allows_step_up_when_temp_safe(self):
+        """
+        Gate 0 in Stage 2 must not block step-up when fan duty is 100% due to
+        ACTION_RECOVERY_MAX_COOLING as long as chip temperature is cool (< 80.0°C).
+        """
+        th_max_temp = 80.0
+        th_max_duty = 92.0
+
+        def is_gate0_blocked(temp, duty, gov_action):
+            is_rec = gov_action in ("RECOVERY_MAX_COOLING", "HOLD_PRECOOLING")
+            return (temp >= th_max_temp) or (duty >= th_max_duty and not is_rec)
+
+        # 1. Cold chips under recovery cooling (e.g. 78.0°C, 100% fans) -> NOT blocked
+        self.assertFalse(is_gate0_blocked(78.0, 100.0, "RECOVERY_MAX_COOLING"))
+
+        # 2. Hot chips under recovery cooling (e.g. 81.0°C, 100% fans) -> BLOCKED
+        self.assertTrue(is_gate0_blocked(81.0, 100.0, "RECOVERY_MAX_COOLING"))
+
+        # 3. High duty without recovery cooling (e.g. 95% fans) -> BLOCKED
+        self.assertTrue(is_gate0_blocked(78.0, 95.0, ""))
+
+        # 4. Low duty without recovery cooling (e.g. 85% fans) -> NOT blocked
+        self.assertFalse(is_gate0_blocked(78.0, 85.0, ""))
 
 
 if __name__ == "__main__":

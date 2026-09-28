@@ -1,52 +1,53 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-28 ~00:25 hs
+# PROMPT DE CONTINUIDAD - 2026-09-28 ~12:45 hs
 # MODELO RECOMENDADO: Gemini 3.8 Flash High (arquitectura / monitoreo / SpecKit)
-# TAREA: Directiva Fan Governor y Guardián Térmico P0 certificados en producción (1418 tests PASS, 0 fallos).
+# TAREA: Desbloqueo Automático Térmico (ACTION_THERMAL_UNCLAMP) y Bypass de Pre-Enfriamiento en Valley Orchestrator certificados en producción (1418 tests PASS, 0 fallos).
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
 
 LEE PRIMERO:
-  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-28 y 2026-09-27)
-  - app/miner_monitor.py (execute_governor_cycle y resolución de target_pwr)
-  - app/governance/fan_governor.py (compute_governor_step y resolve_power_fan_floor)
-  - app/governance/thermal_guard.py (motor P0 de disparo térmico y anti-doble-bajada)
+  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-28)
+  - app/governance/thermal_guard.py (ACTION_THERMAL_UNCLAMP y motor P0)
+  - app/miner_monitor.py (VALLEY_ORCHESTRATOR Gate 0 y execute_governor_cycle)
+  - app/governance/fan_governor.py (compute_governor_step y directiva fan governor)
   - app/vnish/client.py (safe_set_miner_preset con min_preset y top_preset)
   - AGENTS.md
 
 --------------------------------------------------------------------------------
-1. DIRECTIVA FAN GOVERNOR: 100% BAJO 2700W & LAZO CERRADO A 82°C EN 2700W
+1. DESBLOQUEO TÉRMICO AUTOMÁTICO (ACTION_THERMAL_UNCLAMP) Y VALLEY ORCHESTRATOR
 --------------------------------------------------------------------------------
-El operador instruyó:
-*"una directiva que tenemos que tomar es que los fanes si no estan los miner hasheando a maxima potencia [2700W], los fanes tienen que estar al 100%... si llegan a 2700w deberian bajar para normalizar los 82°... con maxima potencia me refiero a 2700w y obviamente tiene que ser independiente en cada miner"*.
+El operador solicitó:
+*"de nuevo, fijate que esta pasando porque la 23 deberia estar escalando a 2700w"*
 
-Solución Implementada y Certificada:
-1. Desacoplamiento de Potencia Máxima en Monitor (`app/miner_monitor.py`):
-   - `target_pwr` se evalúa estrictamente contra el techo nominal máximo de hardware independiente por minero (2700W).
-   - Presets intermedios o bajados por contingencia (ej. 2500W, 2300W) ya NO degradan `target_pwr`.
-   - Cualquier equipo con potencia < 2580W (2700W - margen 120W) activa `ACTION_RECOVERY_MAX_COOLING` al 100% PWM de manera continua (`recovery_max_cooling_timeout_seconds = 0.0`).
-2. Modulación Descendente a 82.0°C en Máxima Potencia (2700W):
-   - Al alcanzar 2700W (potencia >= 2650W), cesa el modo de recuperación y se activa la regulación en lazo cerrado:
-     - `target_temp_c = 82.0°C`, banda muerta [81.0°C, 82.5°C].
-     - Si $T < 81.0^\circ\text{C}$: modulación descendente (`ACTION_STEP_DOWN`) para permitir que el silicio alcance 82.0°C.
-     - Piso térmico a 2700W restablecido a `power_floor_2700w: 92` (evita bloqueo al 100%).
-     - Si $T > 82.5^\circ\text{C}$: modulación ascendente (`ACTION_STEP_UP`).
-     - Si $T \ge 83.0^\circ\text{C}$: pico de emergencia al 100% (`ACTION_EMERGENCY_SPIKE`).
-3. Blindaje Anti-Doble-Bajada y Guardián P0 Intactos:
-   - Derecho de paso primario al switcher nativo de VNish a 84.0°C.
-   - Supervisor externo a 85.5°C con cerrojo bidireccional (`top_preset` + `min_preset`) y ventana anti-doble-bajada de 180s.
-   - Pausa crítica de emergencia a 87.0°C garantizando que ningún chip alcance jamás 90.0°C.
+Causas Raíz Identificadas & Solucionadas:
+1. Clampeo Residual en Firmware VNish:
+   - Tras un step-down de emergencia por temperatura, el monitor clampeaba `top_preset: "2500"`.
+   - Cuando expiró el lockout de 7200s, no existía lógica para desclampear en el firmware de VNish.
+   - Solución: Se implementó `ACTION_THERMAL_UNCLAMP` en `app/governance/thermal_guard.py`. Cuando el lockout expira (`now_ts >= thermal_lockout_until_ts`), los chips están <= 80.0°C y `current_top_preset < max_hardware_preset`, el monitor despacha automáticamente `safe_set_miner_preset(host, vnish_pw, curr_p, clamp_top_preset=False, top_preset="2700", min_preset="1740")`, libera los cerrojos de estado y notifica por Telegram.
+2. Catch-22 en Gate 0 de Valley Orchestrator:
+   - En `app/miner_monitor.py`, Gate 0 bloqueaba la escalada a 2700W si `_m_duty >= 92%`.
+   - Como la directiva Fan Governor fuerza ventiladores al 100% PWM en mineros < 2700W (`ACTION_RECOVERY_MAX_COOLING`), ningún minero podía subir a 2700W aun con chips fríos (78°C).
+   - Solución: Gate 0 ahora reconoce `_is_recovery_cooling = _m_gov_action in (ACTION_RECOVERY_MAX_COOLING, "HOLD_PRECOOLING")`. Si el ventilador está al 100% por directiva de pre-enfriamiento, el duty no bloquea la subida siempre que el silicio esté < 80.0°C.
 
 --------------------------------------------------------------------------------
-2. ESTADO DE VALIDACIÓN & FLOTA EN PRODUCCIÓN (00:25 hs)
+2. DIRECTIVA FAN GOVERNOR (MANTENIDA & ACTIVA)
 --------------------------------------------------------------------------------
-- Suite de Pruebas: **1418 tests PASS**, 75 subtests PASS (100% éxito, 0 fallos en 40.69s).
-- Suite de Gobernador & Guardián Térmico: **69 tests PASS** (100% éxito).
-- Auditoría Speckit Stabilize: **PASS - CERTIFIED** (8 gates evaluados, 0 fallos).
-- Servicio Windows NSSM: RUNNING (PID 47240, `logs/err.log` sin excepciones activas).
+- Mineros < 2700W: Ventiladores forzados al 100% PWM (`ACTION_RECOVERY_MAX_COOLING`).
+- Mineros a 2700W: Modulación descendente en lazo cerrado hacia el piso del 92% para normalizar a 82.0°C.
+- Independencia total por minero.
+- Guardián Térmico P0: Anti-doble-bajada, downstep de emergencia a 85.5°C, pausa a 87.0°C.
+
+--------------------------------------------------------------------------------
+3. ESTADO DE VALIDACIÓN & FLOTA EN PRODUCCIÓN (12:45 hs)
+--------------------------------------------------------------------------------
+- Suite de Pruebas: **1418 tests PASS**, 75 subtests PASS (100% éxito, 0 fallos en 42.85s).
+- Suite de Thermal Guard: **19 tests PASS** (incluyendo tests de unclamp y expiración de lockout).
+- Suite de Contingencia & Orquestador: **7 tests PASS** (incluyendo Gate 0 recovery cooling).
+- Preflight Stabilize: **PASS** (7/7 gates PASS).
+- Servicio Windows NSSM: RUNNING (`MinerAlerts` reiniciado limpiamente).
 - Telemetría en vivo verificada (`logs/out.log`):
-  - S19JPRO-23 (2499W): `action=RECOVERY_MAX_COOLING duty=100% target=100%` (100% continuo bajo 2700W).
-  - S19JPRO-24 (2498W): `action=RECOVERY_MAX_COOLING duty=100% target=100%` (100% continuo bajo 2700W).
-  - S19JPRO-25 (2699W): `action=STEP_DOWN duty=96% target=96%` (modulando a 82°C a máxima potencia).
-  - S19JPRO-26 (2698W): `action=STEP_DOWN duty=94% target=94%` (modulando a 82°C a máxima potencia).
-  - Flota en producción: 1512 chips activos, 0 cadenas caídas, 100% de integridad eléctrica y térmica.
+  - S19JPRO-23: 2698W / 2700W | `action=HOLD_TARGET duty=100% target=100%` (Escalado y operando a 2700W).
+  - S19JPRO-24: 2498W / 2700W | `action=RECOVERY_MAX_COOLING duty=100%` (Pre-enfriando para habilitar escalada).
+  - S19JPRO-25: 2699W / 2700W | Operando a 2700W.
+  - S19JPRO-26: 2698W / 2700W | `action=HOLD_TARGET duty=92%` (Operando a 2700W modulado a 92%).

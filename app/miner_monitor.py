@@ -8649,12 +8649,16 @@ def main() -> None:
                                         _m_temp = (getattr(_mst, "last_max_chip_temp", None) or 0.0) if _mst else 0.0
                                         _m_duty = (getattr(_mst, "last_fan_duty_percent", None) or 0.0) if _mst else 0.0
                                         _m_el = (getattr(_mst, "last_elapsed", None) or 0) if _mst else 0
+                                        _m_gov_action = (getattr(_mst, "governor_last_action", "") or "") if _mst else ""
                                     if 0 < _m_el < autotune_grace_s:
                                         log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W por período de gracia post-arranque (elapsed={_m_el}s < {autotune_grace_s:.0f}s)")
                                         continue
                                     _th_max_temp = float(config.get("valley_step_up_max_chip_temp_c", 80.0))
                                     _th_max_duty = float(config.get("valley_step_up_max_fan_duty_pct", 92.0))
-                                    if _m_temp >= _th_max_temp or _m_duty >= _th_max_duty:
+                                    # When recovering or running below 2700W, Fan Governor directive intentionally forces 100% duty (ACTION_RECOVERY_MAX_COOLING).
+                                    # This must NOT block stepping up to 2700W as long as chip temperature is safely cooled below _th_max_temp (e.g. 80.0°C).
+                                    _is_recovery_cooling = _m_gov_action in (ACTION_RECOVERY_MAX_COOLING, "HOLD_PRECOOLING")
+                                    if _m_temp >= _th_max_temp or (_m_duty >= _th_max_duty and not _is_recovery_cooling):
                                         log(f"[VALLEY_ORCHESTRATOR] {_m_name} omitido para 2700W por margen térmico (temp={_m_temp:.1f}°C >= {_th_max_temp:.1f}°C o fans={_m_duty:.0f}% >= {_th_max_duty:.0f}%): esperando enfriamiento")
                                         continue
                                     # Gate 1: Per-miner hardware limit
@@ -8707,6 +8711,7 @@ def main() -> None:
                                     timeout=float(config.get("fan_governor_request_timeout", 2.5)),
                                     clamp_top_preset=True,
                                     top_preset=_effective_top,
+                                    min_preset="1740",
                                     auto_restart_mining=False,
                                 )
                                 log(f"[SOFT_CONTINGENCY] Escalada escalonada a {_target_preset_str} (top={_effective_top}) aplicada a {_tu_name}: ok={_su_ok} msg={_su_msg}")
@@ -8721,7 +8726,7 @@ def main() -> None:
                                     _tu_st = states.get(_tu_sk)
                                     if _tu_st:
                                         _tu_st.balancer_preset = _target_preset_str
-                                        _tu_st.vnish_discovered_top_preset = _target_preset_str.rstrip("W")
+                                        _tu_st.vnish_discovered_top_preset = _effective_top.rstrip("W")
                                         _tu_st.vnish_discovered_preset = _target_preset_str.rstrip("W")
                                         _tu_st.vnish_discovered_target_power_w = float(parse_preset_wattage(_target_preset_str))
                                         _tu_st.last_preset_change_ts = now_ts

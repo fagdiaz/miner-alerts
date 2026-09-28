@@ -4,6 +4,41 @@ Este archivo registra las specs y cambios completados que tienen respaldo en el 
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
+## [2026-09-28] - Desbloqueo Automático de Techo Térmico (`ACTION_THERMAL_UNCLAMP`) y Bypass de Pre-Enfriamiento en Valley Orchestrator
+
+* **Contexto & Directiva del Operador**:
+  - Reclamo del operador: *"de nuevo, fijate que esta pasando porque la 23 deberia estar escalando a 2700w"*.
+  - S19JPRO-23 (192.168.100.23) permanecía estancado en 2500W a pesar de tener los chips fríos (78°C <= 80.0°C) y estar fuera de ventana pico.
+
+* **Diagnóstico de Causa Raíz**:
+  1. **Cerrojo Residual en Firmware VNish tras Expiración del Lockout**:
+     - Durante un evento térmico previo, el Guardián Térmico aplicó un step-down seguro con clampeo de `top_preset: "2500"` y fijó un cerrojo de 7200s (`thermal_lockout_until_ts`).
+     - Al expirar dicho periodo (más de 16h atrás), el monitor liberaba el bloqueo interno, pero no existía en el código un mecanismo proactivo para desclampear y restaurar `top_preset: "2700"` y `min_preset: "1740"` en la memoria del firmware VNish. Como resultado, el autoswitcher nativo de VNish estaba físicamente restringido a un techo de 2500W.
+  2. **Catch-22 en Gate 0 del Valley Orchestrator**:
+     - En `app/miner_monitor.py` (línea 8657), `VALLEY_ORCHESTRATOR` evaluaba:
+       `if _m_temp >= _th_max_temp (80.0°C) or _m_duty >= _th_max_duty (92%): continue`.
+     - Debido a la directiva de Fan Governor que ordena ventiladores al 100% PWM para cualquier minero < 2700W (`ACTION_RECOVERY_MAX_COOLING`), `_m_duty` era 100% (>= 92%), lo que provocaba que el orquestador abortara la escalada por "falta de margen térmico" a pesar de que el chip estaba frío (78°C).
+
+* **Acciones Técnicas Implementadas**:
+  1. **Motor de Desbloqueo Proactivo `ACTION_THERMAL_UNCLAMP` en `app/governance/thermal_guard.py`**:
+     - En `evaluate_emergency_thermal_action`: cuando el periodo de lockout ha expirado (`now_ts >= thermal_lockout_until_ts`), los chips están fríos y seguros ($\le 80.0^\circ\text{C}$), y `current_top_preset < max_hardware_preset`, emite `ACTION_THERMAL_UNCLAMP`.
+     - En `process_emergency_thermal_guard`: despacha `safe_set_miner_preset(host, vnish_pw, curr_p, clamp_top_preset=False, top_preset=target_hw_max, min_preset="1740")`, limpia `state.thermal_lockout_until_ts = None` y `state.hw_error_lock_until_ts = None`, actualiza `state.vnish_discovered_top_preset = target_hw_max` y notifica a Telegram.
+     - Limpieza de timestamps expirados cuando la condición de contingencia ya no aplica.
+  2. **Bypass de Pre-Enfriamiento en Gate 0 de `VALLEY_ORCHESTRATOR` (`app/miner_monitor.py`)**:
+     - Se integró la comprobación `_is_recovery_cooling = _m_gov_action in (ACTION_RECOVERY_MAX_COOLING, "HOLD_PRECOOLING")`.
+     - Si el ventilador está al 100% por directiva de pre-enfriamiento/recuperación, el umbral de duty no bloquea la escalada siempre que la temperatura del chip sea menor a 80.0°C.
+     - En la llamada de escalada a 2700W se inyecta `min_preset="1740"` para restablecer el rango operativo completo en VNish.
+  3. **Verificación en Vivo y Telemetría**:
+     - S19JPRO-23 escaló exitosamente a 2700W (2699W reales, 78.5°C silicio, ventiladores en régimen de lazo cerrado).
+     - NSSM `MinerAlerts` reiniciado y operando de forma limpia.
+
+* **Validación de Calidad & QA**:
+  - Compilación de sintaxis: `py_compile` en `app/governance/thermal_guard.py` y `app/miner_monitor.py` PASS.
+  - Tests unitarios de Thermal Guard: 19/19 PASS (incluyendo pruebas de unclamp y expiración de lockout).
+  - Tests unitarios de Soft-Contingency y Gate 0: 7/7 PASS.
+  - Suite completa de regresión: 1418 tests PASS, 75 subtests PASS (100% PASS en 42.85s).
+  - Preflight de estabilización: 7/7 gates PASS.
+
 ## [2026-09-28] - Corrección de Directiva Fan Governor: Ventiladores al 100% Bajo 2700W y Modulación en Lazo Cerrado a 82°C en Máxima Potencia
 
 * **Contexto & Directiva del Operador**:

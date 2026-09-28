@@ -23,6 +23,7 @@ ACTION_EMERGENCY_DOWNSTEP = "EMERGENCY_DOWNSTEP"
 ACTION_EMERGENCY_PAUSE = "EMERGENCY_PAUSE"
 ACTION_THERMAL_RESUME = "THERMAL_RESUME"
 ACTION_PAUSED_COOLING = "PAUSED_COOLING"
+ACTION_THERMAL_UNCLAMP = "THERMAL_UNCLAMP"
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,9 @@ def evaluate_emergency_thermal_action(
     thermal_pause_until_ts: Optional[float] = None,
     config: Optional[Dict[str, Any]] = None,
     now_ts: Optional[float] = None,
+    thermal_lockout_until_ts: Optional[float] = None,
+    current_top_preset: Optional[str] = None,
+    max_hardware_preset: Optional[str] = None,
 ) -> ThermalGuardDecision:
     """
     Pure deterministic decision engine for emergency thermal tripwire.
@@ -163,6 +167,31 @@ def evaluate_emergency_thermal_action(
             lockout_duration_s=lockout_s,
         )
 
+    # 4. Lockout Expiration Unclamp: If lockout expired, chips are cool, and top_preset was clamped below max hardware preset
+    if (
+        thermal_lockout_until_ts is not None
+        and current_time >= thermal_lockout_until_ts
+        and max_temp_c is not None
+        and max_temp_c <= 80.0
+        and current_top_preset is not None
+        and max_hardware_preset is not None
+    ):
+        clean_top = str(current_top_preset).upper().rstrip("W").strip()
+        clean_hw = str(max_hardware_preset).upper().rstrip("W").strip()
+        try:
+            top_w = float(clean_top)
+            hw_w = float(clean_hw)
+            if top_w < hw_w:
+                return ThermalGuardDecision(
+                    action=ACTION_THERMAL_UNCLAMP,
+                    target_preset=clean_hw,
+                    target_duty=None,
+                    reason=f"Bloqueo térmico expirado y chips estables ({max_temp_c:.1f}°C <= 80.0°C): liberando top_preset a {clean_hw}W",
+                    is_emergency=False,
+                )
+        except ValueError:
+            pass
+
     return ThermalGuardDecision(
         action=ACTION_NONE,
         target_preset=None,
@@ -221,9 +250,20 @@ def process_emergency_thermal_guard(
         thermal_pause_until_ts=getattr(state, "thermal_pause_until_ts", None),
         config=config,
         now_ts=now_ts,
+        thermal_lockout_until_ts=getattr(state, "thermal_lockout_until_ts", None),
+        current_top_preset=getattr(state, "vnish_discovered_top_preset", None),
+        max_hardware_preset=miner.get("max_hardware_preset", "2700W"),
     )
 
     if decision.action == ACTION_NONE:
+        if getattr(state, "thermal_lockout_until_ts", None) and now_ts >= state.thermal_lockout_until_ts:
+            clean_top = str(getattr(state, "vnish_discovered_top_preset", "") or "").upper().rstrip("W").strip()
+            clean_hw = str(miner.get("max_hardware_preset", "2700W")).upper().rstrip("W").strip()
+            try:
+                if float(clean_top) >= float(clean_hw):
+                    state.thermal_lockout_until_ts = None
+            except ValueError:
+                state.thermal_lockout_until_ts = None
         return None
 
     from app.vnish.client import (
@@ -347,6 +387,43 @@ def process_emergency_thermal_guard(
                 f"Acción: Minería reanudada en régimen protegido ({resume_preset}W) con ventiladores al 100% PWM."
             )
             send_tg(bot_token, str(chat_id), msg, "THERMAL_GUARD", "thermal_resume")
+        return decision.action
+
+    elif decision.action == ACTION_THERMAL_UNCLAMP:
+        target_hw_max = decision.target_preset or "2700"
+        state.thermal_lockout_until_ts = None
+        state.hw_error_lock_until_ts = None
+        state.vnish_discovered_top_preset = target_hw_max
+        curr_p = (
+            getattr(state, "balancer_preset", None)
+            or getattr(state, "vnish_discovered_preset", None)
+            or "2500"
+        )
+        if qa_mode:
+            log(f"[THERMAL_GUARD] (QA) UNCLAMP TOP PRESET for {name} to {target_hw_max}W (temp={max_temp_c:.1f}°C)")
+        else:
+            ok_p, err_p = set_preset(
+                host,
+                vnish_pw,
+                str(curr_p),
+                clamp_top_preset=False,
+                top_preset=str(target_hw_max),
+                min_preset="1740",
+            )
+            log(
+                f"[THERMAL_GUARD] UNCLAMP TOP PRESET dispatched for {name} to {target_hw_max}W "
+                f"(temp={max_temp_c:.1f}°C): preset_ok={ok_p} err={err_p}"
+            )
+
+        if bot_token and chat_id and (not qa_mode or qa_notify):
+            msg = (
+                f"🔓 *DESBLOQUEO TÉRMICO COMPLETADO*\n"
+                f"Minero: *{name}* (`{host}`)\n"
+                f"Temperatura silicio: *{max_temp_c:.1f}°C* (<= 80.0°C)\n"
+                f"Acción: Fin de periodo de bloqueo térmico. Techo de potencia liberado a *{target_hw_max}W* "
+                f"para permitir escalado normal según condiciones ambientales."
+            )
+            send_tg(bot_token, str(chat_id), msg, "THERMAL_GUARD", "thermal_unclamp")
         return decision.action
 
     return decision.action

@@ -19,6 +19,7 @@ from app.governance.thermal_guard import (
     ACTION_NONE,
     ACTION_PAUSED_COOLING,
     ACTION_THERMAL_RESUME,
+    ACTION_THERMAL_UNCLAMP,
     ThermalGuardDecision,
     evaluate_emergency_thermal_action,
     process_emergency_thermal_guard,
@@ -181,6 +182,56 @@ class TestEvaluateEmergencyThermalAction(unittest.TestCase):
         self.assertEqual(dec.action, ACTION_THERMAL_RESUME)
         self.assertEqual(dec.target_preset, "2500")
         self.assertEqual(dec.target_duty, 100)
+
+    def test_lockout_expired_unclamp_restores_top_preset(self):
+        # 1. Lockout expired, chips cool (<=80°C), top clamped at 2500W below max hardware 2700W -> UNCLAMP!
+        dec = evaluate_emergency_thermal_action(
+            max_temp_c=78.0,
+            current_preset="2500",
+            config=self.config,
+            now_ts=8205.0,
+            thermal_lockout_until_ts=8200.0,
+            current_top_preset="2500",
+            max_hardware_preset="2700W",
+        )
+        self.assertEqual(dec.action, ACTION_THERMAL_UNCLAMP)
+        self.assertEqual(dec.target_preset, "2700")
+
+        # 2. Chips too hot (> 80.0°C) -> No unclamp yet (stays ACTION_NONE)
+        dec_hot = evaluate_emergency_thermal_action(
+            max_temp_c=81.5,
+            current_preset="2500",
+            config=self.config,
+            now_ts=8205.0,
+            thermal_lockout_until_ts=8200.0,
+            current_top_preset="2500",
+            max_hardware_preset="2700W",
+        )
+        self.assertEqual(dec_hot.action, ACTION_NONE)
+
+        # 3. Already at max hardware preset -> No unclamp needed
+        dec_max = evaluate_emergency_thermal_action(
+            max_temp_c=78.0,
+            current_preset="2700",
+            config=self.config,
+            now_ts=8205.0,
+            thermal_lockout_until_ts=8200.0,
+            current_top_preset="2700",
+            max_hardware_preset="2700W",
+        )
+        self.assertEqual(dec_max.action, ACTION_NONE)
+
+        # 4. Lockout not yet expired -> No unclamp
+        dec_locked = evaluate_emergency_thermal_action(
+            max_temp_c=78.0,
+            current_preset="2500",
+            config=self.config,
+            now_ts=8100.0,
+            thermal_lockout_until_ts=8200.0,
+            current_top_preset="2500",
+            max_hardware_preset="2700W",
+        )
+        self.assertEqual(dec_locked.action, ACTION_NONE)
 
 
 class TestProcessEmergencyThermalGuard(unittest.TestCase):
@@ -346,6 +397,43 @@ class TestProcessEmergencyThermalGuard(unittest.TestCase):
         self.mock_set_preset.assert_not_called()
         self.mock_set_fan.assert_not_called()
         self.mock_send_tg.assert_not_called()
+
+    def test_process_unclamp_dispatches_correctly(self):
+        self.state.thermal_lockout_until_ts = 8200.0
+        self.state.hw_error_lock_until_ts = 8200.0
+        self.state.vnish_discovered_top_preset = "2500"
+        self.state.balancer_preset = "2500"
+        self.miner["max_hardware_preset"] = "2700W"
+
+        action = process_emergency_thermal_guard(
+            miner=self.miner,
+            state=self.state,
+            max_temp_c=78.0,
+            config=self.config,
+            now_ts=8210.0,
+            vnish_pw="admin",
+            safe_set_preset_fn=self.mock_set_preset,
+            safe_stop_fn=self.mock_stop_mining,
+            safe_resume_fn=self.mock_resume_mining,
+            safe_set_fan_fn=self.mock_set_fan,
+            send_telegram_fn=self.mock_send_tg,
+            log_fn=self.mock_log,
+            bot_token="test_token",
+            chat_id="12345",
+        )
+        self.assertEqual(action, ACTION_THERMAL_UNCLAMP)
+        self.mock_set_preset.assert_called_once_with(
+            "192.168.100.25",
+            "admin",
+            "2500",
+            clamp_top_preset=False,
+            top_preset="2700",
+            min_preset="1740",
+        )
+        self.assertIsNone(self.state.thermal_lockout_until_ts)
+        self.assertIsNone(self.state.hw_error_lock_until_ts)
+        self.assertEqual(self.state.vnish_discovered_top_preset, "2700")
+        self.mock_send_tg.assert_called_once()
 
 
 if __name__ == "__main__":

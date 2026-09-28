@@ -108,8 +108,8 @@ $gates += Invoke-StabilizationGate 'config-example-alignment' {
         & ".\.venv\Scripts\python.exe" -c @"
 import json, sys
 try:
-    c = json.load(open('app/config.json'))
-    ex = json.load(open('app/config.example.json'))
+    c = json.load(open('app/config.json', encoding='utf-8'))
+    ex = json.load(open('app/config.example.json', encoding='utf-8'))
     missing = [k for k in c.keys() if k not in ex and not k.startswith('_comment')]
     if missing:
         print(f'Missing keys in config.example.json: {missing}')

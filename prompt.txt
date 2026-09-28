@@ -1,46 +1,52 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-25 ~17:10 hs
+# PROMPT DE CONTINUIDAD - 2026-09-28 ~00:25 hs
 # MODELO RECOMENDADO: Gemini 3.8 Flash High (arquitectura / monitoreo / SpecKit)
-# TAREA: Documentación formal de PROP-016 (Autopsia Autónoma de Incidentes & Chatbot Q&A). Flota en 2500W base / 2700W libre. S19JPRO-25 cable de red reparado y estable.
+# TAREA: Directiva Fan Governor y Guardián Térmico P0 certificados en producción (1418 tests PASS, 0 fallos).
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
 
 LEE PRIMERO:
-  - docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md
-  - docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md
-  - .agents/skills/speckit-stabilize/SKILL.md
+  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-28 y 2026-09-27)
+  - app/miner_monitor.py (execute_governor_cycle y resolución de target_pwr)
+  - app/governance/fan_governor.py (compute_governor_step y resolve_power_fan_floor)
+  - app/governance/thermal_guard.py (motor P0 de disparo térmico y anti-doble-bajada)
+  - app/vnish/client.py (safe_set_miner_preset con min_preset y top_preset)
   - AGENTS.md
-  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-25)
 
 --------------------------------------------------------------------------------
-1. DIAGNÓSTICO FORENSE M25 Y REPARACIÓN FÍSICA DE RED (16:55 hs)
+1. DIRECTIVA FAN GOVERNOR: 100% BAJO 2700W & LAZO CERRADO A 82°C EN 2700W
 --------------------------------------------------------------------------------
-- Minero S19JPRO-25 (192.168.100.25):
-  - A las 15:45 hs sufrió reinicio del proceso cgminer por watchdog de VNish ('cur=17.40% min=30%').
-  - Causa raíz kernel (dmesg / libphy): Más de 100 micro-cortes de enlace Ethernet ('Link is Down') por falso contacto en el conector RJ45.
-  - Inocencia del monitor: Cero escrituras HTTP, cero cambios de preset y cero reboots enviados.
-  - Reparación física: El operador reajustó el conector a las 16:54 hs. Enlace renegociado a 100/Full a las 16:55:25 hs.
-  - Estado posterior: Cero caídas de enlace en dmesg, latencia de socket 7.98 ms (0% pérdidas), minando estable a ~94 TH/s (silicio 100% sano).
+El operador instruyó:
+*"una directiva que tenemos que tomar es que los fanes si no estan los miner hasheando a maxima potencia [2700W], los fanes tienen que estar al 100%... si llegan a 2700w deberian bajar para normalizar los 82°... con maxima potencia me refiero a 2700w y obviamente tiene que ser independiente en cada miner"*.
+
+Solución Implementada y Certificada:
+1. Desacoplamiento de Potencia Máxima en Monitor (`app/miner_monitor.py`):
+   - `target_pwr` se evalúa estrictamente contra el techo nominal máximo de hardware independiente por minero (2700W).
+   - Presets intermedios o bajados por contingencia (ej. 2500W, 2300W) ya NO degradan `target_pwr`.
+   - Cualquier equipo con potencia < 2580W (2700W - margen 120W) activa `ACTION_RECOVERY_MAX_COOLING` al 100% PWM de manera continua (`recovery_max_cooling_timeout_seconds = 0.0`).
+2. Modulación Descendente a 82.0°C en Máxima Potencia (2700W):
+   - Al alcanzar 2700W (potencia >= 2650W), cesa el modo de recuperación y se activa la regulación en lazo cerrado:
+     - `target_temp_c = 82.0°C`, banda muerta [81.0°C, 82.5°C].
+     - Si $T < 81.0^\circ\text{C}$: modulación descendente (`ACTION_STEP_DOWN`) para permitir que el silicio alcance 82.0°C.
+     - Piso térmico a 2700W restablecido a `power_floor_2700w: 92` (evita bloqueo al 100%).
+     - Si $T > 82.5^\circ\text{C}$: modulación ascendente (`ACTION_STEP_UP`).
+     - Si $T \ge 83.0^\circ\text{C}$: pico de emergencia al 100% (`ACTION_EMERGENCY_SPIKE`).
+3. Blindaje Anti-Doble-Bajada y Guardián P0 Intactos:
+   - Derecho de paso primario al switcher nativo de VNish a 84.0°C.
+   - Supervisor externo a 85.5°C con cerrojo bidireccional (`top_preset` + `min_preset`) y ventana anti-doble-bajada de 180s.
+   - Pausa crítica de emergencia a 87.0°C garantizando que ningún chip alcance jamás 90.0°C.
 
 --------------------------------------------------------------------------------
-2. PROPUESTA TÉCNICA PROP-016 FORMULADA Y DOCUMENTADA
+2. ESTADO DE VALIDACIÓN & FLOTA EN PRODUCCIÓN (00:25 hs)
 --------------------------------------------------------------------------------
-Documentada en `docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md`:
-  - IncidentAutopsyEngine: Trabajador en segundo plano que ante 'restart_detected' consulta WebSockets de VNish (status, miner, system/dmesg), clasifica la causa raíz y envía una tarjeta forense enriquecida a Telegram sin requerir apertura manual del IDE.
-  - Supervisor Conversacional Q&A en Telegram: Motor RAG determinístico para preguntas frecuentes del operador ('¿Por qué reinició la 25?', '¿Cómo está la red?', '¿Cómo viene la flota?') + capa opcional de síntesis LLM (Gemini Flash).
-  - Estado: En etapa de maduración conceptual para auditoría multi-agente previa a implementación.
-
---------------------------------------------------------------------------------
-3. ESTADO OPERATIVO DE LA FLOTA Y SERVICIO
---------------------------------------------------------------------------------
-- Flota:
-  - S19JPRO-23 | 2500W | Top: 2700W | Switcher: True | ~85 TH/s
-  - S19JPRO-24 | 2500W | Top: 2700W | Switcher: True | ~89 TH/s
-  - S19JPRO-25 | 2500W | Top: 2700W | Switcher: True | ~93 TH/s
-  - S19JPRO-26 | 2500W | Top: 2700W | Switcher: True | ~94 TH/s
-  Total Flota: ~361 TH/s | Silicio 100% sano (1512 chips activos, 0 cadenas caídas).
-- Gobernanza: `INTERVENTIONS master=True reason=operator_lock_fans_only`
-  - `presets_enabled = False` | `governor_enabled = True` (Fan Governor a 82°C) | `reboots_enabled = True`.
-- Servicio Windows NSSM: RUNNING (PID activo).
-- Remote Branch: origin/codex/022-adaptive-acquisition al día.
+- Suite de Pruebas: **1418 tests PASS**, 75 subtests PASS (100% éxito, 0 fallos en 40.69s).
+- Suite de Gobernador & Guardián Térmico: **69 tests PASS** (100% éxito).
+- Auditoría Speckit Stabilize: **PASS - CERTIFIED** (8 gates evaluados, 0 fallos).
+- Servicio Windows NSSM: RUNNING (PID 47240, `logs/err.log` sin excepciones activas).
+- Telemetría en vivo verificada (`logs/out.log`):
+  - S19JPRO-23 (2499W): `action=RECOVERY_MAX_COOLING duty=100% target=100%` (100% continuo bajo 2700W).
+  - S19JPRO-24 (2498W): `action=RECOVERY_MAX_COOLING duty=100% target=100%` (100% continuo bajo 2700W).
+  - S19JPRO-25 (2699W): `action=STEP_DOWN duty=96% target=96%` (modulando a 82°C a máxima potencia).
+  - S19JPRO-26 (2698W): `action=STEP_DOWN duty=94% target=94%` (modulando a 82°C a máxima potencia).
+  - Flota en producción: 1512 chips activos, 0 cadenas caídas, 100% de integridad eléctrica y térmica.

@@ -435,9 +435,10 @@ class TestAutoswitchRecovery(unittest.TestCase):
         self.assertEqual(st26.governor_last_action, ACTION_STEP_DOWN)
         self.assertEqual(st26.governor_duty, 95)
 
-    def test_contingency_reduced_preset_adapts_fans_to_regulate_temp(self):
-        """When contingency reduces preset to 2300W and miner runs at 2299W, governor must adapt
-        its target power to 2300W and STEP_DOWN towards 82°C instead of forcing 100% cooling."""
+    def test_contingency_reduced_preset_under_2700w_forces_100_cooling(self):
+        """Under user directive: If miner max hardware power is 2700W, even if contingency/balancer
+        temporarily downsteps preset to 2300W and miner runs at 2299W, it has not reached 2700W maximum
+        power, so fans must be forced to 100% (RECOVERY_MAX_COOLING) to cool silicon and allow autoswitch."""
         miners = [
             {"name": "M25", "host": "192.168.100.25", "port": 4028, "target_power_w": 2700.0},
         ]
@@ -459,10 +460,85 @@ class TestAutoswitchRecovery(unittest.TestCase):
         execute_governor_cycle(miners, states, lock, cfg, now_ts=1000.0)
 
         st = states["M25|192.168.100.25:4028"]
-        # Must NOT force 100% RECOVERY_MAX_COOLING; must step down to regulate chips towards 82°C!
-        self.assertNotEqual(st.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
-        self.assertEqual(st.governor_last_action, ACTION_STEP_DOWN)
-        self.assertLess(st.governor_duty, 90)
+        # Under user directive, any miner below 2700W maximum power must have fans at 100%
+        self.assertEqual(st.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(st.governor_duty, 100)
+
+    def test_fleet_individual_miners_under_2700w_maximum_power_forced_to_100(self):
+        """Directive test: All miners under 2700W maximum power must have fans at 100% independently,
+        while any miner hashing at 2700W modulates normally according to temperature."""
+        miners = [
+            {"name": "M23", "host": "192.168.100.23", "port": 4028, "target_power_w": 2700.0},
+            {"name": "M24", "host": "192.168.100.24", "port": 4028, "target_power_w": 2700.0},
+            {"name": "M25", "host": "192.168.100.25", "port": 4028, "target_power_w": 2700.0},
+            {"name": "M26", "host": "192.168.100.26", "port": 4028, "target_power_w": 2700.0},
+        ]
+        lock = threading.Lock()
+        states = {
+            # M23 hashing at 1998W (well below 2700W)
+            "M23|192.168.100.23:4028": MinerState(
+                governor_duty=90,
+                governor_last_temp_c=78.0,
+                governor_last_power_w=1998.0,
+                governor_last_change_ts=0.0,
+            ),
+            # M24 hashing at 2298W (below 2700W)
+            "M24|192.168.100.24:4028": MinerState(
+                governor_duty=94,
+                governor_last_temp_c=80.0,
+                governor_last_power_w=2298.0,
+                governor_last_change_ts=0.0,
+            ),
+            # M25 hashing at 2499W with vnish_discovered_preset="2500" (must NOT cap at 2500W, target is 2700W!)
+            "M25|192.168.100.25:4028": MinerState(
+                governor_duty=92,
+                governor_last_temp_c=81.0,
+                governor_last_power_w=2499.0,
+                governor_last_change_ts=0.0,
+                vnish_discovered_preset="2500",
+                vnish_discovered_top_preset="2700",
+                vnish_discovered_target_power_w=2700.0,
+            ),
+            # M26 hashing at full 2700W (at maximum power) and cool -> modulates normally
+            "M26|192.168.100.26:4028": MinerState(
+                governor_duty=100,
+                governor_last_temp_c=76.0,
+                governor_last_power_w=2700.0,
+                governor_last_change_ts=0.0,
+                vnish_discovered_preset="2700",
+                vnish_discovered_top_preset="2700",
+                vnish_discovered_target_power_w=2700.0,
+            ),
+        }
+        cfg = _make_config(
+            fan_governor_dry_run=True,
+            fan_governor_target_temp_c=83.0,
+            fan_governor_deadband_low_c=82.0,
+            fan_governor_step_down_pct=2,
+            fan_governor_dwell_seconds=90,
+            fan_governor_recovery_max_cooling_timeout_seconds=0.0,
+            fan_governor_power_floor_2700w=80,
+        )
+        execute_governor_cycle(miners, states, lock, cfg, now_ts=1000.0)
+
+        # M23, M24, M25 are below 2700W -> MUST all be at 100% duty
+        st23 = states["M23|192.168.100.23:4028"]
+        self.assertEqual(st23.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(st23.governor_duty, 100)
+
+        st24 = states["M24|192.168.100.24:4028"]
+        self.assertEqual(st24.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(st24.governor_duty, 100)
+
+        st25 = states["M25|192.168.100.25:4028"]
+        self.assertEqual(st25.governor_last_action, ACTION_RECOVERY_MAX_COOLING)
+        self.assertEqual(st25.governor_duty, 100)
+
+        # M26 is at 2700W maximum power and cool (76°C <= 82 - 5°C) -> steps down by 5% to 95%
+        st26 = states["M26|192.168.100.26:4028"]
+        self.assertEqual(st26.governor_last_action, ACTION_STEP_DOWN)
+        self.assertEqual(st26.governor_duty, 95)
+
 
 
 if __name__ == "__main__":

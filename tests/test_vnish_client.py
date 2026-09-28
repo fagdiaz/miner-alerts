@@ -247,6 +247,20 @@ class TestVnishClient(unittest.TestCase):
             timeout=DEFAULT_HTTP_TIMEOUT,
         )
 
+        mock_post.reset_mock()
+        # With min_preset specified for anti-doble-bajada
+        ok, err = set_miner_preset("192.168.100.23", "token_123", "2500W", min_preset="2500W")
+        self.assertTrue(ok)
+        mock_post.assert_called_once_with(
+            "http://192.168.100.23/api/v1/settings",
+            headers={
+                "Authorization": "Bearer token_123",
+                "Content-Type": "application/json",
+            },
+            json={"miner": {"overclock": {"preset": "2500", "preset_switcher": {"top_preset": "2500", "min_preset": "2500"}}}},
+            timeout=DEFAULT_HTTP_TIMEOUT,
+        )
+
     @patch("app.vnish.client.lock_miner")
     @patch("app.vnish.client.set_miner_preset")
     @patch("app.vnish.client.unlock_miner")

@@ -324,6 +324,7 @@ def set_miner_preset(
     session: Optional[requests.Session] = None,
     clamp_top_preset: bool = True,
     top_preset: Optional[str] = None,
+    min_preset: Optional[str] = None,
     auto_restart_mining: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
@@ -332,6 +333,7 @@ def set_miner_preset(
     If top_preset is specified, explicitly sets preset_switcher.top_preset to that value.
     Otherwise if clamp_top_preset is True, clamps preset_switcher.top_preset to preset_name
     to prevent the internal Vnish temperature daemon from overriding the contingency preset in cold weather.
+    If min_preset is specified, sets preset_switcher.min_preset to prevent Vnish from stepping down further.
     If auto_restart_mining is True and Vnish returns restart_required=True, automatically restarts mining.
     
     Returns: (success: bool, error_message: Optional[str])
@@ -345,15 +347,18 @@ def set_miner_preset(
     overclock_dict: Dict[str, Any] = {
         "preset": clean_preset
     }
+    switcher_dict: Dict[str, Any] = {}
     if top_preset is not None:
-        clean_top = str(top_preset).upper().rstrip("W").strip()
-        overclock_dict["preset_switcher"] = {
-            "top_preset": clean_top
-        }
+        switcher_dict["top_preset"] = str(top_preset).upper().rstrip("W").strip()
     elif clamp_top_preset:
-        overclock_dict["preset_switcher"] = {
-            "top_preset": clean_preset
-        }
+        switcher_dict["top_preset"] = clean_preset
+
+    if min_preset is not None:
+        switcher_dict["min_preset"] = str(min_preset).upper().rstrip("W").strip()
+
+    if switcher_dict:
+        overclock_dict["preset_switcher"] = switcher_dict
+
     payload = {
         "miner": {
             "overclock": overclock_dict
@@ -387,6 +392,7 @@ def safe_set_miner_preset(
     timeout: float = DEFAULT_HTTP_TIMEOUT,
     clamp_top_preset: bool = True,
     top_preset: Optional[str] = None,
+    min_preset: Optional[str] = None,
     auto_restart_mining: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
@@ -402,19 +408,13 @@ def safe_set_miner_preset(
         ok, token, err = unlock_miner(host, password, timeout=timeout)
         if not ok or not token:
             return False, f"unlock_failed: {err}"
-        kwargs = {}
+        kwargs: Dict[str, Any] = {}
         if auto_restart_mining:
             kwargs["auto_restart_mining"] = auto_restart_mining
         if top_preset is not None:
-            return set_miner_preset(
-                host,
-                token,
-                preset_name,
-                timeout=timeout,
-                clamp_top_preset=clamp_top_preset,
-                top_preset=top_preset,
-                **kwargs,
-            )
+            kwargs["top_preset"] = top_preset
+        if min_preset is not None:
+            kwargs["min_preset"] = min_preset
         return set_miner_preset(
             host,
             token,

@@ -3,6 +3,151 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+
+## [2026-09-28] - Corrección de Directiva Fan Governor: Ventiladores al 100% Bajo 2700W y Modulación en Lazo Cerrado a 82°C en Máxima Potencia
+
+* **Contexto & Directiva del Operador**:
+  - Mandato explícito: *"ALGo se rompio porque no estan tomando la directiva de fanes al 100% si no estan en 2700w. si llegan a 2700w deberian bajar para normalizar los 82° ... eso lo habiamos arreglado. ahora pisaste alguna funcion en estas ultimas implementaciones"*.
+  - Especificación complementaria: *"con maxima potencia me refiero a 2700w y obviamente tiene que ser independiente en cada miner"*, manteniendo la protección anti-doble-bajada y el Guardián Térmico P0.
+
+* **Diagnóstico de Causa Raíz**:
+  1. **Degradación de `target_pwr` por Preset Activo**:
+     - En `app/miner_monitor.py` (líneas 3158-3164), `target_pwr` tomaba `state.vnish_discovered_target_power_w` o `state.balancer_preset`. Cuando un minero operaba a 2500W, `target_pwr` se fijaba en 2500.0W.
+     - Al consumir 2499W, la condición `current_power_w < (target_pwr - power_margin_w)` ($2499 < 2380$) resultaba `False`. Por ende, el Fan Governor no disparaba `ACTION_RECOVERY_MAX_COOLING`, reteniendo los ventiladores en lugar de forzarlos al 100%.
+  2. **Bloqueo Físico del Piso Térmico a 2700W**:
+     - En `app/config.json`, `"fan_governor_power_floor_2700w"` había quedado configurado en `100`. Como resultado, `resolve_power_fan_floor` retornaba 100%, fijando `eff_min_duty = 100%`.
+     - Esto impedía físicamente que `ACTION_STEP_DOWN` pudiera reducir el duty por debajo del 100%, dejando a los mineros en 2700W trabados al 100% aun cuando sus chips estuvieran fríos (ej. 78°C).
+  3. **Descalibración de Consignas de Temperatura**:
+     - En `app/config.json`, `"fan_governor_target_temp_c"` figuraba en 79.0°C y `"fan_governor_emergency_temp_c"` en 82.0°C, provocando que a 82°C se disparara un pico de emergencia al 100% en lugar de estabilizar en banda muerta.
+
+* **Acciones Técnicas Implementadas**:
+  1. **Desacoplamiento de Potencia Máxima en `app/miner_monitor.py`**:
+     - Se reestructuró la resolución de `target_pwr` para evaluar estrictamente el techo nominal máximo de hardware independiente por minero:
+       `miner.get("target_power_w")` o `max_hardware_preset` o `max_preset` o `vnish_discovered_top_preset` o `fan_governor_target_power_w` (2700.0W).
+     - Presets intermedios o bajados por contingencia nunca degradan este valor. Cualquier minero por debajo de 2700W dispara incondicionalmente `ACTION_RECOVERY_MAX_COOLING` al 100% PWM (`fan_governor_recovery_max_cooling_timeout_seconds: 0.0`).
+  2. **Restauración de Consignas y Pisos en `app/config.json` y `app/config.example.json`**:
+     - `fan_governor_target_temp_c: 82.0` (consigna objetivo a máxima potencia).
+     - `fan_governor_deadband_low_c: 81.0` y `fan_governor_deadband_high_c: 82.5`.
+     - `fan_governor_emergency_temp_c: 83.0`.
+     - `fan_governor_power_floor_2700w: 92` (habilita la modulación 100% -> 92% para normalizar a 82°C).
+     - `fan_governor_power_floor_2500w: 90`.
+     - `fan_governor_recovery_max_cooling_timeout_seconds: 0.0` (enfriamiento continuo al 100% mientras no se alcance 2700W).
+  3. **Preservación Integral de la Protección Anti-Doble-Bajada y Guardián P0**:
+     - Se mantiene el derecho de paso al switcher nativo de VNish a 84.0°C.
+     - Guardián supervisor a 85.5°C con cerrojo bidireccional (`top_preset` + `min_preset`) y ventana anti-doble-bajada de 180s.
+     - Pausa de emergencia a 87.0°C garantizando techo absoluto antes de los 90.0°C.
+  4. **Alineación de Tests**:
+     - Se actualizó `test_contingency_reduced_preset_under_2700w_forces_100_cooling` en `tests/test_fan_governor_concurrency.py` para validar que equipos a 2300W permanezcan al 100% mientras no alcancen 2700W.
+
+* **Validación de Calidad & QA**:
+  - `git diff --check`: 0 errores de whitespace.
+  - Compilación de sintaxis: `py_compile` en `app/miner_monitor.py`, `app/governance/fan_governor.py`, `app/governance/thermal_guard.py` PASS.
+  - Pruebas unitarias de Fan Governor & Thermal Guard: 69/69 PASS.
+  - Suite completa de regresión: **1418 passed, 75 subtests passed** (100% PASS en 40.69s).
+
+## [2026-09-27] - Blindaje Anti-Doble-Bajada y Armonización con el Switcher Nativo de VNish (Thermal Guard Hardening)
+
+* **Contexto & Directiva del Operador**:
+  - Tras implementar el Guardián Térmico P0 contra sobrecalentamientos a 90°C, el operador instruyó una directiva indispensable de coordinación:
+    *"bueno, pero que no suceda que el monitor baja el preset y que vnish tambien lo haga generando doble bajada o inconvenientes. este asunto lo habiamos trabajado en otra oportunidad"*.
+  - Mandato: Prevenir taxativamente las colisiones de control ("doble bajada") donde tanto el demonio interno `preset_switcher` de VNish (`decrease_temp: 84°C`, `check_time: 300s`) como el monitor externo bajen el preset en cascada (ej. 2700W -> 2500W -> 2300W en menos de un minuto), evitando además la aparición del botón "Apply" o recargas indeseadas en la interfaz de VNish.
+
+* **Diagnóstico de los Mecanismos de Conflicto ("Doble Bajada")**:
+  1. **Solapamiento de Umbrales**: Con ambos sistemas fijados en 84.0°C, si VNish desescalaba primero en silicio de 2700W a 2500W pero la inercia térmica de los disipadores retenía los chips en 84.2°C, el monitor leía $\ge 84.0^\circ\text{C}$ e interpretaba que debía desescalar de 2500W a 2300W (doble bajada en cascada).
+  2. **Desescalada Externa sin Piso en VNish**: Cuando el monitor ordenaba una desescalada a 2500W clampeando únicamente `top_preset: "2500"`, el `min_preset` de fábrica de VNish seguía en "1740". Si el temporizador de 300s de VNish evaluaba mientras el chip aún disipaba calor transitorio ($\ge 84^\circ\text{C}$), VNish volvía a restar un escalón, cayendo a 2300W.
+  3. **Oscilación Térmica**: Si VNish desescalaba por su cuenta a 2500W manteniendo `top_preset: "2700"`, al enfriarse por debajo de `rise_temp` (79°C) VNish volvía a subir inmediatamente a 2700W, recalentando los chips en bucle.
+
+* **Arquitectura de la Solución Implementada (Blindaje Bidireccional)**:
+  1. **Separación de Umbrales (Derecho de Paso a VNish)**:
+     - VNish conserva el derecho de paso primario a **84.0°C** (`decrease_temp: 84`), realizando su desescalada nativa en caliente sin requerir peticiones HTTP ni generar prompts de "Apply".
+     - El Guardián Térmico del monitor se calibra a **85.5°C** (`emergency_thermal_downstep_temp_c: 85.5`), otorgando un margen de seguridad de 1.5°C para que VNish actúe. El monitor solo interviene como supervisor de emergencia si VNish se demora o hay un escape térmico severo.
+  2. **Sincronización Inmediata y Ventana de Asentamiento**:
+     - En `_collect_vnish_dynamic_settings()` de `app/miner_monitor.py`, la detección de cambio de preset autónomo en VNish (`old_p != st.vnish_discovered_preset`) sincroniza de inmediato `last_preset_change_ts` y `last_thermal_downstep_ts`.
+     - En `evaluate_emergency_thermal_action`, la comprobación de `cooldown_downstep_s` (180s) suprime cualquier intento de segundo escalón mientras la inercia térmica de la bajada previa se esté disipando.
+  3. **Cerrojo Bidireccional en Hardware (`min_preset` + `top_preset`)**:
+     - En `app/vnish/client.py`, se extendieron `set_miner_preset` y `safe_set_miner_preset` para aceptar el parámetro `min_preset: Optional[str] = None`.
+     - Al despachar un step-down a 2500W, el monitor inyecta `top_preset: "2500"` Y `min_preset: "2500"`.
+     - Al quedar el techo y el piso fijados en 2500W, **es físicamente imposible que el demonio de VNish baje a 2300W**, neutralizando de raíz la doble bajada.
+     - Se preserva el cerrojo térmico de 2 horas (`thermal_lockout_until_ts`) con ventiladores al 100% PWM.
+  4. **Pausa Crítica Incondicional a 87.0°C**:
+     - Si la temperatura alcanza 87.0°C, `ACTION_EMERGENCY_PAUSE` detiene el minado de inmediato vía `/api/v1/mining/stop`, asegurando con certeza absoluta que ningún minero toque jamás 90.0°C.
+
+* **Validación de Calidad & QA**:
+  - Compilación Python: `py_compile` en `app/vnish/client.py`, `app/governance/thermal_guard.py` y `app/miner_monitor.py` PASS (código 0).
+  - Pruebas unitarias de VNish Client: 26/26 PASS (verificado soporte de `min_preset`).
+  - Pruebas unitarias de Thermal Guard: 17/17 PASS (verificados derecho de paso de VNish a 84°C, disparo supervisor a 85.5°C, supresión anti-doble-bajada por cooldown y clampeo de `min_preset`).
+  - Suite completa del proyecto: **1418 tests PASS, 75 subtests PASS** (100% de éxito en 42.32s, cero regresiones).
+  - Servicio Windows `MinerAlerts` reiniciado exitosamente (`SERVICE_RUNNING`, cero errores en `err.log`).
+  - Telemetría en vivo: M23 (78°C, 2499W), M24 (81°C, 2498W), M25 (82°C, 2699W), M26 (78°C, 2698W) - 100% ventiladores, 388.1 TH/s en toda la flota, 1512 chips saludables.
+
+## [2026-09-27] - Invariante P0 Anti-Sobrecalentamiento: Guardián Térmico de Hardware (Step-Down 84°C / Pausa 87°C), Pisos al 100% en 2700W y Resolución Forense de Térmica 16A
+
+* **Contexto & Directiva Crítica del Operador**:
+  - A las 13:41 hs se disparó la térmica de la S19JPRO-26 (térmica de 16A). Simultáneamente, la S19JPRO-25 (mismo grupo eléctrico `elevator_2`) alcanzó 90.0°C en silicio y botó 2 cadenas antes de reiniciar.
+  - Mandato explícito del operador: "revisar la conexión física... vos fijate cómo hacer para que los miners no lleguen nunca a 90°, eso no debería haber pasado. No rompas nada, investigalo bien y ejecuta una resolución que pase por QA estricto y exhaustivo para evitar problemas".
+
+* **Diagnóstico Forense de Causa Raíz**:
+  1. **Disparo de Térmica 16A en S19JPRO-26 (13:41:31 hs)**:
+     - El minero operó de forma continua a 2698.0W (preset 2700W) durante 9931s (~2.75 hs).
+     - A 220V nominales, 2698W consume $I = 12.26\text{A}$ (76.6% de 16A).
+     - Al mediodía (13:40 hs), la temperatura interna del tablero eléctrico cerrado alcanza 45°C-55°C. Por desclasificación térmica (thermal derating) del bimetal de la termomagnética calibrada a 30°C, la corriente admisible de una térmica de 16A cae a ~13.0A-13.6A.
+     - Sumado a caídas de tensión de red en horas pico (a 205V, $I = 13.16\text{A}$) y posible resistencia de contacto ($I^2 R$) por tornillo flojo en bornera, la térmica operó en su curva de disparo térmico retardado tras 2.7 horas de saturación.
+  2. **Escape Térmico a 90.0°C en S19JPRO-25 (13:44:06 hs)**:
+     - El Fan Governor permitía modulación descendente de ventiladores a 96% y 92% en presets de 2700W (`power_floor_2700w: 92`).
+     - Al dispararse la 26, el rechazo de carga en `elevator_2` generó un transitorio inductivo que impactó la fuente de la 25.
+     - A las 13:39:01 hs los chips de la 25 alcanzaron 82°C y el gobernador disparó `EMERGENCY_SPIKE` al 100%. Sin embargo, a 2700W con ventiladores al 100%, la inercia térmica en horas de calor extremo continuó elevando la temperatura de unión a 84°, 87° y 90.0°C.
+     - El monitor tenía `presets_enabled = False` y el autoswitch interno de VNish solo evalúa cada 300s (5 min). El software observó `status=CRITICAL_HEAT` pero no tomó ninguna acción física de reducción de carga ni desescalada de preset. A 90.0°C, el corte por hardware de VNish desconectó las cadenas.
+
+* **Arquitectura de Defensa en Profundidad Implementada (Invariante Inviolable P0)**:
+  1. **Nuevo Motor de Protección de Hardware: `app/governance/thermal_guard.py`**:
+     - **Nivel 1 - Step-Down de Emergencia ($\ge 84.0^\circ\text{C}$)**: Si cualquier chip alcanza 84.0°C, se ejecuta inmediatamente una desescalada forzada de preset (2700W -> 2500W, o 2500W -> 2300W) vía `safe_set_miner_preset` con `clamp_top_preset=True, top_preset=target_preset` y ventiladores al 100% PWM. Se activa un candado térmico de 2 horas (`thermal_lockout_until_ts = now + 7200s`) que bloquea cualquier intento de subida por autoswitch.
+     - **Nivel 2 - Pausa Térmica de Emergencia ($\ge 87.0^\circ\text{C}$)**: Si la temperatura llega a 87.0°C (ej. fallo o bloqueo de flujo de aire), se ejecuta `safe_stop_mining` inmediatamente vía API VNish, deteniendo el hasheo en <1s (potencia cae de 2700W a 50W) mientras los ventiladores se mantienen forzados al 100% PWM.
+     - **Reanudación Automática Segura ($\le 75.0^\circ\text{C}$)**: Transcurrida la ventana de reposo de 90s y una vez que el silicio desciende a $\le 75.0^\circ\text{C}$, se reanuda la minería automáticamente en un preset protegido vía `safe_resume_mining`.
+  2. **Pisos Físicos de Ventilación y Modulación Asimétrica**:
+     - `"fan_governor_power_floor_2700w": 100`: A 2700W, los ventiladores NUNCA bajan del 100% PWM bajo ninguna circunstancia.
+     - `"fan_governor_power_floor_2500w": 95`: Piso mínimo de 95% para 2500W.
+     - Consignas alineadas con VNish: `target_temp_c = 79.0°C`, `deadband_low_c = 76.0°C`, `deadband_high_c = 80.5°C`, `emergency_temp_c = 82.0°C`.
+     - Corrección en `fan_governor.py`: la comprobación de `Autoswitch Recovery / Power Deficit Protection` ahora se evalúa antes del `Out-of-bounds floor clamp`, asegurando que equipos por debajo de 2700W reciban 100% PWM continuo.
+  3. **Persistencia e Interbloqueos**:
+     - Agregados campos en `MinerState`, `load_state` y `app/core/state_manager.py`: `last_thermal_downstep_ts`, `last_thermal_pause_ts`, `thermal_pause_until_ts`, `thermal_lockout_until_ts`.
+     - Interbloqueo en `evaluate_auto_restart_candidate` y `evaluate_auto_reboot_candidate`: supresión estricta de reinicios mientras el equipo esté en pausa térmica.
+
+* **Validación y QA Exhaustivo**:
+  - Compilación Python: `py_compile` en todos los archivos modificados OK (cero errores).
+  - Nueva suite de pruebas unitarias e integración en `tests/test_emergency_thermal_guard.py` (15 pruebas PASS).
+  - Suite completa del proyecto: **1416 tests PASS**, 75 subtests PASS (100% éxito, 0 regresiones).
+  - Servicio Windows `MinerAlerts` reiniciado exitosamente.
+  - Telemetría en vivo verificada: toda la flota operando con ventiladores forzados al 100% PWM (M23: 83°C, M24: 83°C, M25: 81°C, M26: 79°C), con silicio sano y las 3 cadenas activas en cada minero.
+
+## [2026-09-25] - Directiva Operativa de Máxima Potencia (2700W) e Independencia por Minero: Enfriamiento Continuo al 100% PWM Bajo Potencia Máxima
+
+* **Contexto & Directiva del Operador**:
+  - El operador instruyó una directiva operacional clave:
+    1. Si los mineros no están hasheando a máxima potencia, los ventiladores deben operar obligatoriamente al 100% PWM para maximizar la disipación térmica y permitir que el autoswitch de VNish baje de 79°C y escale de preset.
+    2. Por máxima potencia se define explícitamente **2700W** (consigna individual por minero).
+    3. La evaluación y control debe ser estrictamente **independiente para cada minero** de la flota, sin pisar ni romper ninguna protección térmica o de arranque existente.
+
+* **Diagnóstico de Causa Raíz Previa**:
+  - `fan_governor_recovery_max_cooling_timeout_seconds` estaba configurado por defecto en 900.0s (15 min). Tras ese tiempo, `is_timed_out` se activaba y los ventiladores caían a los pisos de potencia (90%-94%), manteniendo la temperatura de los chips en 81°-83°C. A esa temperatura, el autoswitch de VNish (`rise_temp <= 79°C`) nunca habilitaba la subida de 2500W a 2700W.
+  - En la resolución de `target_pwr`, la presencia de `vnish_discovered_preset` (ej. "2500") provocaba que el gobernador considerara el preset intermedio como la potencia objetivo final, asumiendo falsamente que el minero ya estaba a potencia máxima.
+
+* **Implementación & Ajustes Técnicos**:
+  - En `app/governance/fan_governor.py`:
+    - `recovery_max_cooling_timeout_seconds: float = 0.0` (0.0 = ilimitado, 100% continuo mientras la potencia sea menor a la potencia máxima).
+    - `is_cold_startup = is_warming_up and (current_power_w is not None and current_power_w < 1700.0)`: preserva la protección de chips fríos contra fallos de PLL únicamente cuando el silicio arranca en frío (<1700W). Si el minero ya hashea a potencia operativa, el enfriamiento al 100% se aplica de inmediato.
+    - Condición de timeout: `is_timed_out` requiere `cfg.recovery_max_cooling_timeout_seconds > 0.0`. Con 0.0, nunca caduca mientras el minero esté por debajo de la potencia objetivo.
+  - En `app/miner_monitor.py`:
+    - Eliminado `vnish_discovered_preset` de la resolución de `target_pwr`, asegurando que el objetivo por minero sea siempre su potencia máxima (2700W vía `target_power_w`, `vnish_discovered_top_preset`, `max_hardware_preset` o `fan_governor_target_power_w`), respetando únicamente contingencias activas explícitas (`balancer_preset` / `hw_error_locked_preset`).
+    - En el ciclo del gobernador, la tupla `miner_decisions` transporta `(miner, state_key, decision, target_pwr, miner_gov_cfg)` de forma individual por minero, garantizando aislamiento de contexto por equipo.
+  - En `app/config.json` y `app/config.example.json`:
+    - Configurado `"fan_governor_recovery_max_cooling_timeout_seconds": 0.0`.
+
+* **Validación & Evidencia Operativa**:
+  - Compilación Python: `app/miner_monitor.py` y `app/governance/fan_governor.py` OK (cero errores de sintaxis).
+  - Pruebas unitarias: Creada `test_fleet_individual_miners_under_2700w_maximum_power_forced_to_100` en `tests/test_fan_governor_concurrency.py` y pruebas de timeout cero en `tests/test_fan_governor.py`. Suite completa: **1401 tests PASS**, 75 subtests PASS.
+  - Servicio de Windows `MinerAlerts` reiniciado exitosamente.
+  - Evidencia en vivo en `logs/out.log` y `app/state.json`: los 4 mineros por debajo de 2700W (M23: 1998W, M24: 2298W, M25: 2499W, M26: 2499W) operan inmediatamente con ventiladores al **100% PWM** de forma completamente independiente.
+
 ## [2026-09-25] - Diagnóstico Forense de Reinicio en S19JPRO-25 (Falla Física de Enlace Ethernet), Reparación de Cable y Formulación de la Propuesta PROP-016 (Autopsia Autónoma & Chatbot Q&A)
 
 * **Contexto & Solicitud del Operador**:

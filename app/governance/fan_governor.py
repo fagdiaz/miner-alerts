@@ -50,7 +50,7 @@ class GovernorConfig:
     power_floor_2500w: int = 60
     power_floor_2300w: int = 50
     power_floor_1800w: int = 40
-    recovery_max_cooling_timeout_seconds: float = 900.0
+    recovery_max_cooling_timeout_seconds: float = 0.0  # 0.0 = unlimited (100% continuous while below target power)
 
 
 @dataclass(frozen=True)
@@ -281,30 +281,17 @@ def compute_governor_step(
             seasonal_mode=seasonal.mode,
         )
 
-    # 5. Out-of-bounds floor clamp: if hardware is currently below min floor, immediately step up to floor
-    if raw_duty < eff_min_duty:
-        return GovernorDecision(
-            action=ACTION_STEP_UP,
-            target_duty=eff_min_duty,
-            current_duty=raw_duty,
-            reason=f"Por debajo del piso mínimo ({raw_duty}% < {eff_min_duty}%): elevando a {eff_min_duty}%",
-            dwell_effective=cfg.dwell_seconds,
-            is_emergency=False,
-            requires_write=True,
-            seasonal_mode=seasonal.mode,
-        )
-
-    # 6. Autoswitch Recovery / Power Deficit Protection:
+    # 5. Autoswitch Recovery / Power Deficit Protection:
     # If miner is hashing below its established autoswitch ceiling (e.g. 2300W < 2500W or 2700W),
     # fans MUST be at 100% to lower chip temp <= 79°C and allow Vnish autoswitch to step up.
     # We NEVER modulate fans down when the miner is working under its power limit!
-    # Guard 1: Do not trigger 100% cooling when miner is warming up post-reboot or has not started hashing (<500W),
+    # Guard 1: Suppress 100% cooling only during cold-chip autotuning (power < 1700W while warming up),
     # to allow the ASIC silicon to reach operational temperature without cold-chip autotuning faults.
-    # Guard 2 (Safety Timeout): If recovery cooling has exceeded recovery_max_cooling_timeout_seconds (default 900s)
-    # and chip temp is within safe operating range (<= deadband_high_c), do not hold 100% indefinitely.
-    # Allow the governor to proceed with normal thermal modulation (respecting power fan floors).
+    # Guard 2 (Safety Timeout): If recovery_max_cooling_timeout_seconds > 0.0, exit 100% cooling
+    # after timeout if chip temp <= deadband_high_c. When 0.0 (default), 100% cooling is continuous.
+    is_cold_startup = is_warming_up and (current_power_w is not None and current_power_w < 1700.0)
     if (
-        not is_warming_up
+        not is_cold_startup
         and target_power_w is not None
         and current_power_w is not None
         and target_power_w > 0
@@ -312,7 +299,8 @@ def compute_governor_step(
     ):
         if current_power_w < (target_power_w - cfg.power_margin_w):
             is_timed_out = (
-                recovery_cooling_seconds >= cfg.recovery_max_cooling_timeout_seconds
+                cfg.recovery_max_cooling_timeout_seconds > 0.0
+                and recovery_cooling_seconds >= cfg.recovery_max_cooling_timeout_seconds
                 and max_temp_c is not None
                 and max_temp_c <= seasonal.deadband_high_c
             )
@@ -323,8 +311,8 @@ def compute_governor_step(
                     target_duty=cfg.max_fan_duty_percent,
                     current_duty=curr_duty,
                     reason=(
-                        f"Bajo potencia objetivo ({current_power_w:.0f}W < {target_power_w:.0f}W): "
-                        "100% PWM para permitir subida de autoswitch Vnish"
+                        f"Bajo potencia máxima ({current_power_w:.0f}W < {target_power_w:.0f}W): "
+                        "100% PWM requerido para enfriamiento y habilitar subida de autoswitch Vnish"
                     ),
                     dwell_effective=0,
                     is_emergency=False,
@@ -332,7 +320,7 @@ def compute_governor_step(
                     seasonal_mode=seasonal.mode,
                 )
 
-    # 6b. Headroom Chilling (Spec 075 / PROP-010):
+    # 5b. Headroom Chilling (Spec 075 / PROP-010):
     # If the balancer requests boost cooling to enable stepping up preset (e.g. from 2500W to 2700W),
     # force fans to 100% PWM to bring chip temperature down without waiting for dwell.
     if boost_cooling and not is_warming_up:
@@ -345,6 +333,19 @@ def compute_governor_step(
             dwell_effective=0,
             is_emergency=False,
             requires_write=needs_write,
+            seasonal_mode=seasonal.mode,
+        )
+
+    # 6. Out-of-bounds floor clamp: if hardware is currently below min floor, immediately step up to floor
+    if raw_duty < eff_min_duty:
+        return GovernorDecision(
+            action=ACTION_STEP_UP,
+            target_duty=eff_min_duty,
+            current_duty=raw_duty,
+            reason=f"Por debajo del piso mínimo ({raw_duty}% < {eff_min_duty}%): elevando a {eff_min_duty}%",
+            dwell_effective=cfg.dwell_seconds,
+            is_emergency=False,
+            requires_write=True,
             seasonal_mode=seasonal.mode,
         )
 
@@ -431,6 +432,7 @@ def compute_governor_step(
             requires_write=False,
             seasonal_mode=seasonal.mode,
         )
+
 
     delta_cool = seasonal.deadband_low_c - max_temp_c
     if delta_cool >= 5.0:

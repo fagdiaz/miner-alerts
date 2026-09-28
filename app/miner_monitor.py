@@ -947,6 +947,11 @@ class MinerState:
     staged_ramp_up_pending: bool = False
     staged_ramp_up_soak_start_ts: Optional[float] = None
     stock_firmware_fallback_notified: bool = False
+    # P0 Thermal Tripwire Hardware Protection (Emergency Shedding & Pause)
+    last_thermal_downstep_ts: float = 0.0
+    last_thermal_pause_ts: float = 0.0
+    thermal_pause_until_ts: Optional[float] = None
+    thermal_lockout_until_ts: Optional[float] = None
 
 
 _GLOBAL_LOADED_CONFIG: Optional[Dict[str, Any]] = None
@@ -2634,6 +2639,19 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("staged_ramp_up_soak_start_ts") is not None
                     else None
                 ),
+                # P0 Thermal Tripwire Hardware Protection
+                last_thermal_downstep_ts=float(data.get("last_thermal_downstep_ts", 0.0)),
+                last_thermal_pause_ts=float(data.get("last_thermal_pause_ts", 0.0)),
+                thermal_pause_until_ts=(
+                    float(data.get("thermal_pause_until_ts"))
+                    if data.get("thermal_pause_until_ts") is not None
+                    else None
+                ),
+                thermal_lockout_until_ts=(
+                    float(data.get("thermal_lockout_until_ts"))
+                    if data.get("thermal_lockout_until_ts") is not None
+                    else None
+                ),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -3058,10 +3076,10 @@ def execute_governor_cycle(
     gov_cfg = GovernorConfig(
         enabled=True,
         dry_run=dry_run,
-        target_temp_c=float(config.get("fan_governor_target_temp_c", 82.0)),
-        deadband_low_c=float(config.get("fan_governor_deadband_low_c", 81.0)),
-        deadband_high_c=float(config.get("fan_governor_deadband_high_c", 82.5)),
-        emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 83.0)),
+        target_temp_c=float(config.get("fan_governor_target_temp_c", 79.0)),
+        deadband_low_c=float(config.get("fan_governor_deadband_low_c", 76.0)),
+        deadband_high_c=float(config.get("fan_governor_deadband_high_c", 80.5)),
+        emergency_spike_temp_c=float(config.get("fan_governor_emergency_temp_c", 82.0)),
         min_fan_duty_percent=int(config.get("fan_governor_min_duty_pct", 30)),
         max_fan_duty_percent=100,
         step_down_percent=int(config.get("fan_governor_step_down_pct", 2)),
@@ -3082,11 +3100,11 @@ def execute_governor_cycle(
         summer_target_temp_c=float(config.get("fan_governor_summer_target_temp_c", 80.0)),
         summer_min_duty_percent=int(config.get("fan_governor_summer_min_duty_pct", 65)),
         summer_step_up_percent=int(config.get("fan_governor_summer_step_up_pct", 5)),
-        power_floor_2700w=int(config.get("fan_governor_power_floor_2700w", 80)),
-        power_floor_2500w=int(config.get("fan_governor_power_floor_2500w", 75)),
-        power_floor_2300w=int(config.get("fan_governor_power_floor_2300w", 65)),
+        power_floor_2700w=int(config.get("fan_governor_power_floor_2700w", 100)),
+        power_floor_2500w=int(config.get("fan_governor_power_floor_2500w", 95)),
+        power_floor_2300w=int(config.get("fan_governor_power_floor_2300w", 75)),
         power_floor_1800w=int(config.get("fan_governor_power_floor_1800w", 50)),
-        recovery_max_cooling_timeout_seconds=float(config.get("fan_governor_recovery_max_cooling_timeout_seconds", 900.0)),
+        recovery_max_cooling_timeout_seconds=float(config.get("fan_governor_recovery_max_cooling_timeout_seconds", 0.0)),
     )
 
     # Build (miner, state, decision) triples
@@ -3119,14 +3137,18 @@ def execute_governor_cycle(
                 continue
             seconds_since = now_ts - (state.governor_last_change_ts or 0.0)
 
-            # Determine target_power_w for autoswitch recovery cooling
-            # Priority:
-            # 1. Dynamically assigned balancer preset (contingency or dynamic balancer)
-            # 2. Hardware error locked preset (tripwire)
-            # 3. Discovered active preset from Vnish
-            # 4. Discovered target power from Vnish
-            # 5. Configured target_power_w or max_preset in miner definition
-            # 6. Global default fan_governor_target_power_w (2700.0)
+            # Directiva Fan Governor: Si un minero NO está hasheando a máxima potencia (2700W),
+            # los ventiladores DEBEN mantenerse al 100% PWM (ACTION_RECOVERY_MAX_COOLING).
+            # Cuando alcanza los 2700W, modula en lazo cerrado para normalizar a 82.0°C.
+            # Cada minero se evalúa de forma estrictamente independiente.
+            # Por tanto, target_pwr representa el techo nominal máximo del minero (2700W),
+            # y nunca debe degradarse por presets intermedios o bajados (ej. 2500W).
+            # Prioridad de resolución independiente:
+            # 1. target_power_w configurado por minero (ej. 2700.0)
+            # 2. max_hardware_preset configurado por minero (ej. "2700W")
+            # 3. max_preset configurado por minero (ej. "2700W")
+            # 4. vnish_discovered_top_preset reportado por la API Vnish (ej. "2700W")
+            # 5. fan_governor_target_power_w global (default 2700.0)
             def _parse_preset_w(val: Any) -> Optional[float]:
                 if val is None:
                     return None
@@ -3137,20 +3159,13 @@ def execute_governor_cycle(
                 except ValueError:
                     return None
 
-            target_pwr = getattr(state, "vnish_discovered_target_power_w", None)
-            if target_pwr is None:
-                active_preset_str = (
-                    getattr(state, "balancer_preset", None)
-                    or getattr(state, "hw_error_locked_preset", None)
-                    or getattr(state, "vnish_discovered_preset", None)
-                )
-                target_pwr = _parse_preset_w(active_preset_str)
-            if target_pwr is None:
-                target_pwr = miner.get("target_power_w")
-            if target_pwr is None:
-                target_pwr = _parse_preset_w(miner.get("max_preset"))
-            if target_pwr is None:
-                target_pwr = float(config.get("fan_governor_target_power_w", 2700.0))
+            target_pwr = (
+                miner.get("target_power_w")
+                or _parse_preset_w(miner.get("max_hardware_preset"))
+                or _parse_preset_w(miner.get("max_preset"))
+                or _parse_preset_w(getattr(state, "vnish_discovered_top_preset", None))
+                or float(config.get("fan_governor_target_power_w", 2700.0))
+            )
 
             # Per-miner configuration overrides (if present in miner config dict)
             miner_gov_cfg = gov_cfg
@@ -3284,7 +3299,7 @@ def execute_governor_cycle(
                 boost_cooling=boost_cooling_is_active,
                 recovery_cooling_seconds=rec_duration_s,
             )
-            miner_decisions.append((miner, state_key, decision))
+            miner_decisions.append((miner, state_key, decision, target_pwr, miner_gov_cfg))
 
     if not miner_decisions:
         return
@@ -3293,7 +3308,7 @@ def execute_governor_cycle(
     write_results: Dict[str, tuple] = {}  # state_key -> (success, error)
     writers = [
         (miner, sk, dec)
-        for miner, sk, dec in miner_decisions
+        for miner, sk, dec, _tgt, _cfg in miner_decisions
         if dec.requires_write and not dry_run
     ]
     if writers:
@@ -3334,7 +3349,7 @@ def execute_governor_cycle(
     # Update per-miner state under state_lock — also handles C4 Thermal Guard
     thermal_guard_events: list = []  # (miner_name, temp_c, action) for caller to notify Telegram
     with state_lock:
-        for miner, sk, dec in miner_decisions:
+        for miner, sk, dec, tgt_pwr, miner_gov_cfg in miner_decisions:
             state = states.get(sk)
             if state is None:
                 continue
@@ -3371,7 +3386,6 @@ def execute_governor_cycle(
             state.governor_last_action = action
 
             # Update recovery cooling episode tracker
-            tgt_pwr = miner.get("target_power_w")
             pwr_val = getattr(state, "governor_last_power_w", None)
             is_under_power_target = (
                 pwr_val is not None
@@ -3406,7 +3420,6 @@ def execute_governor_cycle(
             duty_tag = f"duty={state.governor_duty}%" if state.governor_duty is not None else "duty=?"
             err_tag = f" err={write_err}" if write_err else ""
             pwr_val = getattr(state, "governor_last_power_w", None)
-            tgt_pwr = miner.get("target_power_w")
             if pwr_val is not None and tgt_pwr is not None:
                 pwr_tag = f" pwr={pwr_val:.0f}/{tgt_pwr:.0f}W"
             elif pwr_val is not None:
@@ -3477,11 +3490,20 @@ def refresh_vnish_overclock_settings(
                             st = states.get(sk)
                             if st is not None:
                                 old_tgt = st.vnish_discovered_target_power_w
+                                old_p = st.vnish_discovered_preset
                                 st.vnish_discovered_target_power_w = data.get("target_power_w")
                                 st.vnish_discovered_preset = data.get("preset")
                                 st.vnish_discovered_top_preset = data.get("top_preset")
                                 st.vnish_discovered_switcher_enabled = data.get("switcher_enabled")
                                 st.vnish_discovered_ts = current_ts
+                                if old_p is not None and st.vnish_discovered_preset is not None and old_p != st.vnish_discovered_preset:
+                                    st.last_preset_change_ts = current_ts
+                                    st.last_thermal_downstep_ts = current_ts
+                                    st.balancer_preset = st.vnish_discovered_preset
+                                    log(
+                                        f"[VNISH_SYNC] miner={m_name} detecto cambio autonomo de preset en VNish: "
+                                        f"{old_p} -> {st.vnish_discovered_preset}. Sincronizando timestamps para proteccion anti-doble-bajada."
+                                    )
                                 if old_tgt != st.vnish_discovered_target_power_w and old_tgt is not None:
                                     log(
                                         f"[VNISH_SYNC] miner={m_name} target_power_w adaptado dinamicamente: "
@@ -6478,6 +6500,25 @@ def main() -> None:
                         )
                         log(f"[COOLING_WARNING] miner={name_display} status={cooling_ass.status}")
 
+                # P0 Closed-Loop Thermal Tripwire Hardware Protection (Emergency Shedding & Pause)
+                if not first_tick and (responded or getattr(state, "thermal_pause_until_ts", None) is not None):
+                    try:
+                        from app.governance.thermal_guard import process_emergency_thermal_guard
+                        process_emergency_thermal_guard(
+                            miner=miner,
+                            state=state,
+                            max_temp_c=vnish_telemetry.max_temp_c if responded else getattr(state, "governor_last_temp_c", None),
+                            config=config,
+                            now_ts=now_ts,
+                            vnish_pw=str(config.get("vnish_api_password", "admin")),
+                            qa_mode=qa_mode,
+                            qa_notify=qa_notify,
+                            bot_token=bot_token,
+                            chat_id=str(chat_id),
+                        )
+                    except Exception as _tg_exc:
+                        log(f"[THERMAL_GUARD_ERR] Emergency thermal guard error for miner={name_display}: {_tg_exc}")
+
                 # Spec 036: Hashrate Efficiency & Energy Tracking preventative evaluation
                 efficiency_alert_enabled = bool(config.get("efficiency_alert_enabled", True))
                 if efficiency_alert_enabled and not first_tick and responded:
@@ -6846,6 +6887,7 @@ def main() -> None:
                     and not startup_grace_active
                     and not reboot_reason
                     and is_hash_degraded
+                    and getattr(state, "thermal_pause_until_ts", None) is None
                 ):
                     if state.stopped_since_ts is None:
                         with state_lock:
@@ -6951,8 +6993,10 @@ def main() -> None:
                     rate_ths,
                     threshold_ths,
                 )
-                current_tick_signals[state_key] = auto_reboot_signal
                 auto_reboot_candidate = auto_reboot_signal == AUTO_REBOOT_SIGNAL_ELIGIBLE
+                if auto_reboot_candidate and getattr(state, "thermal_pause_until_ts", None) is not None and now_ts < state.thermal_pause_until_ts:
+                    auto_reboot_candidate = False
+                    log(f"[AUTO-REBOOT] blocked_by=thermal_pause miner={name_display}")
                 interlock_decision = evaluate_auto_reboot_interlocks(
                     current_miner_key=state_key,
                     current_signal=auto_reboot_signal,
@@ -8402,7 +8446,8 @@ def main() -> None:
                         with state_lock:
                             _mst = states.get(_msk)
                             _mt = (getattr(_mst, "last_max_chip_temp", None) or 0.0) if _mst else 0.0
-                        if _mt >= TEMP_CRITICAL_DOWNSTEP_C:
+                        _thermal_trip_c = float(config.get("emergency_thermal_downstep_temp_c", 85.5))
+                        if _mt >= _thermal_trip_c:
                             overheated_miner = _m
                             overheated_temp = _mt
                             break
@@ -8458,6 +8503,7 @@ def main() -> None:
                                     timeout=float(config.get("fan_governor_request_timeout", 2.5)),
                                     clamp_top_preset=True,
                                     top_preset=target_downstep_preset,
+                                    min_preset=target_downstep_preset,
                                     auto_restart_mining=False,
                                 )
                                 log(f"[SOFT_CONTINGENCY] Desescalada escalonada a {target_downstep_preset} aplicada a {_td_name}: ok={_sd_ok} msg={_sd_msg}")

@@ -269,6 +269,11 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "original_preset_before_clamp": getattr(state, "original_preset_before_clamp", None),
         "staged_ramp_up_pending": getattr(state, "staged_ramp_up_pending", False),
         "staged_ramp_up_soak_start_ts": getattr(state, "staged_ramp_up_soak_start_ts", None),
+        # P0 Thermal Tripwire Hardware Protection
+        "last_thermal_downstep_ts": getattr(state, "last_thermal_downstep_ts", 0.0),
+        "last_thermal_pause_ts": getattr(state, "last_thermal_pause_ts", 0.0),
+        "thermal_pause_until_ts": getattr(state, "thermal_pause_until_ts", None),
+        "thermal_lockout_until_ts": getattr(state, "thermal_lockout_until_ts", None),
     }
 
 

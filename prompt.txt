@@ -1,53 +1,60 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-28 ~12:45 hs
+# PROMPT DE CONTINUIDAD - 2026-09-28 ~23:45 hs
 # MODELO RECOMENDADO: Gemini 3.8 Flash High (arquitectura / monitoreo / SpecKit)
-# TAREA: Desbloqueo Automático Térmico (ACTION_THERMAL_UNCLAMP) y Bypass de Pre-Enfriamiento en Valley Orchestrator certificados en producción (1418 tests PASS, 0 fallos).
+# TAREA: Escalamiento de S19JPRO-25 y S19JPRO-26 a 2700W (Perfil C4, Flota a 391.4 TH/s), Armonización de Directivas Certificada (1418 tests PASS, 8/8 gates PASS).
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
 
 LEE PRIMERO:
   - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-28)
-  - app/governance/thermal_guard.py (ACTION_THERMAL_UNCLAMP y motor P0)
-  - app/miner_monitor.py (VALLEY_ORCHESTRATOR Gate 0 y execute_governor_cycle)
+  - app/governance/power_progression.py (Perfil C4_MAX_POWER, fallback dinámico a C1/C2)
+  - app/governance/thermal_guard.py (ACTION_THERMAL_UNCLAMP y motor P0 supervisor)
+  - app/miner_monitor.py (VALLEY_ORCHESTRATOR Gate 0/1/2/3/4 y execute_governor_cycle)
   - app/governance/fan_governor.py (compute_governor_step y directiva fan governor)
   - app/vnish/client.py (safe_set_miner_preset con min_preset y top_preset)
   - AGENTS.md
 
 --------------------------------------------------------------------------------
-1. DESBLOQUEO TÉRMICO AUTOMÁTICO (ACTION_THERMAL_UNCLAMP) Y VALLEY ORCHESTRATOR
+1. RESOLUCIÓN DE ESCALAMIENTO A 2700W EN MINEROS 25 Y 26 (PERFIL C4)
 --------------------------------------------------------------------------------
 El operador solicitó:
-*"de nuevo, fijate que esta pasando porque la 23 deberia estar escalando a 2700w"*
+*"de nuevo tenemos inconvenientes, la 26 deberia estar a mayor potencia y quizas 25 tambien ya que tienen fanes a 90% por favor no rompas nada. que no se pisen directivas, de ser asi, reparalas. quiero que al terminar pases todo por skill qa y luego skill estabilizacion que entiendo que hace correr a qa de nuev"*
 
 Causas Raíz Identificadas & Solucionadas:
-1. Clampeo Residual en Firmware VNish:
-   - Tras un step-down de emergencia por temperatura, el monitor clampeaba `top_preset: "2500"`.
-   - Cuando expiró el lockout de 7200s, no existía lógica para desclampear en el firmware de VNish.
-   - Solución: Se implementó `ACTION_THERMAL_UNCLAMP` en `app/governance/thermal_guard.py`. Cuando el lockout expira (`now_ts >= thermal_lockout_until_ts`), los chips están <= 80.0°C y `current_top_preset < max_hardware_preset`, el monitor despacha automáticamente `safe_set_miner_preset(host, vnish_pw, curr_p, clamp_top_preset=False, top_preset="2700", min_preset="1740")`, libera los cerrojos de estado y notifica por Telegram.
-2. Catch-22 en Gate 0 de Valley Orchestrator:
-   - En `app/miner_monitor.py`, Gate 0 bloqueaba la escalada a 2700W si `_m_duty >= 92%`.
-   - Como la directiva Fan Governor fuerza ventiladores al 100% PWM en mineros < 2700W (`ACTION_RECOVERY_MAX_COOLING`), ningún minero podía subir a 2700W aun con chips fríos (78°C).
-   - Solución: Gate 0 ahora reconoce `_is_recovery_cooling = _m_gov_action in (ACTION_RECOVERY_MAX_COOLING, "HOLD_PRECOOLING")`. Si el ventilador está al 100% por directiva de pre-enfriamiento, el duty no bloquea la subida siempre que el silicio esté < 80.0°C.
+1. Techo Configurado en app/config.json:
+   - S19JPRO-25 y S19JPRO-26 estaban configurados con target_power_w: 2500.0 y max_hardware_preset: "2500W" bajo perfil "c1".
+   - Gate 1 de VALLEY_ORCHESTRATOR bloqueaba cualquier ascenso a 2700W.
+2. Clampeo en Firmware VNish:
+   - En ambos mineros, top_preset estaba físicamente en 2500 en la memoria de VNish (y min_preset en 2500 en M25).
+3. Modulación a 90% por Fan Governor:
+   - Como target_power_w era 2500.0W, al consumir 2498W el Governor consideraba alcanzado el 100% de la potencia objetivo y modulaba hacia el piso de 2500W (90%) para normalizar a 82°C.
+4. Cerrojo residual en app/state.json:
+   - autotune_watchdog tenía 'hardware_ceiling_locks': {'S19JPRO-26': '2500W'} que bloqueaba Gate 2.
+
+Acciones Realizadas:
+1. app/config.json: M25 y M26 configurados con target_power_w: 2700.0 y max_hardware_preset: "2700W". Perfil establecido en "c4".
+2. Firmware VNish: Invocado safe_set_miner_preset con top_preset: "2700" y min_preset: "1740" en ambos equipos vía API HTTP.
+3. app/state.json: Purgados cerrojos residuales de autotune_watchdog y reseteados balancers a 2700W.
 
 --------------------------------------------------------------------------------
-2. DIRECTIVA FAN GOVERNOR (MANTENIDA & ACTIVA)
+2. ARMONIZACIÓN DE DIRECTIVAS (100% RESPETADA)
 --------------------------------------------------------------------------------
-- Mineros < 2700W: Ventiladores forzados al 100% PWM (`ACTION_RECOVERY_MAX_COOLING`).
-- Mineros a 2700W: Modulación descendente en lazo cerrado hacia el piso del 92% para normalizar a 82.0°C.
-- Independencia total por minero.
-- Guardián Térmico P0: Anti-doble-bajada, downstep de emergencia a 85.5°C, pausa a 87.0°C.
+- Directiva Fan Governor: Todo minero < 2700W mantiene 100% PWM (ACTION_RECOVERY_MAX_COOLING). Al alcanzar 2700W (>= 2580W), modula en lazo cerrado para normalizar a 82.0°C (con piso de 92% en 2700W). Total independencia por minero.
+- Directiva Anti-Doble-Bajada: VNish retiene derecho de paso a 84.0°C. Supervisor P0 actúa a 85.5°C inyectando min_preset y top_preset simétricos, con cooldown de 180s y lockout de 2h. Pausa de emergencia a 87.0°C.
+- Directiva Valley Orchestrator: Gate 0 hace bypass de duty ante ACTION_RECOVERY_MAX_COOLING, permitiendo ascender si chip < 80.0°C. Ascenso escalonado con ventana de reposo de 180s.
+- Directiva de Protección de Elevador / Silicio: Si Minero 25 experimenta saturación térmica o ruido en relés de elevator_2, el perfil degrada automáticamente de C4 a C1_ASYMMETRIC (2500W M25, 2700W M26).
 
 --------------------------------------------------------------------------------
-3. ESTADO DE VALIDACIÓN & FLOTA EN PRODUCCIÓN (12:45 hs)
+3. ESTADO DE VALIDACIÓN & TELEMETRÍA EN VIVO (23:45 hs)
 --------------------------------------------------------------------------------
-- Suite de Pruebas: **1418 tests PASS**, 75 subtests PASS (100% éxito, 0 fallos en 42.85s).
-- Suite de Thermal Guard: **19 tests PASS** (incluyendo tests de unclamp y expiración de lockout).
-- Suite de Contingencia & Orquestador: **7 tests PASS** (incluyendo Gate 0 recovery cooling).
-- Preflight Stabilize: **PASS** (7/7 gates PASS).
-- Servicio Windows NSSM: RUNNING (`MinerAlerts` reiniciado limpiamente).
-- Telemetría en vivo verificada (`logs/out.log`):
-  - S19JPRO-23: 2698W / 2700W | `action=HOLD_TARGET duty=100% target=100%` (Escalado y operando a 2700W).
-  - S19JPRO-24: 2498W / 2700W | `action=RECOVERY_MAX_COOLING duty=100%` (Pre-enfriando para habilitar escalada).
-  - S19JPRO-25: 2699W / 2700W | Operando a 2700W.
-  - S19JPRO-26: 2698W / 2700W | `action=HOLD_TARGET duty=92%` (Operando a 2700W modulado a 92%).
+- Suite de Pruebas: **1418 tests PASS**, 75 subtests PASS (100% éxito en 42.21s).
+- Preflight speckit-qa: **PASS**.
+- Gate speckit-stabilize: **8/8 gates PASS**.
+- Servicio Windows NSSM: RUNNING (MinerAlerts reiniciado limpiamente).
+- Telemetría en vivo:
+  - M23: 101.5 TH/s | 2698W / 2700W | Fans: 100% (HOLD/SPIKE)
+  - M24: 95.0 TH/s | 2498W / 2700W | Fans: 100% (RECOVERY_MAX_COOLING)
+  - M25: 99.9 TH/s | 2699W / 2700W | Fans: 100% (HOLD_TARGET, 81.0°C)
+  - M26: 95.0 TH/s | 2698W / 2700W | Fans: 97% (STEP_DOWN hacia piso 92%, 78.0°C)
+  - Rendimiento Total Flota: **391.4 TH/s** continuos en toda la planta.

@@ -771,6 +771,51 @@ class EventStore:
             self._report_error("list_events", exc)
             return []
 
+    def list_anomalies_24h(
+        self,
+        *,
+        now_ts: Optional[float] = None,
+        limit: int = 50,
+        miner_key: Optional[str] = None,
+    ) -> list[Dict[str, Any]]:
+        """List operational anomalies (warning/critical events) in the last 24 hours."""
+        connection = self._connection
+        if connection is None:
+            return []
+        curr_ts = float(now_ts) if now_ts is not None else time.time()
+        start_ts = curr_ts - 86400.0
+        safe_limit = max(1, min(int(limit), 100))
+        try:
+            with self._lock:
+                if miner_key:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM operational_events
+                        WHERE occurred_ts >= ? AND occurred_ts <= ?
+                          AND severity IN ('warning', 'critical')
+                          AND miner_key = ?
+                        ORDER BY occurred_ts DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (start_ts, curr_ts, miner_key, safe_limit),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM operational_events
+                        WHERE occurred_ts >= ? AND occurred_ts <= ?
+                          AND severity IN ('warning', 'critical')
+                        ORDER BY occurred_ts DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (start_ts, curr_ts, safe_limit),
+                    ).fetchall()
+            self._last_error = None
+            return [dict(row) for row in rows]
+        except sqlite3.Error as exc:
+            self._report_error("list_anomalies_24h", exc)
+            return []
+
     def get_event(self, event_id: int) -> Optional[Dict[str, Any]]:
         connection = self._connection
         if connection is None:
@@ -1719,6 +1764,127 @@ def render_event_list(events: list[Dict[str, Any]]) -> str:
             lines.append(lbl_line)
     lines.append(MOBILE_CARD_SEPARATOR)
     lines.append("💡 Ver detalle: /e<id>")
+    return "\n".join(lines)
+
+
+def _format_short_miner(m_raw: Optional[str]) -> str:
+    """Derive clean short miner label (e.g. M23, M25, Sist)."""
+    if not m_raw:
+        return "Sist"
+    s = str(m_raw).strip()
+    s = s.replace("S19JPRO-", "").replace("s19jpro-", "").replace("S19-", "")
+    if s.isdigit():
+        return f"M{s}"
+    return s[:6]
+
+
+def render_anomalies_compact(events: list[Dict[str, Any]], now_ts: Optional[float] = None) -> str:
+    """Format 24h operational anomalies into ultra-compact 1-row-per-anomaly view (Option 1)."""
+    if not events:
+        return (
+            "📋 *ANOMALÍAS 24H (1 FILA)*\n"
+            f"{MOBILE_CARD_SEPARATOR}\n"
+            "✅ Cero anomalías en las últimas 24h.\n"
+            f"{MOBILE_CARD_SEPARATOR}"
+        )
+    lines = [
+        "📋 *ANOMALÍAS 24H (1 FILA)*",
+        MOBILE_CARD_SEPARATOR,
+    ]
+    for ev in events:
+        t_str = datetime.fromtimestamp(float(ev["occurred_ts"])).strftime("%H:%M")
+        m_str = _format_short_miner(ev.get("miner_name") or ev.get("miner_key"))
+        ev_type = str(ev.get("event_type") or "").strip()
+        prev_el = ev.get("previous_elapsed")
+        curr_el = ev.get("current_elapsed")
+        summ = str(ev.get("summary") or "").strip()
+
+        if ev_type == "restart_detected" and prev_el is not None:
+            desc = f"Reinicio ({prev_el}s)"
+        elif "chain_health" in ev_type:
+            c_part = summ.split(":", 1)[-1].strip() if ":" in summ else summ
+            desc = f"Placas: {c_part}"
+        elif "predictive" in ev_type:
+            desc = "Sensor térmico"
+        elif summ:
+            desc = summ.split("|")[0].strip()
+        else:
+            desc = ev_type
+
+        row = f"• {t_str} {m_str} | {desc}"
+        if visible_line_width(row) > 32:
+            prefix = f"• {t_str} {m_str} | "
+            max_desc = max(0, 32 - visible_line_width(prefix))
+            if max_desc > 3:
+                row = f"{prefix}{desc[:max_desc-1]}…"
+            else:
+                row = row[:32]
+        lines.append(row)
+
+    lines.append(MOBILE_CARD_SEPARATOR)
+    lines.append(f"Total: {len(events)} anomalía{'s' if len(events) != 1 else ''} en 24h")
+    lines.append("💡 Detalle: /anomalias detalle")
+    return "\n".join(lines)
+
+
+def render_anomalies_detailed(events: list[Dict[str, Any]], now_ts: Optional[float] = None) -> str:
+    """Format 24h operational anomalies with brief explanation/description (Option 2)."""
+    if not events:
+        return (
+            "🔍 *ANOMALÍAS 24H (DETALLE)*\n"
+            f"{MOBILE_CARD_SEPARATOR}\n"
+            "✅ Cero anomalías en las últimas 24h.\n"
+            f"{MOBILE_CARD_SEPARATOR}"
+        )
+    lines = [
+        "🔍 *ANOMALÍAS 24H (DETALLE)*",
+        MOBILE_CARD_SEPARATOR,
+    ]
+    for ev in events:
+        dt_str = datetime.fromtimestamp(float(ev["occurred_ts"])).strftime("%d/%m %H:%M")
+        m_name = str(ev.get("miner_name") or ev.get("miner_key") or "Sistema")
+        m_short = _format_short_miner(m_name)
+        ev_id = ev.get("id")
+        sev = str(ev.get("severity") or "warning").upper()
+        ev_type = str(ev.get("event_type") or "evento")
+        summ = str(ev.get("summary") or "").strip()
+        prev_el = ev.get("previous_elapsed")
+        curr_el = ev.get("current_elapsed")
+
+        header = f"• /e{ev_id} [{dt_str}] {m_short}"
+        if visible_line_width(f"{header} ({sev})") <= 32:
+            lines.append(f"{header} ({sev})")
+        else:
+            lines.append(header)
+            lines.append(f"  Severidad: {sev}")
+
+        if summ:
+            for s_line in wrap_mobile_lines(summ, width=28, indent="  "):
+                lines.append(s_line)
+        elif prev_el is not None and curr_el is not None:
+            lines.append(f"  Uptime reiniciado: {prev_el}s ➔ {curr_el}s")
+        else:
+            lines.append(f"  Tipo: {ev_type}")
+
+        details_raw = ev.get("details_json")
+        if isinstance(details_raw, str) and details_raw:
+            try:
+                details_obj = json.loads(details_raw)
+                if isinstance(details_obj, dict):
+                    culprit = details_obj.get("culprit_chain")
+                    if isinstance(culprit, dict):
+                        c_id = culprit.get("chain_id")
+                        c_reason = culprit.get("reason", "")
+                        culprit_txt = f"Placa: Cadena {c_id} ({c_reason})" if c_reason else f"Placa: Cadena {c_id}"
+                        for c_line in wrap_mobile_lines(culprit_txt, width=28, indent="  "):
+                            lines.append(c_line)
+            except Exception:
+                pass
+
+    lines.append(MOBILE_CARD_SEPARATOR)
+    lines.append(f"Total: {len(events)} anomalía{'s' if len(events) != 1 else ''} en 24h")
+    lines.append("💡 Detalle: /e<id>")
+    lines.append("💡 Resumen: /anomalias")
     return "\n".join(lines)
 
 

@@ -212,6 +212,7 @@ def create_default_command_router() -> TelegramCommandRouter:
         HealthCommand,
         ChartCommand,
         EventsCommand,
+        AnomaliesCommand,
         EventCommand,
         WhyCommand,
         ChainsCommand,
@@ -246,7 +247,7 @@ def create_default_command_router() -> TelegramCommandRouter:
     router.register(RebootCommand()).register(RebootNoOkCommand()).register(ConfirmCommand())
     # Diagnostics & Telemetry
     router.register(DiagnoseCommand()).register(FirmwareCommand()).register(QualityCommand()).register(HealthCommand())
-    router.register(ChartCommand()).register(EventsCommand()).register(EventCommand()).register(WhyCommand())
+    router.register(ChartCommand()).register(EventsCommand()).register(AnomaliesCommand()).register(EventCommand()).register(WhyCommand())
     router.register(ChainsCommand()).register(EfficiencyCommand()).register(PresetsCommand()).register(SelftestCommand())
     # Maintenance & Schedules
     router.register(SnoozeCommand()).register(UnsnoozeCommand()).register(SnoozedCommand())

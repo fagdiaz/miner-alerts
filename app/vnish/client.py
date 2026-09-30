@@ -728,4 +728,67 @@ def safe_restart_mining(
                 pass
 
 
+def check_miner_settings_health(
+    host: str,
+    password: str,
+    timeout: float = DEFAULT_HTTP_TIMEOUT,
+) -> Tuple[bool, str, Optional[str]]:
+    """
+    Check firmware settings health and parse integrity on Vnish ASIC (Spec 080).
 
+    Validates if /api/v1/settings can be read and deserialized without throwing HTTP 500
+    (e.g., duplicate JSON fields in /config/cgminer.conf), and checks /api/v1/status
+    for failure_code 1002 (Failed to parse miner configuration).
+
+    Returns: (is_healthy: bool, issue_code: str, details_message: Optional[str])
+      - is_healthy: True if settings and status are sound.
+      - issue_code: 'OK', 'duplicate_field_error', 'config_parse_failure', 'http_500_error', etc.
+      - details_message: Diagnostic string or None.
+    """
+    # 1. Unauthenticated status check
+    st_ok, st_data, _ = get_miner_status(host, timeout=timeout)
+    if st_ok and isinstance(st_data, dict):
+        m_state = str(st_data.get("miner_state", "")).strip().lower()
+        f_code = st_data.get("failure_code")
+        f_desc = str(st_data.get("description", "")).strip()
+        if m_state == "failure" and (f_code == 1002 or "parse" in f_desc.lower()):
+            return False, "config_parse_failure", f"Fallo 1002 en firmware: {f_desc or 'Failed to parse miner configuration'}"
+
+    # 2. Authenticated settings probe
+    token = None
+    try:
+        ok, token, err = unlock_miner(host, password, timeout=timeout)
+        if not ok or not token:
+            if err in ("connection_refused_or_offline", "connection_timeout"):
+                return True, "unreachable", f"Minero no accesible: {err}"
+            return False, "auth_failure", f"Fallo de autenticación en Vnish: {err}"
+
+        url = f"http://{host}/api/v1/settings"
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            return True, "OK", None
+        elif resp.status_code == 500:
+            err_msg = ""
+            try:
+                j = resp.json()
+                err_msg = str(j.get("err", ""))
+            except Exception:
+                err_msg = resp.text[:200]
+            if "duplicate field" in err_msg.lower() or "could not parse" in err_msg.lower():
+                return False, "duplicate_field_error", f"Configuración corrupta en firmware: {err_msg}"
+            return False, "http_500_error", f"Error 500 en settings de firmware: {err_msg}"
+        else:
+            return False, "http_error", f"HTTP {resp.status_code}: {resp.text[:120]}"
+    except requests.exceptions.Timeout:
+        return True, "timeout", "Timeout al consultar settings"
+    except requests.exceptions.ConnectionError:
+        return True, "offline", "Conexión rechazada u offline"
+    except Exception as exc:
+        return True, "request_error", f"Excepción en probe: {type(exc).__name__}"
+    finally:
+        if token:
+            try:
+                lock_miner(host, token, timeout=timeout)
+            except Exception:
+                pass

@@ -4,6 +4,88 @@ Este archivo registra las specs y cambios completados que tienen respaldo en el 
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
+## [2026-09-30] - Spec 080: Firmware Settings Corruption Watchdog & Assisted Recovery (Fallo de Parseo Serde/JSON 500 y Resolución en M24)
+
+* **Contexto & Directiva del Operador**:
+  - Consulta inicial: *"la 24 deberia subir. por que no lo hace? no intervengas solo analizalo"*.
+  - El análisis reveló un bloqueo interno en el firmware VNish de S19JPRO-24: la API `/api/v1/settings` respondía con error `HTTP 500: Could not parse file /config/cgminer.conf duplicate field 'fan-fixed-duty'`.
+  - Directiva posterior: *"bueno, cuando es asi, informarme y doy el ok para un reboot o para subir la potencia del miner. programar alerta y realizar el paso mas indicado para estos casos. quizas subiendo o bajando la potencia se arregla y sino reboot quizas. ahora ejecutalo vos. arma la spec y la resolucion, pasalo por qa y estabilizacion"*.
+
+* **Diagnóstico Forense y Causa Raíz**:
+  1. **Corrupción Sintáctica en Serde/JSON de VNish**:
+     - Al producirse duplicación de campos JSON (e.g. `fan-fixed-duty` repetido en `/config/cgminer.conf`), el deserializador estricto Serde en Rust del firmware VNish aborta con HTTP 500 en todas las consultas y modificaciones a `/api/v1/settings`.
+     - Esto congela al minero en su estado actual, impidiendo la ejecución de su autoswitcher interno y rechazando cualquier comando de escalamiento o ajuste de presets desde el orquestador externo.
+  2. **Comportamiento ante Reinicio de Minado**:
+     - Ejecutar `restart_mining` (`/api/v1/mining/restart`) devuelve `failure_code: 1002, description: 'Failed to parse miner configuration'`, sin corregir el archivo en disco.
+  3. **Resolución Empírica mediante Reinicio de Hardware**:
+     - Al ejecutar un reinicio completo de hardware (`toolkit_cli.bat reboot 192.168.100.24-192.168.100.24`), el script de arranque Linux de VNish inspecciona `/config/cgminer.conf`, detecta la corrupción estructural y restablece el archivo de configuración limpio desde la plantilla NAND de fábrica.
+     - Tras el reinicio, `/api/v1/settings` respondió inmediatamente `HTTP 200 OK`.
+     - Se inyectó exitosamente el preset 2700W (`safe_set_miner_preset`) con `clamp_top_preset=True`, alcanzando ~94 TH/s estables y completando la recuperación del equipo.
+
+* **Implementación de Spec 080 (`080-firmware-settings-corruption-watchdog`)**:
+  1. **Motor de Detección de Salud de Firmware (`app/vnish/client.py`, `app/vnish/__init__.py`)**:
+     - Creada función `check_miner_settings_health(host, password, timeout=2.5) -> (bool, Optional[str])`.
+     - Detecta activamente fallas HTTP 500 con mensajes de parseo/duplicación y códigos de fallo 1002 de VNish.
+  2. **Botonera Interactiva y Flujo Asistido (`app/telegram/fleet_cards.py`)**:
+     - Creado `build_firmware_corruption_keyboard(miner_id)` con botones directos:
+       * `[ 🔄 Solicitar Reboot ]` (`cc:act:rb_req:<miner_id>`): Abre el modal click-safe de aprobación del operador para reinicio de hardware.
+       * `[ ⚡ Ajustar Potencia ]` (`cc:miner:<miner_id>:presets`): Acceso directo al menú de presets para intentar destrabe por modulación.
+  3. **Integración en Ciclo Periódico (`app/miner_monitor.py`)**:
+     - Supervisión periódica desacoplada cada 300 segundos durante la recolección de telemetría de cadenas.
+     - Cooldown anti-spam estricto de 900 segundos por equipo ante persistencia del fallo.
+     - Registro de evento operacional `firmware_settings_corrupted` (severidad `warning`) en SQLite `data/miner_alerts.db`.
+     - Envío de alerta accionable a Telegram con explicación clara del bloqueo y botonera de recuperación.
+
+* **Validación de Calidad & QA**:
+  - Nueva suite unitaria `tests/test_firmware_corruption_watchdog.py`: 5 tests PASS validando detección HTTP 500, código 1002, respuesta sana 200, renderizado de teclado inline y estructura de la alerta.
+  - Regresión total de la plataforma: **1429 tests PASS, 75 subtests PASS** (100% éxito).
+  - Preflight `speckit-stabilize`: 8/8 compuertas PASS (P0 sintaxis, seguridad de credenciales, paridad de configuración, suite completa, salud del servicio NSSM y telemetría de flota).
+  - Servicio Windows NSSM `MinerAlerts` verificado en estado `SERVICE_RUNNING`.
+
+## [2026-09-29] - Auditoría de Recolección de Datos y Desglose Interactivo de Anomalías 24h (Opciones 1 Fila y Detalle con Descripción)
+
+* **Contexto & Directiva del Operador**:
+  - Requerimiento del operador: *"bueno, decime que tal la recoleccion de datos. con respecto al informe diario, me dice por ejemplo 8 anomalias. me gustaria poder desplegar eso y tener dos opciones. desplegar una fila por cada anomalia y listo y opcion dos, desplegar todas las anomalias con su breve descripcion"*.
+
+* **Auditoría de Salud de la Recolección de Datos (`data/miner_alerts.db`)**:
+  1. **Volumen & Continuidad**:
+     - `telemetry_samples`: 78,064 muestras registradas cubriendo más de 1,692 horas (~70 días de operación ininterrumpida) con cadencia nominal de 30 segundos.
+     - `chain_telemetry_samples`: 20,448 muestras individuales a nivel de placa de hash, frecuencias, voltajes y sensores térmicos/I2C.
+     - `operational_events`: 2,599 incidentes y transiciones auditadas.
+     - `reboot_decisions`: 12,671 evaluaciones y dictámenes de guardias de reinicio.
+     - `collector_runs`: 3,295 corridas del recolector de diagnóstico Vnish.
+  2. **Integridad Técnica**:
+     - Base de datos en modo `PRAGMA journal_mode=WAL` con `synchronous=NORMAL` y lectura concurrente protegida contra bloqueos `SQLITE_BUSY`.
+     - Sistema de respaldos automáticos rotativos verificados sin corrupciones ni pérdidas de punteros.
+  3. **Correlación Numérica Exacta**:
+     - Las anomalías reportadas en el informe diario (Daily Digest) se calculan mediante eventos operacionales de severidad `warning` y `critical` ocurridos en la ventana móvil de 24 horas.
+
+* **Implementación de las 2 Opciones de Desglose de Anomalías**:
+  1. **Motor de Datos (`app/core/event_store.py`)**:
+     - Incorporado método `EventStore.list_anomalies_24h(now_ts=None, limit=50, miner_key=None) -> list[Dict[str, Any]]` que aplica idéntica cláusula de severidad y ventana temporal que el Daily Digest, garantizando coherencia absoluta.
+     - Implementado renderizador puro `render_anomalies_compact(events, now_ts)` (**Opción 1**): Formatea estrictamente 1 sola fila por anomalía (`• HH:MM M<id> | <Causa>`), con truncamiento adaptativo garantizando ancho móvil $\le 32$ columnas.
+     - Implementado renderizador puro `render_anomalies_detailed(events, now_ts)` (**Opción 2**): Formatea cada anomalía con cabecera click-safe `/e<id>`, timestamp, severidad, descripción textual completa y desglose de placa/sensor afectado cuando exista.
+  2. **UI Interactiva y Botonera en Telegram (`app/telegram/fleet_cards.py`)**:
+     - Actualizado teclado inline del Daily Digest (`build_diagnostic_keyboard("digest")`) para incluir los botones:
+       * `[ 📋 Anomalías (1 Fila) ]` (`diag:ref:anom_comp`)
+       * `[ 🔍 Anomalías (Detalle) ]` (`diag:ref:anom_desc`)
+     - Creado teclado dedicado `build_anomalies_keyboard(current_view)` que permite alternar con 1 solo tap entre vista de 1 fila y vista detallada (`Ver Detalle` ⇄ `Ver 1 Fila`), refrescar telemetría o regresar al reporte diario y menú.
+     - Soporte para callbacks `anom_comp`, `anom_desc`, `anomalies` en `SUPPORTED_REPORT_TYPES` y en `_handle_diagnostic_callback` de `app/miner_monitor.py`.
+  3. **Comandos Telegram y Enrutamiento (`app/telegram/commands/diagnostics.py`, `router.py`)**:
+     - Creado comando `AnomaliesCommand` con alias `/anomalias`, `/anomalies`, `/anom`.
+     - Soporte para argumentos de modo (`/anomalias`, `/anomalias resumen`, `/anomalias detalle`, `/anomalias full`) y filtrado opcional por equipo (`/anomalias 23`, `/anomalias 25 detalle`).
+     - Delegación transparente desde `/events 24h` hacia `AnomaliesCommand`.
+     - Incorporados `anomalias`, `anomalies`, `anom`, `chains`, `chain`, `placas` en `CMD_WHITELIST` de `miner_monitor.py`.
+  4. **Centro de Ayuda (`app/telegram/help_center.py`)**:
+     - Registrado `anomalias` en `HELP_COMMANDS` y en la categoría `diag` (`HELP_CATEGORIES["diag"]`).
+     - Documentada sintaxis, ejemplos y descripción para `/help anomalias`.
+
+* **Validación de Calidad & QA**:
+  - Pruebas unitarias dedicadas en `tests/test_anomalies_report.py`: 6 tests PASS validando query SQL, ambos renderizadores, ancho móvil $\le 32$, botoneras inline, callbacks y despachador de comandos.
+  - Compatibilidad de contratos Mobile-First en `tests/test_mobile_diagnostics.py`: 8 tests PASS.
+  - Regresión total de la plataforma: **1424 tests PASS, 75 subtests PASS** (100% éxito en 43.40s).
+  - Servicio NSSM `MinerAlerts` reiniciado y verificado en estado `SERVICE_RUNNING` con captura de telemetría y supervisión de anomalías en tiempo real.
+
 ## [2026-09-28] - Armonización Integral de Directivas y Escalamiento a 2700W en S19JPRO-25 y S19JPRO-26 (Perfil C4, Flota a 391.4 TH/s)
 
 * **Contexto & Directiva del Operador**:

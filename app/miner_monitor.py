@@ -237,6 +237,12 @@ CMD_WHITELIST = {
     "intervenciones",
     "contingency",
     "contingencia",
+    "anomalias",
+    "anomalies",
+    "anom",
+    "chains",
+    "chain",
+    "placas",
 }
 
 
@@ -2780,6 +2786,8 @@ def save_state(
 # ---------------------------------------------------------------------------
 
 _CHAIN_HEALTH_STREAKS: Dict[str, Dict[str, Any]] = {}
+_SETTINGS_HEALTH_TIMESTAMPS: Dict[str, float] = {}
+_SETTINGS_CORRUPTION_ALERTS: Dict[str, float] = {}
 
 
 def _async_collect_chain_telemetry(
@@ -2858,6 +2866,56 @@ def _async_collect_chain_telemetry(
                     log(f"[CHAIN_HEALTH_ERR] assessment failed for {m_name}: {_ch_exc}")
             elif err:
                 log(f"[CHAIN_TELEMETRY] miner={m_name} host={m_host} error={err}")
+
+            # Spec 080: Firmware Settings Corruption Watchdog (PROP-016)
+            try:
+                from app.vnish import check_miner_settings_health
+                from app.telegram.fleet_cards import build_firmware_corruption_keyboard
+                now_ts = time.time()
+                last_chk = _SETTINGS_HEALTH_TIMESTAMPS.get(m_name, 0.0)
+                if now_ts - last_chk >= 300.0:
+                    _SETTINGS_HEALTH_TIMESTAMPS[m_name] = now_ts
+                    vnish_pw = str(config.get("vnish_api_password", "admin")) if config else "admin"
+                    healthy, issue_code, issue_msg = check_miner_settings_health(m_host, vnish_pw, timeout=2.5)
+                    if not healthy and issue_code in ("duplicate_field_error", "config_parse_failure", "http_500_error"):
+                        last_alert = _SETTINGS_CORRUPTION_ALERTS.get(m_name, 0.0)
+                        if now_ts - last_alert >= 900.0:
+                            _SETTINGS_CORRUPTION_ALERTS[m_name] = now_ts
+                            short_id = m_name.replace("S19JPRO-", "").replace("s19jpro-", "").replace("S19-", "")
+                            log(f"[FIRMWARE_CORRUPT_ALERT] miner={m_name} host={m_host} code={issue_code} msg={issue_msg}")
+                            if bot_token and chat_id and ((not qa_mode) or qa_notify):
+                                alert_text = (
+                                    f"⚠️ *ALERTA DE FIRMWARE: CONFIGURACIÓN BLOQUEADA*\n\n"
+                                    f"• Minero: *{m_name}* (`{m_host}`)\n"
+                                    f"• Diagnóstico: `{issue_code}`\n"
+                                    f"• Detalle: {issue_msg}\n\n"
+                                    f"💡 *Impacto*: El firmware no puede parsear `/config/cgminer.conf`. "
+                                    f"El autoswitcher interno está paralizado y no puede subir de potencia ni modular coolers.\n\n"
+                                    f"👉 *Acción recomendada*: Solicitar reinicio para reconstituir la configuración limpia desde NAND."
+                                )
+                                kb = build_firmware_corruption_keyboard(short_id)
+                                send_telegram(
+                                    bot_token,
+                                    str(chat_id),
+                                    alert_text,
+                                    "FIRMWARE_CORRUPTION_ALERT",
+                                    f"firmware_corrupt_{short_id}",
+                                    reply_markup=kb,
+                                    is_command=True,
+                                )
+                            if event_store_inst and event_store_inst.available:
+                                event_store_inst.record_event(
+                                    occurred_ts=now_ts,
+                                    miner_key=f"{m_name}|{m_host}",
+                                    miner_name=m_name,
+                                    host=m_host,
+                                    event_type="firmware_settings_corrupted",
+                                    severity="warning",
+                                    summary=f"Configuración de firmware corrupta ({issue_code}): {issue_msg}",
+                                    details={"issue_code": issue_code, "issue_msg": issue_msg},
+                                )
+            except Exception as _fsc_exc:
+                log(f"[FIRMWARE_WATCHDOG_ERR] miner={m_name}: {_fsc_exc}")
     except Exception as exc:
         log(f"[CHAIN_TELEMETRY] worker error: {type(exc).__name__}: {exc}")
 
@@ -4695,6 +4753,31 @@ def _handle_diagnostic_callback(
             else:
                 new_text = "Historial no disponible."
             new_markup = build_diagnostic_keyboard("events")
+        elif action.report_type in ("anom_comp", "anom_desc", "anomalies"):
+            from app.core.event_store import (
+                render_anomalies_compact,
+                render_anomalies_detailed,
+            )
+            from app.telegram.fleet_cards import build_anomalies_keyboard
+            if event_store is not None and event_store.available:
+                anomalies = event_store.list_anomalies_24h(limit=50)
+                if action.report_type == "anom_desc":
+                    new_text = (
+                        "Historial temporalmente no disponible."
+                        if event_store.last_error
+                        else render_anomalies_detailed(anomalies)
+                    )
+                    new_markup = build_anomalies_keyboard("detailed")
+                else:
+                    new_text = (
+                        "Historial temporalmente no disponible."
+                        if event_store.last_error
+                        else render_anomalies_compact(anomalies)
+                    )
+                    new_markup = build_anomalies_keyboard("compact")
+            else:
+                new_text = "Historial de anomalías no disponible."
+                new_markup = build_diagnostic_keyboard("digest")
         elif action.report_type == "chains":
             from app.governance.chain_health import (
                 assess_miner_chains,

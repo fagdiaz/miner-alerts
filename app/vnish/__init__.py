@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.vnish.client import (
     DEFAULT_HTTP_TIMEOUT,
+    check_miner_settings_health,
     fetch_fleet_vnish_summaries,
     get_available_presets,
     get_cooling_settings,
@@ -79,6 +80,7 @@ __all__ = [
     "assess_miner_preset",
     "build_miner_preset_detail_text",
     "build_presets_table_text",
+    "check_miner_settings_health",
     "evaluate_preset_alerts",
     "fetch_fleet_chains",
     "fetch_fleet_vnish_summaries",

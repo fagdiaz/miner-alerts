@@ -45,6 +45,9 @@ SUPPORTED_REPORT_TYPES = (
     "digest",
     "events",
     "chains",
+    "anom_comp",
+    "anom_desc",
+    "anomalies",
 )
 
 
@@ -89,6 +92,42 @@ def parse_diagnostic_callback(callback_data: str) -> Optional[DiagnosticCallback
 
 
 # ── Keyboard Builder ──────────────────────────────────────────────────
+def build_anomalies_keyboard(current_view: str = "compact") -> Dict[str, Any]:
+    """Generate inline keyboard for 24h anomalies report with interactive view toggle."""
+    if current_view == "compact":
+        toggle_btn = {"text": "🔍 Ver Detalle", "callback_data": "diag:ref:anom_desc"}
+        refresh_cb = "diag:ref:anom_comp"
+    else:
+        toggle_btn = {"text": "📋 Ver 1 Fila", "callback_data": "diag:ref:anom_comp"}
+        refresh_cb = "diag:ref:anom_desc"
+
+    return build_inline_keyboard([
+        [
+            toggle_btn,
+            {"text": "🔄 Actualizar", "callback_data": refresh_cb},
+        ],
+        [
+            {"text": "☀️ Reporte Diario", "callback_data": "diag:ref:digest"},
+            {"text": "📱 Menú", "callback_data": CC_NAV_MAIN},
+        ],
+    ])
+
+
+def build_firmware_corruption_keyboard(miner_id: str) -> Dict[str, Any]:
+    """Build interactive action keyboard for firmware configuration corruption alert (Spec 080)."""
+    short_id = str(miner_id).replace("S19JPRO-", "").replace("s19jpro-", "").replace("S19-", "")
+    return build_inline_keyboard([
+        [
+            {"text": "⚡ Solicitar Reinicio", "callback_data": f"cc:act:rb_req:{short_id}"},
+            {"text": "🔍 Diagnóstico", "callback_data": "diag:ref:diagnose"},
+        ],
+        [
+            {"text": "☀️ Reporte", "callback_data": "diag:ref:digest"},
+            {"text": "📱 Menú", "callback_data": CC_NAV_MAIN},
+        ],
+    ])
+
+
 def build_diagnostic_keyboard(report_type: str) -> Dict[str, Any]:
     """Generate inline keyboard for diagnostic reports with 1-tap refresh and return."""
     ref_cb = f"diag:ref:{report_type}"
@@ -100,6 +139,22 @@ def build_diagnostic_keyboard(report_type: str) -> Dict[str, Any]:
                 {"text": "📱 Menú", "callback_data": CC_NAV_MAIN},
             ]
         ])
+    elif report_type == "digest":
+        return build_inline_keyboard([
+            [
+                {"text": "🔄 Actualizar", "callback_data": ref_cb},
+                {"text": "📱 Menú", "callback_data": CC_NAV_MAIN},
+            ],
+            [
+                {"text": "📋 Anomalías (1 Fila)", "callback_data": "diag:ref:anom_comp"},
+                {"text": "🔍 Anomalías (Detalle)", "callback_data": "diag:ref:anom_desc"},
+            ],
+        ])
+    elif report_type in ("anom_comp", "anomalies"):
+        return build_anomalies_keyboard("compact")
+    elif report_type == "anom_desc":
+        return build_anomalies_keyboard("detailed")
+
     return build_inline_keyboard([
         [
             {"text": "🔄 Actualizar", "callback_data": ref_cb},

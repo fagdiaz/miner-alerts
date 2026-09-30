@@ -1,60 +1,72 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD - 2026-09-28 ~23:45 hs
-# MODELO RECOMENDADO: Gemini 3.8 Flash High (arquitectura / monitoreo / SpecKit)
-# TAREA: Escalamiento de S19JPRO-25 y S19JPRO-26 a 2700W (Perfil C4, Flota a 391.4 TH/s), Armonización de Directivas Certificada (1418 tests PASS, 8/8 gates PASS).
+# PROMPT DE CONTINUIDAD - 2026-09-30
+# MODELO RECOMENDADO: Gemini 3.8 Flash High (arquitectura / telemetría / SpecKit)
+# TAREA: Spec 080: Firmware Settings Corruption Watchdog & Assisted Recovery (PROP-016)
+# ESTADO: 1429 tests PASS, 75 subtests PASS (100%), NSSM MinerAlerts RUNNING
 # ==============================================================================
 
 Hola. Estás asumiendo el control técnico de 'miner-alerts'.
 
 LEE PRIMERO:
-  - docs/audit/DEVELOPMENT_LOG.md (entradas del 2026-09-28)
-  - app/governance/power_progression.py (Perfil C4_MAX_POWER, fallback dinámico a C1/C2)
-  - app/governance/thermal_guard.py (ACTION_THERMAL_UNCLAMP y motor P0 supervisor)
-  - app/miner_monitor.py (VALLEY_ORCHESTRATOR Gate 0/1/2/3/4 y execute_governor_cycle)
-  - app/governance/fan_governor.py (compute_governor_step y directiva fan governor)
-  - app/vnish/client.py (safe_set_miner_preset con min_preset y top_preset)
+  - docs/audit/DEVELOPMENT_LOG.md (entrada más reciente del 2026-09-30, Spec 080)
+  - specs/080-firmware-settings-corruption-watchdog/ (spec.md, plan.md, tasks.md, evidence.md)
+  - app/vnish/client.py (check_miner_settings_health)
+  - app/telegram/fleet_cards.py (build_firmware_corruption_keyboard)
+  - app/miner_monitor.py (_async_collect_chain_telemetry: supervisión de firmware_settings_corrupted)
+  - tests/test_firmware_corruption_watchdog.py
   - AGENTS.md
 
 --------------------------------------------------------------------------------
-1. RESOLUCIÓN DE ESCALAMIENTO A 2700W EN MINEROS 25 Y 26 (PERFIL C4)
+1. RESUMEN DE RESOLUCIÓN EN PRODUCCIÓN: MINERO 24 (S19JPRO-24)
 --------------------------------------------------------------------------------
-El operador solicitó:
-*"de nuevo tenemos inconvenientes, la 26 deberia estar a mayor potencia y quizas 25 tambien ya que tienen fanes a 90% por favor no rompas nada. que no se pisen directivas, de ser asi, reparalas. quiero que al terminar pases todo por skill qa y luego skill estabilizacion que entiendo que hace correr a qa de nuev"*
-
-Causas Raíz Identificadas & Solucionadas:
-1. Techo Configurado en app/config.json:
-   - S19JPRO-25 y S19JPRO-26 estaban configurados con target_power_w: 2500.0 y max_hardware_preset: "2500W" bajo perfil "c1".
-   - Gate 1 de VALLEY_ORCHESTRATOR bloqueaba cualquier ascenso a 2700W.
-2. Clampeo en Firmware VNish:
-   - En ambos mineros, top_preset estaba físicamente en 2500 en la memoria de VNish (y min_preset en 2500 en M25).
-3. Modulación a 90% por Fan Governor:
-   - Como target_power_w era 2500.0W, al consumir 2498W el Governor consideraba alcanzado el 100% de la potencia objetivo y modulaba hacia el piso de 2500W (90%) para normalizar a 82°C.
-4. Cerrojo residual en app/state.json:
-   - autotune_watchdog tenía 'hardware_ceiling_locks': {'S19JPRO-26': '2500W'} que bloqueaba Gate 2.
-
-Acciones Realizadas:
-1. app/config.json: M25 y M26 configurados con target_power_w: 2700.0 y max_hardware_preset: "2700W". Perfil establecido en "c4".
-2. Firmware VNish: Invocado safe_set_miner_preset con top_preset: "2700" y min_preset: "1740" en ambos equipos vía API HTTP.
-3. app/state.json: Purgados cerrojos residuales de autotune_watchdog y reseteados balancers a 2700W.
+- Causa Raíz: La API /api/v1/settings de Vnish respondía con HTTP 500 debido a un
+  bloqueo de deserialización Serde/JSON: `duplicate field 'fan-fixed-duty' at line 42`.
+  El minero no podía recibir presets ni ejecutar su autoswitcher interno. El reinicio de
+  minado (/api/v1/mining/restart) fallaba con failure_code 1002 ('Failed to parse miner configuration').
+- Resolución Aplicada: Se ejecutó hardware reboot vía Hashcore Toolkit CLI. El script
+  de arranque Linux de Vnish detectó la inconsistencia de /config/cgminer.conf y reconstituyó
+  la plantilla limpia de fábrica desde NAND.
+- Estado Posterior: /api/v1/settings respondió 200 OK. Se inyectó preset 2700W
+  (top_preset=2700, min_preset=1740).
+- Telemetría Actual M24: ~93-94 TH/s estables, 3 placas activas (126 chips c/u),
+  temps 56-76°C, consumo de cadenas ~2500W + fans (~2650-2700W total), 0 HW errors.
 
 --------------------------------------------------------------------------------
-2. ARMONIZACIÓN DE DIRECTIVAS (100% RESPETADA)
+2. SPEC 080: FIRMWARE SETTINGS CORRUPTION WATCHDOG IMPLEMENTADO
 --------------------------------------------------------------------------------
-- Directiva Fan Governor: Todo minero < 2700W mantiene 100% PWM (ACTION_RECOVERY_MAX_COOLING). Al alcanzar 2700W (>= 2580W), modula en lazo cerrado para normalizar a 82.0°C (con piso de 92% en 2700W). Total independencia por minero.
-- Directiva Anti-Doble-Bajada: VNish retiene derecho de paso a 84.0°C. Supervisor P0 actúa a 85.5°C inyectando min_preset y top_preset simétricos, con cooldown de 180s y lockout de 2h. Pausa de emergencia a 87.0°C.
-- Directiva Valley Orchestrator: Gate 0 hace bypass de duty ante ACTION_RECOVERY_MAX_COOLING, permitiendo ascender si chip < 80.0°C. Ascenso escalonado con ventana de reposo de 180s.
-- Directiva de Protección de Elevador / Silicio: Si Minero 25 experimenta saturación térmica o ruido en relés de elevator_2, el perfil degrada automáticamente de C4 a C1_ASYMMETRIC (2500W M25, 2700W M26).
+El operador solicitó: ante estos bloqueos, alertar por Telegram con botones para que
+el operador apruebe un reboot o ajuste de potencia.
+
+Componentes Implementados:
+1. app/vnish/client.py & app/vnish/__init__.py:
+   - `check_miner_settings_health(host, password, timeout=2.5)`: detecta HTTP 500
+     (duplicate field / parse error) y failure_code 1002 en /api/v1/status.
+2. app/telegram/fleet_cards.py:
+   - `build_firmware_corruption_keyboard(miner_id)`: botón `[ 🔄 Solicitar Reboot ]`
+     (abre modal click-safe `cc:act:rb_req:<id>`) y `[ ⚡ Ajustar Potencia ]` (`cc:miner:<id>:presets`).
+3. app/miner_monitor.py:
+   - Evaluado en worker de telemetría de cadenas cada 300s.
+   - Cooldown anti-spam de 900s por equipo.
+   - Registro de evento operacional `firmware_settings_corrupted` (warning) en SQLite.
+   - Alerta Telegram enriquecida con diagnóstico y botonera interactiva.
+4. Pruebas Unitarias:
+   - `tests/test_firmware_corruption_watchdog.py`: 5 tests PASS validando detección
+     de fallas HTTP 500, código 1002, 200 OK, renderizado de botones y payload de alerta.
 
 --------------------------------------------------------------------------------
-3. ESTADO DE VALIDACIÓN & TELEMETRÍA EN VIVO (23:45 hs)
+3. ESTADO DE FLOTA Y GOBERNANZA
 --------------------------------------------------------------------------------
-- Suite de Pruebas: **1418 tests PASS**, 75 subtests PASS (100% éxito en 42.21s).
-- Preflight speckit-qa: **PASS**.
-- Gate speckit-stabilize: **8/8 gates PASS**.
-- Servicio Windows NSSM: RUNNING (MinerAlerts reiniciado limpiamente).
-- Telemetría en vivo:
-  - M23: 101.5 TH/s | 2698W / 2700W | Fans: 100% (HOLD/SPIKE)
-  - M24: 95.0 TH/s | 2498W / 2700W | Fans: 100% (RECOVERY_MAX_COOLING)
-  - M25: 99.9 TH/s | 2699W / 2700W | Fans: 100% (HOLD_TARGET, 81.0°C)
-  - M26: 95.0 TH/s | 2698W / 2700W | Fans: 97% (STEP_DOWN hacia piso 92%, 78.0°C)
-  - Rendimiento Total Flota: **391.4 TH/s** continuos en toda la planta.
+- S19JPRO-23 (192.168.100.23): 101.6 TH/s | Preset 2500W (Top 2700W)
+- S19JPRO-24 (192.168.100.24): 93.2 TH/s  | Preset 2700W (Top 2700W) [Recuperado]
+- S19JPRO-25 (192.168.100.25): 98.9 TH/s  | Preset 2700W (Top 2700W)
+- S19JPRO-26 (192.168.100.26): 101.7 TH/s | Preset 2700W (Top 2700W)
+- Hashrate total de planta: ~395.4 TH/s continuos.
+- Elevador 1 (M23+M24): ~5200W dentro del presupuesto valle.
+- Elevador 2 (M25+M26): ~5400W dentro del presupuesto valle.
+
+--------------------------------------------------------------------------------
+4. VALIDACIÓN DE CALIDAD & SPECKIT-STABILIZE
+--------------------------------------------------------------------------------
+- Regresión global: **1429 tests PASS, 75 subtests PASS** (100% de éxito).
+- Preflight QA: 8/8 compuertas PASS (P0 sintaxis, P0 secrets, P0 regresión, P1 git diff check, P1 NSSM service, P1 live fleet, P2 doc alignment).
+- Servicio Windows NSSM: `MinerAlerts` en estado `SERVICE_RUNNING`.

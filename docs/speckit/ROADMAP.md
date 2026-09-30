@@ -933,12 +933,21 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
 - [x] **Hito de Estabilización de Flota (Neutralización de Sobre-Intervención)**: Erradicado el lazo de oscilación térmica y reinicios forzados en VNish mediante `auto_restart_mining=False` en orquestación rutinaria, resolución de potencia por consumo real medido de fuente en `_get_miner_wattage`, y Modo Pasivo estricto al desactivar presets vía gobernanza. Flota 100% operativa a 380 TH/s continuos.
 
+### Iniciativa 32 — Watchdog de Corrupción de Configuración de Firmware VNish y Recuperación Asistida (Spec 080 - PROP-016 - Completada & Certificada)
+- Especificación: [`specs/080-firmware-settings-corruption-watchdog/spec.md`](../../specs/080-firmware-settings-corruption-watchdog/spec.md) | Plan: [`specs/080-firmware-settings-corruption-watchdog/plan.md`](../../specs/080-firmware-settings-corruption-watchdog/plan.md) | Evidencia: [`specs/080-firmware-settings-corruption-watchdog/evidence.md`](../../specs/080-firmware-settings-corruption-watchdog/evidence.md)
+- **Estado**: Implementación, Resolución Operativa en M24 y Certificación Completadas (T1.1-T3.4). 1429/1429 tests PASS.
+- [x] Motor de Detección de Salud de Firmware (`check_miner_settings_health` en `app/vnish/client.py`): detecta activamente bloqueos HTTP 500 por parseo/campos duplicados en Serde/JSON de `/config/cgminer.conf` y fallas de minero código 1002.
+- [x] Flujo de Alerta Asistida y Botonera Interactiva en Telegram (`build_firmware_corruption_keyboard` en `app/telegram/fleet_cards.py`): botones directos para solicitud de reboot asistido con confirmación (`cc:act:rb_req:<id>`) y ajuste manual de potencia (`cc:miner:<id>:presets`).
+- [x] Cooldown anti-spam de 900s, chequeo cada 300s en telemetría de cadenas y persistencia de eventos operacionales `firmware_settings_corrupted` en `data/miner_alerts.db`.
+- [x] Recuperación empírica en producción de Minero 24 (S19JPRO-24): hardware reboot vía Toolkit regenerando `/config/cgminer.conf` desde NAND, e inyección exitosa de preset 2700W escalando a ~94 TH/s.
+- [x] Suite de pruebas unitarias `tests/test_firmware_corruption_watchdog.py` (5 tests PASS) y regresión global: **1429/1429 tests PASS, 75 subtests PASS**.
+- [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
+
 ---
 
 ## Governance
 
-- All 79 specifications in the program (Specs 001 through 079) are tracked and maintained.
-- Version 5.1.0 + FGA Facility Governance Agent (Spec 079) is verified with 1346/1346 tests PASS (0 failures, 0 regressions).
+- All 80 specifications in the program (Specs 001 through 080) are tracked and maintained.
+- Version 5.1.0 + Spec 080 Firmware Settings Corruption Watchdog is verified with 1429/1429 tests PASS, 75 subtests PASS (0 failures, 0 regressions).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.
-

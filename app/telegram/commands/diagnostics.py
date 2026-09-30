@@ -412,6 +412,16 @@ class EventsCommand(BaseCommandHandler):
         from app.miner_monitor import resolve_miner, render_event_list
         from app.telegram.fleet_cards import build_diagnostic_keyboard
 
+        if args and str(args[0]).lower().strip() in ("24h", "anomalias", "anomalies", "anom"):
+            return AnomaliesCommand().handle(
+                context,
+                args[1:],
+                update_id=update_id,
+                from_id=from_id,
+                message_id=message_id,
+                **kwargs,
+            )
+
         if context.event_store is None or not context.event_store.available:
             events_text = "Historial no disponible."
         else:
@@ -442,6 +452,71 @@ class EventsCommand(BaseCommandHandler):
             msg_type="EVENTS",
             dedup_key="cmd_events",
             dbg_cmd="events",
+            dbg_update_id=update_id,
+        )
+        return True
+
+
+class AnomaliesCommand(BaseCommandHandler):
+    name = "anomalias"
+    aliases = ["anomalies", "anom"]
+    description = "Despliega las anomalías operacionales de las últimas 24h (resumen de 1 fila o con detalle)."
+
+    def handle(
+        self,
+        context: TelegramRequestContext,
+        args: List[str],
+        update_id: Optional[int] = None,
+        from_id: Optional[Any] = None,
+        message_id: Optional[int] = None,
+        **kwargs: Any,
+    ) -> bool:
+        from app.core.event_store import (
+            render_anomalies_compact,
+            render_anomalies_detailed,
+        )
+        from app.telegram.fleet_cards import build_anomalies_keyboard
+
+        if context.event_store is None or not context.event_store.available:
+            text = "Historial de anomalías no disponible."
+            kb = build_anomalies_keyboard("compact")
+        else:
+            from app.miner_monitor import resolve_miner
+            miner_key = None
+            is_detailed = False
+            for arg in args:
+                raw = str(arg).lower().strip()
+                if raw in ("detalle", "desc", "full", "detail", "explicacion"):
+                    is_detailed = True
+                elif raw in ("resumen", "compact", "fila", "lista", "simple", "1fila"):
+                    is_detailed = False
+                else:
+                    miner = resolve_miner(raw, context.miners)
+                    if miner:
+                        miner_key = format_miner_key(miner)
+
+            anomalies = context.event_store.list_anomalies_24h(limit=50, miner_key=miner_key)
+            if is_detailed:
+                text = (
+                    "Historial temporalmente no disponible."
+                    if context.event_store.last_error
+                    else render_anomalies_detailed(anomalies)
+                )
+                kb = build_anomalies_keyboard("detailed")
+            else:
+                text = (
+                    "Historial temporalmente no disponible."
+                    if context.event_store.last_error
+                    else render_anomalies_compact(anomalies)
+                )
+                kb = build_anomalies_keyboard("compact")
+
+        context.send_message(
+            text,
+            reply_markup=kb,
+            msg_type="EVENTS",
+            dedup_key="cmd_anomalies",
+            dbg_cmd="anomalias",
             dbg_update_id=update_id,
         )
         return True

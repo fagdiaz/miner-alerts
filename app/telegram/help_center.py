@@ -435,6 +435,20 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
         aliases=["chain", "placas"],
         danger_level="safe",
     ),
+    "anomalias": CommandDefinition(
+        name="anomalias",
+        summary="Desglose de anomalías 24h.",
+        usage="/anomalias [resumen|detalle]",
+        category="diag",
+        detail=[
+            "Despliega las anomalías (warning/critical) del último informe diario.",
+            "Opción 1 (/anomalias): 1 fila compacta por anomalía.",
+            "Opción 2 (/anomalias detalle): descripción completa y enlace /e<id>.",
+        ],
+        examples=["/anomalias", "/anomalias detalle", "/anomalias 23"],
+        aliases=["anomalies", "anom"],
+        danger_level="safe",
+    ),
 }
 
 HELP_CATEGORIES: Dict[str, HelpCategory] = {
@@ -484,6 +498,7 @@ HELP_CATEGORIES: Dict[str, HelpCategory] = {
         description="Eventos, análisis y selftest",
         command_names=[
             "events",
+            "anomalias",
             "event",
             "why",
             "diagnose",

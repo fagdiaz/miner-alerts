@@ -1,14 +1,14 @@
 # ==============================================================================
 # PROMPT DE CONTINUIDAD Y PUESTA EN CONTEXTO - MINER ALERTS
 # FECHA: 2026-10-01
-# MODELO DESTINO: Gemini 3.8 Flash High (o Gemini 3.7 Flash High)
-# ESTADO DEL SISTEMA: 1477 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
+# MODELO DESTINO: Claude Sonnet 4.6 (Thinking) / Gemini 3.8 Flash High
+# ESTADO DEL SISTEMA: 1483 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
 # ESTADO DE LA FLOTA: 4/4 mineros a 2700W (~395 TH/s continuos, 10.8 kW en cadenas)
 # ==============================================================================
 
-Hola Gemini. Estás iniciando una sesión fresca en el repositorio 'miner-alerts'.
+Hola. Estás iniciando una sesión fresca en el repositorio 'miner-alerts'.
 Esta ventana continúa el trabajo de las sesiones anteriores, habiendo cerrado
-y certificado con éxito las Specs 080, 081, 082 y 083. Tu misión es tomar el control
+y certificado con éxito las Specs 080, 081, 082, 083 y 084. Tu misión es tomar el control
 técnico con máxima precisión, seguridad operativa y rigor documental.
 
 --------------------------------------------------------------------------------
@@ -22,14 +22,14 @@ Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archiv
    - Informe maestro de la auditoría de directivas (16 directivas en 5 capas P0-P4).
    - Matriz de fricciones (F-01 a F-08) y causas raíz del ecosistema de gobernanza.
 3. docs/audit/DEVELOPMENT_LOG.md (Primeras 3 entradas superiores newest-first):
+   - [2026-10-01] Spec 084: Governance Dashboard (/directivas), Persistencia SQLite y Deadlock Watchdog (PROP-020).
    - [2026-10-01] Spec 083: FGA Actuator Loop, Elevator Budget Gate Bridge y SQLite Audit (PROP-019).
    - [2026-10-01] Spec 082: MinerGovernanceContext frozen dataclass y Fan Governor.
-   - [2026-10-01] Spec 081: Watchdog de restart_required, Fan Governor y destrabe M24.
 4. docs/speckit/ROADMAP.md (Horizon V5.2 — Iniciativas 34 a 38):
-   - Muestra el estado del backlog y la planificación de las Specs 083 a 086.
+   - Muestra el estado del backlog y la planificación de las Specs 085 y 086.
 5. docs/speckit/SPEC_PROGRAM.md (Programa global de especificaciones).
-6. app/governance/fga_actuator.py y app/governance/governance_context.py
-   - Contratos centralizados de gobernanza (`MinerGovernanceContext`, `FgaActuatorDecision`, `evaluate_fga_actuator_step`).
+6. app/governance/directives_dashboard.py y app/governance/governance_context.py
+   - Contratos centralizados de gobernanza (`MinerGovernanceContext`, `GovernanceSnapshot`, `DirectivesCommand`).
 
 --------------------------------------------------------------------------------
 2. ESTADO OPERATIVO DE PRODUCCIÓN (TELEMETRÍA EN VIVO)
@@ -37,7 +37,7 @@ Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archiv
 Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W:
 - S19JPRO-23: 2700W | 99.73 TH/s | Fan 92% | Chips <80°C | Elevador 1 (2698W)
 - S19JPRO-24: 2700W | ~98-100 TH/s | Fan modulación lazo cerrado | Chips <70°C | Elevador 1 (2698W)
-- S19JPRO-25: 2700W | 100.17 TH/s | Fan 92% | Chips <80°C | Elevador 2 (2699W)
+- S19JPRO-25: 2700W | 100.17 TH/s | Fan 98% | Chips <80°C | Elevador 2 (2699W)
 - S19JPRO-26: 2700W | 97.98 TH/s | Fan 92% | Chips <78°C | Elevador 2 (2699W)
 - Total Flota: ~395.0 TH/s continuos, 10,795 W de potencia medida en cadenas.
 - Servicio Windows: NSSM servicio `MinerAlerts` en estado SERVICE_RUNNING, liveness heartbeat activo.
@@ -55,18 +55,23 @@ Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W:
   decisión-ejecución entre FGA y Elevator Budget (Gates 0 a 6). Integración de resistencia térmica R_th
   con potencia real medida (F-04 resuelto), tabla persistente `facility_agent_actions` en EventStore,
   comandos de Telegram `/agent run` y `/agent history` (<=32 cols), e invocación periódica supervisada.
-- Suite global: 1477 passed, 75 subtests passed (0 fallos, 0 errores).
+- Spec 084 (PROP-020): Dashboard de Gobernanza multinivel en Telegram (`/directivas`, `/gov_status`,
+  `/directives`, `/directiva`) con vista global y detalle por minero, formateo móvil estricto <= 32 cols,
+  tabla SQLite `governance_snapshots` indexada y con depuración periódica, y watchdog proactivo de deadlocks
+  en `ACTION_RECOVERY_MAX_COOLING` (>300s) con alerta throttled (cooldown 1800s).
+- Suite global: 1483 passed, 75 subtests passed (0 fallos, 0 errores).
 
 --------------------------------------------------------------------------------
 4. PRÓXIMO OBJETIVO TÉCNICO EN EL BACKLOG (HORIZON V5.2)
 --------------------------------------------------------------------------------
 El backlog de V5.2 documentado en `docs/speckit/ROADMAP.md` tiene como siguiente hito:
-- Iniciativa 36 / Spec 084: Governance Dashboard (/directivas) (PROP-020)
-  * Objetivo: Panel móvil unificado en Telegram para inspeccionar el estado consolidado de
-    las 16 directivas activas, métricas de fricción (F-01 a F-08) y acciones recientes del agente.
-  * Formato: Tarjetas monoespaciadas <= 32 columnas.
-  * Flujo de trabajo: Ciclo speckit estándar (`speckit-specify` -> `speckit-plan` ->
-    `speckit-tasks` -> `speckit-qa` -> implementación -> `speckit-stabilize`).
+- Iniciativa 37 / Spec 085: Descomposición del Monolito: Extracción del Orquestador de Gobernanza (PROP-021)
+  * Objetivo: Extraer `GovernanceOrchestrator` como clase en `app/governance/orchestrator.py`.
+  * Reducir `miner_monitor.py` (actualmente ~9000 líneas) moviendo la coordinación cross-subsistema
+    (resolución de `target_pwr`, Fan Governor <-> Elevator Budget <-> Thermal Guard).
+  * `miner_monitor.py` delega a `GovernanceOrchestrator.evaluate(miner_context)` y recibe `GovernanceDecision`.
+  * Preservar los 1483 tests PASS sin regresiones mediante Behavioral Test Harness.
+  * Modelo recomendado: Claude Sonnet 4.6 (Thinking) para diseño arquitectónico / Gemini Flash para tests.
 
 --------------------------------------------------------------------------------
 5. REGLAS DE ORO E INVARIANTES DE SEGURIDAD OPERATIVA
@@ -78,5 +83,5 @@ El backlog de V5.2 documentado en `docs/speckit/ROADMAP.md` tiene como siguiente
    - Antes de implementar: ejecutar `speckit-qa`.
    - Antes de commit/push: ejecutar `speckit-stabilize` (8 gates, tests 100% PASS, nssm restart).
 5. HIGIENE GIT: No dejar trailing whitespaces en ningún archivo modificado (`git diff --check`).
-6. MODEL WORKLOAD PROTOCOL: Mantener Gemini 3.8 Flash High como motor principal para lógica de
-   dominio, tests y documentación. Escalar a Claude Sonnet solo ante concurrencia multihilo de alto riesgo.
+6. MODEL WORKLOAD PROTOCOL: Recomendar Claude Sonnet 4.6 (Thinking) para Spec 085 debido a la
+   complejidad de refactorización concurrente del monolito `miner_monitor.py`.

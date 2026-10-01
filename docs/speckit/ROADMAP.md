@@ -6,10 +6,10 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (83 de 83 especificaciones completadas y evidenciadas — **1477 tests PASS, 75 subtests PASS** — Spec 083 FGA Actuator Loop Certificada en Producción 2026-10-01).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (84 de 84 especificaciones completadas y evidenciadas — **1483 tests PASS, 75 subtests PASS** — Spec 084 Governance Dashboard Certificada en Producción 2026-10-01).
 - **Estado Operativo de Flota (2026-10-01)**: 4x S19j Pro a 2700W · **~395 TH/s** · Fans en lazo cerrado ~92% · Chips 69-80°C · Sin eventos eléctricos en Elevador 1 (>49h) ni Elevador 2 (>12.5h).
 - **Auditoría Arquitectónica Completada (2026-10-01)**: Análisis exhaustivo de directivas de gobernanza, 8 fricciones identificadas (7 resueltas, 1 en backlog), diseño de resoluciones integrales. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
-- **Horizonte Actual — V5.2 Gobernanza Integrada**: Specs 082 y 083 certificadas; Specs 084–086 planificadas. Foco en contrato de estado centralizado entre subsistemas, deuda arquitectónica del monolito y observabilidad sin intervención humana.
+- **Horizonte Actual — V5.2 Gobernanza Integrada**: Specs 082, 083 y 084 certificadas; Specs 085–086 planificadas. Foco en contrato de estado centralizado entre subsistemas, deuda arquitectónica del monolito y observabilidad sin intervención humana.
 
 ---
 
@@ -1015,12 +1015,13 @@ El FGA anteriormente era un motor de recomendación sin actuador: calculaba asig
 
 ---
 
-### Iniciativa 36 â€” Observabilidad de Directivas en Tiempo Real: Dashboard de Gobernanza (Spec 084)
+### Iniciativa 36 — Observabilidad de Directivas en Tiempo Real: Dashboard de Gobernanza (Spec 084) — COMPLETADA ✅
 
-**Propuesta**: PROP-020 (pendiente de creaciÃ³n formal)
-**Prioridad**: P2 â€” Observabilidad
+**Propuesta**: PROP-020
+**Estado**: COMPLETADA (2026-10-01) — 6 tests nuevos, 1483 tests totales PASS
+**Prioridad**: P2 — Observabilidad
 **Riesgo**: BAJO
-**Modelo recomendado**: Gemini 3.8 Flash High
+**Modelo ejecutado**: Gemini 3.8 Flash High
 **Dependencia**: Spec 082
 
 **Problema que resuelve**:

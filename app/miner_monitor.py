@@ -3854,6 +3854,7 @@ _AUTOTUNE_WATCHDOG_STATE: AutotuneWatchdogState = AutotuneWatchdogState()
 _LAST_SOFT_CONTINGENCY_PEAK_STATE: Optional[bool] = None
 _LAST_SOLAR_WINDOW_STATE: Optional[bool] = None
 _LAST_FGA_ACTUATOR_TS: float = 0.0
+_LAST_DEADLOCK_ALERT_TS: Dict[str, float] = {}
 
 
 
@@ -5903,7 +5904,7 @@ def main() -> None:
         f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
     )
     qa_mode, qa_mode_source = qa_enabled(config)
-    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE, _LAST_SOLAR_WINDOW_STATE, _AUTOTUNE_WATCHDOG_STATE, _LAST_FGA_ACTUATOR_TS
+    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE, _LAST_SOLAR_WINDOW_STATE, _AUTOTUNE_WATCHDOG_STATE, _LAST_FGA_ACTUATOR_TS, _LAST_DEADLOCK_ALERT_TS
     _QA_MODE = qa_mode
     qa_notify = qa_notify_enabled(config)
     qa_verbose = qa_verbose_enabled(config)
@@ -9130,6 +9131,70 @@ def main() -> None:
                                 )
             except Exception as _fga_exc:
                 log(f"[FGA_ACTUATOR_ERR] Error en ciclo de actuador FGA: {_fga_exc}")
+
+            # Spec 084 / PROP-020: Governance Snapshots Persistence & Deadlock Watchdog
+            try:
+                from app.governance.directives_dashboard import evaluate_recovery_deadlock, build_deadlock_alert_text
+                from app.governance.governance_context import MinerGovernanceContext
+
+                for _m in valid_miners:
+                    _m_name = _m.get("name", "")
+                    _m_sk = f"{_m_name}|{_m.get('host', '')}:{_m.get('port', 4028)}"
+                    with state_lock:
+                        _m_st = states.get(_m_sk)
+                    if not _m_st:
+                        continue
+
+                    _gov_ctx = MinerGovernanceContext.from_state(_m_st, now_ts, _m)
+                    _is_deadlocked = evaluate_recovery_deadlock(
+                        _gov_ctx.fan_action,
+                        _gov_ctx.recovery_since_ts,
+                        now_ts,
+                        _gov_ctx.is_warming_up,
+                    )
+
+                    if event_store is not None and event_store.available:
+                        event_store.record_governance_snapshot(
+                            miner_name=_m_name,
+                            fan_action=_gov_ctx.fan_action,
+                            fan_duty=_gov_ctx.fan_duty,
+                            target_power_w=_gov_ctx.target_power_w,
+                            current_power_w=_gov_ctx.current_power_w,
+                            chip_temp_c=_gov_ctx.max_chip_temp_c,
+                            fga_cohort=_gov_ctx.fga_cohort,
+                            fga_r_th=_gov_ctx.fga_thermal_resistance,
+                            elevator_group=_gov_ctx.electrical_group,
+                            elevator_gate_status="DEADLOCKED" if _is_deadlocked else "GATE_OK",
+                            solar_envelope_active=bool(solar_eval.is_solar_window) if 'solar_eval' in locals() else False,
+                            contingency_mode=sched.window_name if 'sched' in locals() else "NOMINAL",
+                            restart_required=_gov_ctx.restart_required,
+                            is_deadlocked=_is_deadlocked,
+                            created_ts=now_ts,
+                        )
+
+                    # Proactive deadlock alert (1800s cooldown per miner)
+                    if _is_deadlocked:
+                        _last_al = _LAST_DEADLOCK_ALERT_TS.get(_m_name, 0.0)
+                        if (now_ts - _last_al) >= 1800.0:
+                            _LAST_DEADLOCK_ALERT_TS[_m_name] = now_ts
+                            _rec_dur = max(0.0, now_ts - (_gov_ctx.recovery_since_ts or now_ts))
+                            _alert_msg = build_deadlock_alert_text(
+                                miner_name=_m_name,
+                                current_power_w=float(_gov_ctx.current_power_w or 0.0),
+                                target_power_w=float(_gov_ctx.target_power_w or 2700.0),
+                                duration_seconds=_rec_dur,
+                            )
+                            send_telegram(
+                                bot_token,
+                                str(chat_id),
+                                f"```\n{_alert_msg}\n```",
+                                "WARNING",
+                                f"deadlock_alert_{_m_name}",
+                                is_command=True,
+                            )
+                            log(f"[GOV_WATCHDOG] miner={_m_name} DEADLOCK alert sent to Telegram (duration={int(_rec_dur)}s)")
+            except Exception as _snap_exc:
+                log(f"[GOV_SNAPSHOT_ERR] Error en snapshot de gobernanza: {_snap_exc}")
 
             with state_lock:
                 _payload = _build_state_payload(states, current_last_update_id)

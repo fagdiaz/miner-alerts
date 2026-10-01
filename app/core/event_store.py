@@ -507,6 +507,31 @@ class EventStore:
                     ON facility_agent_actions(created_ts DESC);
                 CREATE INDEX IF NOT EXISTS ix_fga_actions_miner
                     ON facility_agent_actions(miner_name, created_ts DESC);
+
+                -- Spec 084: additive governance snapshots table (PROP-020)
+                CREATE TABLE IF NOT EXISTS governance_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_ts REAL NOT NULL,
+                    miner_name TEXT NOT NULL,
+                    fan_action TEXT,
+                    fan_duty INTEGER,
+                    target_power_w INTEGER,
+                    current_power_w REAL,
+                    chip_temp_c REAL,
+                    fga_cohort TEXT,
+                    fga_r_th REAL,
+                    elevator_group TEXT,
+                    elevator_gate_status TEXT,
+                    solar_envelope_active INTEGER NOT NULL DEFAULT 0,
+                    contingency_mode TEXT,
+                    restart_required INTEGER NOT NULL DEFAULT 0,
+                    is_deadlocked INTEGER NOT NULL DEFAULT 0,
+                    details_json TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE INDEX IF NOT EXISTS ix_gov_snapshots_created
+                    ON governance_snapshots(created_ts DESC);
+                CREATE INDEX IF NOT EXISTS ix_gov_snapshots_miner
+                    ON governance_snapshots(miner_name, created_ts DESC);
                 """
             )
 
@@ -1267,6 +1292,10 @@ class EventStore:
                     "DELETE FROM collector_runs WHERE completed_ts < ?",
                     (event_cutoff,),
                 )
+                connection.execute(
+                    "DELETE FROM governance_snapshots WHERE created_ts < ?",
+                    (decision_cutoff,),
+                )
             self._last_error = None
             return {
                 "samples": max(0, int(sample_cursor.rowcount)),
@@ -1285,6 +1314,22 @@ class EventStore:
                 "collector_runs": 0,
             }
 
+    def prune_governance_snapshots(self, cutoff_ts: float) -> int:
+        """Prune governance snapshots older than cutoff_ts (Spec 084 / PROP-020)."""
+        connection = self._connection
+        if connection is None:
+            return 0
+        try:
+            with self._lock, connection:
+                cur = connection.execute(
+                    "DELETE FROM governance_snapshots WHERE created_ts < ?",
+                    (float(cutoff_ts),),
+                )
+                return max(0, int(cur.rowcount))
+        except sqlite3.Error as exc:
+            self._report_error("prune_governance_snapshots", exc)
+            return 0
+
     def count_rows(self, table_name: str) -> int:
         if table_name not in (
             "telemetry_samples",
@@ -1292,6 +1337,7 @@ class EventStore:
             "reboot_decisions",
             "firmware_events",
             "collector_runs",
+            "governance_snapshots",
         ):
             raise ValueError("Unsupported table")
         connection = self._connection
@@ -1823,6 +1869,104 @@ class EventStore:
                 return [dict(r) for r in rows]
         except sqlite3.Error as exc:
             self._report_error("get_facility_agent_actions", exc)
+            return []
+
+    def record_governance_snapshot(
+        self,
+        *,
+        miner_name: str,
+        fan_action: Optional[str] = None,
+        fan_duty: Optional[int] = None,
+        target_power_w: Optional[int] = None,
+        current_power_w: Optional[float] = None,
+        chip_temp_c: Optional[float] = None,
+        fga_cohort: Optional[str] = None,
+        fga_r_th: Optional[float] = None,
+        elevator_group: Optional[str] = None,
+        elevator_gate_status: Optional[str] = None,
+        solar_envelope_active: bool = False,
+        contingency_mode: Optional[str] = None,
+        restart_required: bool = False,
+        is_deadlocked: bool = False,
+        details: Optional[Dict[str, Any]] = None,
+        created_ts: Optional[float] = None,
+    ) -> bool:
+        """Persist a consolidated governance snapshot per miner per tick (Spec 084 / PROP-020)."""
+        connection = self._connection
+        if connection is None:
+            return False
+
+        ts = float(created_ts if created_ts is not None else time.time())
+        det_str = json.dumps(details or {})
+        try:
+            with self._lock, connection:
+                connection.execute(
+                    """
+                    INSERT INTO governance_snapshots (
+                        created_ts, miner_name, fan_action, fan_duty,
+                        target_power_w, current_power_w, chip_temp_c,
+                        fga_cohort, fga_r_th, elevator_group,
+                        elevator_gate_status, solar_envelope_active,
+                        contingency_mode, restart_required, is_deadlocked,
+                        details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        ts,
+                        str(miner_name),
+                        str(fan_action) if fan_action is not None else None,
+                        int(fan_duty) if fan_duty is not None else None,
+                        int(target_power_w) if target_power_w is not None else None,
+                        float(current_power_w) if current_power_w is not None else None,
+                        float(chip_temp_c) if chip_temp_c is not None else None,
+                        str(fga_cohort) if fga_cohort is not None else None,
+                        float(fga_r_th) if fga_r_th is not None else None,
+                        str(elevator_group) if elevator_group is not None else None,
+                        str(elevator_gate_status) if elevator_gate_status is not None else None,
+                        1 if solar_envelope_active else 0,
+                        str(contingency_mode) if contingency_mode is not None else None,
+                        1 if restart_required else 0,
+                        1 if is_deadlocked else 0,
+                        det_str,
+                    ),
+                )
+            return True
+        except sqlite3.Error as exc:
+            self._report_error("record_governance_snapshot", exc)
+            return False
+
+    def get_recent_governance_snapshots(
+        self, miner_name: Optional[str] = None, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Retrieve recent governance snapshots for audit, telemetry, and diagnostics (Spec 084 / PROP-020)."""
+        connection = self._connection
+        if connection is None:
+            return []
+
+        try:
+            with self._lock:
+                if miner_name:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM governance_snapshots
+                        WHERE miner_name = ?
+                        ORDER BY created_ts DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (str(miner_name), max(1, int(limit))),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM governance_snapshots
+                        ORDER BY created_ts DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (max(1, int(limit)),),
+                    ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            self._report_error("get_recent_governance_snapshots", exc)
             return []
 
 

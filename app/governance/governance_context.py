@@ -92,6 +92,19 @@ class MinerGovernanceContext:
     is_warming_up: bool = False
     """True si el minero está en fase de cold-boot grace (autotune_grace_period)."""
 
+    # ── Dominio Fan Governor & Telemetría Aditiva (Spec 084) ──────────────────
+    fan_duty: Optional[int] = None
+    """Duty actual del Fan Governor (0-100%)."""
+
+    fan_action: Optional[str] = None
+    """Última acción emitida por el Fan Governor."""
+
+    recovery_since_ts: Optional[float] = None
+    """Timestamp unix de inicio de episodio ACTION_RECOVERY_MAX_COOLING."""
+
+    is_stock_firmware: bool = False
+    """True si el minero corre firmware stock Antminer."""
+
     # ── Timestamp de construcción ─────────────────────────────────────────────
     built_at_ts: float = field(default_factory=time.monotonic)
     """Monotonic timestamp de construcción del contexto (para latencia de auditoría)."""
@@ -99,6 +112,11 @@ class MinerGovernanceContext:
     # ─────────────────────────────────────────────────────────────────────────
     # Propiedades calculadas (compatibles con frozen dataclass)
     # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def max_chip_temp_c(self) -> Optional[float]:
+        """Alias para chip_temp_c por compatibilidad retroactiva."""
+        return self.chip_temp_c
 
     @property
     def effective_target_power_w(self) -> Optional[float]:
@@ -152,17 +170,36 @@ class MinerGovernanceContext:
         """
         # Dominio Potencia
         current_power_w: Optional[float] = getattr(state, "last_power_w", None)
-        target_power_w: Optional[float] = None  # Se completa en miner_monitor.py al pasar
-        configured_preset: Optional[str] = getattr(state, "vnish_discovered_preset", None)
+        if current_power_w is None:
+            current_power_w = getattr(state, "governor_last_power_w", None)
+
+        target_power_w: Optional[float] = (
+            miner_config.get("target_power_w")
+            or getattr(state, "vnish_discovered_target_power_w", None)
+        )
+        configured_preset: Optional[str] = (
+            getattr(state, "vnish_discovered_preset", None)
+            or getattr(state, "balancer_preset", None)
+        )
         executed_preset: Optional[str] = getattr(state, "vnish_discovered_preset", None)
         # Nota: configured_preset y executed_preset difieren cuando restart_required=True.
         # miner_monitor.py puede pasar executed_preset distinto si tiene esa info.
 
         # Dominio Térmico
-        chip_temp_c: Optional[float] = getattr(state, "last_max_chip_temp", None)
+        chip_temp_c: Optional[float] = (
+            getattr(state, "last_max_chip_temp", None)
+            or getattr(state, "governor_last_temp_c", None)
+            or getattr(state, "last_temp_c", None)
+        )
         inlet_temp_c: Optional[float] = getattr(state, "inlet_temp_c", None)
         fga_thermal_resistance: Optional[float] = getattr(state, "fga_thermal_resistance", None)
         fga_cohort: Optional[str] = getattr(state, "fga_cohort", None)
+
+        # Dominio Fan Governor & Telemetría Aditiva (Spec 084)
+        fan_duty: Optional[int] = getattr(state, "governor_duty", None)
+        fan_action: Optional[str] = getattr(state, "governor_last_action", None)
+        recovery_since_ts: Optional[float] = getattr(state, "governor_recovery_since_ts", None)
+        is_stock_firmware: bool = bool(getattr(state, "is_stock_firmware", False))
 
         # Dominio Estado Firmware
         restart_required: bool = bool(getattr(state, "vnish_restart_required", False))
@@ -217,5 +254,9 @@ class MinerGovernanceContext:
             electrical_group=electrical_group,
             miner_name=miner_name,
             is_warming_up=is_warming_up,
+            fan_duty=fan_duty,
+            fan_action=fan_action,
+            recovery_since_ts=recovery_since_ts,
+            is_stock_firmware=is_stock_firmware,
             built_at_ts=time.monotonic(),
         )

@@ -343,6 +343,7 @@ The program requires three documentation sweeps.
 - Spec 081 is **Completed, Restart Required Watchdog & Fan Governor Thermal Harmonization (PROP-017) Certified in Live Production** (1440/1440 tests PASS). M24 destrabe operativo: 2700W · 97.7+ TH/s · ACTION_RECOVERY_MAX_COOLING erradicado · Flota global 395 TH/s.
 - Spec 082 is **Completed, MinerGovernanceContext Frozen Dataclass & Fan Governor Integration (PROP-018) Certified** (1466/1466 tests PASS).
 - Spec 083 is **Completed, FGA Actuator Loop & Elevator Budget Transition Integration (PROP-019) Certified** (1477/1477 tests PASS).
+- Spec 084 is **Completed, Governance Dashboard & Deadlock Watchdog (PROP-020) Certified** (1483/1483 tests PASS).
 
 ### Horizon V5.2 — Gobernanza Integrada y Deuda Arquitectónica (Specs 082–086)
 
@@ -352,7 +353,7 @@ The program requires three documentation sweeps.
 | --- | --- | --- | --- | --- | --- |
 | Completed | 082 MinerGovernanceContext | P0 | HIGH | Spec 081 ✅ | Dataclass de contrato de estado compartida entre todos los subsistemas. Elimina parámetros ad-hoc dispersos. |
 | Completed | 083 FGA Actuator Loop | P1 | MEDIUM | Spec 082 ✅ | Conectar FGA→ElevatorBudget→VNish: ciclo decisión-ejecución completo y trazable. Power_w real en R_th (F-04). |
-| Planned | 084 Governance Dashboard | P2 | LOW | Spec 082 | `/directivas`: estado en tiempo real de cada directiva por minero. Alerta proactiva de deadlocks (ACTION_RECOVERY_MAX_COOLING >300s). |
+| Completed | 084 Governance Dashboard | P2 | LOW | Spec 082 ✅ | `/directivas`: estado en tiempo real de cada directiva por minero. Alerta proactiva de deadlocks (ACTION_RECOVERY_MAX_COOLING >300s). |
 | Planned | 085 Governance Orchestrator | P1 | HIGH | Spec 082, 083 | Extraer `GovernanceOrchestrator` de `miner_monitor.py`. Objetivo: reducir monolito ≤6000 líneas. |
 | Planned | 086 Incident Autopsy Engine | P2 | MEDIUM | Spec 084 | Worker asíncrono forense: tarjeta de diagnóstico automática ante reinicios. Supervisor Q&A conversacional en Telegram. |
 

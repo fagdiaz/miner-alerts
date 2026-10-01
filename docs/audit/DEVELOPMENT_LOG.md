@@ -5,6 +5,49 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
 
+## [2026-10-01] - Spec 084: Governance Dashboard (`/directivas`), Persistencia SQLite y Deadlock Watchdog (PROP-020)
+
+* **Contexto**:
+  - Motivación: La gobernanza multinivel distribuida en la planta opera a través de 5 capas de directivas (P0: Seguridad Hardware, P1: Firmware & Reinicio, P2: Elevador & Contingencia, P3: Agente de Planta FGA, P4: Presets & Duty). Sin embargo, los operadores carecían de una vista consolidada en Telegram para observar el estado de cada directiva en tiempo real y detectar oportunamente anomalías como bucles de enfriamiento (`ACTION_RECOVERY_MAX_COOLING`).
+  - Objetivo: Implementar el comando `/directivas` (con aliases `/gov_status`, `/directives`, `/directiva`) con soporte para vista global de flota y drill-down individual por minero, formateo móvil estricto ($\le 32$ columnas), persistencia periódica de snapshots en SQLite (`governance_snapshots`) con depuración automática, y un deadlock watchdog proactivo con alerta throttled (1800s cooldown).
+  - Baseline previo: 1477 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Implementación**:
+  1. `app/core/event_store.py` (MODIFICADO — aditivo):
+     - DDL de tabla `governance_snapshots` e índices `ix_gov_snapshots_created` e `ix_gov_snapshots_miner`.
+     - Métodos `record_governance_snapshot()`, `get_recent_governance_snapshots()` y `prune_governance_snapshots()`.
+     - Depuración integrada en `prune()` preservando el esquema de retorno estándar de 5 claves para retrocompatibilidad total.
+  2. `app/governance/governance_context.py` (MODIFICADO):
+     - Incorporación de `fan_duty`, `fan_action`, `recovery_since_ts`, `is_stock_firmware` y propiedad `@property max_chip_temp_c` a `MinerGovernanceContext`.
+     - Mapeo automático de estos atributos desde `MinerState` en `from_state()`.
+  3. `app/governance/directives_dashboard.py` (NUEVO):
+     - Dataclass inmutable `GovernanceSnapshot`.
+     - Función pura de detección `evaluate_recovery_deadlock()`.
+     - Funciones puras de formateo `build_fleet_directives_card()`, `build_miner_directive_card()` y `build_deadlock_alert_text()` con restricción estricta de ancho $\le 32$ columnas.
+  4. `app/telegram/commands/directives.py` (NUEVO):
+     - Handler `DirectivesCommand` con aliases `/directivas`, `/gov_status`, `/directives`, `/directiva`.
+     - Soporte para vista general de flota o detalle por minero (ej. `/directivas 24`).
+  5. `app/telegram/router.py` (MODIFICADO):
+     - Registro de `DirectivesCommand` en `create_default_command_router()`.
+  6. `app/miner_monitor.py` (MODIFICADO — integración mínima):
+     - Grabación periódica de snapshots en `EventStore` en cada ciclo de monitoreo.
+     - Watchdog proactivo de deadlocks en enfriamiento con cooldown de 1800s por minero.
+  7. `tests/test_governance_dashboard.py` (NUEVO):
+     - 6 tests rigurosos cubriendo persistencia en EventStore, poda de retención, lógica del deadlock watchdog, formateo de $\le 32$ columnas en todas las tarjetas y alertas, y enrutamiento/autorización en Telegram.
+
+* **Resultados de Validación**:
+  - `py_compile`: todos los módulos pasan con exit 0 ✅
+  - `pytest tests/test_governance_dashboard.py -v`: **6 passed** in 0.72s ✅
+  - `pytest tests/test_fga_actuator.py tests/test_facility_agent.py tests/test_governance_context_contracts.py -v`: **48 passed** in 1.42s ✅
+  - `pytest -x -q`: **1483 passed, 75 subtests passed** in 42.34s ✅ (+6 tests sobre baseline)
+  - `git diff --check`: exit 0 ✅
+
+* **Invariantes preservados**:
+  - Restricción móvil Mobile-First $\le 32$ caracteres por línea verificada programáticamente.
+  - Compatibilidad total en llamadas y firmas de `EventStore.prune()`.
+  - Supresión de alertas de deadlock durante warming up y limitación de frecuencia a 1800s por minero.
+  - Cero secretos o configuraciones locales versionadas.
+
 ## [2026-10-01] - Spec 083: FGA Actuator Loop — Conexión FGA → Elevator Budget → VNish (PROP-019)
 
 * **Contexto**:

@@ -387,7 +387,7 @@ class TestFgaTelegramCommands(unittest.TestCase):
         from pathlib import Path
         from app.telegram.context import TelegramRequestContext
         from app.telegram.commands.agent import AgentCommand
-        from types import SimpleNamespace
+        from app.miner_monitor import MinerState
 
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.temp_dir.name, "test_events.db")
@@ -398,27 +398,27 @@ class TestFgaTelegramCommands(unittest.TestCase):
             self.sent_messages.append(text)
             return True
 
+        st23 = MinerState()
+        st23.governor_last_temp_c = 78.0
+        st23.last_max_chip_temp = 78.0
+        st23.governor_last_power_w = 2500.0
+        st23.last_power_w = 2500.0
+        st23.balancer_preset = "2500W"
+        st23.rate_ths = 98.0
+        st23.vnish_restart_required = False
+
+        st24 = MinerState()
+        st24.governor_last_temp_c = 68.0
+        st24.last_max_chip_temp = 68.0
+        st24.governor_last_power_w = 2500.0
+        st24.last_power_w = 2500.0
+        st24.balancer_preset = "2500W"
+        st24.rate_ths = 99.0
+        st24.vnish_restart_required = False
+
         self.states = {
-            "S19JPRO-23|192.168.1.123:4028": SimpleNamespace(
-                miner_name="S19JPRO-23",
-                last_temp_c=78.0,
-                governor_last_temp_c=78.0,
-                governor_last_power_w=2500.0,
-                balancer_preset="2500W",
-                rate_ths=98.0,
-                vnish_restart_required=False,
-                is_warming_up=False,
-            ),
-            "S19JPRO-24|192.168.1.124:4028": SimpleNamespace(
-                miner_name="S19JPRO-24",
-                last_temp_c=68.0,
-                governor_last_temp_c=68.0,
-                governor_last_power_w=2500.0,
-                balancer_preset="2500W",
-                rate_ths=99.0,
-                vnish_restart_required=False,
-                is_warming_up=False,
-            ),
+            "S19JPRO-23|192.168.1.123:4028": st23,
+            "S19JPRO-24|192.168.1.124:4028": st24,
         }
 
         self.context = TelegramRequestContext(
@@ -443,8 +443,14 @@ class TestFgaTelegramCommands(unittest.TestCase):
         self.cmd = AgentCommand()
 
     def tearDown(self):
-        self.store.close()
-        self.temp_dir.cleanup()
+        try:
+            self.store.close()
+        except Exception:
+            pass
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
 
     def test_agent_run_command_generates_and_simulates_action(self):
         """T5.1 & T5.3: /agent run ejecuta y responde con tarjeta compacta."""

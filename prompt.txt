@@ -1,51 +1,81 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD Y HANDOFF - 2026-10-01 (Post Spec 082: MinerGovernanceContext)
-# MODELO RECOMENDADO: Gemini 3.8 Flash High (próxima spec es menor complejidad)
-# ESTADO DEL SISTEMA: 1466 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING
-# ESTADO DE LA FLOTA: M23, M24, M25, M26 todos a 2700W (~395 TH/s, 10.8 kW)
+# PROMPT DE CONTINUIDAD Y PUESTA EN CONTEXTO - MINER ALERTS
+# FECHA: 2026-10-01
+# MODELO DESTINO: Gemini 3.8 Flash High (o Gemini 3.7 Flash High)
+# ESTADO DEL SISTEMA: 1466 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
+# ESTADO DE LA FLOTA: 4/4 mineros a 2700W (~395 TH/s continuos, 10.8 kW en cadenas)
 # ==============================================================================
 
-Hola Gemini / Claude. Estás retomando el desarrollo de 'miner-alerts'.
-La sesión anterior completó la Spec 082 (MinerGovernanceContext PROP-018) al 100%.
+Hola Gemini. Estás iniciando una sesión fresca en el repositorio 'miner-alerts'.
+Esta ventana continúa el trabajo de las sesiones anteriores, habiendo cerrado
+y certificado con éxito las Specs 080, 081 y 082. Tu misión es tomar el control
+técnico con máxima precisión, seguridad operativa y rigor documental.
 
 --------------------------------------------------------------------------------
-1. RESUMEN DEL ESTADO ACTUAL
+1. LECTURA OBLIGATORIA DE DOCUMENTOS CLAVE (EN ESTE ORDEN)
 --------------------------------------------------------------------------------
-Spec 082 CERRADA y CERTIFICADA:
-  - `app/governance/governance_context.py`: MinerGovernanceContext frozen dataclass.
-  - `app/governance/fan_governor.py`: ctx param aditivo en compute_governor_step().
-  - `app/miner_monitor.py`: gov_ctx construido y pasado al Fan Governor cada ciclo.
-  - `tests/test_governance_context_contracts.py`: 26 tests T001-T011 PASS.
-  - Suite global: 1466 PASS, 75 subtests, 0 fallos.
-  - Documentación: evidence.md, tasks.md (100% checked), DEVELOPMENT_LOG, ROADMAP, SPEC_PROGRAM, DELIVERY_PLAN.
-  - PENDIENTE: commit manual de Spec 082 (los archivos están listos).
+Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archivos:
+
+1. AGENTS.md
+   - Constitución técnica, jerarquía de modelos, protocolo de handoff y reglas DoD.
+2. docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md
+   - Informe maestro de la auditoría de directivas (16 directivas en 5 capas P0-P4).
+   - Matriz de fricciones (F-01 a F-08) y causas raíz del ecosistema de gobernanza.
+3. docs/audit/DEVELOPMENT_LOG.md (Primeras 2 entradas superiores newest-first):
+   - [2026-10-01] Spec 082: MinerGovernanceContext frozen dataclass y Fan Governor.
+   - [2026-10-01] Spec 081: Watchdog de restart_required, Fan Governor y destrabe M24.
+4. docs/speckit/ROADMAP.md (Horizon V5.2 — Iniciativas 34 a 38):
+   - Muestra el estado del backlog y la planificación de las Specs 082 a 086.
+5. docs/speckit/SPEC_PROGRAM.md (Programa global de especificaciones).
+6. app/governance/governance_context.py
+   - El nuevo contrato centralizado de estado (`MinerGovernanceContext`) creado en Spec 082.
 
 --------------------------------------------------------------------------------
-2. LO QUE QUEDA POR HACER
+2. ESTADO OPERATIVO DE PRODUCCIÓN (TELEMETRÍA EN VIVO)
 --------------------------------------------------------------------------------
-A. Commit manual de Spec 082:
-   - git add app/governance/governance_context.py
-   - git add app/governance/fan_governor.py
-   - git add app/miner_monitor.py
-   - git add tests/test_governance_context_contracts.py
-   - git add specs/082-governance-context/
-   - git add docs/audit/DEVELOPMENT_LOG.md
-   - git add docs/speckit/ROADMAP.md docs/speckit/SPEC_PROGRAM.md docs/speckit/DELIVERY_PLAN.md
-   - git commit -m "feat(spec082): MinerGovernanceContext frozen dataclass + ctx param fan governor (PROP-018)"
-
-B. Próxima Spec según ROADMAP:
-   - Iniciativa 35: Spec 083 — FGA Actuator Loop (conectar FGA↔ElevatorBudget↔VNish)
-   - Iniciativa 36: Spec 084 — Governance Dashboard (/directivas)
-   - Iniciativa 37: Spec 085 — Governance Orchestrator (extraer de miner_monitor.py)
-
-C. Consultar ROADMAP.md para la siguiente iniciativa prioritaria:
-   Ver `docs/speckit/ROADMAP.md` Horizonte V5.2 (línea ~970).
+Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W:
+- S19JPRO-23: 2700W | 99.73 TH/s | Fan 92% | Chips <80°C | Elevador 1 (2698W)
+- S19JPRO-24: 2700W | ~98-100 TH/s | Fan modulación lazo cerrado | Chips <70°C | Elevador 1 (2699W)
+  * Nudo F-01/F-02 resuelto en Spec 081: restart_required=False, 100% PWM erradicado.
+- S19JPRO-25: 2700W | 100.17 TH/s | Fan 92-96% | Chips <80°C | Elevador 2 (2699W)
+- S19JPRO-26: 2700W | 97.98 TH/s | Fan 92% | Chips <78°C | Elevador 2 (2699W)
+- Total Flota: ~395.0 TH/s continuos, 10,795 W de potencia medida en cadenas.
+- Servicio Windows: NSSM servicio `MinerAlerts` en estado SERVICE_RUNNING, liveness heartbeat activo.
 
 --------------------------------------------------------------------------------
-3. INVARIANTES Y REGLAS DE SEGURIDAD
+3. RESUMEN DE HITOS RECIENTES CERTIFICADOS
 --------------------------------------------------------------------------------
-- Retrocompatibilidad 100%: llamadas a `compute_governor_step()` sin `ctx` = resultados idénticos.
-- `MinerState` no se modifica.
-- No commitear `app/config.json` ni `app/state.json`.
-- Telegram width <= 32 columnas.
-- No dejar trailing whitespaces en `prompt.txt`.
+- Spec 080 (PROP-016): Watchdog de corrupción de firmware Vnish en /config/cgminer.conf.
+- Spec 081 (PROP-017): Watchdog de reinicio de minado pendiente (`evaluate_preset_restart_candidate`)
+  y armonización de Fan Governor (potencia real como target efectivo cuando restart_required=True).
+- Spec 082 (PROP-018): Creación del dataclass inmutable `MinerGovernanceContext` con 4 dominios
+  (potencia, térmico, firmware, operativo), método puro `.from_state()` e integración aditiva
+  en `compute_governor_step(..., ctx=gov_ctx)` manteniendo 100% retrocompatibilidad.
+- Suite global: 1466 passed, 75 subtests passed (0 fallos, 0 errores).
+
+--------------------------------------------------------------------------------
+4. PRÓXIMO OBJETIVO TÉCNICO EN EL BACKLOG (HORIZON V5.2)
+--------------------------------------------------------------------------------
+El backlog de V5.2 documentado en `docs/speckit/ROADMAP.md` tiene como siguiente hito:
+- Iniciativa 35 / Spec 083: FGA Actuator Loop (PROP-019)
+  * Objetivo: Conectar el Facility Governance Agent (FGA) con el Elevator Budget y VNish,
+    cerrando el ciclo de decisión-ejecución con R_th real calculado sobre potencia medida.
+  * Ingesta: Consume el `MinerGovernanceContext` establecido en Spec 082.
+  * Flujo de trabajo: Ciclo speckit estándar (`speckit-specify` -> `speckit-plan` ->
+    `speckit-tasks` -> `speckit-qa` -> implementación -> `speckit-stabilize`).
+
+Alternativamente, atiende las directivas específicas que el operador solicite al abrir
+la nueva sesión (diagnósticos en Telegram, observabilidad de Elevadores, consultas de estado).
+
+--------------------------------------------------------------------------------
+5. REGLAS DE ORO E INVARIANTES DE SEGURIDAD OPERATIVA
+--------------------------------------------------------------------------------
+1. NO DISRUPCIÓN INCONSULTA: Prohibido reiniciar mineros o alterar presets si están hasheando sanos.
+2. PROTECCIÓN DE SECRETOS: `app/config.json` y `app/state.json` NUNCA deben commitearse ni exponerse.
+3. FORMATO TELEGRAM: Todo mensaje o tarjeta de Telegram debe respetar el ancho móvil <= 32 columnas.
+4. GATES DE CALIDAD OBLIGATORIOS:
+   - Antes de implementar: ejecutar `speckit-qa`.
+   - Antes de commit/push: ejecutar `speckit-stabilize` (8 gates, tests 100% PASS, nssm restart).
+5. HIGIENE GIT: No dejar trailing whitespaces en ningún archivo modificado (`git diff --check`).
+6. MODEL WORKLOAD PROTOCOL: Mantener Gemini 3.8 Flash High como motor principal para lógica de
+   dominio, tests y documentación. Escalar a Claude Sonnet solo ante concurrencia multihilo de alto riesgo.

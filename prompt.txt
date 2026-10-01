@@ -1,81 +1,51 @@
- ==============================================================================
-# PROMPT DE CONTINUIDAD Y HANDOFF - 2026-10-01
-# MODELO RECOMENDADO: Gemini 3.8 Flash High (observación, supervisión, tareas acotadas)
-# TAREA DISPONIBLE: Spec 082 (MinerGovernanceContext) — solo cuando el operador lo autorice
-# ESTADO DEL SISTEMA: 1440 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING
-# FLOTA: 4x 2700W · ~395 TH/s · Chips 69-80°C · Fans ~92% lazo cerrado
+# ==============================================================================
+# PROMPT DE CONTINUIDAD Y HANDOFF - 2026-10-01 (Post Spec 082: MinerGovernanceContext)
+# MODELO RECOMENDADO: Gemini 3.8 Flash High (próxima spec es menor complejidad)
+# ESTADO DEL SISTEMA: 1466 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING
+# ESTADO DE LA FLOTA: M23, M24, M25, M26 todos a 2700W (~395 TH/s, 10.8 kW)
 # ==============================================================================
 
-Hola. El sistema se encuentra en estado óptimo certificado tras Spec 081.
-La documentación estratégica y de planificación fue actualizada el 2026-10-01.
+Hola Gemini / Claude. Estás retomando el desarrollo de 'miner-alerts'.
+La sesión anterior completó la Spec 082 (MinerGovernanceContext PROP-018) al 100%.
 
 --------------------------------------------------------------------------------
-1. ESTADO COMPLETO (snapshot 2026-10-01 ~12:00 hs)
+1. RESUMEN DEL ESTADO ACTUAL
 --------------------------------------------------------------------------------
-- M23: 2700W | 99.73 TH/s | Fan 92% | Chips 78°C | Uptime 49.1h ✅
-- M24: 2700W (DESTRABADO) | 97.7 TH/s | Fans lazo cerrado | Chips 51-69°C ✅
-- M25: 2700W | 100.17 TH/s | Fan 92% | Chips 79°C | Uptime 22.3h ✅
-- M26: 2700W | 97.98 TH/s | Fan 92% | Chips 77°C | Uptime 22.3h ✅
-- Flota: ~395 TH/s | 10.8 kW | Sin eventos eléctricos activos
-
-- Suite: 1440 tests PASS, 75 subtests PASS (0 failures)
-- Servicio NSSM: RUNNING
-- Commit: e3d20a6 (Spec 081 certificada)
-
---------------------------------------------------------------------------------
-2. DOCUMENTACIÓN ACTUALIZADA (2026-10-01)
---------------------------------------------------------------------------------
-- docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md → Auditoría exhaustiva de
-  directivas, 8 fricciones identificadas, resoluciones propuestas.
-- docs/speckit/ROADMAP.md → Actualizado con Spec 081 cerrada, V5.2 planificada
-  (Iniciativas 34-38: Specs 082-086).
-- docs/speckit/SPEC_PROGRAM.md → Baseline 1440 tests, horizonte a 2027-03-31,
-  tabla V5.2 con Specs 082-086 y sus dependencias.
-- docs/audit/DEVELOPMENT_LOG.md → Entrada de auditoría 2026-10-01 al inicio.
+Spec 082 CERRADA y CERTIFICADA:
+  - `app/governance/governance_context.py`: MinerGovernanceContext frozen dataclass.
+  - `app/governance/fan_governor.py`: ctx param aditivo en compute_governor_step().
+  - `app/miner_monitor.py`: gov_ctx construido y pasado al Fan Governor cada ciclo.
+  - `tests/test_governance_context_contracts.py`: 26 tests T001-T011 PASS.
+  - Suite global: 1466 PASS, 75 subtests, 0 fallos.
+  - Documentación: evidence.md, tasks.md (100% checked), DEVELOPMENT_LOG, ROADMAP, SPEC_PROGRAM, DELIVERY_PLAN.
+  - PENDIENTE: commit manual de Spec 082 (los archivos están listos).
 
 --------------------------------------------------------------------------------
-3. HORIZONTE V5.2 — SPECS PLANIFICADAS (NO IMPLEMENTAR SIN AUTORIZACIÓN)
+2. LO QUE QUEDA POR HACER
 --------------------------------------------------------------------------------
-Spec 082 (P0/ALTA): MinerGovernanceContext — contrato de estado centralizado
-  → Resolver deuda arquitectónica: 6 subsistemas con visibilidad parcial
-  → Modelo recomendado: Claude Sonnet 4.6 (Thinking)
-  → Requiere: aprobación explícita del operador
+A. Commit manual de Spec 082:
+   - git add app/governance/governance_context.py
+   - git add app/governance/fan_governor.py
+   - git add app/miner_monitor.py
+   - git add tests/test_governance_context_contracts.py
+   - git add specs/082-governance-context/
+   - git add docs/audit/DEVELOPMENT_LOG.md
+   - git add docs/speckit/ROADMAP.md docs/speckit/SPEC_PROGRAM.md docs/speckit/DELIVERY_PLAN.md
+   - git commit -m "feat(spec082): MinerGovernanceContext frozen dataclass + ctx param fan governor (PROP-018)"
 
-Spec 083 (P1/MEDIA): FGA Actuator Loop — ciclo decisión-ejecución completo
-  → FGA deja de ser solo recomendador: ejecuta via ElevatorBudget→VNish
-  → Depende de: Spec 082
-  → Modelo recomendado: Gemini 3.8 Flash High
+B. Próxima Spec según ROADMAP:
+   - Iniciativa 35: Spec 083 — FGA Actuator Loop (conectar FGA↔ElevatorBudget↔VNish)
+   - Iniciativa 36: Spec 084 — Governance Dashboard (/directivas)
+   - Iniciativa 37: Spec 085 — Governance Orchestrator (extraer de miner_monitor.py)
 
-Spec 084 (P2/BAJA): Governance Dashboard — `/directivas` tiempo real
-  → Diagnóstico en <10s de por qué un minero no está en el preset esperado
-  → Alerta proactiva de deadlocks (RECOVERY_MAX_COOLING >300s)
-  → Depende de: Spec 082
-  → Modelo recomendado: Gemini 3.8 Flash High
-
-Spec 085 (P1/ALTA): Governance Orchestrator — descomposición del monolito
-  → Extraer GovernanceOrchestrator de miner_monitor.py (9000→6000 líneas)
-  → Depende de: Spec 082, 083
-  → Modelo recomendado: Claude Sonnet 4.6 (Thinking) para diseño
-
-Spec 086 (P2/MEDIA): Incident Autopsy Engine — forense automático
-  → Tarjeta de diagnóstico automática ante reinicios (≤2 minutos)
-  → Depende de: Spec 084
-  → Modelo recomendado: Gemini 3.8 Flash High
+C. Consultar ROADMAP.md para la siguiente iniciativa prioritaria:
+   Ver `docs/speckit/ROADMAP.md` Horizonte V5.2 (línea ~970).
 
 --------------------------------------------------------------------------------
-4. BACKLOG DE OBSERVACIÓN CONTINUA (sin implementación requerida)
+3. INVARIANTES Y REGLAS DE SEGURIDAD
 --------------------------------------------------------------------------------
-- Monitorear Elevador 1 a 5400W (M23+M24 a 2700W): trigger si hay eventos
-  unexpected_restart o phase_drop → activar PROFILE_C1_ASYMMETRIC
-- Verificar FGA cohorte de M24 en facility_agent_knowledge (debería ser COOL
-  o STANDARD con R_th calculado a 2700W real)
-- Latencia de pytest: actualmente ~45s con 1440 tests (alerta si >90s)
-
---------------------------------------------------------------------------------
-5. REGLAS DE SEGURIDAD CONSTITUCIÓN AGENTS.MD
---------------------------------------------------------------------------------
-- NUNCA implementar specs 082-086 sin aprobación explícita del operador.
-- Mantener suite 1440 tests PASS al 100%.
-- Formato Telegram ≤32 columnas.
-- No commitear app/config.json ni app/state.json.
-- Spec 082 (MinerGovernanceContext) es P0/ALTA — escalar a Claude Sonnet 4.6 (Thinking).
+- Retrocompatibilidad 100%: llamadas a `compute_governor_step()` sin `ctx` = resultados idénticos.
+- `MinerState` no se modifica.
+- No commitear `app/config.json` ni `app/state.json`.
+- Telegram width <= 32 columnas.
+- No dejar trailing whitespaces en `prompt.txt`.

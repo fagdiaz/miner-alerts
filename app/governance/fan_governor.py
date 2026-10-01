@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+
+if TYPE_CHECKING:
+    from app.governance.governance_context import MinerGovernanceContext
 
 ACTION_EMERGENCY_SPIKE = "EMERGENCY_SPIKE"
 ACTION_HOLD_DWELL = "HOLD_DWELL"
@@ -202,12 +205,36 @@ def compute_governor_step(
     is_warming_up: bool = False,
     boost_cooling: bool = False,
     recovery_cooling_seconds: float = 0.0,
+    ctx: "Optional[MinerGovernanceContext]" = None,
 ) -> GovernorDecision:
     """
     Pure mathematical decision engine for Vnish closed-loop fan modulation.
     Determines whether to step down, step up, hold, or trigger emergency spike.
     Zero side-effects, zero I/O, 100% deterministic and testable.
+
+    Args:
+        ...existing args...
+        ctx: MinerGovernanceContext snapshot (Spec 082 / PROP-018).
+             When provided, overrides target_power_w with ctx.effective_target_power_w
+             when restart_required=True, eliminating false RECOVERY_MAX_COOLING triggers.
+             When None (default), behaviour is 100% identical to pre-Spec-082 baseline.
     """
+    # ── Spec 082: Armonización de contexto (PROP-018) ──────────────────────
+    # Si se proporciona un contexto de gobernanza, usamos el target efectivo en
+    # lugar del target raw. Cuando restart_required=True, effective_target_power_w
+    # colapsa al current_power_w, eliminando la brecha ficticia que causaba el
+    # bug F-01 (ACTION_RECOVERY_MAX_COOLING con preset pendiente de restart).
+    # Si ctx es None, los parámetros explícitos se usan tal cual (retrocompat 100%).
+    if ctx is not None:
+        effective_target = ctx.effective_target_power_w
+        if effective_target is not None:
+            target_power_w = effective_target
+        # Preservar is_warming_up desde ctx si el llamador no lo pasó explícitamente
+        # (el llamador puede pasarlo como True override; ctx es secundario)
+        if not is_warming_up and ctx.is_warming_up:
+            is_warming_up = ctx.is_warming_up
+    # ── Fin armonización ────────────────────────────────────────────────────
+
     cfg = config or GovernorConfig()
     seasonal = resolve_seasonal_parameters(ambient_temp_c, cfg)
 

@@ -4,7 +4,58 @@ Este archivo registra las specs y cambios completados que tienen respaldo en el 
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
+
+## [2026-10-01] - Spec 082: MinerGovernanceContext — Contrato de Estado Centralizado (PROP-018)
+
+* **Contexto**:
+  - Motivación: La Spec 081 resolvió el bug F-01/F-02 de S19JPRO-24 con un fix inline en `miner_monitor.py`.
+    La Spec 082 eleva esa solución a patrón arquitectónico: una fuente de verdad centralizada e inmutable
+    por ciclo por minero para todos los subsistemas de gobernanza.
+  - Objetivo: Eliminar la visibilidad parcial que permite falsos triggers como `ACTION_RECOVERY_MAX_COOLING`
+    cuando el preset está pendiente de restart.
+  - Baseline previo: 1440 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Implementación**:
+  1. `app/governance/governance_context.py` (NUEVO):
+     - `MinerGovernanceContext`: frozen dataclass con 4 dominios (Potencia, Térmico, Firmware, Operativo),
+       16 campos tipados con Optional defensivos.
+     - `from_state(state, now_ts, miner_config)`: classmethod puro sin I/O ni efectos secundarios.
+       Usa `getattr` con defaults seguros para todos los accesos a state.
+     - `effective_target_power_w` (property): cuando `restart_required=True` y `current_power_w >= 500W`,
+       devuelve `current_power_w` como ancla, eliminando la brecha ficticia que causa el recovery loop.
+     - `built_at_ts`: monotonic timestamp para auditoría de latencia de construcción.
+
+  2. `app/governance/fan_governor.py` (MODIFICADO — aditivo):
+     - Import `TYPE_CHECKING` + guard `if TYPE_CHECKING: from app.governance.governance_context import MinerGovernanceContext`.
+     - Parámetro `ctx: Optional["MinerGovernanceContext"] = None` al final de `compute_governor_step()`.
+     - Bloque de armonización: cuando `ctx is not None`, sustituye `target_power_w` por `ctx.effective_target_power_w`
+       y propaga `is_warming_up` si no fue pasado explícitamente. Retrocompatibilidad 100%.
+
+  3. `app/miner_monitor.py` (MODIFICADO):
+     - Import `from app.governance.governance_context import MinerGovernanceContext`.
+     - En el bucle del Fan Governor: `gov_ctx = MinerGovernanceContext.from_state(state, now_ts, miner)`.
+     - Pasar `ctx=gov_ctx` a `compute_governor_step(...)`.
+
+  4. `tests/test_governance_context_contracts.py` (NUEVO):
+     - 26 tests de contrato cubriendo T001–T011: inmutabilidad, from_state, campos None,
+       integración Fan Governor, retrocompatibilidad, rendimiento.
+     - Fixture `make_state` basado en `SimpleNamespace` (compatible con Python 3.14).
+
+* **Resultados de Validación**:
+  - `py_compile governance_context.py`: exit 0 ✅
+  - `py_compile fan_governor.py`: exit 0 ✅
+  - `py_compile miner_monitor.py`: exit 0 ✅
+  - `pytest tests/test_governance_context_contracts.py -v`: **26 passed** in 0.53s ✅
+  - `pytest -x -q`: **1466 passed, 75 subtests passed** in 46.23s ✅ (ganamos +26 tests)
+
+* **Invariantes preservados**:
+  - Retrocompatibilidad: 100% verificada (T010 PASS)
+  - `MinerState` no modificado
+  - No hay campos nuevos en `config.example.json`
+  - Latencia de construcción < 1ms (T011 PASS)
+
 ## [2026-10-01] - Spec 081: Watchdog de Reinicio de Minado Pendiente, Armonización Térmica y Destrabe de Potencia en Producción (PROP-017)
+
 
 * **Contexto & Directiva del Operador**:
   - Requerimiento: *"hagamos lo que sea conveniente segun las directivas que nos dio sonnet"*.

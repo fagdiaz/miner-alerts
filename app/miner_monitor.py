@@ -135,6 +135,7 @@ from app.governance import (
     render_hw_error_tripwire_card,
     TEMP_CRITICAL_DOWNSTEP_C,
 )
+from app.governance.governance_context import MinerGovernanceContext
 from app.governance.power_progression import (
     PROFILE_ALIASES,
     PROFILE_C0_BASE_STABLE,
@@ -3487,6 +3488,11 @@ def execute_governor_cycle(
 
             rec_duration_s = max(0.0, now_ts - rec_since) if rec_since is not None else 0.0
 
+            # Spec 082 / PROP-018: Construir contexto de gobernanza centralizado
+            # gov_ctx centraliza la lógica de restart_required, is_warming_up, fga_cohort, etc.
+            # Reemplaza la lógica inline dispersa por una fuente de verdad única por ciclo.
+            gov_ctx = MinerGovernanceContext.from_state(state, now_ts, miner)
+
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
                 current_duty=state.governor_duty,
@@ -3500,6 +3506,7 @@ def execute_governor_cycle(
                 is_warming_up=miner_is_warming_up,
                 boost_cooling=boost_cooling_is_active,
                 recovery_cooling_seconds=rec_duration_s,
+                ctx=gov_ctx,
             )
             miner_decisions.append((miner, state_key, decision, target_pwr, miner_gov_cfg))
 

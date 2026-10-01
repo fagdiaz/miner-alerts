@@ -1,4 +1,4 @@
-# Miner Alerts Delivery Plan
+﻿# Miner Alerts Delivery Plan
 
 **Planning baseline**: 2026-09-15
 **Planning horizon**: 2026-09-15 to 2026-12-20
@@ -85,6 +85,9 @@ safety gates are not compressed to recover an estimate.
 | Spec 068 ipc watchdog pipe | 2026-09-23 to 2026-09-27 | 2026-09-28 to 2026-09-30 | Servidor Named Pipe en monitor y cliente watchdog fuera de proceso con ping-pong <15s (PROP-007). |
 | Spec 069 deep chain telemetry | 2026-10-01 to 2026-10-08 | 2026-10-09 to 2026-10-11 | Telemetría profunda por cadena, diagnóstico predictivo de bus I2C y desbalance de potencia (PROP-008). |
 | Spec 070 core modularization b | 2026-10-12 to 2026-10-20 | 2026-10-21 to 2026-10-25 | Sustitución de inspect.getsource(main) por Behavioral Test Harness desacoplado (ST-05). |
+
+
+| Spec 082 MinerGovernanceContext | Closed 2026-10-01 | frozen dataclass centralizada, ctx param en Fan Governor, effective_target_power_w, 26 contract tests | 1466 tests PASS, 75 subtests PASS. |
 
 ## Milestones
 

@@ -481,6 +481,18 @@ def get_overclock_settings(
                 except (ValueError, TypeError):
                     pass
 
+            # Spec 081: Query /api/v1/status to discover if mining restart is required
+            restart_required = False
+            try:
+                st_url = f"http://{host}/api/v1/status"
+                st_resp = requester.get(st_url, headers=headers, timeout=timeout)
+                if st_resp.status_code == 200:
+                    st_data = st_resp.json()
+                    if isinstance(st_data, dict):
+                        restart_required = bool(st_data.get("restart_required", False))
+            except Exception:
+                pass
+
             result = {
                 "preset": str(active_preset) if active_preset is not None else None,
                 "switcher_enabled": switcher_enabled,
@@ -490,6 +502,7 @@ def get_overclock_settings(
                 "decrease_temp": decrease_temp,
                 "check_time": check_time,
                 "target_power_w": target_power_w,
+                "restart_required": restart_required,
                 "raw": overclock,
             }
             return True, result, None

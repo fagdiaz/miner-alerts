@@ -958,6 +958,10 @@ class MinerState:
     last_thermal_pause_ts: float = 0.0
     thermal_pause_until_ts: Optional[float] = None
     thermal_lockout_until_ts: Optional[float] = None
+    # Spec 081: Pending Preset Restart Watchdog (PROP-017)
+    vnish_restart_required: bool = False
+    vnish_restart_detected_ts: Optional[float] = None
+    last_preset_restart_ts: Optional[float] = None
 
 
 _GLOBAL_LOADED_CONFIG: Optional[Dict[str, Any]] = None
@@ -1254,6 +1258,43 @@ def evaluate_auto_restart_candidate(
     return True, trigger_reason, None
 
 
+def evaluate_preset_restart_candidate(
+    now_ts: float,
+    vnish_restart_required: bool,
+    is_hash_degraded: bool,
+    is_warming_up: bool,
+    max_chip_temp_c: Optional[float],
+    detected_ts: Optional[float],
+    last_restart_ts: Optional[float],
+    soak_window_seconds: float = 300.0,
+    cooldown_seconds: float = 180.0,
+    max_safe_temp_c: float = 80.0,
+    thermal_pause_active: bool = False,
+) -> Tuple[bool, str]:
+    """Pure decision function for Spec 081 Watchdog.
+
+    Evaluates whether a healthy miner (not degraded) with a pending preset change
+    (restart_required=True) is ready to safely execute a soft mining restart.
+    """
+    if not vnish_restart_required:
+        return False, "restart_not_required"
+    if is_hash_degraded:
+        return False, "handled_by_degraded_auto_restart"
+    if thermal_pause_active:
+        return False, "thermal_pause_active"
+    if is_warming_up:
+        return False, "warming_up"
+    if max_chip_temp_c is not None and max_chip_temp_c >= max_safe_temp_c:
+        return False, f"chip_temp_too_high_{max_chip_temp_c:.1f}C"
+    if detected_ts is not None and (now_ts - detected_ts) < soak_window_seconds:
+        rem = soak_window_seconds - (now_ts - detected_ts)
+        return False, f"soak_window_active_{rem:.0f}s"
+    if last_restart_ts is not None and (now_ts - last_restart_ts) < cooldown_seconds:
+        rem = cooldown_seconds - (now_ts - last_restart_ts)
+        return False, f"cooldown_active_{rem:.0f}s"
+    return True, "ready_for_preset_restart"
+
+
 def _async_execute_mining_restart(
     host: str,
     password: str,
@@ -1338,6 +1379,81 @@ def _async_execute_mining_restart(
             )
     except Exception as _exc:
         log(f"[WARN] [AUTO-RESTART] {miner_name} excepcion no esperada en hilo AutoRestart: {type(_exc).__name__}: {_exc}")
+
+
+def _async_execute_preset_restart(
+    host: str,
+    password: str,
+    miner_name: str,
+    miner_dict: dict,
+    target_preset: str,
+    bot_token: str,
+    chat_id: str,
+    qa_mode: bool,
+    qa_notify: bool,
+    event_store: Optional[EventStore],
+) -> None:
+    """Execute soft mining restart to apply a pending Vnish preset (Spec 081 / PROP-017)."""
+    try:
+        ts = time.time()
+        disp_name = display_name(miner_name)
+        log(f"[PRESET-WATCHDOG] {disp_name} ({host}) ejecutando soft restart para aplicar preset pendiente ({target_preset})...")
+        ok, err = safe_restart_mining(host, password)
+        if ok:
+            log(f"[PRESET-WATCHDOG] {disp_name} ({host}) soft mining restart exitoso. Preset {target_preset} activado.")
+            if (not qa_mode) or qa_notify:
+                msg = (
+                    f"🔄 *PRESET APLICADO*\n\n"
+                    f"• Minero: *{disp_name}*\n"
+                    f"• Target: *{target_preset}*\n"
+                    f"• Razón: Watchdog de preset\n\n"
+                    f"Reinicio suave ejecutado\n"
+                    f"para aplicar configuración."
+                )
+                send_telegram(
+                    bot_token,
+                    str(chat_id),
+                    msg,
+                    "PRESET_WATCHDOG",
+                    f"preset_restart_{miner_name}",
+                    is_command=True,
+                )
+            record_action_outcome(
+                event_store,
+                occurred_ts=ts,
+                miner=miner_dict,
+                action="preset_restart_applied",
+                source="auto",
+                ok=True,
+                message=f"Preset restart applied ({target_preset})",
+            )
+            if event_store and getattr(event_store, "available", False):
+                try:
+                    event_store.record_event(
+                        occurred_ts=ts,
+                        miner_key=f"{miner_name}|{host}",
+                        miner_name=miner_name,
+                        host=host,
+                        event_type="preset_restart_applied",
+                        severity="info",
+                        summary=f"Reinicio suave de minado aplicado para activar preset {target_preset}",
+                        details={"target_preset": target_preset},
+                    )
+                except Exception:
+                    pass
+        else:
+            log(f"[WARN] [PRESET-WATCHDOG] {disp_name} ({host}) fallo al ejecutar soft restart: {err}")
+            record_action_outcome(
+                event_store,
+                occurred_ts=ts,
+                miner=miner_dict,
+                action="preset_restart_applied",
+                source="auto",
+                ok=False,
+                message=str(err),
+            )
+    except Exception as _exc:
+        log(f"[PRESET-WATCHDOG] {miner_name} excepcion en hilo PresetRestart: {type(_exc).__name__}: {_exc}")
 
 
 def send_telegram(
@@ -2658,6 +2774,18 @@ def load_state(state_path: Path) -> Tuple[Dict[str, MinerState], Optional[int]]:
                     if data.get("thermal_lockout_until_ts") is not None
                     else None
                 ),
+                # Spec 081: Pending Preset Restart Watchdog
+                vnish_restart_required=bool(data.get("vnish_restart_required", False)),
+                vnish_restart_detected_ts=(
+                    float(data.get("vnish_restart_detected_ts"))
+                    if data.get("vnish_restart_detected_ts") is not None
+                    else None
+                ),
+                last_preset_restart_ts=(
+                    float(data.get("last_preset_restart_ts"))
+                    if data.get("last_preset_restart_ts") is not None
+                    else None
+                ),
             )
             states[key] = state
         last_update_id = raw.get("last_update_id")
@@ -2916,6 +3044,17 @@ def _async_collect_chain_telemetry(
                                 )
             except Exception as _fsc_exc:
                 log(f"[FIRMWARE_WATCHDOG_ERR] miner={m_name}: {_fsc_exc}")
+
+            # Spec 081: Pending Preset Restart Status Discovery (PROP-017)
+            try:
+                from app.vnish import get_miner_status, parse_miner_status_flags
+                _st_ok, _st_data, _ = get_miner_status(m_host)
+                if _st_ok and _st_data:
+                    _, _r_req, _ = parse_miner_status_flags(_st_data)
+                    if _r_req:
+                        log(f"[PRESET_WATCHDOG_TELEMETRY] miner={m_name} host={m_host} restart_required=True detectado en telemetria de cadenas")
+            except Exception as _pwt_exc:
+                log(f"[PRESET_WATCHDOG_TELEMETRY_ERR] miner={m_name}: {_pwt_exc}")
     except Exception as exc:
         log(f"[CHAIN_TELEMETRY] worker error: {type(exc).__name__}: {exc}")
 
@@ -3316,6 +3455,11 @@ def execute_governor_cycle(
 
             gov_target_pwr = None if getattr(state, "silent_mode_active", False) else target_pwr
             gov_curr_pwr = None if getattr(state, "silent_mode_active", False) else getattr(state, "governor_last_power_w", None)
+            # Spec 081 / Fricción F-02: Si el preset está pendiente de restart (configurado pero no aplicado),
+            # usar la potencia real en ejecución como target para el Fan Governor.
+            # Evita RECOVERY_MAX_COOLING permanente cuando restart_required=True.
+            if getattr(state, "vnish_restart_required", False) and gov_curr_pwr is not None and gov_curr_pwr >= 500.0:
+                gov_target_pwr = gov_curr_pwr
             _autotune_grace_s = float(config.get("autotune_grace_period_seconds", 900.0))
             _elapsed = getattr(state, "last_elapsed", None)
             miner_is_warming_up = (
@@ -3554,6 +3698,16 @@ def refresh_vnish_overclock_settings(
                                 st.vnish_discovered_top_preset = data.get("top_preset")
                                 st.vnish_discovered_switcher_enabled = data.get("switcher_enabled")
                                 st.vnish_discovered_ts = current_ts
+                                # Spec 081: Track restart_required status for Watchdog
+                                prev_req = getattr(st, "vnish_restart_required", False)
+                                new_req = bool(data.get("restart_required", False))
+                                st.vnish_restart_required = new_req
+                                if new_req:
+                                    if getattr(st, "vnish_restart_detected_ts", None) is None:
+                                        st.vnish_restart_detected_ts = current_ts
+                                        log(f"[PRESET-WATCHDOG] miner={m_name} detecto restart_required=True. Iniciando ventana soak...")
+                                else:
+                                    st.vnish_restart_detected_ts = None
                                 if old_p is not None and st.vnish_discovered_preset is not None and old_p != st.vnish_discovered_preset:
                                     st.last_preset_change_ts = current_ts
                                     st.last_thermal_downstep_ts = current_ts
@@ -6533,6 +6687,7 @@ def main() -> None:
                     )
                     _cohort = classify_silicon_cohort(_r_th)
                     _curr_p = getattr(state, "balancer_preset", "2500W")
+                    _pending_tag = " [PENDING_RESTART]" if getattr(state, "vnish_restart_required", False) else ""
                     event_store.upsert_facility_agent_knowledge(
                         miner_name=name_display,
                         thermal_resistance=_r_th,
@@ -6541,7 +6696,7 @@ def main() -> None:
                         last_chip_temp_c=vnish_telemetry.max_temp_c,
                         last_inlet_temp_c=_inlet_t,
                         last_power_w=vnish_telemetry.chain_power_w_total,
-                        notes=f"FGA live update: R_th={_r_th:.4f} C/W ({_cohort})",
+                        notes=f"FGA live update: R_th={_r_th:.4f} C/W ({_cohort}){_pending_tag}",
                     )
 
                 # Spec 035: Cooling & Fan Health Intelligence preventative evaluation
@@ -6961,6 +7116,72 @@ def main() -> None:
                     if state.stopped_since_ts is not None:
                         with state_lock:
                             state.stopped_since_ts = None
+                    # Spec 081: Pending Preset Restart Watchdog (PROP-017)
+                    if (
+                        auto_restart_mining_enabled
+                        and responded
+                        and not first_tick
+                        and getattr(state, "vnish_restart_required", False)
+                    ):
+                        _miner_is_warming = (elapsed is not None and elapsed < auto_restart_min_elapsed_seconds) or startup_grace_active
+                        _curr_chip_t = (
+                            vnish_telemetry.max_temp_c
+                            if (responded and vnish_telemetry and vnish_telemetry.max_temp_c is not None)
+                            else getattr(state, "governor_last_temp_c", None)
+                        )
+                        _t_pause = (
+                            getattr(state, "thermal_pause_until_ts", None) is not None
+                            and now_ts < state.thermal_pause_until_ts
+                        )
+                        _is_preset_cand, _preset_reason = evaluate_preset_restart_candidate(
+                            now_ts=now_ts,
+                            vnish_restart_required=getattr(state, "vnish_restart_required", False),
+                            is_hash_degraded=is_hash_degraded,
+                            is_warming_up=_miner_is_warming,
+                            max_chip_temp_c=_curr_chip_t,
+                            detected_ts=getattr(state, "vnish_restart_detected_ts", None),
+                            last_restart_ts=getattr(state, "last_preset_restart_ts", None),
+                            soak_window_seconds=float(config.get("preset_restart_soak_seconds", 300.0)),
+                            cooldown_seconds=float(config.get("preset_restart_cooldown_seconds", 180.0)),
+                            max_safe_temp_c=float(config.get("preset_restart_max_temp_c", 80.0)),
+                            thermal_pause_active=_t_pause,
+                        )
+                        if _is_preset_cand:
+                            if qa_mode and not qa_allow_actions:
+                                log(f"[PRESET-WATCHDOG] blocked_by=qa miner={name_display} reason={_preset_reason}")
+                                if qa_notify:
+                                    send_telegram(
+                                        bot_token,
+                                        str(chat_id),
+                                        f"[PRESET-WATCHDOG] Accion bloqueada (QA): {name_display} ({_preset_reason}).",
+                                        "INFO",
+                                        "qa_block_preset_watchdog",
+                                    )
+                            else:
+                                with state_lock:
+                                    state.last_preset_restart_ts = now_ts
+                                _target_p_str = (
+                                    getattr(state, "vnish_discovered_preset", None)
+                                    or getattr(state, "balancer_preset", "2700W")
+                                    or "desconocido"
+                                )
+                                threading.Thread(
+                                    target=_async_execute_preset_restart,
+                                    args=(
+                                        host,
+                                        vnish_api_password,
+                                        name,
+                                        miner,
+                                        _target_p_str,
+                                        bot_token,
+                                        chat_id,
+                                        qa_mode,
+                                        qa_notify,
+                                        event_store,
+                                    ),
+                                    daemon=True,
+                                    name=f"PresetRestart_{name}",
+                                ).start()
 
                 _is_stock_fw = False
                 if (

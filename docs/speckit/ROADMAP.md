@@ -943,11 +943,22 @@ Las propuestas técnicas detalladas de mejora para el sistema se encuentran docu
 - [x] Suite de pruebas unitarias `tests/test_firmware_corruption_watchdog.py` (5 tests PASS) y regresión global: **1429/1429 tests PASS, 75 subtests PASS**.
 - [x] Servicio Windows `MinerAlerts` reiniciado y certificado en producción.
 
+### Iniciativa 33 — Watchdog de Reinicio de Minado Pendiente y Armonización Térmica (Spec 081 - PROP-017 - Completada & Certificada)
+- Especificación: [`specs/081-restart-required-watchdog/spec.md`](../../specs/081-restart-required-watchdog/spec.md) | Plan: [`specs/081-restart-required-watchdog/plan.md`](../../specs/081-restart-required-watchdog/plan.md) | Evidencia: [`specs/081-restart-required-watchdog/evidence.md`](../../specs/081-restart-required-watchdog/evidence.md)
+- **Estado**: Implementación, Resolución Operativa en M24 y Certificación Completadas (T1.1-T3.4). 1440/1440 tests PASS.
+- [x] Extracción concurrente de bandera `restart_required` desde `/api/v1/status` en `get_overclock_settings` (`app/vnish/client.py`).
+- [x] Persistencia y serialización de estado en `MinerState` (`vnish_restart_required`, `vnish_restart_detected_ts`, `last_preset_restart_ts`) en `app/core/state_manager.py` y `app/miner_monitor.py`.
+- [x] Función pura de decisión `evaluate_preset_restart_candidate(...)` con ventana soak de 300s, cooldown de 180s e interlocks térmicos (<80°C).
+- [x] Armonización Fan Governor (F-02): adaptación `gov_target_pwr = gov_curr_pwr` cuando `vnish_restart_required=True` y `gov_curr_pwr >= 500W`, suprimiendo la trampa de 100% PWM (`ACTION_RECOVERY_MAX_COOLING`).
+- [x] Destrabe de potencia empírico en producción de Minero 24 (S19JPRO-24): escalamiento en caliente a 2700W (2699W en cadenas, 518 MHz, 97.7+ TH/s) y normalización térmica inmediata. Flota global a 395 TH/s continuos.
+- [x] Suite de pruebas unitarias `tests/test_restart_required_watchdog.py` (11 tests PASS) y regresión global: **1440/1440 tests PASS, 75 subtests PASS** (0 fallos).
+- [x] Servicio Windows `MinerAlerts` verificado y certificado.
+
 ---
 
 ## Governance
 
-- All 80 specifications in the program (Specs 001 through 080) are tracked and maintained.
-- Version 5.1.0 + Spec 080 Firmware Settings Corruption Watchdog is verified with 1429/1429 tests PASS, 75 subtests PASS (0 failures, 0 regressions).
+- All 81 specifications in the program (Specs 001 through 081) are tracked and maintained.
+- Version 5.1.0 + Spec 081 Restart Required Watchdog is verified with 1440/1440 tests PASS, 75 subtests PASS (0 failures, 0 regressions).
 - Production action authority remains strictly centralized in the Windows monitor.
 - External read-only surfaces (Grafana, static dashboard, backup CLI, analyze_chain_breaks CLI) operate decoupled from the monitor.

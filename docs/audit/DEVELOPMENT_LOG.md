@@ -4,6 +4,133 @@ Este archivo registra las specs y cambios completados que tienen respaldo en el 
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
+## [2026-10-01] - Spec 081: Watchdog de Reinicio de Minado Pendiente, Armonización Térmica y Destrabe de Potencia en Producción (PROP-017)
+
+* **Contexto & Directiva del Operador**:
+  - Requerimiento: *"hagamos lo que sea conveniente segun las directivas que nos dio sonnet"*.
+  - Tarea: Ejecución de las directivas consensuadas en la auditoría `DIRECTIVES_HARMONIZATION_AUDIT.md`: destrabar Minero 24 en caliente de 2500W a 2700W, suprimir la trampa acústica de 100% PWM en el Fan Governor, e implementar la Spec 081 con un Watchdog autónomo de reinicio de minado cuando los mineros están sanos pero tienen un preset pendiente de activación en `/config/cgminer.conf`.
+  - Baseline previo: 1429 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Resolución Operativa Inmediata (Minero 24 Destrabado)**:
+  - Ejecución de `safe_restart_mining("192.168.100.24", "admin")`.
+  - Resultado: `ok=True`, `restart_required=False`.
+  - Potencia de cadenas: escaló de 2498W a **2699 W** nominales.
+  - Frecuencia promedio: escaló de 482 MHz a **517.2 - 518.1 MHz**.
+  - Hashrate: escaló de 92.4 TH/s a **97.66 TH/s** (en ascenso hacia 100 TH/s).
+  - Fan Governor: `ACTION_RECOVERY_MAX_COOLING` desactivado de inmediato; transición limpia a `HOLD_DWELL` y modulación en lazo cerrado por temperatura de chips (51°C - 69°C).
+  - Capacidad global de la flota a 2700W: **395.00 TH/s** combinados (10,795 W en cadenas).
+
+* **Implementación Arquitectónica - Spec 081**:
+  1. `app/vnish/client.py`:
+     - Actualizado `get_overclock_settings` para consultar `/api/v1/status` concurrentemente y extraer `restart_required: bool`.
+  2. `app/core/state_manager.py`:
+     - Serialización y persistencia de `vnish_restart_required`, `vnish_restart_detected_ts` y `last_preset_restart_ts`.
+  3. `app/miner_monitor.py`:
+     - Campos agregados a `MinerState` y deserializados en `load_state`.
+     - Función pura de decisión `evaluate_preset_restart_candidate(...)` con protección de ventana soak (300s), cooldown (180s), interlock de temperatura (<80°C), interlock degraded y pausa térmica.
+     - Armonización Fan Governor (F-02): cuando `vnish_restart_required=True` y `gov_curr_pwr >= 500W`, usa `gov_target_pwr = gov_curr_pwr`, erradicando el forzamiento de 100% PWM en mineros con preset pendiente.
+     - Telemetría FGA: etiquetado `[PENDING_RESTART]` en base de conocimiento para advertir a la gobernanza de cohortes.
+     - Ejecución asíncrona no bloqueante `_async_execute_preset_restart` con registro de evento `preset_restart_applied` (severidad info) en base SQLite y notificación Telegram con ancho móvil $\le 32$ columnas.
+     - Despacho y evaluación periódica continua integrada en el ciclo de monitoreo principal y en `_async_collect_chain_telemetry`.
+
+* **Validación & Verificación**:
+  - Suite unitaria dedicada `tests/test_restart_required_watchdog.py`: 11 tests PASS (100%).
+  - Suite de regresión global: `1440 passed, 75 subtests passed in 45.34s` (100% PASS, 0 fallos).
+  - Sintaxis Python compilada en todos los módulos modificados (`py_compile`).
+  - Servicio Windows NSSM `MinerAlerts` verificado RUNNING.
+
+## [2026-10-01] - Auditoría Exhaustiva de Directivas de Gobernanza y Diseño de Resolución Integral (`DIRECTIVES_HARMONIZATION_AUDIT.md`)
+
+* **Contexto & Directiva del Operador**:
+  - Requerimiento: *"Lee prompt.txt y ejecuta la auditoría exhaustiva solicitada"*.
+  - Tarea: Auditoría minuciosa de todas las directivas activas, mapeo de jerarquía de prevalencia, análisis del nudo S19JPRO-24, evaluación eléctrica de Elevadores y generación del informe maestro.
+  - Baseline: 1429 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Documentos de Lectura**:
+  - `docs/audit/AUDIT_DIRECTIVES_AND_GOVERNANCE_BRIEF.md`: Briefing con 4 tensiones críticas y contexto operativo.
+  - `docs/audit/DEVELOPMENT_LOG.md`: Entradas 2026-10-01 (auditoría 33h) y 2026-09-30 (Spec 080).
+  - `app/governance/fan_governor.py`: Lógica de lazo cerrado y ACTION_RECOVERY_MAX_COOLING.
+  - `app/governance/elevator_budget.py`: Colas escalonadas (Gates 0-6) y envolvente solar.
+  - `app/governance/facility_agent.py`: FGA, R_th, cohortes térmicas.
+  - `app/vnish/client.py`: set_miner_preset, safe_restart_mining, check_miner_settings_health.
+  - `app/miner_monitor.py`: evaluate_auto_restart_candidate (L6955-7021).
+
+* **Hallazgos de Auditoría**:
+  1. **F-01 / F-07 (Alta)**: M24 atrapado en 2500W ejecutado con 2700W configurado por intersección de 3 diseños correctos: VNish no conmuta en caliente sin restart, `auto_restart_mining=False` por anti-flapping, y `evaluate_auto_restart_candidate` solo actúa si `is_hash_degraded=True`. Con 92.4 TH/s sanas, el monitor nunca ejecuta el restart.
+  2. **F-02 (Media)**: Fans M24 clavados al 100% PWM indefinidamente porque `current_w=2498 < target=2700−120=2580`. El Fan Governor no tiene visibilidad de `restart_required` y no puede distinguir "escalando transitoriamente" de "atrapado permanentemente". Impacto: 150-200W parasitarios, desgaste de rodamientos, ruido.
+  3. **F-03 (Media)**: Elevador 2 tuvo 3 eventos micro-eléctricos el 2026-09-30 con carga de 5400W. Elevador 1 tiene historial limpio de 49h. Subir M24 a 2700W lleva Elevador 1 a 5400W — mismo umbral de fatiga confirmado en Elevador 2. Requiere monitoreo activo 24-48h post-subida.
+  4. **F-04 (Media)**: FGA calcula R_th con potencia config (2700W) en vez de potencia real ejecutada (2498W) cuando `restart_required=True`, generando diagnósticos de cohorte imprecisos.
+  5. **F-05 (Baja)**: Solar Envelope (11:00-17:00) activo en snapshot de auditoría. Bloquea el ascenso a 2700W en Gate 3 del orquestador aunque `is_overheated=False`. Ventana óptima de restart: antes de 11:00 hs o después de 17:00 hs.
+  6. **F-06 (Resuelto)**: Doble-bajada VNish+monitor resuelta en 2026-09-27 con cerrojo bidireccional `min_preset+top_preset`.
+
+* **Informe Generado**:
+  - Creado `docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md` con:
+    * Inventario completo de 16 directivas activas con jerarquía de prevalencia (P0→P5).
+    * Flujo de decisión documentado del Fan Governor (10 pasos) y del Orquestador de Elevadores (7 gates).
+    * Matriz de 8 fricciones con severidad, directivas en conflicto y miner afectado.
+    * Análisis de causa raíz técnica para cada fricción crítica con trazas de impacto en cadena.
+    * Protocolo de resolución paso a paso: acción inmediata (restart M24), watchdog arquitectónico, corrección Fan Governor, FGA telemetría real.
+    * Evaluación de riesgos por acción con mitigaciones.
+    * Checklist de evidencia requerida para cierre.
+
+* **Resoluciones Propuestas (sin implementar — pendiente de aprobación operador)**:
+  1. **Inmediata**: `safe_restart_mining("192.168.100.24", password)` fuera de franja solar (>17:00 hs recomendado).
+  2. **Arquitectónica (Spec nueva)**: Watchdog de `restart_required` separado del bloque `is_hash_degraded`, con soak_window=300s, cooldown=180s, interlocks térmicos, notificación Telegram.
+  3. **Fan Governor**: Usar `effective_target_pwr = current_power_w` cuando `restart_required=True` para evitar RECOVERY_MAX_COOLING permanente con preset pendiente.
+  4. **FGA**: Inyectar `power_w` real (vs config) en telemetría para R_th correcto cuando hay discrepancia de preset.
+
+* **Estado**: Sin cambios de código. Auditoría puramente documental. Próximas acciones requieren aprobación del operador.
+
+## [2026-10-01] - Auditoría Operativa de Comportamiento 33h, Diagnóstico de Elevadores y Análisis de Potencia en S19JPRO-24
+
+* **Contexto & Directiva del Operador**:
+  - Requerimiento: *"bueno, comentame como fue el comportamiento, hace analisis, resumen y documentalo. ahora veo que la 24 podria estar teniendo mas potencia. fijate por que no lo hace e incluilo en el analisis"*.
+  - Estado temporal: 33 horas de observación continua desde la intervención de recuperación de firmware de Spec 080 (2026-09-30 01:30 hs).
+
+* **Resumen Ejecutivo y Auditoría de Comportamiento de Flota (Ventana 33h)**:
+  1. **Elevador 1 (S19JPRO-23 y S19JPRO-24)**:
+     - **100% Estabilidad Absoluta**: Cero reinicios, cero caídas de red y cero alarmas espurias.
+     - **S19JPRO-23**: Uptime ininterrumpido de **49.1 horas** (176,799s). Operando a 2700W (cadenas a 2698W), 100.0 TH/s, coolers modulando en lazo cerrado a 92% PWM, temperaturas chips entre 76°C y 80°C.
+     - **S19JPRO-24**: Uptime ininterrumpido de **32.7 horas** (117,771s) desde la recuperación por hardware reboot de Spec 080. Cero desconexiones, 3/3 placas activas (126 chips c/u), cero errores de hardware (`hw_errors = 0`).
+  2. **Elevador 2 (S19JPRO-25 y S19JPRO-26)**:
+     - Se auditaron 3 eventos micro-eléctricos el día 2026-09-30 que afectaron estrictamente al Elevador 2:
+       * *06:15 hs*: Reinicio simultáneo de M25 y M26 (33.1k s -> 20s).
+       * *07:42 hs*: Transición simultánea a estado `HASHBOARD`; el monitor intervino automáticamente con `auto_restart_mining` a las 07:44 hs y ambos equipos recuperaron estado `OK` a las 07:48 hs sin intervención humana.
+       * *11:51 hs*: Reinicio simultáneo (~14.6k s -> 10s).
+       * *21:37 hs*: El discriminador de fase (`phase_drop_discriminator`) detectó una caída de fase eléctrica en el circuito `elevator_2`; ambos mineros transicionaron a `OFFLINE` y recuperaron `OK` en 60 segundos (21:38 hs).
+     - **Estabilidad Reciente**: Desde las 21:38 hs de ayer (**más de 12.5 horas continuas**), el Elevador 2 ha permanecido 100% estable. M25 y M26 operan a 2700W (cadenas a 2699W) entregando 101.5 TH/s y 99.5 TH/s respectivamente con coolers al 92% PWM.
+     - **Conclusión de Elevadores**: La evidencia física en base de datos confirma de forma concluyente la hipótesis del operador: los reinicios están estrictamente confinados al transformador/relés del Elevador 2. El Elevador 1 posee calidad de energía impecable.
+
+* **Diagnóstico Forense de Causa Raíz: ¿Por Qué S19JPRO-24 No Entrega Más Potencia?**:
+  1. **Discrepancia entre Configuración JSON y Proceso cgminer en VNish**:
+     - En `app/config.json` y en la memoria del Agente FGA (`facility_agent_knowledge`), S19JPRO-24 está asignado a `target_power_w: 2700.0` y `max_hardware_preset: "2700W"`.
+     - En `/api/v1/settings`, el archivo `/config/cgminer.conf` tiene escrito `preset: "2700"`.
+     - **Sin embargo**, al consultar `/api/v1/perf-summary` y `/api/v1/status`:
+       * `current_preset: {'name': '2500', 'pretty': '2500 watt ~ 92 TH', 'status': 'tuned'}`.
+       * `restart_required: True`.
+       * Frecuencias reales de cadenas: **481.2 - 483.2 MHz** (perfil 2500W).
+       * Consumo medido de cadenas: **2498 W** (C1=835W, C2=832W, C3=831W).
+       * Hashrate entregado: **92.42 TH/s** (exactamente el rendimiento nominal del preset 2500W).
+  2. **Mecanismo del Firmware VNish**:
+     - En VNish, escribir un nuevo preset en `/api/v1/settings` solo modifica el archivo JSON de configuración y levanta la bandera `restart_required = True`.
+     - El motor de hasheo (`cgminer`) **no conmuta dinámicamente** los reguladores de voltaje ni las tablas PLL de frecuencia sin un reinicio del proceso de minado (`POST /api/v1/mining/restart`).
+     - Al haberse aplicado el preset con `auto_restart_mining=False` tras el hardware reboot de Spec 080 (para respetar la directiva de no-oscilación), el proceso cgminer continuó corriendo el perfil base de 2500W con el que inició.
+  3. **Por Qué el Monitor No lo Reinició Automáticamente**:
+     - En `app/miner_monitor.py` (L6966-6974), `evaluate_auto_restart_candidate` está estrictamente condicionado a que el minero esté degradado (`is_hash_degraded`, hashrate < 60 TH/s o placas caídas).
+     - Al estar minando de forma completamente sana a 92.42 TH/s con 3 placas y 378 chips, el monitor de seguridad correctamente inhibe cualquier reinicio no solicitado.
+  4. **Causa del Bloqueo de Ventiladores al 100% PWM**:
+     - El Fan Governor (`app/governance/fan_governor.py`) evalúa `current_power_w` (2498W) frente a `target_power_w` (2700W).
+     - Al estar por debajo de la meta (`2498W < 2580W`), la regla de protección activa `ACTION_RECOVERY_MAX_COOLING`, clavando los coolers al 100% PWM (~6000 RPM) para asistir en el ascenso térmico y prevenir colapsos.
+     - Como el minero no puede ascender sin el reinicio de minado, los ventiladores quedan atrapados en 100%, enfriando los chips a 57°C - 77°C y agregando ruido acústico y ~150-200W de consumo parasitario en ventiladores.
+
+* **Vía de Solución Recomendada**:
+  - Ejecutar un reinicio suave de minado (`safe_restart_mining` / `/api/v1/mining/restart`) en S19JPRO-24:
+    1. Recarga el archivo `/config/cgminer.conf` ya configurado con preset 2700W (~521 MHz, ~13.0V).
+    2. Limpia la bandera `restart_required`.
+    3. Eleva la potencia de cadenas de 2498W a ~2698W (+200W de hashboard).
+    4. Incrementa el hashrate de 92.4 TH/s a ~98-101 TH/s (+7 TH/s de ganancia neta).
+    5. Al alcanzar 2700W, el Fan Governor desactiva `RECOVERY_MAX_COOLING` y reduce automáticamente los ventiladores a ~92% (5600 RPM), suprimiendo el ruido excesivo.
+
 ## [2026-09-30] - Spec 080: Firmware Settings Corruption Watchdog & Assisted Recovery (Fallo de Parseo Serde/JSON 500 y Resolución en M24)
 
 * **Contexto & Directiva del Operador**:

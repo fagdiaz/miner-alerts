@@ -274,6 +274,10 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "last_thermal_pause_ts": getattr(state, "last_thermal_pause_ts", 0.0),
         "thermal_pause_until_ts": getattr(state, "thermal_pause_until_ts", None),
         "thermal_lockout_until_ts": getattr(state, "thermal_lockout_until_ts", None),
+        # Spec 081: Pending Preset Restart Watchdog
+        "vnish_restart_required": getattr(state, "vnish_restart_required", False),
+        "vnish_restart_detected_ts": getattr(state, "vnish_restart_detected_ts", None),
+        "last_preset_restart_ts": getattr(state, "last_preset_restart_ts", None),
     }
 
 

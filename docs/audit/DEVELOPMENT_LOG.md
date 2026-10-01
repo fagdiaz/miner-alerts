@@ -1,4 +1,4 @@
-# Historial de Desarrollo y Cambios - Miner Alerts
+ Historial de Desarrollo y Cambios - Miner Alerts
 
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
@@ -1401,7 +1401,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ## [2026-09-16] - Implementación Spec 072: Unificación de Serialización de Estado & Desacoplamiento de Shims Redundantes (P2)
 
-* **Objetivo**: 
+* **Objetivo**:
   1. Unificar la serialización de `MinerState` centralizándola en `StateManager.serialize_miner_state(state)` / `serialize_miner_state(state)` en `app/core/state_manager.py`, eliminando la duplicación del payload de ~45 campos en `_build_state_payload()` en `app/miner_monitor.py`.
   2. Migrar los comandos de Telegram (`diagnostics.py`, `fans.py`, `reboot.py`, `maintenance.py`) para reutilizar `find_assessment_by_target` y `format_miner_key` de `app/telegram/command_center.py`, eliminando formateos manuales dispersos y previniendo `KeyError`.
   3. Centralizar el generador recursivo `_dicts()` en `app/core/mining_quality.py` e importarlo limpiamente en `app/vnish/telemetry.py`.
@@ -1446,7 +1446,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ## [2026-09-16] - Implementación Spec 071: Consolidación de Pool SQLite Resiliente & Barrera Defensiva de Hilos Daemon (P0/P1)
 
-* **Objetivo**: 
+* **Objetivo**:
   1. Corregir vulnerabilidad P0: hilo daemon `RestoreLock_{name}` en `app/miner_monitor.py:3226` ejecutando `safe_set_miner_preset` sin captura de excepciones, y auditar todos los demás hilos daemon agregando barreras `try ... except` completas y nombres descriptivos (`ShutdownPurgeNotify`, `TelegramSender`, `TelegramPolling`).
   2. Corregir deuda técnica P1: consolidar llamadas directas ad-hoc `sqlite3.connect(f"file:...mode=ro")` repartidas en 7 módulos hacia la función centralizada tolerante `open_readonly_connection` y `execute_readonly_with_retry` con backoff exponencial, eliminando bloqueos intermitentes de base de datos durante checkpoints WAL.
 * **Componentes Modificados / Creados**:
@@ -1498,7 +1498,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 ## [2026-09-16] - Implementación Spec 067: Gateway Heartbeat & Supresión de Tormentas de Red Local (PROP-005) + Auditoría QA Completa
 
-* **Objetivo**: 
+* **Objetivo**:
   1. Auditoría de seguridad integral de specs 061-066 conforme al ACTION_PLAN_V5_1_HORIZON.md.
   2. Implementar `GatewayHeartbeatWorker` (Spec 067/PROP-005): hilo daemon ultraliviano de sondeo TCP al router local para detectar microcortes de switch y suprimir tormentas de falsas alarmas de desconexión masiva en la flota ASIC.
 * **Auditoría QA Ejecutada** (pre-implementación):
@@ -1510,7 +1510,7 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 * **Componentes Modificados / Creados**:
   - `app/network/gateway_heartbeat.py`: `GatewayHeartbeatWorker` (zero dependencias externas, socket connect con timeout 50ms, fallback de puerto DNS/53, control atómico GIL-safe, cierre explícito de sockets en `finally`, barrera total de excepciones en `_run()`).
   - `app/network/__init__.py`: Re-exportado `GatewayHeartbeatWorker`.
-  - `app/miner_monitor.py`: 
+  - `app/miner_monitor.py`:
     * Instanciación condicional de `_gateway_heartbeat` antes del `while True:` con degradación suave.
     * Guard `_network_storm_active` antes del despacho de `EPISODE_ALERT` — filtra episodios de `STATE_OFFLINE` durante parpadeos de switch (ventana configurable, default 15s).
     * `_gateway_heartbeat.stop()` en el `finally` del loop principal.

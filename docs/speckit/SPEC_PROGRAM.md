@@ -1,8 +1,8 @@
-# Miner Alerts Specification Program
+ Miner Alerts Specification Program
 
-**Planning baseline**: 2026-09-15
-**Program horizon**: 2026-09-15 to 2026-12-20
-**Active production gate**: V5.1.0 Staggered Elevator Governance & Soft Contingency Approved (`v5.1.0`, 1288 tests PASS, Windows Service RUNNING)
+**Planning baseline**: 2026-10-01
+**Program horizon**: 2026-10-01 to 2027-03-31
+**Active production gate**: V5.2.0 — Gobernanza Integrada (Baseline: 1440 tests PASS, Windows Service RUNNING, ~395 TH/s)
 **Canonical schedule**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Purpose
@@ -23,9 +23,10 @@ been completed.
 - SQLite schema v7 in WAL mode is the durable incident, sample, firmware and decision store.
 - Telegram is the remote control surface; the static operations dashboard is
   read-only.
-- Specs 001 through 066 are 100% completed, verified, and evidenced in production.
-- Production runtime has operated continuously with a certified test suite of 1062 tests PASS (0 failures, 0 errors, 0 regressions).
-- Production Windows service `MinerAlerts` is running continuously under Windows 11.
+- **Specs 001 through 081 are 100% completed, verified, and evidenced in production.**
+- **Production runtime: 1440 tests PASS, 75 subtests PASS (0 failures). Fleet: ~395 TH/s, 4x 2700W.**
+- Production Windows service `MinerAlerts` running continuously. Spec 081 (Restart Required Watchdog) certified 2026-10-01.
+- **Auditoría arquitectónica completada**: Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ## Decisions Made In This Planning Pass
 
@@ -333,6 +334,26 @@ The program requires three documentation sweeps.
 - Spec 076 is **Completed, Autonomous Firmware Reflash in NAND & Hardware Ladder Calibration (PROP-011) Certified** (1262/1262 tests PASS).
 - Spec 077 is **Completed, Staggered Elevator Governance, Facility Drop Queue & Soft Contingency (PROP-012) Certified in Live Production** (1288/1288 tests PASS).
 - All 77 specifications across the program have satisfied their design, test, concurrency, and evidence gates with 1288/1288 passing automated tests.
+- Spec 074 is **Completed, Paired Elevator Contingency & Inrush Dampening (PROP-009) Certified in Live Production** (1221/1221 tests PASS).
+- Spec 075 is **Completed, Soft-Landing Recovery, Headroom Chilling & APW12 Latch-Off Defense (PROP-010) Certified** (1236/1236 tests PASS).
+- Spec 076 is **Completed, Autonomous Firmware Reflash in NAND & Hardware Ladder Calibration (PROP-011) Certified** (1262/1262 tests PASS).
+- Spec 078 is **Completed, Electrical Noise Suppression, Anti-Autotune Stall Watchdog & Solar Thermal Envelope (PROP-013) Certified** (1322/1322 tests PASS).
+- Spec 079 is **Completed, Facility Governance Agent (FGA) & Asymmetric Power Optimizer (PROP-014/PROP-015) Certified** (1346/1346 tests PASS).
+- Spec 080 is **Completed, Firmware Settings Corruption Watchdog & Assisted Recovery (PROP-016) Certified** (1429/1429 tests PASS).
+- Spec 081 is **Completed, Restart Required Watchdog & Fan Governor Thermal Harmonization (PROP-017) Certified in Live Production** (1440/1440 tests PASS). M24 destrabe operativo: 2700W · 97.7+ TH/s · ACTION_RECOVERY_MAX_COOLING erradicado · Flota global 395 TH/s.
+
+### Horizon V5.2 — Gobernanza Integrada y Deuda Arquitectónica (Specs 082–086)
+
+> **Contexto**: Auditoría 2026-10-01 identificó deuda arquitectónica estructural: 6 subsistemas de gobernanza semi-autónomos con visibilidad parcial generan fricciones crecientes. Las specs V5.2 establecen el contrato de estado centralizado antes de agregar features nuevas.
+
+| Order | Spec | Priority | Risk | Depends on | Objective |
+| --- | --- | --- | --- | --- | --- |
+| Planned | 082 MinerGovernanceContext | P0 | HIGH | Spec 081 ✅ | Dataclass de contrato de estado compartida entre todos los subsistemas. Elimina parámetros ad-hoc dispersos. |
+| Planned | 083 FGA Actuator Loop | P1 | MEDIUM | Spec 082 | Conectar FGA→ElevatorBudget→VNish: ciclo decisión-ejecución completo y trazable. Power_w real en R_th (F-04). |
+| Planned | 084 Governance Dashboard | P2 | LOW | Spec 082 | `/directivas`: estado en tiempo real de cada directiva por minero. Alerta proactiva de deadlocks (ACTION_RECOVERY_MAX_COOLING >300s). |
+| Planned | 085 Governance Orchestrator | P1 | HIGH | Spec 082, 083 | Extraer `GovernanceOrchestrator` de `miner_monitor.py`. Objetivo: reducir monolito ≤6000 líneas. |
+| Planned | 086 Incident Autopsy Engine | P2 | MEDIUM | Spec 084 | Worker asíncrono forense: tarjeta de diagnóstico automática ante reinicios. Supervisor Q&A conversacional en Telegram. |
+
 
 ## Planning Hardening Record - 2026-08-13
 

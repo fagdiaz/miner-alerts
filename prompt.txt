@@ -1,47 +1,81 @@
-# ==============================================================================
+ ==============================================================================
 # PROMPT DE CONTINUIDAD Y HANDOFF - 2026-10-01
-# MODELO RECOMENDADO: Gemini 3.8 Flash High (supervisión de telemetría y tareas de dominio)
-# TAREA: Spec 081 Certificada & Flota Operativa al 100% (395 TH/s a 2700W)
+# MODELO RECOMENDADO: Gemini 3.8 Flash High (observación, supervisión, tareas acotadas)
+# TAREA DISPONIBLE: Spec 082 (MinerGovernanceContext) — solo cuando el operador lo autorice
 # ESTADO DEL SISTEMA: 1440 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING
+# FLOTA: 4x 2700W · ~395 TH/s · Chips 69-80°C · Fans ~92% lazo cerrado
 # ==============================================================================
 
-Hola. Estás asumiendo el control técnico de 'miner-alerts'.
-La Spec 081 (Watchdog de Reinicio de Minado Pendiente y Armonización Térmica PROP-017)
-ha sido completamente implementada, verificada y estabilizada.
+Hola. El sistema se encuentra en estado óptimo certificado tras Spec 081.
+La documentación estratégica y de planificación fue actualizada el 2026-10-01.
 
 --------------------------------------------------------------------------------
-1. DOCUMENTOS CLAVE DE REFERENCIA
+1. ESTADO COMPLETO (snapshot 2026-10-01 ~12:00 hs)
 --------------------------------------------------------------------------------
-1. specs/081-restart-required-watchdog/spec.md (Especificación completa y formal)
-2. specs/081-restart-required-watchdog/evidence.md (Evidencia empírica de M24 y tests)
-3. docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md (Auditoría maestra de directivas)
-4. docs/audit/DEVELOPMENT_LOG.md (Historial cronológico de cambios)
+- M23: 2700W | 99.73 TH/s | Fan 92% | Chips 78°C | Uptime 49.1h ✅
+- M24: 2700W (DESTRABADO) | 97.7 TH/s | Fans lazo cerrado | Chips 51-69°C ✅
+- M25: 2700W | 100.17 TH/s | Fan 92% | Chips 79°C | Uptime 22.3h ✅
+- M26: 2700W | 97.98 TH/s | Fan 92% | Chips 77°C | Uptime 22.3h ✅
+- Flota: ~395 TH/s | 10.8 kW | Sin eventos eléctricos activos
+
+- Suite: 1440 tests PASS, 75 subtests PASS (0 failures)
+- Servicio NSSM: RUNNING
+- Commit: e3d20a6 (Spec 081 certificada)
 
 --------------------------------------------------------------------------------
-2. ESTADO OPERATIVO DE LA FLOTA (TODOS A 2700W - 395 TH/s COMBINADOS)
+2. DOCUMENTACIÓN ACTUALIZADA (2026-10-01)
 --------------------------------------------------------------------------------
-- S19JPRO-23: 2700W | 99.73 TH/s | Fan 92% | Chips 60-78°C | Elevador 1 (2698W)
-- S19JPRO-24: 2700W | 97.66 TH/s | Fan Dwell/Lazo cerrado | Chips 51-69°C | Elevador 1 (2699W)
-  * Nudo resuelto: restart_required=False, potencia saltó de 2498W a 2699W.
-  * Fan Governor liberado de la trampa RECOVERY_MAX_COOLING (100% PWM).
-- S19JPRO-25: 2700W | 100.17 TH/s | Fan 92% | Chips 60-79°C | Elevador 2 (2699W)
-- S19JPRO-26: 2700W | 97.98 TH/s | Fan 92% | Chips 59-77°C | Elevador 2 (2699W)
-- Total Flota: ~395.0 TH/s continuos (10,795W en cadenas de hash).
+- docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md → Auditoría exhaustiva de
+  directivas, 8 fricciones identificadas, resoluciones propuestas.
+- docs/speckit/ROADMAP.md → Actualizado con Spec 081 cerrada, V5.2 planificada
+  (Iniciativas 34-38: Specs 082-086).
+- docs/speckit/SPEC_PROGRAM.md → Baseline 1440 tests, horizonte a 2027-03-31,
+  tabla V5.2 con Specs 082-086 y sus dependencias.
+- docs/audit/DEVELOPMENT_LOG.md → Entrada de auditoría 2026-10-01 al inicio.
 
 --------------------------------------------------------------------------------
-3. CAPACIDADES INCORPORADAS EN SPEC 081
+3. HORIZONTE V5.2 — SPECS PLANIFICADAS (NO IMPLEMENTAR SIN AUTORIZACIÓN)
 --------------------------------------------------------------------------------
-1. Watchdog Autónomo: evaluate_preset_restart_candidate() evalúa miners sanos con
-   restart_required=True tras soak_window (300s) y cooldown (180s) con T_chip < 80°C.
-2. Armonización Fan Governor: Si restart_required=True, usa gov_target_pwr = gov_curr_pwr
-   evitando forzar 100% PWM innecesario mientras espera la ventana de reinicio.
-3. Telemetría y Persistencia: Flags vnish_restart_required, vnish_restart_detected_ts
-   y last_preset_restart_ts persistidos en state.json y sincronizados en /status.
+Spec 082 (P0/ALTA): MinerGovernanceContext — contrato de estado centralizado
+  → Resolver deuda arquitectónica: 6 subsistemas con visibilidad parcial
+  → Modelo recomendado: Claude Sonnet 4.6 (Thinking)
+  → Requiere: aprobación explícita del operador
+
+Spec 083 (P1/MEDIA): FGA Actuator Loop — ciclo decisión-ejecución completo
+  → FGA deja de ser solo recomendador: ejecuta via ElevatorBudget→VNish
+  → Depende de: Spec 082
+  → Modelo recomendado: Gemini 3.8 Flash High
+
+Spec 084 (P2/BAJA): Governance Dashboard — `/directivas` tiempo real
+  → Diagnóstico en <10s de por qué un minero no está en el preset esperado
+  → Alerta proactiva de deadlocks (RECOVERY_MAX_COOLING >300s)
+  → Depende de: Spec 082
+  → Modelo recomendado: Gemini 3.8 Flash High
+
+Spec 085 (P1/ALTA): Governance Orchestrator — descomposición del monolito
+  → Extraer GovernanceOrchestrator de miner_monitor.py (9000→6000 líneas)
+  → Depende de: Spec 082, 083
+  → Modelo recomendado: Claude Sonnet 4.6 (Thinking) para diseño
+
+Spec 086 (P2/MEDIA): Incident Autopsy Engine — forense automático
+  → Tarjeta de diagnóstico automática ante reinicios (≤2 minutos)
+  → Depende de: Spec 084
+  → Modelo recomendado: Gemini 3.8 Flash High
 
 --------------------------------------------------------------------------------
-4. REGLAS DE SEGURIDAD OPERATIVA
+4. BACKLOG DE OBSERVACIÓN CONTINUA (sin implementación requerida)
 --------------------------------------------------------------------------------
-- Mantener la suite de tests al 100% (1440+ tests PASS).
-- Formato Telegram <= 32 columnas para legibilidad móvil estricta.
+- Monitorear Elevador 1 a 5400W (M23+M24 a 2700W): trigger si hay eventos
+  unexpected_restart o phase_drop → activar PROFILE_C1_ASYMMETRIC
+- Verificar FGA cohorte de M24 en facility_agent_knowledge (debería ser COOL
+  o STANDARD con R_th calculado a 2700W real)
+- Latencia de pytest: actualmente ~45s con 1440 tests (alerta si >90s)
+
+--------------------------------------------------------------------------------
+5. REGLAS DE SEGURIDAD CONSTITUCIÓN AGENTS.MD
+--------------------------------------------------------------------------------
+- NUNCA implementar specs 082-086 sin aprobación explícita del operador.
+- Mantener suite 1440 tests PASS al 100%.
+- Formato Telegram ≤32 columnas.
 - No commitear app/config.json ni app/state.json.
-- Dejar prompt.txt actualizado al finalizar cada sesión sin trailing whitespaces.
+- Spec 082 (MinerGovernanceContext) es P0/ALTA — escalar a Claude Sonnet 4.6 (Thinking).

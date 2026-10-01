@@ -1,13 +1,13 @@
-# Auditoría de Armonización de Directivas de Gobernanza
+ Auditoría de Armonización de Directivas de Gobernanza
 
-**Fecha de Auditoría**: 2026-10-01  
-**Auditor**: Claude Sonnet 4.6 (Thinking)  
-**Baseline del Sistema**: 1429 tests PASS · 75 subtests PASS · NSSM MinerAlerts RUNNING  
-**Estado de Flota (snapshot 10:14 hs)**:  
-- M23: 2700W · 100.0 TH/s · Fan 92% · Chips 76-80°C · Uptime 49.1h  
-- M24: 2500W · 92.4 TH/s · Fan **100%** · Chips 57-77°C · Uptime 32.7h ⚠️ `restart_required=True`  
-- M25: 2700W · 101.5 TH/s · Fan 92% · Chips 78-82°C · Uptime 22.3h  
-- M26: 2700W · 99.5 TH/s · Fan 92% · Chips 75-78°C · Uptime 22.3h  
+**Fecha de Auditoría**: 2026-10-01
+**Auditor**: Claude Sonnet 4.6 (Thinking)
+**Baseline del Sistema**: 1429 tests PASS · 75 subtests PASS · NSSM MinerAlerts RUNNING
+**Estado de Flota (snapshot 10:14 hs)**:
+- M23: 2700W · 100.0 TH/s · Fan 92% · Chips 76-80°C · Uptime 49.1h
+- M24: 2500W · 92.4 TH/s · Fan **100%** · Chips 57-77°C · Uptime 32.7h ⚠️ `restart_required=True`
+- M25: 2700W · 101.5 TH/s · Fan 92% · Chips 78-82°C · Uptime 22.3h
+- M26: 2700W · 99.5 TH/s · Fan 92% · Chips 75-78°C · Uptime 22.3h
 
 ---
 
@@ -156,7 +156,7 @@ restart_required = True (VNish)
 
 #### Solución Propuesta para F-01/F-07
 
-**Inmediata (Operativa)**: Ejecutar manualmente `safe_restart_mining` en M24.  
+**Inmediata (Operativa)**: Ejecutar manualmente `safe_restart_mining` en M24.
 **Arquitectónica (Spec futura)**: Implementar un watchdog de `restart_required` separado del bloque `is_hash_degraded`.
 
 ---
@@ -188,7 +188,7 @@ En el caso de M24, **esa transición nunca ocurrirá** sin un `restart_mining`. 
 
 Agregar consciencia de `restart_required` al Fan Governor o al ciclo de gobernador en `miner_monitor.py`:
 
-**Opción A** (sin cambios al Fan Governor puro):  
+**Opción A** (sin cambios al Fan Governor puro):
 En el ciclo de gobernador de `miner_monitor.py`, al construir `target_pwr` para el Fan Governor, si `state.vnish_restart_required=True` y el preset ejecutado (cgminer actual) es `< max_hardware_preset`, usar el preset **ejecutado** (no el configurado) como `target_pwr` para el Fan Governor:
 ```python
 # Si restart_required activo, Fan Governor usa el preset en ejecución real
@@ -197,7 +197,7 @@ if getattr(state, 'vnish_restart_required', False):
     target_pwr = state.current_power_w or target_pwr
 ```
 
-**Opción B** (más limpia, requiere Spec nueva):  
+**Opción B** (más limpia, requiere Spec nueva):
 Agregar parámetro `preset_pending_restart: bool` a `compute_governor_step()`. Si `True`, suprimir el check de RECOVERY_MAX_COOLING (la condición de potencia deficiente es legítimamente permanente hasta el restart, no un defecto de arranque).
 
 ---
@@ -217,7 +217,7 @@ Agregar parámetro `preset_pending_restart: bool` a `compute_governor_step()`. S
 
 El Elevador 1 ha demostrado **calidad de energía impecable** durante 49+ horas, lo que sugiere que la acometida física (relés, transformador, cableado) del Elevador 1 tiene mayor margen de seguridad que la del Elevador 2.
 
-**Hipótesis de Fatiga del Elevador 2**:  
+**Hipótesis de Fatiga del Elevador 2**:
 Los 3 eventos del 2026-09-30 en Elevador 2 coinciden con operación continua a ~5400W. El transformador de Elevador 2 opera más cerca de su límite térmico de diseño. La rebaja de 5400W a 5000W (un minero a 2500W) como medida temporal podría confirmar si los eventos son causados por la carga continua.
 
 **¿Es seguro subir M24 a 2700W?**
@@ -471,5 +471,5 @@ Antes de considerar esta auditoría completamente resuelta, se requiere evidenci
 
 ---
 
-*Documento generado por Claude Sonnet 4.6 (Thinking) como parte del ciclo de gobernanza y auditoría de directivas del sistema miner-alerts.*  
+*Documento generado por Claude Sonnet 4.6 (Thinking) como parte del ciclo de gobernanza y auditoría de directivas del sistema miner-alerts.*
 *Próximo modelo recomendado: **Gemini 3.8 Flash High** para la implementación del Watchdog `restart_required` (tarea de implementación acotada y determinista).*

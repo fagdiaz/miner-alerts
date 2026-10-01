@@ -7,6 +7,8 @@ Exposes deterministic conversational interfaces:
 - /fwhy: Detailed thermal resistance and power allocation explanation per miner.
 """
 
+from datetime import datetime
+import time
 from typing import Any, Dict, List, Optional
 from app.telegram.commands.base import BaseCommandHandler
 from app.telegram.context import TelegramRequestContext
@@ -20,6 +22,12 @@ from app.governance.facility_agent import (
     evaluate_asymmetric_allocation,
     explain_miner_state,
 )
+from app.governance.fga_actuator import (
+    evaluate_fga_actuator_step,
+    execute_fga_actuator_step,
+)
+from app.governance.elevator_budget import FacilityBudgetState
+from app.governance.governance_context import MinerGovernanceContext
 
 
 def _gather_fleet_telemetry(context: TelegramRequestContext) -> List[Dict[str, Any]]:
@@ -67,6 +75,12 @@ class AgentCommand(BaseCommandHandler):
         message_id: Optional[int] = None,
         **kwargs: Any,
     ) -> bool:
+        if args and args[0].lower() in ["run", "ejecutar", "opt"]:
+            return self._handle_run(context, args[1:], update_id=update_id)
+
+        if args and args[0].lower() in ["history", "historial", "acciones"]:
+            return self._handle_history(context, args[1:], update_id=update_id)
+
         telemetry = _gather_fleet_telemetry(context)
         current_strategy = context.config.get("facility_agent_strategy", STRATEGY_BALANCED)
 
@@ -108,8 +122,10 @@ class AgentCommand(BaseCommandHandler):
         lines.extend([
             "────────────────────────────",
             "💡 Comandos disponibles:",
-            "• `/strategy <modo>` (balanced|max_power|efficiency|cool_quiet)",
-            "• `/fwhy <minero>` (Explicación detallada por máquina)",
+            "• `/agent run` (Forzar optimización)",
+            "• `/agent history` (Ver auditoría)",
+            "• `/strategy <modo>` (Ajustar estrategia)",
+            "• `/fwhy <minero>` (Explicación técnica)",
         ])
 
         context.send_message(
@@ -117,6 +133,167 @@ class AgentCommand(BaseCommandHandler):
             msg_type="STATUS",
             dedup_key="cmd_agent_dashboard",
             dbg_cmd="agent",
+            dbg_update_id=update_id,
+        )
+        return True
+
+    def _handle_run(
+        self,
+        context: TelegramRequestContext,
+        args: List[str],
+        update_id: Optional[int] = None,
+    ) -> bool:
+        now_ts = time.time()
+        now_dt = datetime.now()
+        current_strategy = context.config.get("facility_agent_strategy", STRATEGY_BALANCED)
+        presets_enabled = bool(context.config.get("presets_enabled", True))
+
+        fac_state = None
+        try:
+            from app.miner_monitor import _FACILITY_BUDGET_STATE
+            fac_state = _FACILITY_BUDGET_STATE
+        except Exception:
+            pass
+        if fac_state is None:
+            fac_state = FacilityBudgetState()
+
+        contexts = []
+        with context.state_lock:
+            for m in context.miners:
+                name = m.get("name", "")
+                host = m.get("host", "")
+                port = m.get("port", 4028)
+                sk = f"{name}|{host}:{port}"
+                st = context.states.get(sk)
+                gov_ctx = MinerGovernanceContext.from_state(st, now_ts, m)
+                contexts.append(gov_ctx)
+
+        decision = evaluate_fga_actuator_step(
+            governance_contexts=contexts,
+            facility_state=fac_state,
+            now_dt=now_dt,
+            now_ts=now_ts,
+            strategy=current_strategy,
+            config=context.config,
+            presets_enabled=presets_enabled,
+        )
+
+        if decision.can_proceed and decision.candidate_miner:
+            cand_m = next(
+                (m for m in context.miners if m.get("name") == decision.candidate_miner),
+                None,
+            )
+            host = cand_m.get("host", "") if cand_m else ""
+            vnish_pw = str(context.config.get("vnish_api_password", "admin"))
+            sk = f"{cand_m.get('name', '')}|{host}:{cand_m.get('port', 4028)}" if cand_m else ""
+            target_st = None
+            with context.state_lock:
+                target_st = context.states.get(sk)
+
+            decision = execute_fga_actuator_step(
+                decision=decision,
+                host=host,
+                password=vnish_pw,
+                facility_state=fac_state,
+                now_ts=now_ts,
+                config=context.config,
+                qa_mode=context.qa_mode,
+                event_store=context.event_store,
+                miner_state=target_st,
+                state_lock=context.state_lock,
+            )
+            if decision.action_status in ("EXECUTED", "SIMULATED"):
+                context.persist_state_safely()
+
+        lines = [
+            "🤖 *FGA ACTUATOR: RUN*",
+            "────────────────────────────",
+            f"• Estrategia: *{decision.strategy.upper()}*",
+        ]
+        if decision.candidate_miner:
+            lines.extend([
+                f"• Minero: *{decision.candidate_miner}*",
+                f"• Modulación: *{decision.current_preset}* ➔ *{decision.target_preset}*",
+                f"• Estado: *{decision.action_status}*",
+                f"• Compuerta: `{decision.gate_action}`",
+            ])
+            if decision.remaining_settle_s > 0.0:
+                lines.append(f"• Reposo Acometida: {decision.remaining_settle_s:.0f}s")
+            r_short = (
+                decision.gate_reason[:60] + "..."
+                if len(decision.gate_reason) > 60
+                else decision.gate_reason
+            )
+            lines.append(f"• Detalle: {r_short}")
+        else:
+            lines.extend([
+                "• Estado: *NOOP (Óptimo)*",
+                "• Flota operando en asignación",
+                "  óptima. Sin cambios.",
+            ])
+        lines.append("────────────────────────────")
+
+        context.send_message(
+            "\n".join(lines),
+            msg_type="STATUS",
+            dedup_key="cmd_agent_run",
+            dbg_cmd="agent_run",
+            dbg_update_id=update_id,
+        )
+        return True
+
+    def _handle_history(
+        self,
+        context: TelegramRequestContext,
+        args: List[str],
+        update_id: Optional[int] = None,
+    ) -> bool:
+        miner_filter = args[0].strip().upper() if args else None
+        store = context.event_store
+        if store is None or not getattr(store, "available", False):
+            context.send_message(
+                "⚠️ Base de datos no disponible para consultar historial FGA.",
+                msg_type="STATUS",
+                dedup_key="cmd_agent_hist_err",
+            )
+            return True
+
+        actions = store.get_facility_agent_actions(miner_name=miner_filter, limit=5)
+        lines = [
+            "📜 *HISTORIAL ACCIONES FGA*",
+            "────────────────────────────",
+        ]
+        if miner_filter:
+            lines.append(f"Filtro: *{miner_filter}*")
+
+        if not actions:
+            lines.append("No hay acciones FGA registradas.")
+        else:
+            now_ts = time.time()
+            for a in actions:
+                m_name = a.get("miner_name", "?")
+                status = a.get("action_status", "?")
+                from_p = a.get("from_preset", "?")
+                to_p = a.get("to_preset", "?")
+                gate = a.get("gate_name") or a.get("gate_action") or "GATE"
+                created_ts = a.get("created_ts") or now_ts
+                age_s = max(0, int(now_ts - created_ts))
+                if age_s < 60:
+                    age_str = f"{age_s}s"
+                elif age_s < 3600:
+                    age_str = f"{age_s // 60}m"
+                else:
+                    age_str = f"{age_s // 3600}h"
+
+                lines.append(f"• *{m_name}* [{status}] ({age_str})")
+                lines.append(f"  {from_p} ➔ {to_p} | `{gate}`")
+
+        lines.append("────────────────────────────")
+        context.send_message(
+            "\n".join(lines),
+            msg_type="STATUS",
+            dedup_key="cmd_agent_history",
+            dbg_cmd="agent_history",
             dbg_update_id=update_id,
         )
         return True

@@ -7,8 +7,11 @@ Zero token cost, zero external API dependencies, 100% testable and bounded.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union, TYPE_CHECKING
 import time
+
+if TYPE_CHECKING:
+    from app.governance.governance_context import MinerGovernanceContext
 
 from app.governance.thermal_policy import (
     TEMP_DEADBAND_HIGH_C,
@@ -106,24 +109,51 @@ def classify_silicon_cohort(thermal_resistance: float) -> str:
 
 def build_thermal_profile(
     miner_name: str,
-    chip_temp_c: Optional[float],
-    inlet_temp_c: Optional[float],
-    power_w: Optional[float],
+    chip_temp_c: Optional[float] = None,
+    inlet_temp_c: Optional[float] = None,
+    power_w: Optional[float] = None,
     current_preset: str = "2500W",
+    ctx: Optional[Any] = None,
 ) -> MinerThermalProfile:
-    """Construct complete empirical thermal profile for a miner."""
+    """Construct complete empirical thermal profile for a miner (Spec 079 / Spec 083)."""
+    if ctx is not None:
+        miner_name = getattr(ctx, "miner_name", miner_name) or miner_name
+        if chip_temp_c is None:
+            chip_temp_c = getattr(ctx, "chip_temp_c", None)
+        if inlet_temp_c is None:
+            inlet_temp_c = getattr(ctx, "inlet_temp_c", None)
+        restart_req = bool(getattr(ctx, "restart_required", False))
+        curr_pwr = getattr(ctx, "current_power_w", None)
+        if restart_req and curr_pwr is not None and curr_pwr >= 500.0:
+            power_w = curr_pwr
+        elif power_w is None:
+            power_w = curr_pwr or getattr(ctx, "target_power_w", None)
+        current_preset = (
+            getattr(ctx, "executed_preset", None)
+            or getattr(ctx, "configured_preset", None)
+            or current_preset
+        )
+
     t_chip = chip_temp_c if chip_temp_c is not None else 80.0
     t_inlet = inlet_temp_c if inlet_temp_c is not None else DEFAULT_INLET_TEMP_C
     p_w = power_w if power_w is not None else 2500.0
 
-    r_th = calculate_thermal_resistance(t_chip, t_inlet, p_w)
+    r_th = (
+        getattr(ctx, "fga_thermal_resistance", None)
+        if ctx and getattr(ctx, "fga_thermal_resistance", None) is not None
+        else calculate_thermal_resistance(t_chip, t_inlet, p_w)
+    )
     pred_2700 = predict_chip_temperature(t_inlet, 2700.0, r_th)
     pred_2500 = predict_chip_temperature(t_inlet, 2500.0, r_th)
     pred_2300 = predict_chip_temperature(t_inlet, 2300.0, r_th)
 
     is_overheat = t_chip >= TRIPWIRE_TEMP_C
     margin = round(SAFE_TARGET_TEMP_C - t_chip, 1)
-    cohort = classify_silicon_cohort(r_th)
+    cohort = (
+        getattr(ctx, "fga_cohort", None)
+        if ctx and getattr(ctx, "fga_cohort", None) is not None
+        else classify_silicon_cohort(r_th)
+    )
 
     return MinerThermalProfile(
         miner_name=miner_name,
@@ -142,7 +172,7 @@ def build_thermal_profile(
 
 
 def evaluate_asymmetric_allocation(
-    miners_telemetry: List[Dict[str, Any]],
+    miners_telemetry: Union[List[Dict[str, Any]], List[Any]],
     max_group_power_w: float = 5400.0,
     max_facility_power_w: float = 10400.0,
     strategy: str = STRATEGY_BALANCED,
@@ -163,18 +193,49 @@ def evaluate_asymmetric_allocation(
     groups: Dict[str, List[Dict[str, Any]]] = {}
 
     for m in miners_telemetry:
-        name = m.get("name", "")
-        grp = m.get("electrical_group") or m.get("group", "elevator_1")
-        groups.setdefault(grp, []).append(m)
+        if hasattr(m, "miner_name") and hasattr(m, "current_power_w"):
+            # MinerGovernanceContext instance (Spec 082 / Spec 083)
+            name = getattr(m, "miner_name", "")
+            grp = getattr(m, "electrical_group", None) or "elevator_1"
+            curr_p = getattr(m, "executed_preset", None) or getattr(m, "configured_preset", None) or "2500W"
+            if curr_p and curr_p.isdigit():
+                curr_p = f"{curr_p}W"
+            prof = build_thermal_profile(name, ctx=m)
+            m_dict = {
+                "name": name,
+                "electrical_group": grp,
+                "preset": curr_p,
+                "power_w": prof.current_power_w,
+                "chip_temp_c": prof.chip_temp_c,
+                "inlet_temp_c": prof.inlet_temp_c,
+            }
+            groups.setdefault(grp, []).append(m_dict)
+            profiles[name] = prof
+        else:
+            name = m.get("name", "")
+            grp = m.get("electrical_group") or m.get("group", "elevator_1")
 
-        prof = build_thermal_profile(
-            miner_name=name,
-            chip_temp_c=m.get("chip_temp_c"),
-            inlet_temp_c=m.get("inlet_temp_c"),
-            power_w=m.get("power_w"),
-            current_preset=m.get("preset", "2500W"),
-        )
-        profiles[name] = prof
+            p_w = m.get("power_w")
+            if m.get("restart_required") and m.get("current_power_w") is not None and m.get("current_power_w") >= 500.0:
+                p_w = m.get("current_power_w")
+
+            prof = build_thermal_profile(
+                miner_name=name,
+                chip_temp_c=m.get("chip_temp_c"),
+                inlet_temp_c=m.get("inlet_temp_c"),
+                power_w=p_w,
+                current_preset=m.get("preset", "2500W"),
+            )
+            m_dict = {
+                "name": name,
+                "electrical_group": grp,
+                "preset": m.get("preset", "2500W"),
+                "power_w": prof.current_power_w,
+                "chip_temp_c": prof.chip_temp_c,
+                "inlet_temp_c": prof.inlet_temp_c,
+            }
+            groups.setdefault(grp, []).append(m_dict)
+            profiles[name] = prof
 
     # Preset wattage map
     power_map = {"2700W": 2700.0, "2500W": 2500.0, "2300W": 2300.0, "1800W": 1800.0}
@@ -251,16 +312,19 @@ def evaluate_asymmetric_allocation(
     decision.total_projected_power_w = sum(decision.group_projected_power_w.values())
 
     # Step 4: Identify candidate action if a change is warranted
-    for m in miners_telemetry:
-        m_name = m.get("name", "")
-        curr_p = m.get("preset", "2500W")
-        tgt_p = decision.target_allocations.get(m_name, curr_p)
-        if curr_p != tgt_p:
-            decision.candidate_step = (
-                m_name,
-                tgt_p,
-                decision.explanations.get(m_name, "Optimización de potencia FGA"),
-            )
+    for grp, m_list in groups.items():
+        for m in m_list:
+            m_name = m.get("name", "")
+            curr_p = m.get("preset", "2500W")
+            tgt_p = decision.target_allocations.get(m_name, curr_p)
+            if curr_p != tgt_p:
+                decision.candidate_step = (
+                    m_name,
+                    tgt_p,
+                    decision.explanations.get(m_name, "Optimización de potencia FGA"),
+                )
+                break
+        if decision.candidate_step:
             break
 
     return decision

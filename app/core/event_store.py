@@ -486,6 +486,27 @@ class EventStore:
                     last_updated_ts REAL NOT NULL,
                     notes TEXT NOT NULL DEFAULT ''
                 );
+
+                -- Spec 083: additive facility agent actions table
+                CREATE TABLE IF NOT EXISTS facility_agent_actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_ts REAL NOT NULL,
+                    miner_name TEXT NOT NULL,
+                    electrical_group TEXT,
+                    strategy TEXT NOT NULL,
+                    from_preset TEXT NOT NULL,
+                    to_preset TEXT NOT NULL,
+                    action_status TEXT NOT NULL,
+                    gate_name TEXT,
+                    reason TEXT NOT NULL,
+                    power_w REAL,
+                    chip_temp_c REAL,
+                    thermal_resistance REAL
+                );
+                CREATE INDEX IF NOT EXISTS ix_fga_actions_created
+                    ON facility_agent_actions(created_ts DESC);
+                CREATE INDEX IF NOT EXISTS ix_fga_actions_miner
+                    ON facility_agent_actions(miner_name, created_ts DESC);
                 """
             )
 
@@ -1716,6 +1737,92 @@ class EventStore:
                 return [dict(r) for r in rows]
         except sqlite3.Error as exc:
             self._report_error("get_facility_agent_knowledge", exc)
+            return []
+
+    def record_facility_agent_action(
+        self,
+        *,
+        miner_name: str,
+        strategy: str,
+        from_preset: str,
+        to_preset: str,
+        action_status: str,
+        reason: str,
+        electrical_group: Optional[str] = None,
+        gate_name: Optional[str] = None,
+        power_w: Optional[float] = None,
+        chip_temp_c: Optional[float] = None,
+        thermal_resistance: Optional[float] = None,
+        created_ts: Optional[float] = None,
+    ) -> bool:
+        """Persist an FGA actuator cycle decision or execution (Spec 083 / PROP-019)."""
+        connection = self._connection
+        if connection is None:
+            return False
+
+        ts = float(created_ts if created_ts is not None else time.time())
+        try:
+            with self._lock, connection:
+                connection.execute(
+                    """
+                    INSERT INTO facility_agent_actions (
+                        created_ts, miner_name, electrical_group, strategy,
+                        from_preset, to_preset, action_status, gate_name,
+                        reason, power_w, chip_temp_c, thermal_resistance
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        ts,
+                        str(miner_name),
+                        str(electrical_group) if electrical_group is not None else None,
+                        str(strategy),
+                        str(from_preset),
+                        str(to_preset),
+                        str(action_status),
+                        str(gate_name) if gate_name is not None else None,
+                        str(reason),
+                        float(power_w) if power_w is not None else None,
+                        float(chip_temp_c) if chip_temp_c is not None else None,
+                        float(thermal_resistance) if thermal_resistance is not None else None,
+                    ),
+                )
+            return True
+        except sqlite3.Error as exc:
+            self._report_error("record_facility_agent_action", exc)
+            return False
+
+    def get_facility_agent_actions(
+        self, miner_name: Optional[str] = None, limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Retrieve stored FGA actions for audit and diagnostics (Spec 083 / PROP-019)."""
+        connection = self._connection
+        if connection is None:
+            return []
+
+        try:
+            with self._lock:
+                if miner_name:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM facility_agent_actions
+                        WHERE miner_name = ?
+                        ORDER BY created_ts DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (str(miner_name), max(1, int(limit))),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """
+                        SELECT * FROM facility_agent_actions
+                        ORDER BY created_ts DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (max(1, int(limit)),),
+                    ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            self._report_error("get_facility_agent_actions", exc)
             return []
 
 

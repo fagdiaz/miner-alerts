@@ -308,6 +308,9 @@
     "valley_step_up_max_chip_temp_c": 80.0,
     "valley_step_up_max_fan_duty_pct": 92.0,
     "autotune_grace_period_seconds": 900.0,
+    "_comment_spec_083": "Spec 083: FGA Actuator Loop (PROP-019). Ciclo de decision-ejecucion entre FGA y Elevator Budget. Modulacion asimetrica por silicio.",
+    "facility_agent_strategy": "balanced",
+    "fga_actuator_interval_seconds": 60.0,
     "telegram_alerts_enabled": true,
     "adaptive_contingency_enabled": false
 }

@@ -1,4 +1,4 @@
-﻿ Miner Alerts Speckit Roadmap
+ Miner Alerts Speckit Roadmap
 
 **Last reviewed**: 2026-10-01
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
@@ -6,10 +6,10 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (81 de 81 especificaciones completadas y evidenciadas â€” **1440 tests PASS, 75 subtests PASS** â€” Spec 081 Restart Required Watchdog Certificada en ProducciÃ³n 2026-10-01).
-- **Estado Operativo de Flota (2026-10-01)**: 4x S19j Pro a 2700W Â· **~395 TH/s** Â· Fans en lazo cerrado ~92% Â· Chips 69-80Â°C Â· Sin eventos elÃ©ctricos en Elevador 1 (>49h) ni Elevador 2 (>12.5h).
-- **AuditorÃ­a ArquitectÃ³nica Completada (2026-10-01)**: AnÃ¡lisis exhaustivo de directivas de gobernanza, 8 fricciones identificadas (6 resueltas, 2 en backlog), diseÃ±o de resoluciones integrales. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
-- **Horizonte Actual â€” V5.2 Gobernanza Integrada**: Specs 082â€“086 planificadas. Foco en contrato de estado centralizado entre subsistemas, deuda arquitectÃ³nica del monolito y observabilidad sin intervenciÃ³n humana.
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (83 de 83 especificaciones completadas y evidenciadas — **1477 tests PASS, 75 subtests PASS** — Spec 083 FGA Actuator Loop Certificada en Producción 2026-10-01).
+- **Estado Operativo de Flota (2026-10-01)**: 4x S19j Pro a 2700W · **~395 TH/s** · Fans en lazo cerrado ~92% · Chips 69-80°C · Sin eventos eléctricos en Elevador 1 (>49h) ni Elevador 2 (>12.5h).
+- **Auditoría Arquitectónica Completada (2026-10-01)**: Análisis exhaustivo de directivas de gobernanza, 8 fricciones identificadas (7 resueltas, 1 en backlog), diseño de resoluciones integrales. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
+- **Horizonte Actual — V5.2 Gobernanza Integrada**: Specs 082 y 083 certificadas; Specs 084–086 planificadas. Foco en contrato de estado centralizado entre subsistemas, deuda arquitectónica del monolito y observabilidad sin intervención humana.
 
 ---
 
@@ -992,25 +992,26 @@ Los subsistemas de gobernanza (Fan Governor, Elevator Budget, Thermal Guard, FGA
 
 ---
 
-### Iniciativa 35 â€” FGA como Actuador Real: Ciclo de DecisiÃ³nâ€“EjecuciÃ³n Completo (Spec 083)
+### Iniciativa 35 — FGA como Actuador Real: Ciclo de Decisión–Ejecución Completo (Spec 083) [COMPLETED]
 
-**Propuesta**: PROP-019 (pendiente de creaciÃ³n formal)
-**Prioridad**: P1 â€” Funcional
+**Propuesta**: PROP-019
+**Estado**: COMPLETADO Y CERTIFICADO (2026-10-01) — 1477 tests PASS, 75 subtests PASS.
+**Prioridad**: P1 — Funcional
 **Riesgo**: MEDIO
-**Modelo recomendado**: Gemini 3.8 Flash High
-**Dependencia**: Spec 082
+**Modelo**: Gemini 3.8 Flash High
+**Dependencia**: Spec 082 ✅
 
 **Problema que resuelve**:
-El FGA actualmente es un motor de recomendaciÃ³n sin actuador: calcula asignaciones Ã³ptimas pero no las ejecuta. Sus recomendaciones se pierden si ningÃºn otro subsistema las recoge. El ciclo FGA â†’ Elevator Budget â†’ VNish deberÃ­a ser completo y rastreable.
+El FGA anteriormente era un motor de recomendación sin actuador: calculaba asignaciones óptimas pero no las ejecutaba. El ciclo FGA → Elevator Budget → VNish quedó completamente cerrado, trazable en SQLite (`facility_agent_actions`) e integrable en Telegram (`/agent run` y `/agent history`).
 
-**Alcance tÃ©cnico**:
-- Conectar la salida de `evaluate_asymmetric_allocation()` con el orquestador de Elevator Budget como fuente de solicitudes de cambio de preset.
-- El FGA emite `candidate_step` â†’ Elevator Budget evalÃºa los Gates 0-6 â†’ Si OK, ejecuta `safe_set_miner_preset`.
-- Registrar cada acciÃ³n FGA en SQLite (`facility_agent_actions`) para trazabilidad completa.
-- Mejorar telemetrÃ­a FGA: consumir `power_w` real (no config) para `R_th` correcto cuando hay `restart_required` activo (FricciÃ³n F-04 residual).
-- Comando Telegram `/agent run` para forzar un ciclo de optimizaciÃ³n bajo demanda.
+**Alcance técnico completado**:
+- Conectar la salida de `evaluate_asymmetric_allocation()` con el orquestador de Elevator Budget (`fga_actuator.py`).
+- El FGA emite `candidate_step` → Elevator Budget evalúa los Gates 0-6 → Si OK, ejecuta `safe_set_miner_preset`.
+- Registrar cada acción FGA en SQLite (`facility_agent_actions`) para trazabilidad completa.
+- Telemetría FGA mejorada: consume `current_power_w` real del `MinerGovernanceContext` para $R_{th}$ cuando hay `restart_required` activo (Fricción F-04 resuelta).
+- Comandos Telegram `/agent run` para forzar un ciclo de optimización bajo demanda y `/agent history` para auditar acciones.
 
-**Criterio de Ã©xito**: El operador puede ver en `/agent` exactamente quÃ© hizo el FGA en el Ãºltimo ciclo y por quÃ©.
+**Criterio de éxito alcanzado**: El operador puede ver en `/agent history` y `/agent run` exactamente qué hizo el FGA y por qué compuerta pasó.
 
 ---
 

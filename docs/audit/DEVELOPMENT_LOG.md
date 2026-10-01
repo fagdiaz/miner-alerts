@@ -5,6 +5,45 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
 
+## [2026-10-01] - Spec 083: FGA Actuator Loop — Conexión FGA → Elevator Budget → VNish (PROP-019)
+
+* **Contexto**:
+  - Motivación: Hasta la Spec 082, el Facility Governance Agent (FGA) era un motor de diagnóstico pasivo que calculaba asignaciones óptimas asimétricas sin actuador. Además, la fricción residual F-04 provocaba distorsiones en el cálculo de $R_{th}$ si un minero tenía `restart_required=True`.
+  - Objetivo: Conectar el ciclo decisión-ejecución entre FGA y Elevator Budget, consumir el contrato inmutable `MinerGovernanceContext` garantizando potencia real medida en $R_{th}$, persistir la trazabilidad en SQLite (`facility_agent_actions`), y habilitar control on-demand en Telegram (`/agent run` y `/agent history`).
+  - Baseline previo: 1466 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Implementación**:
+  1. `app/core/event_store.py` (MODIFICADO — aditivo):
+     - Tabla `facility_agent_actions` e índices `ix_fga_actions_created` e `ix_fga_actions_miner`.
+     - Métodos `record_facility_agent_action()` y `get_facility_agent_actions()`.
+  2. `app/governance/facility_agent.py` (MODIFICADO — aditivo):
+     - Ingesta de `MinerGovernanceContext` en `build_thermal_profile()` y `evaluate_asymmetric_allocation()`.
+     - Resolución de F-04: cuando `restart_required=True` y potencia $\ge 500\text{W}$, $R_{th}$ usa potencia real medida `current_power_w`.
+     - Uso de `ctx.fga_thermal_resistance` y `ctx.fga_cohort` si están presentes.
+  3. `app/governance/fga_actuator.py` (NUEVO):
+     - Dataclass `FgaActuatorDecision` inmutable.
+     - `evaluate_fga_actuator_step()`: función pura que orquesta FGA con `evaluate_facility_transition_permission()` (Gates 0 a 6).
+     - `execute_fga_actuator_step()`: ejecutor seguro con soporte para `qa_mode` y llamada acotada a `safe_set_miner_preset()`.
+  4. `app/telegram/commands/agent.py` (MODIFICADO):
+     - Subcomando `/agent run`: evaluación y aplicación inmediata con reporte ejecutivo $\le 32$ columnas.
+     - Subcomando `/agent history`: consulta y visualización de las últimas acciones registradas en SQLite.
+  5. `app/miner_monitor.py` (MODIFICADO — integración mínima):
+     - Invocación periódica acotada (`fga_actuator_interval_seconds`, default 60s) bajo salvaguarda `presets_allowed`.
+  6. `tests/test_fga_actuator.py` (NUEVO):
+     - 11 tests exhaustivos cubriendo persistencia en EventStore, armonización F-04, compuertas Gates 0 a 6, salvaguardas de arranque y subcomandos Telegram.
+
+* **Resultados de Validación**:
+  - `py_compile`: todos los módulos pasan con exit 0 ✅
+  - `pytest tests/test_fga_actuator.py -v`: **11 passed** in 0.87s ✅
+  - `pytest tests/test_facility_agent.py tests/test_governance_context_contracts.py -v`: **37 passed** in 0.56s ✅
+  - `pytest -x -q`: **1477 passed, 75 subtests passed** in 42.03s ✅ (+11 tests sobre baseline)
+  - `git diff --check`: exit 0 ✅
+
+* **Invariantes preservados**:
+  - Inviolabilidad de compuertas Gates 0 a 6 del Elevator Budget.
+  - Formato Telegram $\le 32$ columnas respetado estrictamente.
+  - Retrocompatibilidad: 100% verificada.
+
 ## [2026-10-01] - Spec 082: MinerGovernanceContext — Contrato de Estado Centralizado (PROP-018)
 
 * **Contexto**:

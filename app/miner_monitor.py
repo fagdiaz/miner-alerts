@@ -3853,6 +3853,7 @@ from app.governance.autotune_watchdog import (
 _AUTOTUNE_WATCHDOG_STATE: AutotuneWatchdogState = AutotuneWatchdogState()
 _LAST_SOFT_CONTINGENCY_PEAK_STATE: Optional[bool] = None
 _LAST_SOLAR_WINDOW_STATE: Optional[bool] = None
+_LAST_FGA_ACTUATOR_TS: float = 0.0
 
 
 
@@ -5902,7 +5903,7 @@ def main() -> None:
         f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
     )
     qa_mode, qa_mode_source = qa_enabled(config)
-    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE, _LAST_SOLAR_WINDOW_STATE, _AUTOTUNE_WATCHDOG_STATE
+    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE, _LAST_SOLAR_WINDOW_STATE, _AUTOTUNE_WATCHDOG_STATE, _LAST_FGA_ACTUATOR_TS
     _QA_MODE = qa_mode
     qa_notify = qa_notify_enabled(config)
     qa_verbose = qa_verbose_enabled(config)
@@ -9056,6 +9057,79 @@ def main() -> None:
                                 )
             except Exception as _soft_exc:
                 log(f"[SOFT_CONTINGENCY_ERR] Error en evaluador de soft-contingencia: {_soft_exc}")
+
+            # Spec 083 / PROP-019: Facility Governance Agent (FGA) Actuator Loop
+            try:
+                _fga_actuator_interval = float(config.get("fga_actuator_interval_seconds", 60.0))
+                if (now_ts - _LAST_FGA_ACTUATOR_TS) >= _fga_actuator_interval and presets_allowed:
+                    _LAST_FGA_ACTUATOR_TS = now_ts
+                    from app.governance.fga_actuator import evaluate_fga_actuator_step, execute_fga_actuator_step
+                    from app.governance.governance_context import MinerGovernanceContext
+
+                    _gov_contexts = []
+                    with state_lock:
+                        for _m in valid_miners:
+                            _m_name = _m.get("name", "")
+                            _m_sk = f"{_m_name}|{_m.get('host', '')}:{_m.get('port', 4028)}"
+                            _m_st = states.get(_m_sk)
+                            _gov_contexts.append(MinerGovernanceContext.from_state(_m_st, now_ts, _m))
+
+                    _fga_strat = str(config.get("facility_agent_strategy", "balanced"))
+                    _fga_decision = evaluate_fga_actuator_step(
+                        governance_contexts=_gov_contexts,
+                        facility_state=_FACILITY_BUDGET_STATE,
+                        now_dt=now_dt,
+                        now_ts=now_ts,
+                        strategy=_fga_strat,
+                        config=config,
+                        presets_enabled=presets_allowed,
+                    )
+
+                    if _fga_decision.can_proceed and _fga_decision.candidate_miner:
+                        _cand_m = next(
+                            (_m for _m in valid_miners if _m.get("name") == _fga_decision.candidate_miner),
+                            None,
+                        )
+                        if _cand_m:
+                            _fga_host = _cand_m.get("host", "")
+                            _fga_pw = str(config.get("vnish_api_password", "admin"))
+                            _cand_sk = f"{_cand_m.get('name', '')}|{_fga_host}:{_cand_m.get('port', 4028)}"
+                            with state_lock:
+                                _target_st = states.get(_cand_sk)
+
+                            _executed_fga = execute_fga_actuator_step(
+                                decision=_fga_decision,
+                                host=_fga_host,
+                                password=_fga_pw,
+                                facility_state=_FACILITY_BUDGET_STATE,
+                                now_ts=now_ts,
+                                config=config,
+                                qa_mode=qa_mode,
+                                event_store=event_store,
+                                miner_state=_target_st,
+                                state_lock=state_lock,
+                            )
+                            log(
+                                f"[FGA_ACTUATOR] Acción ejecutada: {_executed_fga.candidate_miner} "
+                                f"{_executed_fga.current_preset} -> {_executed_fga.target_preset} "
+                                f"status={_executed_fga.action_status} gate={_executed_fga.gate_action}"
+                            )
+                            if _executed_fga.action_status in ("EXECUTED", "SIMULATED"):
+                                send_telegram(
+                                    bot_token,
+                                    str(chat_id),
+                                    f"🤖 *OPTIMIZACIÓN FGA: {_executed_fga.candidate_miner}*\n\n"
+                                    f"• Asignación: *{_executed_fga.current_preset}* ➔ *{_executed_fga.target_preset}*\n"
+                                    f"• Estrategia: *{_fga_strat.upper()}*\n"
+                                    f"• Compuerta: `{_executed_fga.gate_action}`\n"
+                                    f"• Estado: *{_executed_fga.action_status}*\n"
+                                    f"• Reposo Acometida: 180s iniciado.",
+                                    "STATUS",
+                                    f"fga_act_{_executed_fga.candidate_miner}",
+                                    is_command=True,
+                                )
+            except Exception as _fga_exc:
+                log(f"[FGA_ACTUATOR_ERR] Error en ciclo de actuador FGA: {_fga_exc}")
 
             with state_lock:
                 _payload = _build_state_payload(states, current_last_update_id)

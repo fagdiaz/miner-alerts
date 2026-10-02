@@ -3,8 +3,8 @@
 # FECHA: 2026-10-02 (Post-Auditoría de Evento Operativo Elevador 2 12:24-12:27)
 # MODELO DESTINO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
 # RAMA ACTIVA: codex/022-adaptive-acquisition (Working tree 100% limpio)
-# ÚLTIMO COMMIT: 9954bbc feat(spec-086): incident autopsy engine and conversational QA supervisor (PROP-016)
-# ESTADO DEL SISTEMA: 1510 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
+# ÚLTIMO COMMIT: a1bc0b5 fix(forensics): dispatch async autopsy card via send_telegram and operational stabilization
+# ESTADO DEL SISTEMA: 1511 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING (PID 72016)
 # ESTADO DE LA FLOTA: 4/4 mineros a 2700W (~394.7 TH/s continuos, 10.8 kW en cadenas)
 # ==============================================================================
 

@@ -207,8 +207,9 @@ class GovernorCommand(BaseCommandHandler):
         message_id: Optional[int] = None,
         **kwargs: Any,
     ) -> bool:
-        import app.miner_monitor as mm
+        import app.miner_monitor as mm  # noqa: F401 — retained for log() and any other mm refs
         from app.miner_monitor import log
+        from app.governance._orchestrator_state import get_governor_enabled, set_governor_enabled
 
         sub = args[0].strip().lower() if args else ""
         gov_enabled_cfg = bool(context.config.get("fan_governor_enabled", False))
@@ -217,7 +218,7 @@ class GovernorCommand(BaseCommandHandler):
         gov_min_duty = int(context.config.get("fan_governor_min_duty_pct", 30))
 
         if sub == "on":
-            mm._GOVERNOR_RUNTIME_ENABLED = True
+            set_governor_enabled(True)
             gov_msg = (
                 "✅ *Fan Governor: ACTIVADO*\n"
                 f"Target: {gov_target:.1f}°C | Piso: {gov_min_duty}% | "
@@ -226,7 +227,7 @@ class GovernorCommand(BaseCommandHandler):
             log("[GOV] Governor habilitado por comando /gov on")
 
         elif sub == "off":
-            mm._GOVERNOR_RUNTIME_ENABLED = False
+            set_governor_enabled(False)
             vnish_pw = str(context.config.get("vnish_api_password", "admin"))
             fallback_results = []
             for m in context.miners:
@@ -268,9 +269,10 @@ class GovernorCommand(BaseCommandHandler):
                 gov_msg = "⚠️ Uso: `/gov set <temp>` (ej: `/gov set 81.5`)"
 
         else:
+            _rt_enabled = get_governor_enabled()
             is_enabled = (
-                mm._GOVERNOR_RUNTIME_ENABLED
-                if mm._GOVERNOR_RUNTIME_ENABLED is not None
+                _rt_enabled
+                if _rt_enabled is not None
                 else gov_enabled_cfg
             )
             status_icon = "🟢 ON" if is_enabled else "🔴 OFF"

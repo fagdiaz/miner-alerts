@@ -179,6 +179,7 @@ class BalancerCommand(BaseCommandHandler):
         )
         from app.telegram.fleet_cards import build_diagnostic_keyboard
         from app.miner_monitor import resolve_db_path, log, execute_balancer_cycle
+        from app.governance._orchestrator_state import get_balancer_enabled, set_balancer_enabled
 
         sub = args[0].strip().lower() if args else ""
         bal_enabled_cfg = bool(context.config.get("preset_balancer_enabled", False))
@@ -186,7 +187,7 @@ class BalancerCommand(BaseCommandHandler):
         db_p = resolve_db_path(context.config)
 
         if sub == "on":
-            mm._BALANCER_RUNTIME_ENABLED = True
+            set_balancer_enabled(True)
             bal_msg = (
                 "✅ *Dynamic Preset Balancer: ACTIVADO*\n"
                 f"Modo: {'🔇 DRY-RUN (simulación)' if bal_dry_run else '⚡ ACTIVO (escribe hardware)'}\n"
@@ -195,7 +196,7 @@ class BalancerCommand(BaseCommandHandler):
             log("[BALANCER] Balancer habilitado por comando /balancer on")
 
         elif sub == "off":
-            mm._BALANCER_RUNTIME_ENABLED = False
+            set_balancer_enabled(False)
             bal_msg = "🛑 *Dynamic Preset Balancer: DESACTIVADO*\n(Los presets actuales se mantendrán fijos)"
             log("[BALANCER] Balancer deshabilitado por comando /balancer off")
 
@@ -210,9 +211,10 @@ class BalancerCommand(BaseCommandHandler):
                 db_path=db_p,
                 force=True,
             )
+            _rt_bal = get_balancer_enabled()
             is_enabled = (
-                mm._BALANCER_RUNTIME_ENABLED
-                if mm._BALANCER_RUNTIME_ENABLED is not None
+                _rt_bal
+                if _rt_bal is not None
                 else bal_enabled_cfg
             )
             bal_msg = "🔄 *Ciclo Forzado Ejecutado*\n" + build_balancer_table_text(
@@ -308,9 +310,10 @@ class BalancerCommand(BaseCommandHandler):
                     max_preset_override=max_ov,
                 )
                 decisions_tuples.append((m_metrics, dec))
+            _rt_bal2 = get_balancer_enabled()
             is_enabled = (
-                mm._BALANCER_RUNTIME_ENABLED
-                if mm._BALANCER_RUNTIME_ENABLED is not None
+                _rt_bal2
+                if _rt_bal2 is not None
                 else bal_enabled_cfg
             )
             bal_msg = build_balancer_table_text(

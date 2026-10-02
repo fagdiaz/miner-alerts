@@ -1,4 +1,4 @@
-"""tests/test_fan_governor_concurrency.py
+﻿"""tests/test_fan_governor_concurrency.py
 T018: Concurrency and timeout stress tests for Fan Governor (Spec 039).
 
 Tests:
@@ -98,7 +98,7 @@ class TestFleetTimeout(unittest.TestCase):
             return True, None
 
         start = time.monotonic()
-        with patch("app.miner_monitor.safe_set_fan_duty", slow_safe_set):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", slow_safe_set):
             execute_governor_cycle(
                 miners=miners,
                 states=states,
@@ -131,7 +131,7 @@ class TestDryRun(unittest.TestCase):
             calls.append(host)
             return True, None
 
-        with patch("app.miner_monitor.safe_set_fan_duty", mock_ssfd):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", mock_ssfd):
             execute_governor_cycle(
                 miners=miners,
                 states=states,
@@ -158,7 +158,7 @@ class TestDryRun(unittest.TestCase):
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=True)
 
-        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)):
             execute_governor_cycle(
                 miners=miners, states=states, state_lock=lock,
                 config=config, now_ts=time.time(), qa_mode=False,
@@ -190,7 +190,7 @@ class TestExceptionIsolation(unittest.TestCase):
                 raise ConnectionError("simulated hardware failure")
             return True, None
 
-        with patch("app.miner_monitor.safe_set_fan_duty", failing_ssfd):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", failing_ssfd):
             # Must not raise
             try:
                 execute_governor_cycle(

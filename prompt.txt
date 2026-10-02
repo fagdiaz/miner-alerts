@@ -1,15 +1,15 @@
 # ==============================================================================
 # PROMPT DE CONTINUIDAD Y PUESTA EN CONTEXTO - MINER ALERTS
-# FECHA: 2026-10-01
-# MODELO DESTINO: Claude Sonnet 4.6 (Thinking) / Gemini 3.8 Flash High
-# ESTADO DEL SISTEMA: 1483 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
+# FECHA: 2026-10-02
+# MODELO DESTINO: Gemini 3.8 Flash High (Primary Engine)
+# ESTADO DEL SISTEMA: 1498 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
 # ESTADO DE LA FLOTA: 4/4 mineros a 2700W (~395 TH/s continuos, 10.8 kW en cadenas)
 # ==============================================================================
 
-Hola. Estás iniciando una sesión fresca en el repositorio 'miner-alerts'.
-Esta ventana continúa el trabajo de las sesiones anteriores, habiendo cerrado
-y certificado con éxito las Specs 080, 081, 082, 083 y 084. Tu misión es tomar el control
-técnico con máxima precisión, seguridad operativa y rigor documental.
+Hola Gemini. Estás iniciando una sesión fresca en el repositorio 'miner-alerts'.
+Esta ventana continúa el trabajo habiendo completado y certificado con éxito las Specs
+080, 081, 082, 083, 084 y 085. Tu misión es tomar el control técnico con máxima
+precisión, seguridad operativa y rigor documental.
 
 --------------------------------------------------------------------------------
 1. LECTURA OBLIGATORIA DE DOCUMENTOS CLAVE (EN ESTE ORDEN)
@@ -20,16 +20,15 @@ Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archiv
    - Constitución técnica, jerarquía de modelos, protocolo de handoff y reglas DoD.
 2. docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md
    - Informe maestro de la auditoría de directivas (16 directivas en 5 capas P0-P4).
-   - Matriz de fricciones (F-01 a F-08) y causas raíz del ecosistema de gobernanza.
 3. docs/audit/DEVELOPMENT_LOG.md (Primeras 3 entradas superiores newest-first):
+   - [2026-10-02] Spec 085: Governance Orchestrator Extraction — Desacoplamiento del Monolito (PROP-021).
    - [2026-10-01] Spec 084: Governance Dashboard (/directivas), Persistencia SQLite y Deadlock Watchdog (PROP-020).
    - [2026-10-01] Spec 083: FGA Actuator Loop, Elevator Budget Gate Bridge y SQLite Audit (PROP-019).
-   - [2026-10-01] Spec 082: MinerGovernanceContext frozen dataclass y Fan Governor.
-4. docs/speckit/ROADMAP.md (Horizon V5.2 — Iniciativas 34 a 38):
-   - Muestra el estado del backlog y la planificación de las Specs 085 y 086.
+4. docs/speckit/ROADMAP.md (Horizon V5.2 — Iniciativa 38 / Spec 086):
+   - Muestra el estado del backlog y la planificación de Spec 086 (Incident Autopsy Engine).
 5. docs/speckit/SPEC_PROGRAM.md (Programa global de especificaciones).
-6. app/governance/directives_dashboard.py y app/governance/governance_context.py
-   - Contratos centralizados de gobernanza (`MinerGovernanceContext`, `GovernanceSnapshot`, `DirectivesCommand`).
+6. app/governance/governor_cycle.py y app/governance/_orchestrator_state.py
+   - Módulos extraídos en Spec 085: desacoplamiento de ciclos y estado compartido thread-safe.
 
 --------------------------------------------------------------------------------
 2. ESTADO OPERATIVO DE PRODUCCIÓN (TELEMETRÍA EN VIVO)
@@ -37,7 +36,7 @@ Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archiv
 Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W:
 - S19JPRO-23: 2700W | 99.73 TH/s | Fan 92% | Chips <80°C | Elevador 1 (2698W)
 - S19JPRO-24: 2700W | ~98-100 TH/s | Fan modulación lazo cerrado | Chips <70°C | Elevador 1 (2698W)
-- S19JPRO-25: 2700W | 100.17 TH/s | Fan 98% | Chips <80°C | Elevador 2 (2699W)
+- S19JPRO-25: 2700W | 100.17 TH/s | Fan 96% | Chips <80°C | Elevador 2 (2699W)
 - S19JPRO-26: 2700W | 97.98 TH/s | Fan 92% | Chips <78°C | Elevador 2 (2699W)
 - Total Flota: ~395.0 TH/s continuos, 10,795 W de potencia medida en cadenas.
 - Servicio Windows: NSSM servicio `MinerAlerts` en estado SERVICE_RUNNING, liveness heartbeat activo.
@@ -46,32 +45,31 @@ Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W:
 3. RESUMEN DE HITOS RECIENTES CERTIFICADOS
 --------------------------------------------------------------------------------
 - Spec 080 (PROP-016): Watchdog de corrupción de firmware Vnish en /config/cgminer.conf.
-- Spec 081 (PROP-017): Watchdog de reinicio de minado pendiente (`evaluate_preset_restart_candidate`)
-  y armonización de Fan Governor (potencia real como target efectivo cuando restart_required=True).
-- Spec 082 (PROP-018): Creación del dataclass inmutable `MinerGovernanceContext` con 4 dominios
-  (potencia, térmico, firmware, operativo), método puro `.from_state()` e integración aditiva
-  en `compute_governor_step(..., ctx=gov_ctx)` manteniendo 100% retrocompatibilidad.
-- Spec 083 (PROP-019): Lazo actuador de gobernanza (FGA Actuator Loop) cerrando el ciclo
-  decisión-ejecución entre FGA y Elevator Budget (Gates 0 a 6). Integración de resistencia térmica R_th
-  con potencia real medida (F-04 resuelto), tabla persistente `facility_agent_actions` en EventStore,
-  comandos de Telegram `/agent run` y `/agent history` (<=32 cols), e invocación periódica supervisada.
-- Spec 084 (PROP-020): Dashboard de Gobernanza multinivel en Telegram (`/directivas`, `/gov_status`,
-  `/directives`, `/directiva`) con vista global y detalle por minero, formateo móvil estricto <= 32 cols,
-  tabla SQLite `governance_snapshots` indexada y con depuración periódica, y watchdog proactivo de deadlocks
-  en `ACTION_RECOVERY_MAX_COOLING` (>300s) con alerta throttled (cooldown 1800s).
-- Suite global: 1483 passed, 75 subtests passed (0 fallos, 0 errores).
+- Spec 081 (PROP-017): Watchdog de reinicio de minado pendiente y armonización de Fan Governor.
+- Spec 082 (PROP-018): MinerGovernanceContext frozen dataclass y contrato inmutable.
+- Spec 083 (PROP-019): Lazo actuador FGA cerrando ciclo con Elevator Budget (Gates 0 a 6).
+- Spec 084 (PROP-020): Governance Dashboard (/directivas), persistencia SQLite de snapshots y watchdog de deadlocks.
+- Spec 085 (PROP-021): Extracción de `execute_governor_cycle` y `refresh_vnish_overclock_settings` hacia
+  `app/governance/governor_cycle.py`, creación de `app/governance/_orchestrator_state.py` para desacoplar
+  handlers de Telegram (`fans.py`, `interventions.py`), y reducción de 572 líneas en `miner_monitor.py`
+  (9.406 -> 8.834 líneas). 15 tests nuevos en `tests/test_governance_orchestrator.py`.
+- Suite global: 1498 passed, 75 subtests passed (0 fallos, 0 errores).
 
 --------------------------------------------------------------------------------
 4. PRÓXIMO OBJETIVO TÉCNICO EN EL BACKLOG (HORIZON V5.2)
 --------------------------------------------------------------------------------
-El backlog de V5.2 documentado en `docs/speckit/ROADMAP.md` tiene como siguiente hito:
-- Iniciativa 37 / Spec 085: Descomposición del Monolito: Extracción del Orquestador de Gobernanza (PROP-021)
-  * Objetivo: Extraer `GovernanceOrchestrator` como clase en `app/governance/orchestrator.py`.
-  * Reducir `miner_monitor.py` (actualmente ~9000 líneas) moviendo la coordinación cross-subsistema
-    (resolución de `target_pwr`, Fan Governor <-> Elevator Budget <-> Thermal Guard).
-  * `miner_monitor.py` delega a `GovernanceOrchestrator.evaluate(miner_context)` y recibe `GovernanceDecision`.
-  * Preservar los 1483 tests PASS sin regresiones mediante Behavioral Test Harness.
-  * Modelo recomendado: Claude Sonnet 4.6 (Thinking) para diseño arquitectónico / Gemini Flash para tests.
+El backlog documentado en `docs/speckit/ROADMAP.md` tiene como siguiente hito:
+- Iniciativa 38 / Spec 086: Autopsia Autónoma de Incidentes y Supervisor Conversacional (PROP-016)
+  * Propuesta: docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md
+  * Prioridad: P2 — Observabilidad / Autonomía.
+  * Riesgo: MEDIO (sistema aditivo, no altera el loop de adquisición concurrente).
+  * Modelo recomendado: Gemini 3.8 Flash High (Primary Engine).
+  * Alcance:
+    1. IncidentAutopsyEngine: Análisis forense automático ante reinicios y caídas usando
+       telemetría de EventStore, SQLite snapshots y logs de firmware.
+    2. Generación automática de tarjeta de autopsia format <= 32 cols en Telegram.
+    3. Supervisor Q&A conversacional interactivo en Telegram para consultar causas raíz.
+  * Flujo de trabajo: `speckit-specify` -> `speckit-plan` -> `speckit-tasks` -> `speckit-qa` -> implementación -> `speckit-stabilize`.
 
 --------------------------------------------------------------------------------
 5. REGLAS DE ORO E INVARIANTES DE SEGURIDAD OPERATIVA
@@ -83,5 +81,4 @@ El backlog de V5.2 documentado en `docs/speckit/ROADMAP.md` tiene como siguiente
    - Antes de implementar: ejecutar `speckit-qa`.
    - Antes de commit/push: ejecutar `speckit-stabilize` (8 gates, tests 100% PASS, nssm restart).
 5. HIGIENE GIT: No dejar trailing whitespaces en ningún archivo modificado (`git diff --check`).
-6. MODEL WORKLOAD PROTOCOL: Recomendar Claude Sonnet 4.6 (Thinking) para Spec 085 debido a la
-   complejidad de refactorización concurrente del monolito `miner_monitor.py`.
+6. MODEL WORKLOAD: Mantener Gemini 3.8 Flash High como motor principal para toda la ejecución de Spec 086.

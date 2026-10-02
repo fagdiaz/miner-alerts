@@ -5,6 +5,48 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
 
+## [2026-10-02] - Spec 085: Governance Orchestrator Extraction — Desacoplamiento del Monolito (PROP-021)
+
+* **Contexto**:
+  - Motivación: `miner_monitor.py` concentraba más de 9.400 líneas integrando ciclos de Fan Governor, Preset Balancer, Autotune Watchdog, adquisición, Telegram y concurrencia. Los comandos de Telegram (`fans.py`, `interventions.py`) accedían de forma directa y acoplada a variables globales del monolito (`mm._GOVERNOR_RUNTIME_ENABLED`, `mm._BALANCER_RUNTIME_ENABLED`), y existían llamadas anti-patrón `globals().get("_GLOBAL_INTERVENTION_GOV")`.
+  - Objetivo: Extraer el ciclo de Fan Governor y sincronización de overclock (`execute_governor_cycle`, `refresh_vnish_overclock_settings`) fuera de `miner_monitor.py` hacia `app/governance/governor_cycle.py`, centralizar el estado mutable y accessors thread-safe en `app/governance/_orchestrator_state.py`, desacoplar los handlers de Telegram, y blindar los contratos con una suite de tests dedicada sin regresiones.
+  - Baseline previo: 1483 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Implementación**:
+  1. `app/governance/_orchestrator_state.py` (NUEVO):
+     - Módulo de estado mutable de gobernanza independiente de `miner_monitor.py` (previniendo imports circulares).
+     - Accessors thread-safe protegidos por Lock: `get_governor_enabled()`, `set_governor_enabled()`, `get_balancer_enabled()`, `set_balancer_enabled()`, `get_intervention_gov()`, `set_intervention_gov()`, `get_last_vnish_sync_ts()`, `set_last_vnish_sync_ts()`.
+  2. `app/governance/governor_cycle.py` (NUEVO):
+     - Extracción limpia de `execute_governor_cycle()` y `refresh_vnish_overclock_settings()`.
+     - Manejo de logging desacoplado y type hinting con `TYPE_CHECKING` para evitar acoplamiento circular en runtime.
+  3. `app/telegram/commands/fans.py` e `interventions.py` (MODIFICADOS):
+     - Desacoplamiento de las escrituras/lecturas de `mm._GOVERNOR_RUNTIME_ENABLED` y `mm._BALANCER_RUNTIME_ENABLED`, migrando a los accessors `get/set_governor_enabled()` y `get/set_balancer_enabled()`.
+  4. `app/miner_monitor.py` (MODIFICADO — refactorización limpia):
+     - Reducción neta de 572 líneas (de 9.406 a 8.834 líneas).
+     - Reemplazo de bloques monolíticos por imports de `app.governance.governor_cycle`.
+     - Inyección del singleton `InterventionGovernance` a `_orchestrator_state`.
+     - Preservación íntegra de firmas y call sites en `main()`.
+  5. `tests/test_fan_governor_concurrency.py`, `test_silent_mode.py`, `test_tripwire_thread_hardening.py` (MODIFICADOS):
+     - Actualización de los puntos de intercepción de mocks/patches hacia `app.governance.governor_cycle`.
+  6. `tests/test_governance_orchestrator.py` (NUEVO):
+     - 15 tests unitarios y de contrato verificando importabilidad, firmas intactas, concurrencia multihilo de accessors y desacoplamiento de handlers Telegram.
+
+* **Decisión de Riesgo Arquitectónico**:
+  - Las Fases 3 y 4 (extracción de `execute_balancer_cycle` y `check_autotune_watchdog`) se evaluaron rigurosamente y fueron formalmente postergadas a Spec 086+ tras constatar que comparten más de 10 variables globales de módulo directamente con `main()` en ~25 puntos del loop de adquisición. Extraerlas en esta entrega habría triplicado la complejidad del estado introduciendo riesgo operativo innecesario.
+
+* **Resultados de Validación**:
+  - `py_compile`: todos los módulos pasan con exit 0 ✅
+  - `pytest tests/test_governance_orchestrator.py -v`: **15 passed** in 0.53s ✅
+  - `pytest tests/test_fan_governor_concurrency.py tests/test_silent_mode.py tests/test_tripwire_thread_hardening.py -v`: **78 passed** in 3.30s ✅
+  - `pytest -q`: **1498 passed, 75 subtests passed** in 42.56s ✅ (+15 tests sobre baseline)
+  - `git diff --check`: exit 0 ✅
+
+* **Invariantes preservados**:
+  - Reducción efectiva del monolito en 572 líneas sin alterar el flujo principal de `main()`.
+  - Cero importaciones circulares en tiempo de importación y ejecución.
+  - Comandos Telegram `/gov` y `/balancer` 100% operativos mediante accessors thread-safe.
+  - Flota en producción operando a 2700W sin interrupciones.
+
 ## [2026-10-01] - Spec 084: Governance Dashboard (`/directivas`), Persistencia SQLite y Deadlock Watchdog (PROP-020)
 
 * **Contexto**:

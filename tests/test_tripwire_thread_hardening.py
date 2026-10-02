@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import app.miner_monitor as monitor
+import app.governance.governor_cycle as gov_cycle
 from app.governance.fleet_shutdown import OperationResult
 from app.telegram.callbacks import CallbackTokenRegistry
 
@@ -47,9 +48,9 @@ class TestTripwireThreadHardening(unittest.TestCase):
                 spawned = th
             return th
 
-        with patch.object(monitor, "log", side_effect=mock_log), \
-             patch.object(monitor, "safe_get_overclock_settings", return_value=mock_overclock), \
-             patch.object(monitor, "safe_set_miner_preset", side_effect=RuntimeError("Simulated network crash")), \
+        with patch.object(gov_cycle, "safe_get_overclock_settings", return_value=mock_overclock), \
+             patch.object(gov_cycle, "safe_set_miner_preset", side_effect=RuntimeError("Simulated network crash")), \
+             patch.object(gov_cycle, "_logger") as mock_logger, \
              patch("threading.Thread", side_effect=_capture_thread):
 
             monitor.refresh_vnish_overclock_settings(
@@ -60,6 +61,7 @@ class TestTripwireThreadHardening(unittest.TestCase):
                 timeout=1.0,
                 force=True,
                 now_ts=1000.0,
+                log_fn=mock_log,
             )
 
         self.assertIsNotNone(spawned, "RestoreLock_S19JPRO-01 thread should have been spawned")
@@ -96,9 +98,8 @@ class TestTripwireThreadHardening(unittest.TestCase):
                 spawned_ok = th
             return th
 
-        with patch.object(monitor, "log", side_effect=logged_ok.append), \
-             patch.object(monitor, "safe_get_overclock_settings", return_value=mock_overclock), \
-             patch.object(monitor, "safe_set_miner_preset", return_value=(True, None)), \
+        with patch.object(gov_cycle, "safe_get_overclock_settings", return_value=mock_overclock), \
+             patch.object(gov_cycle, "safe_set_miner_preset", return_value=(True, None)), \
              patch("threading.Thread", side_effect=_cap_ok):
             monitor.refresh_vnish_overclock_settings(
                 miners=miners,
@@ -108,6 +109,7 @@ class TestTripwireThreadHardening(unittest.TestCase):
                 timeout=1.0,
                 force=True,
                 now_ts=1000.0,
+                log_fn=logged_ok.append,
             )
         if spawned_ok:
             spawned_ok.join(timeout=3.0)
@@ -129,9 +131,8 @@ class TestTripwireThreadHardening(unittest.TestCase):
                 spawned_fail = th
             return th
 
-        with patch.object(monitor, "log", side_effect=logged_fail.append), \
-             patch.object(monitor, "safe_get_overclock_settings", return_value=mock_overclock), \
-             patch.object(monitor, "safe_set_miner_preset", return_value=(False, "Firmware rejected")), \
+        with patch.object(gov_cycle, "safe_get_overclock_settings", return_value=mock_overclock), \
+             patch.object(gov_cycle, "safe_set_miner_preset", return_value=(False, "Firmware rejected")), \
              patch("threading.Thread", side_effect=_cap_fail):
             monitor.refresh_vnish_overclock_settings(
                 miners=miners,
@@ -141,6 +142,7 @@ class TestTripwireThreadHardening(unittest.TestCase):
                 timeout=1.0,
                 force=True,
                 now_ts=1000.0,
+                log_fn=logged_fail.append,
             )
         if spawned_fail:
             spawned_fail.join(timeout=3.0)

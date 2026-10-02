@@ -1,4 +1,4 @@
-"""tests/test_silent_mode.py
+﻿"""tests/test_silent_mode.py
 T014: Spec 044 - Silent Mode / Visitor Mode with Persistent Timer and Thermal Guard.
 
 Covers all 4 constitutional conditions:
@@ -141,7 +141,7 @@ class TestGovernorAcousticCeiling(unittest.TestCase):
                                silent_active=True, target_max_duty=50)
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=True)
-        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)):
             execute_governor_cycle(
                 miners=miners, states=states, state_lock=lock,
                 config=config, now_ts=time.time(), qa_mode=False,
@@ -186,7 +186,7 @@ class TestThermalGuardC4(unittest.TestCase):
                                silent_active=True, target_max_duty=50)
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=False, fan_governor_emergency_temp_c=83.0)
-        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)):
             thermal_events = execute_governor_cycle(
                 miners=miners, states=states, state_lock=lock,
                 config=config, now_ts=time.time(), qa_mode=False,
@@ -206,7 +206,7 @@ class TestThermalGuardC4(unittest.TestCase):
         states = _make_states(miners, temp_c=79.0, duty=60, silent_active=True, target_max_duty=50)
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=True, fan_governor_emergency_temp_c=83.0)
-        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)):
             thermal_events = execute_governor_cycle(
                 miners=miners, states=states, state_lock=lock,
                 config=config, now_ts=time.time(), qa_mode=False,
@@ -223,7 +223,7 @@ class TestThermalGuardC4(unittest.TestCase):
         states[sk].governor_failures = 3
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=False, fan_governor_max_failures=3)
-        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)):
             thermal_events = execute_governor_cycle(
                 miners=miners, states=states, state_lock=lock,
                 config=config, now_ts=time.time(), qa_mode=False,
@@ -237,7 +237,7 @@ class TestThermalGuardC4(unittest.TestCase):
         states = _make_states(miners, temp_c=83.5, duty=100, silent_active=False)
         lock = threading.Lock()
         config = _make_config(fan_governor_dry_run=False, fan_governor_emergency_temp_c=83.0)
-        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)):
             thermal_events = execute_governor_cycle(
                 miners=miners, states=states, state_lock=lock,
                 config=config, now_ts=time.time(), qa_mode=False,
@@ -281,7 +281,7 @@ class TestC1NoHTTPInPollingThread(unittest.TestCase):
         def run_cycle():
             try:
                 config = _make_config(fan_governor_dry_run=True)
-                with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)):
+                with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)):
                     execute_governor_cycle(
                         miners=miners, states=states, state_lock=lock,
                         config=config, now_ts=time.time(), qa_mode=False,
@@ -373,7 +373,7 @@ class TestSilentModeIndependentElevators(unittest.TestCase):
             silent_mode_min_duty_pct=30,
         )
 
-        with patch("app.miner_monitor.safe_set_fan_duty", return_value=(True, None)) as mock_write:
+        with patch("app.governance.governor_cycle.safe_set_fan_duty", return_value=(True, None)) as mock_write:
             execute_governor_cycle(
                 miners=miners, states=states, state_lock=lock,
                 config=config, now_ts=now, qa_mode=False,

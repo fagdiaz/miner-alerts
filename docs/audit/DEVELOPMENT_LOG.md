@@ -5,6 +5,36 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
 
+## [2026-10-02] - Estabilización Operativa y Hotfix de Despacho de Autopsia Asíncrona (Post-Spec 086)
+
+* **Contexto**:
+  - Motivación: Tras el completamiento de la Spec 086 y durante la observación en vivo a 2700W, a las 12:24-12:27 ocurrió un reinicio transitorio de minado en Elevador 2 (mineros 25 y 26). El motor forense `IncidentAutopsyEngine` analizó la causa correctamente y persistió los incidentes en SQLite (`incident_assessments`), pero la tarjeta proactiva en Telegram no se emitió debido a una excepción atrapada `[AUTOPSY_ERR] NameError: name 'send_telegram_notification' is not defined`.
+  - Objetivo: Reparar la llamada en el callback asíncrono `_on_autopsy_done()` de `miner_monitor.py` hacia `send_telegram(...)`, blindar el despacho con prueba unitaria dedicada y ejecutar la compuerta de estabilización exhaustiva `speckit-stabilize` certificando 8/8 gates PASS y flota nominal a 2700W.
+  - Baseline previo: 1510 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Implementación**:
+  1. `app/miner_monitor.py` (MODIFICADO):
+     - Corregida la invocación en línea 6410 de `send_telegram_notification` a la función canónica `send_telegram(bot_token, str(chat_id), card, "AUTOPSY", ...)`.
+  2. `tests/test_incident_autopsy.py` (MODIFICADO):
+     - Incorporada prueba unitaria de contrato `test_autopsy_async_telegram_dispatch()` para verificar que el callback de finalización invoque `send_telegram` con el payload de la tarjeta formateada, tipo `"AUTOPSY"`, `is_command=True` y token correspondiente.
+  3. Auditoría de Observabilidad en Vivo (EVIDENCIADA):
+     - Registro ID 1 (S19JPRO-26 @ 12:24): Causa `UNRESOLVED`, Certeza `LOW`, silicio sano.
+     - Registro ID 2 (S19JPRO-25 @ 12:25): Causa `CHAIN_BREAK`, Certeza `HIGH`, log `WARN: chain#1 - ch` (transitorio en bus).
+     - Ambos mineros completaron settle pasivo de 120s, recuperaron sus 126 chips por placa en las 3 cadenas sin errores de hardware, y alcanzaron nuevamente 100.0 TH/s (M25) y 93.8 TH/s (M26) a 2700W nominal.
+
+* **Resultados de Validación**:
+  - `py_compile`: exit 0 en `app/miner_monitor.py` ✅
+  - `git diff --check`: exit 0 (cero trailing whitespaces) ✅
+  - `pytest tests/test_incident_autopsy.py -v`: **13 passed** in 1.18s ✅ (+1 test)
+  - `pytest -q`: **1511 passed, 75 subtests passed** in 41.64s ✅
+  - `preflight_stabilize.ps1`: **8/8 gates PASS**, 0 fallos ✅
+  - `cleanup_transients.ps1`: Limpieza de 13 ítems transitorios (4.36 MB liberados), preservación estricta de base de datos e integridad del sistema ✅
+
+* **Invariantes Preservados**:
+  - Flota en producción operando nominal a 2700W (~394.7 TH/s continuos, 10.8 kW en cadenas).
+  - Cero reinicios espurios gracias a `SAFE-RECOVERY` y supresión de streaks.
+  - Secretos protegidos y mobile-first $\le 32$ columnas garantizado.
+
 ## [2026-10-02] - Spec 086: Autopsia Autónoma de Incidentes y Supervisor Conversacional Q&A en Telegram (PROP-016)
 
 * **Contexto**:

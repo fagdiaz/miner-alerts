@@ -1,19 +1,18 @@
 # ==============================================================================
 # PROMPT DE CONTINUIDAD Y PUESTA EN CONTEXTO MAESTRA - MINER ALERTS
-# FECHA: 2026-10-02
+# FECHA: 2026-10-02 (Post-Auditoría de Evento Operativo Elevador 2 12:24-12:27)
 # MODELO DESTINO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
 # RAMA ACTIVA: codex/022-adaptive-acquisition (Working tree 100% limpio)
 # ÚLTIMO COMMIT: 9954bbc feat(spec-086): incident autopsy engine and conversational QA supervisor (PROP-016)
 # ESTADO DEL SISTEMA: 1510 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
-# ESTADO DE LA FLOTA: 4/4 mineros a 2700W (~395 TH/s continuos, 10.8 kW en cadenas)
+# ESTADO DE LA FLOTA: 4/4 mineros a 2700W (~394.7 TH/s continuos, 10.8 kW en cadenas)
 # ==============================================================================
 
 Hola Gemini 3.8 Flash High. Estás asumiendo la conducción técnica del proyecto 'miner-alerts'
 en una sesión de relevo limpia y coordinada.
 
-Esta ventana retoma tras el trabajo colaborativo donde Claude Sonnet 4.6 y Gemini 3.8 Flash High
-completaron y certificaron con éxito las Specs 084, 085 y 086 (Horizonte V5.2 de Gobernanza
-Integrada 100% finalizado y en producción).
+Esta ventana retoma tras la Auditoría de Observabilidad en Vivo solicitada por el operador
+tras el evento operativo de las 12:24 - 12:27 en Elevador 2 (mineros 25 y 26).
 
 --------------------------------------------------------------------------------
 1. LECTURA OBLIGATORIA DE DOCUMENTOS CLAVE (EN ESTE ORDEN)
@@ -31,125 +30,79 @@ Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archiv
    - [2026-10-02] Spec 086: Autopsia Autónoma de Incidentes y Supervisor Conversacional Q&A (PROP-016).
    - [2026-10-02] Spec 085: Governance Orchestrator Extraction — Desacoplamiento del Monolito (PROP-021).
    - [2026-10-01] Spec 084: Governance Dashboard (/directivas), Persistencia SQLite y Deadlock Watchdog (PROP-020).
-   - [2026-10-01] Spec 083: FGA Actuator Loop & Elevator Budget Gate Bridge (PROP-019).
-   - [2026-10-01] Spec 082: MinerGovernanceContext Frozen Dataclass (PROP-018).
 5. docs/speckit/ROADMAP.md
    - Backlog activo, estado de iniciativas 34 a 38, y tareas de observación continua post-Spec 081.
 6. docs/speckit/SPEC_PROGRAM.md
    - Límites arquitectónicos compartidos, autoridad de acción, topología de runtime y secuencia.
-7. app/governance/_orchestrator_state.py y app/governance/governor_cycle.py
-   - Módulos extraídos en Spec 085: estado compartido thread-safe y ciclo Fan Governor desacoplado.
-8. app/forensics/autopsy_engine.py, app/forensics/autopsy_card.py y app/forensics/conversational_qa.py
-   - Motor forense autónomo post-mortem, tarjetas mobile <= 32 cols y supervisor conversacional zero-cost.
+7. app/miner_monitor.py (L6395-6435: callback de autopsia asíncrona post-reinicio).
 
 --------------------------------------------------------------------------------
-2. ESTADO OPERATIVO DE PRODUCCIÓN (TELEMETRÍA EN VIVO)
+2. ESTADO OPERATIVO DE PRODUCCIÓN (AUDITORÍA EN VIVO POST-EVENTO 12:27)
 --------------------------------------------------------------------------------
-Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W continuo:
-- S19JPRO-23: 2700W | 99.73 TH/s | Fan ~92% | Chips <80°C | Elevador 1 (~2698W)
-- S19JPRO-24: 2700W | ~98-100 TH/s | Fan lazo cerrado | Chips <70°C | Elevador 1 (~2698W)
-- S19JPRO-25: 2700W | 100.17 TH/s | Fan ~96% | Chips <80°C | Elevador 2 (~2699W)
-- S19JPRO-26: 2700W | 97.98 TH/s | Fan ~92% | Chips <78°C | Elevador 2 (~2699W)
-- Total Flota: ~395.0 TH/s continuos, 10.795 W medidos en cadenas de hash.
-- Servicio Windows: NSSM servicio `MinerAlerts` en estado SERVICE_RUNNING, liveness heartbeat activo.
-- Base de datos SQLite: Esquema v7 con tablas operativas (`operational_events`, `governance_snapshots`,
-  `incident_assessments`, `facility_agent_knowledge`, `chain_telemetry_samples`).
-- Suite de pruebas: 1510 passed, 75 subtests passed (0 fallos, 0 errores en ~42s).
+A las 12:24-12:27 ocurrió un reinicio transitorio de proceso en Elevador 2:
+- 12:24:40: S19JPRO-26 reinició (elapsed 1789s -> 5s).
+- 12:25:10: S19JPRO-25 reinició (elapsed 1887s -> 10s).
+- Mecanismo SAFE-RECOVERY: Activó ventana de settle de 120s para ambos.
+- Autoreboot suprimido correctamente (`blocked_by=not_low low_streak=0/3`).
+- Balancer actuó en modo DRY RUN (`STEP_DOWN_CASCADE` simulado, hardware preservado a 2700W).
+- Ramp-up exitoso: S19JPRO-26 subió a 6 -> 53 -> 58 -> 93.8 TH/s.
+- S19JPRO-25 subió a 20 -> 100.0 TH/s.
 
---------------------------------------------------------------------------------
-3. HISTORIAL DE TRABAJO RECIENTE (SPECS 084, 085, 086)
---------------------------------------------------------------------------------
-
-A. Spec 084 (PROP-020): Governance Dashboard (/directivas) y Watchdog de Deadlocks
-   - Tabla SQLite `governance_snapshots` con índices de alto rendimiento.
-   - Dataclass `GovernanceSnapshot` y evaluador puro `evaluate_recovery_deadlock`.
-   - Comando `/directivas` en Telegram (vista global de flota y drill-down individual).
-   - Deadlock watchdog en tick loop para alertar bucles de enfriamiento (`>300s`) con cooldown de 1800s.
-   - 1483 tests PASS.
-
-B. Spec 085 (PROP-021): Descomposición del Monolito — Extracción del Fan Governor
-   - Módulo `app/governance/_orchestrator_state.py` con accessors thread-safe protegidos por Lock
-     (`get/set_governor_enabled`, `get/set_balancer_enabled`, `get/set_intervention_gov`, etc.).
-   - Eliminados todos los anti-patrones `globals().get("_GLOBAL_INTERVENTION_GOV")`.
-   - Comandos de Telegram `fans.py` e `interventions.py` desacoplados de variables directas de `miner_monitor.py`.
-   - Módulo `app/governance/governor_cycle.py` extrayendo `execute_governor_cycle` y `refresh_vnish_overclock_settings`.
-   - Reducción de 572 líneas en `miner_monitor.py` (de 9.406 a 8.834 líneas).
-   - 15 tests nuevos en `tests/test_governance_orchestrator.py`. Total 1498 tests PASS.
-   - DECISIÓN DE SEGURIDAD OPERATIVA: La extracción de `execute_balancer_cycle` y `check_autotune_watchdog`
-     fue pospuesta a Spec 087+ tras constatar que comparten más de 10 variables globales con `main()`
-     en ~25 sitios del loop de adquisición. Extraerlas requería una arquitectura de desacoplamiento dedicada.
-
-C. Spec 086 (PROP-016): Motor Autónomo de Autopsia Forense y Supervisor Conversacional Q&A
-   - `app/forensics/autopsy_engine.py`: Worker asíncrono con pool de hilos y timeout estricto <= 2.5s.
-     Clasificación determinística regex en 7 categorías: `LINK_DROP`, `CHAIN_BREAK`, `THERMAL_SHUTDOWN`,
-     `PSU_FAULT`, `AUTOTUNE_STALL`, `POWER_LOSS`, `UNRESOLVED`.
-   - `app/core/event_store.py`: Persistencia aditiva en tabla SQLite `incident_assessments`.
-   - `app/forensics/autopsy_card.py`: Tarjetas formateadas con ancho móvil estricto <= 32 columnas.
-   - `app/telegram/commands/autopsy.py`: Comando `/autopsia [minero]` (aliases `/causa_raiz`, `/autopsy`, `/investigar`).
-   - `app/forensics/conversational_qa.py`: Router semántico determinístico offline en lenguaje natural
-     ("<50ms, zero tokens, sin dependencias externas") para responder dudas sobre reinicios, red, térmica y fans.
-   - `app/miner_monitor.py`: Disparo automático no bloqueante ante reinicio `unexpected` (0 ms en loop principal).
-   - 12 tests nuevos en `tests/test_incident_autopsy.py`. Total 1510 tests PASS.
+ESTADO ACTUAL DE LA FLOTA (100% OPERATIVA A 2700W):
+- S19JPRO-23: 2700W | 99.63 TH/s | Fan 92% | Chips 81.0°C | Elevador 1 (2698W) | Gate OK
+- S19JPRO-24: 2700W | 101.28 TH/s | Fan 100% | Chips 83.0°C | Elevador 1 (2699W) | Gate OK
+- S19JPRO-25: 2700W | 100.02 TH/s | Fan 100% | Chips 78.0°C | Elevador 2 (2699W) | 126 chips x 3 placas OK | Gate OK
+- S19JPRO-26: 2700W | 93.80 TH/s | Fan 92% | Chips 77.0°C | Elevador 2 (2700W) | 126 chips x 3 placas OK | Gate OK
+- Total Flota: ~394.7 TH/s continuos, 10.8 kW en cadenas, 0 fallos de chip, 0 HW errors.
+- Servicio Windows: NSSM servicio `MinerAlerts` en estado SERVICE_RUNNING.
+- Tests: 1510 passed, 75 subtests passed (0 fallos).
 
 --------------------------------------------------------------------------------
-4. MAPA ARQUITECTÓNICO ACTUAL TRAS SPEC 086
+3. AUDITORÍA DE LA TABLA `incident_assessments` (SPEC 086) Y HALLAZGO
 --------------------------------------------------------------------------------
-- `app/miner_monitor.py`: 8.876 líneas. Núcleo de adquisición 4028, loop principal `main()`,
-  reinicio de mineros (autoridad exclusiva), y coordinación de hilos.
-- `app/governance/`:
-  * `_orchestrator_state.py`: Estado mutable compartido thread-safe.
-  * `governor_cycle.py`: Modulación PWM en lazo cerrado de ventiladores y sincronización Vnish.
-  * `governance_context.py`: `MinerGovernanceContext` frozen dataclass (fuente de verdad unificada).
-  * `fan_governor.py`, `preset_balancer.py`, `elevator_budget.py`, `facility_agent.py`,
-    `fga_actuator.py`, `directives_dashboard.py`, `post_blackout_guard.py`, `phase_drop_discriminator.py`.
-- `app/forensics/`:
-  * `autopsy_engine.py`: Motor forense post-mortem.
-  * `autopsy_card.py`: Renderizador de tarjetas ejecutivas <= 32 columnas.
-  * `conversational_qa.py`: Supervisor conversacional Q&A offline en Telegram.
-- `app/telegram/`:
-  * `router.py`: Despacho modular de comandos y fallback conversacional.
-  * `commands/`: `autopsy.py`, `directives.py`, `fans.py`, `interventions.py`, `facility.py`, `help.py`, etc.
-  * `fleet_cards.py`, `help_center.py`, `callbacks.py`.
+El motor forense `IncidentAutopsyEngine` de la Spec 086 actuó de forma autónoma y persistió
+correctamente los dos incidentes en SQLite:
 
---------------------------------------------------------------------------------
-5. PRÓXIMAS OPCIONES DE TRABAJO EN EL BACKLOG
---------------------------------------------------------------------------------
-Con el Horizonte V5.2 100% cerrado y certificado, coordinar con el operador cuál de los
-siguientes frentes priorizar:
+- ID 1 (S19JPRO-26 @ 12:24:40):
+  * Causa: UNRESOLVED | Certeza: BAJA
+  * Silicio: SANO
+  * Hallazgo: Sin anomalías críticas en logs. Elapsed: 1789s -> 5s.
 
-OPCIÓN 1 — Spec 087: Descomposición del Monolito Fase 3 (`execute_balancer_cycle` & `check_autotune_watchdog`)
-  - Meta: Continuar reduciendo `miner_monitor.py` hacia la meta del ROADMAP (<= 6.000 líneas).
-  - Alcance: Extraer `execute_balancer_cycle()` (~L3275-3520, ~250 líneas) a `app/governance/balancer_cycle.py`
-    y `check_autotune_watchdog()` a `app/governance/autotune_watchdog.py`.
-  - Desafío técnico: Diseñar una estructura de inyección o enriquecer `_orchestrator_state.py` para los
-    ~10 globals que interactúan con `main()` (`_POST_BLACKOUT_TRACKER`, `_ACTIVE_PHASE_DROPS`,
-    `_ACTIVE_SCHEDULED_WINDOW`, `_ELEVATOR_CONTINGENCY_STATES`, `_FACILITY_BUDGET_STATE`, etc.)
-    sin introducir acoplamiento circular.
+- ID 2 (S19JPRO-25 @ 12:25:10):
+  * Causa: CHAIN_BREAK | Certeza: ALTA
+  * Silicio: FALLA DE CADENA (transitoria, ya recuperada a 126 chips)
+  * Hallazgo: Log: `[2026/10/02 12:24:23] WARN: chain#1 - ch`, falla en bus de chips.
 
-OPCIÓN 2 — Nueva Iniciativa de Mejora de Sistema (docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md)
-  - PROP-003: HW Error Tripwire (Rollback por degradación de silicio ante >50 errores de hardware en 10m).
-  - PROP-005: Latido de Gateway y Supresión de Tormentas por Fallo de Red Local (filtro ante reinicio de router).
-  - PROP-006: Tarjetas de Gráficos Comparativos Multi-Miner (/chart overlays en Telegram).
-
-OPCIÓN 3 — Auditoría de Observabilidad y Estabilidad Operativa
-  - Monitoreo continuo de la telemetría de producción a 2700W.
-  - Validación de salud de la base de datos SQLite y retención de snapshots de gobernanza.
+HALLAZGO / DEFECTO MENOR DETECTADO:
+En `app/miner_monitor.py` línea 6410:
+El callback `_on_autopsy_done()` llamó a `send_telegram_notification(...)` en lugar de `send_telegram(...)`.
+Esto provocó que la tarjeta ejecutiva no se enviara proactivamente a Telegram (log:
+`[AUTOPSY_ERR] Async autopsy failed for 25: name 'send_telegram_notification' is not defined`),
+aunque el diagnóstico forense se ejecutó y persistió con éxito en SQLite (consultable vía `/autopsia`).
 
 --------------------------------------------------------------------------------
-6. REGLAS DE ORO E INVARIANTES OPERATIVOS ESTRICTOS
+4. PRÓXIMAS OPCIONES DE TRABAJO
+--------------------------------------------------------------------------------
+1. PARCHE DE OBSERVABILIDAD (Quick Win / Hotfix):
+   - Corregir `send_telegram_notification` -> `send_telegram` en `app/miner_monitor.py` (L6410)
+     para que las tarjetas de autopsia asíncronas se envíen a Telegram sin excepción.
+   - Validar con `py_compile`, test unitario de callback y `pytest`.
+
+2. CONTINUACIÓN DE OBSERVACIÓN OPERATIVA:
+   - Continuar monitoreando la estabilidad de Elevador 2 y las temperaturas de M24 (83°C).
+
+3. SPEC 087 (Descomposición del Monolito Fase 3):
+   - Extraer `execute_balancer_cycle()` y `check_autotune_watchdog()` hacia `app/governance/`.
+
+--------------------------------------------------------------------------------
+5. REGLAS DE ORO E INVARIANTES OPERATIVOS ESTRICTOS
 --------------------------------------------------------------------------------
 1. CERO DISRUPCIÓN DE HARDWARE: Prohibido reiniciar mineros o alterar presets si están hasheando sanos.
-   Cualquier acción real requiere validación previa en QA mode y confirmación explícita.
 2. PROTECCIÓN TOTAL DE SECRETOS: `app/config.json` y `app/state.json` jamás se versionan ni exponen.
 3. FORMATO TELEGRAM MOBILE-FIRST: Todo mensaje, tabla o tarjeta debe respetar ancho visible <= 32 columnas.
 4. GATES DE CALIDAD OBLIGATORIOS:
    - Antes de implementar: ejecutar skill `speckit-qa`.
    - Antes de commit/push: ejecutar skill `speckit-stabilize` (8 compuertas, 100% tests PASS, restart NSSM).
-5. HIGIENE GIT: Cero trailing whitespaces en cualquier diff (`git diff --check`).
-6. ENCODING EN WINDOWS / POWERSHELL:
-   - NUNCA usar `Set-Content ... -Encoding UTF8` en archivos del proyecto (PowerShell introduce BOM \ufeff).
-   - Usar siempre herramientas de edición directa del agente (`write_to_file`, `replace_file_content`) o en
-     PowerShell: `[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))`.
-7. MODEL WORKLOAD: Mantener Gemini 3.8 Flash High como motor principal para arquitectura, lógica pura,
-   tests exhaustivos y documentación; escalar a Claude Sonnet 4.6 (Thinking) únicamente para concurrencia
-   multihilo viva o máquinas de estados con riesgo de outages.
+5. ENCODING EN WINDOWS: Evitar BOM `\ufeff`. Usar herramientas de edición directa del agente.
+6. MODEL WORKLOAD: Mantener Gemini 3.8 Flash High como motor principal; escalar a Claude Sonnet 4.6 (Thinking)
+   únicamente para concurrencia multihilo viva con riesgo de outages.

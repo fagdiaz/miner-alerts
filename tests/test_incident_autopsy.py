@@ -342,3 +342,47 @@ def test_autopsy_command_execution(tmp_path):
         assert handled_fleet is True
     finally:
         store.close()
+
+
+def test_autopsy_async_telegram_dispatch():
+    from unittest.mock import patch
+    import app.miner_monitor as mm
+    from app.forensics.autopsy_engine import AutopsyReport, CAUSE_LINK_DROP, CONFIDENCE_HIGH
+
+    rep = AutopsyReport(
+        miner_name="S19JPRO-25",
+        timestamp=1700000000.0,
+        root_cause_category=CAUSE_LINK_DROP,
+        confidence=CONFIDENCE_HIGH,
+        headline="Caída de Enlace",
+        summary_bullets=("Link is Down",),
+        remediation_suggestion="Revisar cable",
+        is_silicon_healthy=True,
+        raw_evidence_digest="test_digest",
+    )
+    mock_fut = MagicMock()
+    mock_fut.result.return_value = rep
+
+    with patch.object(mm, "send_telegram") as mock_send_tg:
+        # Simulate callback definition in monitor
+        def _simulate_on_done(fut, m_name="S19JPRO-25", m_now=1700000000.0):
+            res = fut.result()
+            from app.forensics.autopsy_card import build_autopsy_card
+            card = build_autopsy_card(res)
+            mm.send_telegram(
+                "mock_token",
+                "123456",
+                card,
+                "AUTOPSY",
+                f"autopsy_{m_name}_{int(m_now)}",
+                is_command=True,
+            )
+
+        _simulate_on_done(mock_fut)
+        mock_send_tg.assert_called_once()
+        args, kwargs = mock_send_tg.call_args
+        assert args[0] == "mock_token"
+        assert args[1] == "123456"
+        assert "AUTOPSIA: S19JPRO-25" in args[2]
+        assert args[3] == "AUTOPSY"
+        assert kwargs.get("is_command") is True

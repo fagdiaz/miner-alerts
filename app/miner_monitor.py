@@ -6407,7 +6407,7 @@ def main() -> None:
                                         card = build_autopsy_card(rep)
                                         log(f"[AUTOPSY_DONE] miner={m_name} cause={rep.root_cause_category} confidence={rep.confidence}")
                                         if bot_token and chat_id and ((not qa_mode) or qa_notify):
-                                            send_telegram_notification(
+                                            send_telegram(
                                                 bot_token,
                                                 str(chat_id),
                                                 card,

@@ -968,6 +968,7 @@ class MinerState:
 
 
 _GLOBAL_LOADED_CONFIG: Optional[Dict[str, Any]] = None
+_INCIDENT_AUTOPSY_ENGINE: Optional[Any] = None
 
 
 def load_config() -> Dict[str, Any]:
@@ -5294,6 +5295,7 @@ def telegram_polling_worker(
                         update_id=update_id,
                         from_id=msg_chat_id,
                         message_id=msg_id,
+                        raw_text=raw_text,
                     )
                 if DBG_TELEGRAM and not handled and (not DBG_TELEGRAM_COMMANDS_ONLY or _is_command_like(cmd_name)):
                     log(f"UNKNOWN_CMD update_id={update_id} text_norm={_trunc(raw_text, DBG_TELEGRAM_TRUNC)}")
@@ -6389,6 +6391,46 @@ def main() -> None:
                             )
                         except Exception as _iq_err:
                             log(f"[WARN] Error registrando incident quiet: {_iq_err}")
+                    # Spec 086 / PROP-016: Trigger asynchronous autopsy engine for unexpected restart
+                    if restart_classification.classification == "unexpected":
+                        try:
+                            _autopsy_eng = globals().get("_INCIDENT_AUTOPSY_ENGINE")
+                            if _autopsy_eng is None and event_store is not None:
+                                from app.forensics.autopsy_engine import IncidentAutopsyEngine
+                                _autopsy_eng = IncidentAutopsyEngine(event_store=event_store)
+                                globals()["_INCIDENT_AUTOPSY_ENGINE"] = _autopsy_eng
+                            if _autopsy_eng is not None:
+                                def _on_autopsy_done(fut, m_name=name_display, m_now=now_ts):
+                                    try:
+                                        rep = fut.result()
+                                        from app.forensics.autopsy_card import build_autopsy_card
+                                        card = build_autopsy_card(rep)
+                                        log(f"[AUTOPSY_DONE] miner={m_name} cause={rep.root_cause_category} confidence={rep.confidence}")
+                                        if bot_token and chat_id and ((not qa_mode) or qa_notify):
+                                            send_telegram_notification(
+                                                bot_token,
+                                                str(chat_id),
+                                                card,
+                                                "AUTOPSY",
+                                                f"autopsy_{m_name}_{int(m_now)}",
+                                                is_command=True,
+                                            )
+                                    except Exception as _af_err:
+                                        log(f"[AUTOPSY_ERR] Async autopsy failed for {m_name}: {_af_err}")
+
+                                _fut = _autopsy_eng.run_autopsy_async(
+                                    miner_name=name_display,
+                                    host=host,
+                                    detected_ts=now_ts,
+                                    elapsed_before=int(previous_elapsed or 0),
+                                    elapsed_after=int(elapsed or 0),
+                                    last_power_w=getattr(state, "last_power_w", None),
+                                    last_chip_temp_c=getattr(state, "last_max_chip_temp", None),
+                                    active_chains=(active_boards if active_boards is not None else 3),
+                                )
+                                _fut.add_done_callback(_on_autopsy_done)
+                        except Exception as _autopsy_init_err:
+                            log(f"[AUTOPSY_ERR] Could not trigger autopsy: {_autopsy_init_err}")
                     # Spec 057: Adaptive Elevator Contingency Check
                     if (
                         restart_classification.classification == "unexpected"

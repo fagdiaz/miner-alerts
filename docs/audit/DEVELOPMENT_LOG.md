@@ -5,6 +5,50 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
 
 
+## [2026-10-02] - Spec 086: Autopsia Autónoma de Incidentes y Supervisor Conversacional Q&A en Telegram (PROP-016)
+
+* **Contexto**:
+  - Motivación: Ante reinicios inesperados de procesos de minado (`elapsed: N -> 10s`), los operadores debían diagnosticar a ciegas o conectarse manualmente vía web/SSH a los mineros para inspeccionar logs del kernel o watchdog de VNish.
+  - Objetivo: Implementar el motor autónomo forense `IncidentAutopsyEngine` de sólo lectura y ejecución asíncrona no bloqueante (timeout $\le 2.5$s), clasificación determinística de causa raíz en 7 categorías (`LINK_DROP`, `CHAIN_BREAK`, `THERMAL_SHUTDOWN`, `PSU_FAULT`, `AUTOTUNE_STALL`, `POWER_LOSS`, `UNRESOLVED`), persistencia en SQLite en la tabla `incident_assessments`, tarjetas Mobile-First estrictamente $\le 32$ columnas por línea, comandos de Telegram `/autopsia [minero]` (aliases `/causa_raiz`, `/autopsy`, `/investigar`) y un router de preguntas en lenguaje natural offline zero-cost ("¿por qué reinició la 25?", "¿cómo está la red?").
+  - Baseline previo: 1498 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING.
+
+* **Implementación**:
+  1. `app/core/event_store.py` (MODIFICADO — aditivo):
+     - Métodos de conveniencia `record_autopsy_assessment()`, `get_latest_autopsy_assessment()` y `get_latest_autopsy_assessments_fleet()` sobre la tabla `incident_assessments` (schema 7).
+  2. `app/forensics/autopsy_engine.py` (NUEVO):
+     - Dataclasses inmutables `AutopsyEvidence` y `AutopsyReport`.
+     - Clasificador puro y determinístico `classify_incident_root_cause()`.
+     - Clase `IncidentAutopsyEngine` con pool de hilos asíncrono no bloqueante y timeout duro configurable ($\le 2.5$s).
+  3. `app/forensics/autopsy_card.py` (NUEVO):
+     - Formateadores móviles `build_autopsy_card()` y `build_fleet_autopsy_summary_card()` con garantía estricta $\le 32$ columnas por línea (`visible_line_width`).
+  4. `app/telegram/commands/autopsy.py` (NUEVO):
+     - Handler `AutopsyCommand` con aliases `/autopsia`, `/causa_raiz`, `/autopsy`, `/investigar` para consulta individual o de flota.
+  5. `app/forensics/conversational_qa.py` (NUEVO):
+     - Router semántico determinístico de intenciones en lenguaje natural (causas de reinicio por máquina, estado de red/enlace, estado térmico y fans) con latencia <50ms y cero costo de tokens.
+  6. `app/telegram/router.py` (MODIFICADO):
+     - Registro de `AutopsyCommand` en `create_default_command_router()`.
+     - Fallback de texto libre en `dispatch()` canalizando preguntas al supervisor conversacional con verificación de autorización.
+  7. `app/telegram/help_center.py` (MODIFICADO):
+     - Registro del comando `autopsia` en el catálogo canónico y categoría `"diag"`.
+  8. `app/miner_monitor.py` (MODIFICADO):
+     - Detección de reinicio `unexpected` dispara `run_autopsy_async()` en segundo plano sin retrasar el tick de monitoreo (0 ms de impacto en el bucle principal).
+     - Envío automático de la tarjeta ejecutiva de autopsia a Telegram tras completarse el análisis.
+  9. `tests/test_incident_autopsy.py` (NUEVO):
+     - Suite completa de 12 pruebas unitarias y de contrato (clasificación de causas raíz, ancho $\le 32$ columnas, persistencia SQLite, router conversacional, timeout duro y ejecución de comando).
+
+* **Resultados de Validación**:
+  - `py_compile`: todos los módulos compilan exitosamente con exit 0 ✅
+  - `pytest tests/test_incident_autopsy.py -v`: **12 passed** in 1.19s ✅
+  - `pytest -q`: **1510 passed, 75 subtests passed** in 42.59s ✅ (+12 tests sobre baseline)
+  - `git diff --check`: exit 0 (cero trailing whitespaces) ✅
+  - `speckit-qa`: Status PASS ✅
+
+* **Invariantes preservados**:
+  - Cero impacto en el bucle principal de adquisición (0 ms de bloqueo).
+  - Estricto cumplimiento de ancho móvil $\le 32$ columnas en todos los mensajes.
+  - Seguridad de hardware: todas las operaciones forenses son estrictamente de sólo lectura.
+  - Flota en producción operando nominal a 2700W sin disrupción.
+
 ## [2026-10-02] - Spec 085: Governance Orchestrator Extraction — Desacoplamiento del Monolito (PROP-021)
 
 * **Contexto**:

@@ -1491,6 +1491,100 @@ class EventStore:
             self._report_error("load_assessment", exc)
             return None
 
+    def record_autopsy_assessment(
+        self,
+        *,
+        miner_name: str,
+        miner_key: Optional[str] = None,
+        timestamp: float,
+        root_cause_category: str,
+        confidence: str,
+        headline: str,
+        summary_bullets: Sequence[str],
+        remediation_suggestion: str,
+        is_silicon_healthy: bool,
+        evidence_digest: str,
+    ) -> int:
+        """Persist an autopsy assessment record in incident_assessments."""
+        findings_json = json.dumps(list(summary_bullets or []), ensure_ascii=False)
+        hypotheses_json = json.dumps(
+            [
+                {
+                    "cause": root_cause_category,
+                    "confidence": confidence,
+                    "headline": headline,
+                    "remediation": remediation_suggestion,
+                    "is_silicon_healthy": bool(is_silicon_healthy),
+                }
+            ],
+            ensure_ascii=False,
+        )
+        return self.save_assessment(
+            subject_type="miner",
+            subject_ref=miner_name,
+            miner_key=miner_key,
+            ruleset_version="autopsy_v1",
+            window_start_ts=max(0.0, float(timestamp) - 300.0),
+            window_end_ts=float(timestamp),
+            assessment_now_ts=float(timestamp),
+            status=root_cause_category,
+            evidence_digest=evidence_digest,
+            findings_json=findings_json,
+            hypotheses_json=hypotheses_json,
+            contradictions_json="[]",
+            missing_evidence_json="[]",
+        )
+
+    def get_latest_autopsy_assessment(
+        self,
+        miner_name: str,
+    ) -> Optional[dict]:
+        """Fetch the most recent autopsy assessment for a miner."""
+        connection = self._connection
+        if connection is None:
+            return None
+        try:
+            with self._lock:
+                row = connection.execute(
+                    """
+                    SELECT * FROM incident_assessments
+                    WHERE subject_ref = ? AND ruleset_version = 'autopsy_v1'
+                    ORDER BY assessment_now_ts DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (miner_name,),
+                ).fetchone()
+            if row is None:
+                return None
+            return dict(row)
+        except sqlite3.Error as exc:
+            self._report_error("get_latest_autopsy_assessment", exc)
+            return None
+
+    def get_latest_autopsy_assessments_fleet(
+        self,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Fetch the most recent autopsy assessments across the fleet."""
+        connection = self._connection
+        if connection is None:
+            return []
+        try:
+            with self._lock:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM incident_assessments
+                    WHERE ruleset_version = 'autopsy_v1'
+                    ORDER BY assessment_now_ts DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            self._report_error("get_latest_autopsy_assessments_fleet", exc)
+            return []
+
     def record_chain_samples(
         self,
         miner_key: str,

@@ -449,6 +449,19 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
         aliases=["anomalies", "anom"],
         danger_level="safe",
     ),
+    "autopsia": CommandDefinition(
+        name="autopsia",
+        summary="Autopsia forense post-mortem.",
+        usage="/autopsia [id|all]",
+        category="diag",
+        detail=[
+            "Investiga causa raíz de reinicios inesperados.",
+            "Diagnóstico determinístico de red, cadena, PSU o calor.",
+        ],
+        examples=["/autopsia", "/autopsia 25", "/causa_raiz 24"],
+        aliases=["causa_raiz", "autopsy", "investigar"],
+        danger_level="safe",
+    ),
 }
 
 HELP_CATEGORIES: Dict[str, HelpCategory] = {
@@ -498,6 +511,7 @@ HELP_CATEGORIES: Dict[str, HelpCategory] = {
         description="Eventos, análisis y selftest",
         command_names=[
             "events",
+            "autopsia",
             "anomalias",
             "event",
             "why",

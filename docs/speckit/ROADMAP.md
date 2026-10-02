@@ -6,10 +6,10 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (85 de 85 especificaciones completadas y evidenciadas — **1498 tests PASS, 75 subtests PASS** — Spec 085 Governance Orchestrator Extraction Certificada en Producción 2026-10-02).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (86 de 86 especificaciones completadas y evidenciadas — **1510 tests PASS, 75 subtests PASS** — Spec 086 Autopsia Autónoma de Incidentes Certificada en Producción 2026-10-02).
 - **Estado Operativo de Flota (2026-10-02)**: 4x S19j Pro a 2700W · **~395 TH/s** · Fans en lazo cerrado ~92% · Chips 69-80°C · Sin eventos eléctricos en Elevador 1 (>49h) ni Elevador 2 (>12.5h).
 - **Auditoría Arquitectónica Completada (2026-10-01)**: Análisis exhaustivo de directivas de gobernanza, 8 fricciones identificadas (7 resueltas, 1 en backlog), diseño de resoluciones integrales. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
-- **Horizonte Actual — V5.2 Gobernanza Integrada**: Specs 082, 083, 084 y 085 certificadas; Spec 086 planificada. Foco en contrato de estado centralizado entre subsistemas, desacoplamiento del monolito y supervisor forense conversacional.
+- **Horizonte Actual — V5.2 Gobernanza Integrada**: Specs 082, 083, 084, 085 y 086 certificadas. Foco en contrato de estado centralizado entre subsistemas, desacoplamiento del monolito y supervisor forense conversacional.
 
 ---
 
@@ -1060,7 +1060,7 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 
 ---
 
-### Iniciativa 38 â€” Autopsia AutÃ³noma de Incidentes y Supervisor Conversacional (Spec 086 / PROP-016)
+### Iniciativa 38 — Autopsia Autónoma de Incidentes y Supervisor Conversacional (Spec 086 / PROP-016) [COMPLETE 2026-10-02 - 1510 tests PASS]
 
 **Propuesta**: [`docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md`](../proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md)
 **Prioridad**: P2 â€” Observabilidad / AutonomÃ­a

@@ -54,10 +54,38 @@ class TelegramCommandRouter:
         update_id: Optional[int] = None,
         from_id: Optional[Any] = None,
         message_id: Optional[int] = None,
+        raw_text: str = "",
     ) -> bool:
         """Dispatch a parsed command to its registered handler."""
         handler = self.find_handler(cmd_name)
         if not handler:
+            # Spec 086 / PROP-016: Conversational QA Fallback
+            if from_id is not None:
+                try:
+                    if int(from_id) != int(context.chat_id):
+                        logger.warning(
+                            f"[TG_AUTH_FAIL] Unauthorized text query from_id={from_id} "
+                            f"expected={context.chat_id} update_id={update_id}"
+                        )
+                        return True
+                except (TypeError, ValueError):
+                    return True
+            query_str = raw_text.strip() if raw_text else f"{cmd_name} {' '.join(args)}".strip()
+            try:
+                from app.forensics.conversational_qa import handle_conversational_query
+
+                ans = handle_conversational_query(query_str, context)
+                if ans:
+                    context.send_message(
+                        ans,
+                        msg_type="CONVERSATIONAL_QA",
+                        dedup_key=f"cmd_qa_{update_id}",
+                        dbg_cmd="conversational_qa",
+                        dbg_update_id=update_id,
+                    )
+                    return True
+            except Exception as exc:
+                logger.error(f"[TG_QA_ERR] Error handling conversational query: {exc}", exc_info=True)
             return False
 
         # Authorization check
@@ -234,6 +262,7 @@ def create_default_command_router() -> TelegramCommandRouter:
     from app.telegram.commands.agent import AgentCommand, StrategyCommand, AgentWhyCommand
     from app.telegram.commands.progression import ProgressionCommand
     from app.telegram.commands.directives import DirectivesCommand
+    from app.telegram.commands.autopsy import AutopsyCommand
 
     router = TelegramCommandRouter()
     # Status & Info
@@ -242,6 +271,8 @@ def create_default_command_router() -> TelegramCommandRouter:
     router.register(DirectivesCommand())
     # Facility Governance Agent & Power Progression (Spec 079 / PROP-014)
     router.register(AgentCommand()).register(StrategyCommand()).register(AgentWhyCommand()).register(ProgressionCommand())
+    # Autopsy & Forensics (Spec 086 / PROP-016)
+    router.register(AutopsyCommand())
     # Fans & Governor
     router.register(FansCommand()).register(SilentCommand()).register(GovernorCommand())
     # Interventions, Balancer, Elevators

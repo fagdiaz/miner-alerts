@@ -1,0 +1,46 @@
+{
+  "allowlist": {
+    "entries_count": 0,
+    "status": "not_requested_in_metadata_mode"
+  },
+  "candidates": [],
+  "capabilities": [
+    {
+      "classification": "mutating",
+      "classification_reason": "Changes miner power/reboot state via hardware/firmware action",
+      "evidence_ref": "app/miner_monitor.py:run_hashcore_cli",
+      "integration_overlap": "API 4028 restart / power cycle",
+      "name": "reboot",
+      "usage_shape": "reboot {host}-{host}"
+    },
+    {
+      "classification": "mutating",
+      "classification_reason": "Restarts miner mining process via Toolkit action",
+      "evidence_ref": "app/miner_monitor.py:run_hashcore_cli",
+      "integration_overlap": "API 4028 restart",
+      "name": "restart",
+      "usage_shape": "restart {host}-{host}"
+    }
+  ],
+  "generated_at_utc": "2026-08-30T00:55:55.233427+00:00",
+  "installation": {
+    "discovery_status": "complete",
+    "executable_basename": "hashcore-toolkit.exe",
+    "executable_sha256": "9db1842103c6abdea30913b9a3b0e0abcb3ba2fd103b689c45caee98312847eb",
+    "executable_size_bytes": 808960,
+    "toolkit_version": "1.6.0+167",
+    "wrapper_basename": "toolkit_cli.bat",
+    "wrapper_sha256": "2c204d87365dd94231b62c42cde5f5adbc219f1842cfae3c4bead35f4a338daf",
+    "wrapper_shape": "argv_passthrough",
+    "wrapper_size_bytes": 181
+  },
+  "invocations": [],
+  "mode": "metadata_only",
+  "sanitization": {
+    "ips_redacted": 0,
+    "paths_redacted": 0,
+    "secrets_redacted": 0
+  },
+  "schema_version": 1,
+  "status": "blocked"
+}

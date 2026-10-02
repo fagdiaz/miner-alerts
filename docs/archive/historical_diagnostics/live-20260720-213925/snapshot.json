@@ -1,0 +1,121 @@
+{
+  "generated_at": "2026-07-21T00:39:25+00:00",
+  "config_path": "F:\\02-ASIC - mineros\\miner-alerts\\app\\config.json",
+  "dry_run": false,
+  "threshold_ths": 60.0,
+  "expected_boards": null,
+  "miners": [
+    {
+      "id": "S19JPRO-23",
+      "name": "S19JPRO-23",
+      "host": "192.168.100.23",
+      "port": 4028,
+      "responded": false,
+      "dry_run": false,
+      "errors": {
+        "summary": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "stats": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "pools": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "version": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso"
+      },
+      "status": "NO_RESPONSE",
+      "rate_ths": null,
+      "elapsed_seconds": null,
+      "active_boards": null,
+      "temperatures_c": [],
+      "pools": [],
+      "firmware_hint": "unknown",
+      "version_fields": {},
+      "candidate_fields": {},
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "observe: no response, avoid reboot until signal source is confirmed"
+    },
+    {
+      "id": "S19JPRO-24",
+      "name": "S19JPRO-24",
+      "host": "192.168.100.24",
+      "port": 4028,
+      "responded": false,
+      "dry_run": false,
+      "errors": {
+        "summary": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "stats": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "pools": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "version": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso"
+      },
+      "status": "NO_RESPONSE",
+      "rate_ths": null,
+      "elapsed_seconds": null,
+      "active_boards": null,
+      "temperatures_c": [],
+      "pools": [],
+      "firmware_hint": "unknown",
+      "version_fields": {},
+      "candidate_fields": {},
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "observe: no response, avoid reboot until signal source is confirmed"
+    },
+    {
+      "id": "S19JPRO-25",
+      "name": "S19JPRO-25",
+      "host": "192.168.100.25",
+      "port": 4028,
+      "responded": false,
+      "dry_run": false,
+      "errors": {
+        "summary": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "stats": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "pools": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "version": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso"
+      },
+      "status": "NO_RESPONSE",
+      "rate_ths": null,
+      "elapsed_seconds": null,
+      "active_boards": null,
+      "temperatures_c": [],
+      "pools": [],
+      "firmware_hint": "unknown",
+      "version_fields": {},
+      "candidate_fields": {},
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "observe: no response, avoid reboot until signal source is confirmed"
+    },
+    {
+      "id": "S19JPRO-26",
+      "name": "S19JPRO-26",
+      "host": "192.168.100.26",
+      "port": 4028,
+      "responded": false,
+      "dry_run": false,
+      "errors": {
+        "summary": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "stats": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "pools": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso",
+        "version": "PermissionError: [WinError 10013] Intento de acceso a un socket no permitido por sus permisos de acceso"
+      },
+      "status": "NO_RESPONSE",
+      "rate_ths": null,
+      "elapsed_seconds": null,
+      "active_boards": null,
+      "temperatures_c": [],
+      "pools": [],
+      "firmware_hint": "unknown",
+      "version_fields": {},
+      "candidate_fields": {},
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "observe: no response, avoid reboot until signal source is confirmed"
+    }
+  ]
+}

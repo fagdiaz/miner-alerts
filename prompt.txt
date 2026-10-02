@@ -5,34 +5,36 @@
 # RAMA: codex/022-adaptive-acquisition
 # CERTIFICACIÓN: speckit-stabilize 8/8 GATES PASS | 1511 tests PASS (75 subtests PASS)
 # SERVICIO: Windows NSSM MinerAlerts RUNNING (PID activo)
+# ESTADO DE PLANTA: 4/4 mineros en HOLD_TARGET | 0 DEADLOCKS | ~10.4 kW
+#   - S19JPRO-23: 2499W | Fan 94% (HOLD_TARGET) | Chips 81.0°C | Deadlocked: 0
+#   - S19JPRO-24: 2498W | Fan 92% (HOLD_TARGET) | Chips 82.0°C | Deadlocked: 0
+#   - S19JPRO-25: 2699W | Fan 92% (STEP_DOWN)   | Chips 80.0°C | Deadlocked: 0
+#   - S19JPRO-26: 2698W | Fan 92% (HOLD_TARGET) | Chips 82.0°C | Deadlocked: 0
 # ==============================================================================
 
-1. ESTADO GENERAL DE LA FLOTA Y GOBERNANZA
-- Horizonte V5.2 (Gobernanza Integrada, Autopsia Autónoma y Desacoplamiento) 100% completado y certificado.
-- Suite de pruebas de regresión: 1511 tests PASS, 75 subtests PASS (0 fallos).
-- Compilación de sintaxis py_compile: 100% exit 0 en todos los módulos de app/.
-- Depuración de transitorios completada (13 ítems limpiados, 4.35 MB liberados).
-- Repositorio y documentación completamente normalizados (ROADMAP, DELIVERY_PLAN, SPEC_PROGRAM, DIRECTIVES_HARMONIZATION_AUDIT, DEVELOPMENT_LOG).
-- Cero secretos versionados (app/config.json y app/state.json protegidos e intactos).
+1. ESTADO DE PLANTA Y GOBERNANZA OPERATIVA
+- Flota 100% estable entregando ~387.5-395 TH/s continuos.
+- Elevador 1 (5400W límite): Operando a ~4997W (~2499W por máquina) con un margen de seguridad de 400W.
+- Elevador 2 (5400W límite): Operando nominal a ~5397W (~2698W por máquina).
+- Fan Governor: Lazo cerrado modulando activamente entre 92% y 94% PWM con chips a 80-82°C.
+- Deadlock Watchdog: 0 de 4 mineros en deadlock (`is_deadlocked=0`). Cero alarmas espurias.
+- Servicio Windows NSSM MinerAlerts: Activo y sano bajo supervisión continua 24/7.
 
-2. TELEMETRÍA OPERATIVA Y DIAGNÓSTICO EN VIVO (2026-10-02)
-- Elevador 2 (5400W nominal):
-  * S19JPRO-25: 2699W | Target: 2700W | Fans: 100% (HOLD_TARGET) | Temp: 82.0°C | Deadlocked: 0
-  * S19JPRO-26: 2698W | Target: 2700W | Fans: 100% (HOLD_TARGET) | Temp: 81.0°C | Deadlocked: 0
-  * Operación perfectamente nominal a ~5397W sostenidos.
-- Elevador 1 (5400W nominal, margen de seguridad):
-  * S19JPRO-24: 2498W | Target: 2500W | Fans: 100% (HOLD_TARGET) | Temp: 81.0°C | Deadlocked: 0
-  * S19JPRO-23: 2298W | Target: 2500W | Fans: 100% (RECOVERY_MAX_COOLING) | Temp: 80.0°C | Deadlocked: 1
-- DIAGNÓSTICO FORENSE S19JPRO-23:
-  * A las 16:34:44, la Cadena 1 de M23 alcanzó 84°C (COOLING_WARNING: SATURATED).
-  * El daemon interno de VNish (preset_switcher con decrease_temp: 84°C) ejecutó un desescalado térmico autónomo de 2500W a 2300W (consumo real 2298W).
-  * Al caer la potencia a 2298W mientras target_power_w en app/config.json permanece en 2500.0W, la condición Fan Governor (current_w < target_w - 120W) entró en RECOVERY_MAX_COOLING (100% fans).
-  * El Deadlock Watchdog (Spec 084) detectó la permanencia en RECOVERY_MAX_COOLING por >300s y emitió alerta a Telegram a las 16:44:14.
-  * Opciones operativas para el operador:
-    a) Alinear target_power_w de S19JPRO-23 a 2300.0W en app/config.json si la temperatura ambiental no permite sostener 2500W (elimina de inmediato el deadlock y permite modular fans a 82°C).
-    b) Permitir que VNish re-escale automáticamente a 2500W cuando la temperatura de chip baje de 79°C (rise_temp en VNish).
+2. LIMPIEZA Y PROFESIONALIZACIÓN DOCUMENTAL COMPLETADA
+- Plan Maestro de Optimización Documental 100% ejecutado.
+- Repositorio histórico centralizado en `docs/archive/` (propuestas PROP-001 a PROP-021, RFCs, planes cerrados, diagnósticos tempranos y artefactos previos).
+- Backlog vivo unificado y sin redundancias en `docs/speckit/DELIVERY_PLAN.md` y `docs/speckit/ROADMAP.md`.
+- Mapa maestro interactivo publicado en `docs/README.md`.
+- `docs/audit/DEVELOPMENT_LOG.md` preservado con inmutabilidad estricta.
+- Cero secretos versionados (`app/config.json` y `app/state.json` protegidos e intactos).
 
-3. DIRECTRICES DE OPERACIÓN ("MODO SOLO MONITOREO CONTINUO")
-- NO se requieren modificaciones de código en esta etapa. El sistema se encuentra en modo pasivo de observación continua.
-- El servicio Windows NSSM MinerAlerts se encarga de la supervisión continua, ingesta de telemetría y respuestas de Telegram (/autopsia, /directivas, etc.).
-- Toda intervención adicional de código queda congelada a menos que ocurra una avería física de hardware o un corte de red.
+3. INVARIANTES DE CALIDAD CERTIFICADOS
+- Compilación de sintaxis: `py_compile` exit 0 en todos los módulos de `app/`.
+- Higiene Git: `git diff --check` limpio (cero trailing whitespaces y sin BOM).
+- Suite de regresión global: 1511 passed, 75 subtests passed (0 fallos).
+- Compuerta formal `speckit-stabilize`: 8/8 gates PASS.
+
+4. DIRECTRICES DE OPERACIÓN ("MODO SOLO MONITOREO CONTINUO")
+- El repositorio queda en modo exclusivo de observación continua pasiva.
+- Ninguna intervención adicional de código es requerida a menos que ocurra una avería física de hardware o un corte de red.
+- La próxima iniciativa formalmente planificada en el roadmap es `Spec 087: Monolith Decoupling Phase 3 (Balancer & Watchdog)`.

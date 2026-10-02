@@ -1,0 +1,17 @@
+﻿2026-08-13T17:22:14.0944005-03:00 baseline service_state=RUNNING wrapper_pid=28376 monitor_pid=31820 tick=209
+2026-08-13T17:22:14.2167122-03:00 forced_failure wrapper_pid=28376 tree=true
+2026-08-13T17:22:19.2355599-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:24.2457336-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:29.2712372-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:34.3544744-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:39.3718981-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:44.5440871-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:49.5658688-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:54.5815204-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:22:59.5998633-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:23:04.6188715-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:23:09.6319812-03:00 poll service_state=STOPPED wrapper_pid=0
+2026-08-13T17:23:14.6604307-03:00 poll service_state=START_PENDING wrapper_pid=35836
+2026-08-13T17:23:19.6743246-03:00 poll service_state=RUNNING wrapper_pid=35836
+2026-08-13T17:23:22.6865235-03:00 heartbeat_recovered monitor_pid=35788 tick=1
+2026-08-13T17:23:22.6865235-03:00 result=PASS

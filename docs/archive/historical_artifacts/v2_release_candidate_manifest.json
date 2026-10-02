@@ -1,0 +1,290 @@
+{
+  "schema_version": "v2-candidate-manifest-v1",
+  "git": {
+    "commit_id": "f6c51fedd41f67a379105eaa59d52247b51d7152",
+    "tracked_tree_clean": false
+  },
+  "runtime_payload": {
+    "sha256": "58d451f19363a266b36c5d3fb17442ef837ea0ed31a443990098eed2c0153b42",
+    "file_count": 43,
+    "entries": [
+      {
+        "path": "Dockerfile.metrics",
+        "size": 574,
+        "sha256": "5da45fe1f8e2dacfb733e6c018e92f39311948c7439af84f6d4715068431fc0d"
+      },
+      {
+        "path": "app/acquisition.py",
+        "size": 32936,
+        "sha256": "9fadf4ac5c5546210bc8d51802c0c743d4a9bdea76b30be8419c637015223693"
+      },
+      {
+        "path": "app/alert_episodes.py",
+        "size": 19661,
+        "sha256": "4063fc3e4790c3363098452bb4118f05ed86a817d17495a9b1cfaacaa9e810b0"
+      },
+      {
+        "path": "app/config.example.json",
+        "size": 4140,
+        "sha256": "c6305119c241c0e2e3bfc1cfe85b0553bf01d412f7e3b0a8f4661335170ce940"
+      },
+      {
+        "path": "app/event_store.py",
+        "size": 55241,
+        "sha256": "372e56a36374a295082ceab78812dea734ea134fbdb9cb98dea103cba19b2ee3"
+      },
+      {
+        "path": "app/evidence_fusion.py",
+        "size": 26151,
+        "sha256": "aa7ae56244cfdc728b62fe625ebaa14dc48e01766d12ddc44ea00ab4e241b7e1"
+      },
+      {
+        "path": "app/liveness.py",
+        "size": 12047,
+        "sha256": "e39778c37384d8907882c351840eb5ec7e225558da729eea40f81f662bf143d8"
+      },
+      {
+        "path": "app/metrics_snapshot.py",
+        "size": 14964,
+        "sha256": "a4858ea8758f8a05721793c2e1929c83c3a2a2e209a8f8566e9092c05b46d1e3"
+      },
+      {
+        "path": "app/miner_monitor.py",
+        "size": 208364,
+        "sha256": "2845f2fcd383cca4176d5e6f3d58b664658476b342d6e73b22c17f2b22d3d829"
+      },
+      {
+        "path": "app/mining_quality.py",
+        "size": 18234,
+        "sha256": "ee7caab93cdf57e7b3cbc5a836323ed5df3f8a1d23a0b393c7df73bcdf017872"
+      },
+      {
+        "path": "app/reboot_safety.py",
+        "size": 4369,
+        "sha256": "36f68488ff1997f6813af97166b6b459bd878de18a1147cf726bdf2f82cc285f"
+      },
+      {
+        "path": "app/restart_intelligence.py",
+        "size": 1720,
+        "sha256": "ddc65d6656ba148dc6db087aaaa64af35e413ed7a92a2425a05f4c171ed73049"
+      },
+      {
+        "path": "app/stability_profile.py",
+        "size": 14791,
+        "sha256": "5c1ba3125cdef6c6abef808f4e08feb9d2a40ccab2745842a42d6f3476c1445f"
+      },
+      {
+        "path": "app/telegram_messages.py",
+        "size": 1926,
+        "sha256": "bd389b409b719f16a223a617e9bc3d54313be94a0220d3239a77e715595256fa"
+      },
+      {
+        "path": "app/vnish_logs.py",
+        "size": 9313,
+        "sha256": "305ae8ff27e0d5ffd2c54b97a0d4684132208d5437ca3e698a0adb9ea32327d4"
+      },
+      {
+        "path": "app/vnish_telemetry.py",
+        "size": 5831,
+        "sha256": "68c8ea1bad2646e6ad95ee52aede26a37ad20dde97f72d17515e52a3fd7c077b"
+      },
+      {
+        "path": "docker-compose.observability.yml",
+        "size": 2072,
+        "sha256": "b03b06fac67a52be1f9c062175c97962775098bf19cdeb0fb9612409e83c5f52"
+      },
+      {
+        "path": "observability/grafana/dashboards/fleet_overview.json",
+        "size": 1891,
+        "sha256": "c2bb21365a001c132fd78ef360d8d820defa77660eb45af7bda07f171c3a9d7a"
+      },
+      {
+        "path": "observability/grafana/dashboards/monitor_liveness.json",
+        "size": 1979,
+        "sha256": "39746d4c452bc5524c75188cb68d21e7710110bc74a3b9d52f04ba8200e01fe2"
+      },
+      {
+        "path": "observability/grafana/dashboards/telegram_delivery.json",
+        "size": 1730,
+        "sha256": "c8cb4cf481d820a2f91c7f353b6e236113454f22fc3cf5b5ee76c2a35f9a4aa3"
+      },
+      {
+        "path": "observability/grafana/provisioning/dashboards/dashboards.yml",
+        "size": 234,
+        "sha256": "805f86670c082c1f105035bfe890a1a86ea502636852aff8a33988c53bdc0fd8"
+      },
+      {
+        "path": "observability/grafana/provisioning/datasources/prometheus.yml",
+        "size": 160,
+        "sha256": "ce0bd69f3a72d7e42d085211153cbb1036e9a55cd7ae88de109fb3b5160bc300"
+      },
+      {
+        "path": "observability/prometheus/prometheus.yml",
+        "size": 210,
+        "sha256": "00ed5f8b1e621b284eeceb6c524ad9f28882b3465b999d1284728772eda086b5"
+      },
+      {
+        "path": "requirements-observability.txt",
+        "size": 93,
+        "sha256": "a599dfdd4e36f5d095b34bb94ce81c3a0ed10689aef02abb38e9e883ed7756e8"
+      },
+      {
+        "path": "requirements.txt",
+        "size": 34,
+        "sha256": "ba058de609da26136b751e2c6093aecc7bd0e219cfcf2418f2a9b0c4cfd2799a"
+      },
+      {
+        "path": "tools/acquisition_baseline.py",
+        "size": 10185,
+        "sha256": "8c95392f00146acd4952760a8957bce3cd86def55c150e104e5dccb8ad564093"
+      },
+      {
+        "path": "tools/debug_4028.py",
+        "size": 900,
+        "sha256": "155bcffa12ba9f851622f814940564b0b8aa5c9d5018078fcbdac1da875455ef"
+      },
+      {
+        "path": "tools/diagnostics_baseline.py",
+        "size": 9260,
+        "sha256": "08db21e2aebd98ea605907db5cdef09c4e97b0038dc5eed0def43359811713db"
+      },
+      {
+        "path": "tools/event_store_backup.py",
+        "size": 20255,
+        "sha256": "5df525ccf576d3af84c8ec73fc56426a592f621e4f98ec67ac1252e559258e3c"
+      },
+      {
+        "path": "tools/hashcore_inventory.py",
+        "size": 21698,
+        "sha256": "c4bc24d2d1f4079fee89e6fb6505c1a83b53040818aa62ae048c661365f78cb5"
+      },
+      {
+        "path": "tools/incident_report.py",
+        "size": 7631,
+        "sha256": "626abaa7700e21ad686279a09e68665ce1171389da4ad70439426e4afaf65f7d"
+      },
+      {
+        "path": "tools/install_backup_task.ps1",
+        "size": 5199,
+        "sha256": "280dd22a520ec29f70a477368f10a0def16cbc699a402a860e2d3bbd030374b2"
+      },
+      {
+        "path": "tools/install_liveness_observation_tasks.ps1",
+        "size": 5213,
+        "sha256": "7401aec6cf1cb17034422c2f81e692f8f54ce42404562f0ae04e5694b5842532"
+      },
+      {
+        "path": "tools/install_vnish_collector_task.ps1",
+        "size": 2140,
+        "sha256": "c02701ecbd50d9c2c57324607a41a1e2e2226c28f05a96218c4ddbddd930472b"
+      },
+      {
+        "path": "tools/install_watchdog_task.ps1",
+        "size": 2019,
+        "sha256": "da318e41d0a683059600e8a4b57224c069064f870fd5de82ed16caa08688117c"
+      },
+      {
+        "path": "tools/metrics_exporter.py",
+        "size": 16059,
+        "sha256": "8938c9337b395f3ea1bd5b4c693a25ff1f26dd822c7f2b29495762d5a7969f0e"
+      },
+      {
+        "path": "tools/miner_diagnostics.py",
+        "size": 15948,
+        "sha256": "77590947fdef8d4e7edac48978de9afbaa7e468535e693f67667670657561d6a"
+      },
+      {
+        "path": "tools/monitor_watchdog.py",
+        "size": 9579,
+        "sha256": "9b43a2a804d6bbc6b12db8d5a56707d9bf6d70a2ec02c8bd56ed592b5cb73d4c"
+      },
+      {
+        "path": "tools/observe_liveness.py",
+        "size": 16258,
+        "sha256": "2abdca96c13e58dcc6ff0993be28ace5bf5d6faa190e215aaa1c2869c77b0124"
+      },
+      {
+        "path": "tools/operations_dashboard.py",
+        "size": 34400,
+        "sha256": "e000531d576ec87e74daf2565559a2831160a0a4d5f72ddf7a13844e10784920"
+      },
+      {
+        "path": "tools/release_audit.py",
+        "size": 12129,
+        "sha256": "909a968e92fb429cb9b4bce47458566627816e0a43a2168937636196c023ff20"
+      },
+      {
+        "path": "tools/run_vnish_collector.ps1",
+        "size": 1033,
+        "sha256": "86f0db0bfaa8ee041cf3f46968deacd183d3c97e0568292ca5025c30e3cd066b"
+      },
+      {
+        "path": "tools/vnish_log_collector.py",
+        "size": 11531,
+        "sha256": "2e669e0d83af5ae15eda043e1da818cbf31644579879a0b5cb42cf7ab4952788"
+      }
+    ]
+  },
+  "python_environment": {
+    "version": "3.14.2",
+    "executable": "python.exe"
+  },
+  "event_store_schema_version": 6,
+  "config_example_sha256": "c6305119c241c0e2e3bfc1cfe85b0553bf01d412f7e3b0a8f4661335170ce940",
+  "dependency_dispositions": {
+    "021-monitor-liveness-watchdog": {
+      "state": "accepted",
+      "evidence_ref": "specs/021-monitor-liveness-watchdog/evidence.md"
+    },
+    "022-adaptive-acquisition": {
+      "state": "accepted",
+      "evidence_ref": "specs/022-adaptive-acquisition/evidence.md"
+    },
+    "023-incident-evidence-fusion": {
+      "state": "deferred",
+      "evidence_ref": "specs/023-incident-evidence-fusion/evidence.md"
+    },
+    "024-electrical-source-discovery": {
+      "state": "blocked_external",
+      "evidence_ref": "specs/024-electrical-source-discovery/evidence.md"
+    },
+    "025-prometheus-metrics": {
+      "state": "accepted",
+      "evidence_ref": "specs/025-prometheus-metrics/evidence.md"
+    },
+    "026-hashcore-capability-inventory": {
+      "state": "accepted",
+      "evidence_ref": "specs/026-hashcore-capability-inventory/evidence.md"
+    },
+    "027-operator-interface-decision": {
+      "state": "no_build",
+      "evidence_ref": "specs/027-operator-interface-decision/evidence.md"
+    },
+    "028-backup-retention-restore": {
+      "state": "accepted",
+      "evidence_ref": "specs/028-backup-retention-restore/evidence.md"
+    }
+  },
+  "service_and_tasks": {
+    "monitor_service": {
+      "name": "MinerAlertsMonitor",
+      "mode": "Windows Service / SCM recovery enabled",
+      "authority": "Exclusive Windows Mutex: MinerAlertsMonitorAuthority"
+    },
+    "backup_task": {
+      "name": "MinerAlertsBackup",
+      "mode": "Windows Scheduled Task / Highest privilege",
+      "script": "tools/install_backup_task.ps1"
+    },
+    "watchdog_task": {
+      "name": "MinerAlertsWatchdog",
+      "mode": "Windows Scheduled Task / Out-of-process supervision",
+      "script": "tools/install_watchdog_task.ps1"
+    }
+  },
+  "prior_known_good_rollback": {
+    "commit": "4cc7a85",
+    "description": "Spec 022 D+3 soak passed, Spec 023 activated, Spec 025 integrated",
+    "schema_version": 6
+  }
+}

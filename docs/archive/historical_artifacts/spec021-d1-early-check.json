@@ -1,0 +1,128 @@
+{
+  "database": {
+    "action_decisions": 0,
+    "automatic_action_events": 0,
+    "counts_since_start": {
+      "collector_runs": 5,
+      "firmware_events": 0,
+      "operational_events": 0,
+      "reboot_decisions": 0,
+      "telemetry_samples": 124
+    },
+    "latest_collector": {
+      "attempted": 16,
+      "completed_ts": 1786660869.8975012,
+      "events_inserted": 0,
+      "failed": 0,
+      "status": "ok",
+      "succeeded": 16
+    },
+    "latest_sample_age_seconds": 112.498,
+    "latest_samples": [
+      {
+        "miner_name": "23",
+        "observed_ts": 1786661664.462187,
+        "rate_ths": 99.04,
+        "responded": 1,
+        "state": "OK"
+      },
+      {
+        "miner_name": "24",
+        "observed_ts": 1786661664.462187,
+        "rate_ths": 97.77,
+        "responded": 1,
+        "state": "OK"
+      },
+      {
+        "miner_name": "25",
+        "observed_ts": 1786661664.462187,
+        "rate_ths": 100.13,
+        "responded": 1,
+        "state": "OK"
+      },
+      {
+        "miner_name": "26",
+        "observed_ts": 1786661664.462187,
+        "rate_ths": 99.42,
+        "responded": 1,
+        "state": "OK"
+      }
+    ]
+  },
+  "failures": [
+    "observation_window_incomplete"
+  ],
+  "generated_ts": 1786661776.959766,
+  "heartbeat": {
+    "collector_age_seconds": 885.4768912792206,
+    "pid": 35788,
+    "poller_age_seconds": 36.771,
+    "queue_depth": 0,
+    "schema_version": 1,
+    "sender_age_seconds": 24.429,
+    "tick_age_seconds": 21.585,
+    "tick_sequence": 304
+  },
+  "observation": {
+    "elapsed_seconds": 9182.959765911102,
+    "required_seconds": 86400,
+    "since_ts": 1786652594.0
+  },
+  "passed": false,
+  "schema_version": 1,
+  "service": {
+    "name": "MinerAlerts",
+    "pid": 35836,
+    "query_returncode": 0,
+    "running": true
+  },
+  "stage": "d1",
+  "thresholds": {
+    "clock_skew_tolerance_seconds": 5.0,
+    "collector_stale_seconds": 7200.0,
+    "telemetry_sample_stale_seconds": 600.0,
+    "tick_stale_seconds": 120.0,
+    "worker_stale_seconds": 120.0
+  },
+  "watchdog": {
+    "action_count": 0,
+    "cadence_coverage": 1.0,
+    "first_ts": 1786652633.0,
+    "head_delay_seconds": 39.0,
+    "last_ts": 1786661752.0,
+    "poller_age": {
+      "max": 73,
+      "median": 35.0,
+      "p95": 64,
+      "p99": 69
+    },
+    "reason_count": 0,
+    "sample_count": 153,
+    "sender_age": {
+      "max": 33,
+      "median": 14.0,
+      "p95": 31,
+      "p99": 33
+    },
+    "service_pids": [
+      35836
+    ],
+    "suppressed_count": 0,
+    "tail_age_seconds": 24.96,
+    "tick_age": {
+      "max": 30,
+      "median": 14.0,
+      "p95": 28,
+      "p99": 29
+    },
+    "unhealthy_count": 0
+  },
+  "watchdog_state": {
+    "is_open": false,
+    "last_notified_ts": null,
+    "last_seen_ts": null,
+    "notification_count": 0,
+    "opened_ts": null,
+    "reason_codes": []
+  }
+}

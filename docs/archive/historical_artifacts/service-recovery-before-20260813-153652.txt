@@ -1,0 +1,6 @@
+﻿[SC] QueryServiceConfig2 CORRECTO
+
+NOMBRE_SERVICIO: MinerAlerts
+        PERÍODO_REINICIO (en segundos): 0
+        MENSAJE_REINICIO              :
+        LÍNEA_COMANDOS                :

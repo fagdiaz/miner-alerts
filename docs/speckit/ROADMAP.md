@@ -1,15 +1,16 @@
- Miner Alerts Speckit Roadmap
+# Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-10-01
+**Last reviewed**: 2026-10-02
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (86 de 86 especificaciones completadas y evidenciadas — **1510 tests PASS, 75 subtests PASS** — Spec 086 Autopsia Autónoma de Incidentes Certificada en Producción 2026-10-02).
-- **Estado Operativo de Flota (2026-10-02)**: 4x S19j Pro a 2700W · **~395 TH/s** · Fans en lazo cerrado ~92% · Chips 69-80°C · Sin eventos eléctricos en Elevador 1 (>49h) ni Elevador 2 (>12.5h).
-- **Auditoría Arquitectónica Completada (2026-10-01)**: Análisis exhaustivo de directivas de gobernanza, 8 fricciones identificadas (7 resueltas, 1 en backlog), diseño de resoluciones integrales. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
-- **Horizonte Actual — V5.2 Gobernanza Integrada**: Specs 082, 083, 084, 085 y 086 certificadas. Foco en contrato de estado centralizado entre subsistemas, desacoplamiento del monolito y supervisor forense conversacional.
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (86 de 86 especificaciones completadas y evidenciadas — **1511 tests PASS, 75 subtests PASS** — Horizonte V5.2 100% CERRADO Y CERTIFICADO en Producción).
+- **Estado Operativo de Flota (2026-10-02)**: Elevador 1 a 2500W (~5000W, margen de seguridad de 400W), Elevador 2 a 2700W (5397W nominal), 4 mineros en hash nominal continuo (~387.5-395 TH/s), 0 deadlocks en toda la flota, ventiladores modulando en lazo cerrado térmico.
+- **Horizonte V5.2 (Gobernanza Integrada, Autopsia Autónoma y Desacoplamiento)**: 100% CERRADO Y CERTIFICADO (Specs 082, 083, 084, 085 y 086).
+- **Próxima Iniciativa Planificada**: `Spec 087: Monolith Decoupling Phase 3 (Balancer & Watchdog)` (Fase 3 de Iniciativa 37: desacoplamiento de `execute_balancer_cycle` y `check_autotune_watchdog`).
+- **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ---
 
@@ -1056,7 +1057,7 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 
 ### Iniciativa 38 — Autopsia Autónoma de Incidentes y Supervisor Conversacional (Spec 086 / PROP-016) — COMPLETADA ✅
 
-**Propuesta**: [`docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md`](../proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md)
+**Propuesta**: [`docs/archive/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md`](../archive/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md)
 **Estado**: COMPLETADA Y CERTIFICADA (2026-10-02) — 13 tests PASS, 1511 tests totales PASS.
 **Prioridad**: P2 — Observabilidad / Autonomía
 **Riesgo**: MEDIO

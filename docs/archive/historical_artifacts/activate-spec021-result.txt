@@ -1,0 +1,24 @@
+﻿activated_at=2026-08-13T15:37:07.6244805-03:00
+service=Running
+task=Ready
+task_last_result=0
+
+NOMBRE_SERVICIO: MinerAlerts
+        TIPO               : 10  WIN32_OWN_PROCESS
+        ESTADO             : 4  RUNNING
+                                (STOPPABLE, PAUSABLE, ACCEPTS_SHUTDOWN)
+        CÓD_SALIDA_WIN32   : 0  (0x0)
+        CÓD_SALIDA_SERVICIO: 0  (0x0)
+        PUNTO_COMPROB.     : 0x0
+        INDICACIÓN_INICIO  : 0x0
+        PID                : 28376
+        MARCAS         :
+[SC] QueryServiceConfig2 CORRECTO
+
+NOMBRE_SERVICIO: MinerAlerts
+        PERÍODO_REINICIO (en segundos): 86400
+        MENSAJE_REINICIO              :
+        LÍNEA_COMANDOS                :
+        ACCIONES_ERROR                 : REINICIAR - Retraso= 60000 ms
+                                         REINICIAR - Retraso= 60000 ms
+                                         REINICIAR - Retraso= 300000 ms

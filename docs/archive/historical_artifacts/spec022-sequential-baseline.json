@@ -1,0 +1,137 @@
+{
+  "captured_ts": 1786726249.256445,
+  "cycle_latency_ms": {
+    "count": 10,
+    "max": 204.077,
+    "mean": 172.67,
+    "min": 140.734,
+    "p50": 171.031,
+    "p95": 204.077
+  },
+  "effective_interval_estimate_ms": {
+    "p50": 30171.031,
+    "p95": 30204.077
+  },
+  "miner_count": 4,
+  "miners": {
+    "miner-1": {
+      "stats_latency_ms": {
+        "count": 10,
+        "max": 31.606,
+        "mean": 17.416,
+        "min": 12.367,
+        "p50": 13.724,
+        "p95": 31.606
+      },
+      "stats_requests": 10,
+      "stats_status_counts": {
+        "success": 10
+      },
+      "summary_latency_ms": {
+        "count": 10,
+        "max": 37.965,
+        "mean": 23.613,
+        "min": 18.013,
+        "p50": 19.878,
+        "p95": 37.965
+      },
+      "summary_requests": 10,
+      "summary_status_counts": {
+        "success": 10
+      }
+    },
+    "miner-2": {
+      "stats_latency_ms": {
+        "count": 10,
+        "max": 43.081,
+        "mean": 16.104,
+        "min": 11.984,
+        "p50": 13.412,
+        "p95": 43.081
+      },
+      "stats_requests": 10,
+      "stats_status_counts": {
+        "success": 10
+      },
+      "summary_latency_ms": {
+        "count": 10,
+        "max": 30.939,
+        "mean": 21.647,
+        "min": 19.068,
+        "p50": 20.126,
+        "p95": 30.939
+      },
+      "summary_requests": 10,
+      "summary_status_counts": {
+        "success": 10
+      }
+    },
+    "miner-3": {
+      "stats_latency_ms": {
+        "count": 10,
+        "max": 35.602,
+        "mean": 21.474,
+        "min": 15.653,
+        "p50": 16.487,
+        "p95": 35.602
+      },
+      "stats_requests": 10,
+      "stats_status_counts": {
+        "success": 10
+      },
+      "summary_latency_ms": {
+        "count": 10,
+        "max": 44.513,
+        "mean": 28.72,
+        "min": 22.457,
+        "p50": 24.909,
+        "p95": 44.513
+      },
+      "summary_requests": 10,
+      "summary_status_counts": {
+        "success": 10
+      }
+    },
+    "miner-4": {
+      "stats_latency_ms": {
+        "count": 10,
+        "max": 33.837,
+        "mean": 18.839,
+        "min": 12.881,
+        "p50": 14.403,
+        "p95": 33.837
+      },
+      "stats_requests": 10,
+      "stats_status_counts": {
+        "success": 10
+      },
+      "summary_latency_ms": {
+        "count": 10,
+        "max": 36.376,
+        "mean": 24.691,
+        "min": 18.619,
+        "p50": 20.513,
+        "p95": 36.376
+      },
+      "summary_requests": 10,
+      "summary_status_counts": {
+        "success": 10
+      }
+    }
+  },
+  "mode": "sequential_read_only",
+  "pause_seconds": 1.0,
+  "poll_seconds": 30.0,
+  "request_order": [
+    "summary",
+    "stats_if_summary_responded"
+  ],
+  "request_totals": {
+    "automatic_retries": 0,
+    "stats": 40,
+    "summary": 40
+  },
+  "samples": 10,
+  "schema_version": 1,
+  "timeout_seconds": 5.0
+}

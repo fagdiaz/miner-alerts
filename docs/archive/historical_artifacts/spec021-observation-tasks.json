@@ -1,0 +1,34 @@
+﻿[
+    {
+        "name":  "MinerAlertsLivenessD1",
+        "state":  "Ready",
+        "run_as":  "SYSTEM",
+        "logon_type":  "ServiceAccount",
+        "run_level":  "Highest",
+        "execute":  "F:\\02-ASIC - mineros\\miner-alerts\\.venv\\Scripts\\pythonw.exe",
+        "arguments":  "\"F:\\02-ASIC - mineros\\miner-alerts\\tools\\observe_liveness.py\" --stage d1 --since \"2026-08-13T17:23:14.0000000-03:00\" --output \"F:\\02-ASIC - mineros\\miner-alerts\\artifacts\\spec021-d1-observation.json\"",
+        "working_directory":  "F:\\02-ASIC - mineros\\miner-alerts",
+        "start_boundary":  "2026-08-14T17:28:14-03:00",
+        "next_run_time":  "2026-08-14T17:28:28.0000000-03:00",
+        "last_task_result":  267011,
+        "multiple_instances":  "IgnoreNew",
+        "start_when_available":  true,
+        "execution_time_limit":  "PT5M"
+    },
+    {
+        "name":  "MinerAlertsLivenessD3",
+        "state":  "Ready",
+        "run_as":  "SYSTEM",
+        "logon_type":  "ServiceAccount",
+        "run_level":  "Highest",
+        "execute":  "F:\\02-ASIC - mineros\\miner-alerts\\.venv\\Scripts\\pythonw.exe",
+        "arguments":  "\"F:\\02-ASIC - mineros\\miner-alerts\\tools\\observe_liveness.py\" --stage d3 --since \"2026-08-13T17:23:14.0000000-03:00\" --output \"F:\\02-ASIC - mineros\\miner-alerts\\artifacts\\spec021-d3-observation.json\"",
+        "working_directory":  "F:\\02-ASIC - mineros\\miner-alerts",
+        "start_boundary":  "2026-08-16T17:28:14-03:00",
+        "next_run_time":  "2026-08-16T17:28:28.0000000-03:00",
+        "last_task_result":  267011,
+        "multiple_instances":  "IgnoreNew",
+        "start_when_available":  true,
+        "execution_time_limit":  "PT5M"
+    }
+]

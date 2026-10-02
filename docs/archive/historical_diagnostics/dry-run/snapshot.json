@@ -1,0 +1,73 @@
+{
+  "generated_at": "2026-07-11T16:45:39+00:00",
+  "config_path": "F:\\02-ASIC - mineros\\miner-alerts\\app\\config.example.json",
+  "dry_run": true,
+  "threshold_ths": 60.0,
+  "expected_boards": 3,
+  "miners": [
+    {
+      "id": "S19JPRO-1",
+      "name": "S19JPRO-1",
+      "host": "192.168.1.101",
+      "port": 4028,
+      "responded": false,
+      "dry_run": true,
+      "errors": {},
+      "status": "SKIPPED_DRY_RUN",
+      "firmware_hint": "unknown",
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "dry-run only"
+    },
+    {
+      "id": "S19JPRO-2",
+      "name": "S19JPRO-2",
+      "host": "192.168.1.102",
+      "port": 4028,
+      "responded": false,
+      "dry_run": true,
+      "errors": {},
+      "status": "SKIPPED_DRY_RUN",
+      "firmware_hint": "unknown",
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "dry-run only"
+    },
+    {
+      "id": "S19JPRO-3",
+      "name": "S19JPRO-3",
+      "host": "192.168.1.103",
+      "port": 4028,
+      "responded": false,
+      "dry_run": true,
+      "errors": {},
+      "status": "SKIPPED_DRY_RUN",
+      "firmware_hint": "unknown",
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "dry-run only"
+    },
+    {
+      "id": "S19JPRO-4",
+      "name": "S19JPRO-4",
+      "host": "192.168.1.104",
+      "port": 4028,
+      "responded": false,
+      "dry_run": true,
+      "errors": {},
+      "status": "SKIPPED_DRY_RUN",
+      "firmware_hint": "unknown",
+      "power_telemetry": {
+        "available": false,
+        "fields": []
+      },
+      "action_hint": "dry-run only"
+    }
+  ]
+}

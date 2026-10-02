@@ -25,74 +25,15 @@ safety gates are not compressed to recover an estimate.
    explicitly approved emergency containment.
 7. A code change during soak resets affected validation and observation clocks.
 
-## Estimated Calendar
+## Active Delivery & Operational Window
 
-| Spec / package | Implementation window | Activation and review/fix window | Exit gate |
-| --- | --- | --- | --- |
-| Spec 020 closeout | Closed 2026-08-13 (`e502ab9`) | Runtime activation and observation passed | Elevated restart, new PID, read-only smoke, controlled episode proof and no open P0/P1. |
-| Spec 030 messaging quality | Closed 2026-08-13 | Runtime activation and repository push passed 2026-08-13 (`2afd65e`) | New PID/mutex/startup guard plus `/help`, detail, `/status` and `/events` smoke. |
-| Spec 021 liveness | Implemented, activated and SCM recovery-proven 2026-08-13 | D+1 passed 2026-08-15 (86,700s); D+3 through 2026-08-17 | Kill/hang/stale-worker tests, one controlled SCM recovery, new PID/mutex/startup guard/heartbeat and D+1/D+3. |
-| Spec 022 acquisition | T006 sequential fallback wiring & compact UX completed 2026-08-15 | Activation only after Spec 021 D+3, then shadow/review window | Shadow comparison, bounded requests/latency, unchanged state/action/offset, D+1/D+3. |
-| Spec 023 evidence fusion | 2026-09-11 to 2026-09-20 | 2026-09-21 to 2026-09-24 | Known-incident replay, no unsupported confirmed cause, bounded query and D+1/D+3. |
-| Spec 024 electrical discovery | 2026-09-25 to 2026-10-02 | 2026-10-03 to 2026-10-05 | Supported adapter with 72-hour shadow proof, or explicit blocked hardware decision. |
-| Spec 025 metrics/Grafana | 2026-10-06 to 2026-10-15 | 2026-10-16 to 2026-10-19 | Redaction/cardinality/resource proof, rebuild from files, outage isolation, D+1/D+3. |
-| Spec 026 Hashcore inventory | 2026-10-20 to 2026-10-26 | 2026-10-27 to 2026-10-29 | Metadata-only/zero-process proof, complete risk matrix for evidenced commands, sanitized artifacts, exact allowlist timeout/no-window proof when available, and unchanged action scope; blocked invocation is valid while the allowlist is empty. |
-| Spec 028 backup/restore | 2026-10-30 to 2026-11-08 | 2026-11-09 to 2026-11-12 | Scheduled verified backup, retention/path proof and successful staging restore. |
-| Spec 027 interface decision | Closed 2026-08-30 (`no_build`) | Scorecard executed; all P1 workflows passed by Telegram/Grafana/HTML; conditional paths absent | Three-run fixed P1 scorecard passed, no-build formal decision recorded. |
-| Spec 029 release stabilization | Closed 2026-09-07 (`approved`) | Terminal dependency manifest, R001-R025, restore drill and 267.2h continuous soak verified | Complete matrix R001-R025 pass, 0 open P0/P1, approve decision. |
-| Spec 031 callbacks | Closed 2026-09-07 | 1-Tap inline keyboards on episode alerts & 2-step reboot | 14 unit tests PASS, single-use token registry. |
-| Spec 032 charts | Closed 2026-09-07 | In-memory visual PNG curves via `/chart` | 6 unit tests PASS, 0 disk files. |
-| Spec 033 snooze | Closed 2026-09-07 | `/snooze`, `/unsnooze`, `/snoozed`, 1-Tap alert button | 12 unit tests PASS, auto-reboot hard block. |
-| Spec 034 digest | Closed 2026-09-07 | Daily executive digest at 08:00 AM & `/digest` | 10 unit tests PASS, 27.2ms query latency. |
-| Spec 035 cooling | Closed 2026-09-07 | `/fans`, thermal headroom to 85°C, `COOLING_WARNING` | 14 unit tests PASS, streak filter. |
-| Spec 036 efficiency | Closed 2026-09-07 | `/efficiency`, J/TH real-time tracking, `EFFICIENCY_WARNING` | 12 unit tests PASS, streak filter. |
-| Spec 037 presets | Closed 2026-09-07 | `/presets`, Vnish autotuning & downclock tracking | 11 unit tests PASS, 1.77ms query latency. |
-| Spec 038 v3 release | Closed 2026-09-07 (`approved`) | Multi-threading concurrency audit, thread-safety hardening | 19 concurrency tests PASS, 514 total tests PASS, v3.0.0 approved. |
-| Spec 039 fan governor | Closed 2026-09-08 (`approved`) | Vnish fan governor, target 83°C, fail-safe 100%, active in production | 12 concurrency tests PASS, 549 tests PASS. |
-| Spec 040 dynamic presets | Closed 2026-09-08 (`approved`) | Preset balancer, elevator cascade & thermal step-down, active in production | 23 tests PASS (14 unit + 9 integration), 576 tests PASS. |
-| Spec 041 modular architecture | Closed 2026-09-08 (`approved`) | Modular domain split into app/core, app/vnish, app/governance, app/telegram | 587 tests PASS, 83 payload files. |
-| Spec 042 shim purge | Closed 2026-09-08 (`approved`) | Complete purge of 22 shims, direct canonical imports across all tests | 587 tests PASS, 60 payload files. |
-| Spec 043 command center | Closed 2026-09-08 (`approved`) | Telegram interactive command center /menu, inline keyboards, 2-step reboot, rich UI | 17 tests PASS, 602 tests PASS, 61 payload files. |
-| Spec 044 silent mode | Closed 2026-09-08 (`approved`) | Modo silencio (40%-70% PWM), persistent timer, C1-C4 compliance, thermal guard 83.5°C | 17 tests PASS, 621 tests PASS, active in production under PID 58344. |
-| Spec 045 help center | Closed 2026-09-08 (`approved`) | Centro de ayuda móvil /help con categorías interactivas y tarjetas <= 32 cols | 30 tests PASS, 651 tests PASS. |
-| Spec 046 mobile cards v1 | Closed 2026-09-09 (`approved`) | Mobile-First layout para /status, /fans, /efficiency, /presets | 12 tests PASS, 663 tests PASS. |
-| Spec 047 mobile cards v2 | Closed 2026-09-09 (`approved`) | Mobile-First layout para /balancer, /elevadores, /digest, /snoozed, /events | 24 tests PASS, 687 tests PASS. |
-| Spec 048 safe fleet shutdown | Closed 2026-09-09 (`approved`) | Apagado seguro, selector táctil de 1 a 4 mineros, purga térmica 45s, auto-snooze 4h y /resume | 34 tests PASS, 721 tests PASS, validado en maniobra real en vivo. |
-| Spec 049 thermal purge ramp | Closed 2026-09-10 (`approved`) | Rampa 100% de purga activa, caída al 40% (reposo acústico) en segundo 45, /resume seguro | 4 tests PASS, 727 tests PASS, validado en tests unitarios e integración. |
-| Spec 050 post blackout guard | Closed 2026-09-10 (`approved`) | Guardián post-blackout, detección de minado detenido, botón 1-tap `[ ▶️ Reanudar Flota ]` y auto-resume | 18 tests PASS, 745 tests PASS. |
-| Spec 051 fast phase drop | Closed 2026-09-10 (`approved`) | Discriminador rápido de corte de fase (<3s), supresión de histeresis y bypass de alarma | 18 tests PASS, 767 tests PASS. |
-| Spec 052 maintenance scheduler | Closed 2026-09-10 (`approved`) | Planificador de ventanas de mantenimiento eléctrico con pre-rampa suave T-10m/T-5m y parada en T-0 | 14 tests PASS, 781 tests PASS. |
-| Release Hotfix v4.0.1 | Closed 2026-09-10 (`approved`) | Persistencia inmune a apagones con `os.fsync()`, respaldo `.bak`, scope global en `main` y aislamiento de tests | 5 tests PASS, 797 tests PASS, activo en producción bajo PID 6424. |
-| Release Hotfix v4.0.3 | Closed 2026-09-12 (`approved`) | Piso de modulación del fan governor calibrado de 75% a 30% PWM permitiendo regulación continua hacia 82.0°C | 2 tests añadidos, 802 tests PASS, activo en producción. |
-| Spec 054 chain diagnostics | Closed 2026-09-12 (`approved`) | Ingesta asíncrona `/api/v1/chains`, SQLite v7, diagnóstico predictivo, comando `/chains` y CLI analítico | 33 tests añadidos, 835 tests PASS, activo en producción bajo PID 12660. |
-| Release Hotfix v4.1.1 | Closed 2026-09-12 (`approved`) | Actualización segura de `last_elapsed`, supresión de falsas alarmas I2C en cadenas inactivas | 2 tests añadidos, 837 tests PASS. |
-| Release v4.1.2 | Closed 2026-09-12 (`approved`) | Desescalado adaptativo con gradientes térmicos (-5%/-3%/-2%) y corrección de dwell | 3 tests añadidos, 840 tests PASS. |
-| Spec 055 hashboard auto-reboot | Closed 2026-09-13 (`approved`) | Auto-reboot seguro ante falla total de placas (0/3), ventana sostenida 600s, 6 interlocks | 14 tests añadidos, 854 tests PASS. |
-| Spec 056 two-tier recovery | Closed 2026-09-13 (`approved`) | Discriminador de 2 niveles: Soft Auto-Restart (Nivel 1, Vnish REST 15s) vs Hard Auto-Reboot (Nivel 2, Hashcore CLI 4m) | 27 tests añadidos, 881 tests PASS. |
-| Spec 057 intervention governance | Closed 2026-09-15 (`approved`) | Modo Vnish Libre, toggle unificado en /menu y contención de presets asimétricos | 21 tests añadidos, 902 tests PASS. |
-| Spec 058 telegram modularization | Closed 2026-09-15 (`approved`) | Arquitectura modular de router y command handlers independientes (MT-01) | 8 tests añadidos, 910 tests PASS. |
-| Spec 059 hardware clients extraction | Closed 2026-09-15 (`approved`) | Clientes tipados de socket CGMiner 4028, Vnish REST y Hashcore Toolkit (MT-02) | 18 tests añadidos, 928 tests PASS. |
-| Spec 060 core daemon architecture | Closed 2026-09-15 (`approved`) | MonitorContext, StateManager L1/L2 anti-deadlock y orquestador (ST-01/ST-02) | 30 tests añadidos, 958 tests PASS. |
-| Spec 061 sqlite wal integrity | Closed 2026-09-15 (`approved`) | Resiliencia SQLite WAL Mode, PRAGMA synchronous NORMAL, quick_check en arranque (PROP-002) | 11 tests añadidos, 969 tests PASS. |
-| Spec 062 hw error tripwire | Closed 2026-09-15 (`approved`) | Detección de chips defectuosos, rollback de preset y candado de 48h (PROP-003) | 10 tests añadidos, 979 tests PASS. |
-| Spec 063 ambient thermal pid | Closed 2026-09-15 (`approved`) | Gobernador térmico estacional con lectura de inlet_temp_c y 3 guardarraíles (PROP-004) | 14 tests añadidos, 993 tests PASS. |
-| Spec 064 multi-miner charts | Closed 2026-09-15 (`approved`) | Gráficos visuales multi-miner por grupo eléctrico con selectores inline en Telegram (PROP-006) | 11 tests añadidos, 1004 tests PASS. |
-| Spec 065 supervisory hooks | Closed 2026-09-15 (`approved`) | Pipeline declarativo de 7 etapas (HookStage), contención de excepciones y timing monotónico (ST-04) | 48 tests añadidos, 1047 tests PASS. |
-| Spec 066 cold-boot grace | Closed 2026-09-15 (`approved`) | Período de gracia post-arranque 180s (WARMING_UP), supresión de falsas alarmas y tarjeta 🟢 FLOTA RESTABLECIDA (PROP-001) | 15 tests añadidos, 1062 tests PASS. |
-| Spec 074 paired elevator contingency | Closed 2026-09-17 (`approved`) | Amortiguador de inrush pareado de elevador, desescalada transitoria del compañero (-1 peldaño) y auto-restauración en soak (PROP-009) | 15 tests añadidos, 1221 tests PASS. |
-| Spec 075 soft-landing recovery | Closed 2026-09-18 (`approved`) | Recuperación suave a 1800W, blindaje Latch-Off de fuente APW12, Headroom Chilling y backup de perfiles (PROP-010) | 15 tests añadidos, 1236 tests PASS. |
-| Spec 067 gateway heartbeat | 2026-09-19 to 2026-09-22 | 2026-09-23 to 2026-09-25 | Worker TCP no bloqueante de latido hacia router y supresión de tormentas 15s (PROP-005). |
-| Spec 068 ipc watchdog pipe | 2026-09-23 to 2026-09-27 | 2026-09-28 to 2026-09-30 | Servidor Named Pipe en monitor y cliente watchdog fuera de proceso con ping-pong <15s (PROP-007). |
-| Spec 069 deep chain telemetry | 2026-10-01 to 2026-10-08 | 2026-10-09 to 2026-10-11 | Telemetría profunda por cadena, diagnóstico predictivo de bus I2C y desbalance de potencia (PROP-008). |
-| Spec 070 core modularization b | 2026-10-12 to 2026-10-20 | 2026-10-21 to 2026-10-25 | Sustitución de inspect.getsource(main) por Behavioral Test Harness desacoplado (ST-05). |
+> [!NOTE]
+> **Trazabilidad de Paquetes Históricos**: Para la trazabilidad detallada de todos los paquetes y especificaciones completadas (Specs 001 a 086), consultar [`docs/speckit/SPEC_PROGRAM.md`](SPEC_PROGRAM.md) y la bitácora inmutable [`docs/audit/DEVELOPMENT_LOG.md`](../audit/DEVELOPMENT_LOG.md).
 
-
-| Spec 082 MinerGovernanceContext | Closed 2026-10-01 | frozen dataclass centralizada, ctx param en Fan Governor, effective_target_power_w, 26 contract tests | 1466 tests PASS, 75 subtests PASS. |
-| Spec 083 FGA Actuator Loop | Closed 2026-10-01 | FGA ElevatorBudget Bridge, SQLite facility_agent_actions, /agent run y /agent history | 48 tests añadidos, 1477 tests PASS, 75 subtests PASS. |
-| Spec 084 Governance Dashboard | Closed 2026-10-01 | /directivas, snapshots SQLite, Deadlock Watchdog (>300s) | 6 tests añadidos, 1483 tests PASS, 75 subtests PASS. |
-| Spec 085 Governance Orchestrator | Closed 2026-10-02 | Extracción governor_cycle.py, _orchestrator_state.py, desacoplamiento fans.py e interventions.py, -572 L monolito | 15 tests añadidos, 1498 tests PASS, 75 subtests PASS. |
-| Spec 086 Incident Autopsy Engine | Closed 2026-10-02 | IncidentAutopsyEngine autónomo, tarjetas mobile <= 32 cols, /autopsia, Q&A conversacional offline | 12 tests añadidos, 1510 tests PASS, 75 subtests PASS. |
-| Estabilización Operativa V5.2 | Closed 2026-10-02 | Hotfix callback asíncrono, alineación de targets Elevador 1 (2500W), erradicación deadlocks (0/4), certificación speckit-stabilize | 1 test añadido, 1511 tests PASS, 75 subtests PASS. |
+| Paquete / Ventana Activa | Ventana de Implementación / Estado | Ventana de Activación y Observación | Criterio de Salida y Certificación |
+| :--- | :--- | :--- | :--- |
+| **Observación Continua y Estabilización de Planta (Horizonte V5.2 Cerrado)** | Completado y Certificado 2026-10-02 (`a483899`) | Observación continua 24/7 en producción activa | 4/4 mineros en hash nominal (~387.5 TH/s), Elevador 1 a 2500W (~5000W, margen 400W), Elevador 2 a 2700W (5397W), 0 deadlocks, modulación cerrada de fans, 1511 tests PASS. |
+| **Spec 087: Monolith Decoupling Phase 3 (Balancer & Watchdog)** | Planificada (Post-observación V5.2) | Ventana controlada con dry-run y sombra | Desacoplamiento de `execute_balancer_cycle` y `check_autotune_watchdog` de `miner_monitor.py` a módulos puros de gobernanza, 0 regresiones. |
 
 ## Milestones
 

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Miner Alerts Operations</title>
+  <style>
+    :root { --ink:#18221c; --muted:#667269; --paper:#f4f2e9; --card:#fffdf7; --line:#d8d4c7; --green:#0f6b47; --amber:#b06a09; --red:#a63a2a; --blue:#315e78; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:radial-gradient(circle at 85% 0,#dfe9d8 0,transparent 32rem),linear-gradient(135deg,#f8f5ea,#edf1e8); font-family:"Bahnschrift","Aptos",sans-serif; }
+    main { width:min(1440px,calc(100% - 32px)); margin:0 auto; padding:38px 0 64px; }
+    header { display:flex; justify-content:space-between; gap:24px; align-items:end; border-bottom:2px solid var(--ink); padding-bottom:22px; }
+    h1 { margin:4px 0 0; font:700 clamp(2rem,5vw,4.8rem)/.92 Georgia,serif; letter-spacing:-.05em; }
+    h2 { font:700 1.5rem Georgia,serif; margin:0; } h3 { margin:3px 0 0; font-size:1.35rem; }
+    .eyebrow { margin:0; color:var(--muted); text-transform:uppercase; letter-spacing:.13em; font-size:.72rem; }
+    .generated { max-width:340px; text-align:right; color:var(--muted); line-height:1.45; }
+    .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin:22px 0; }
+    .kpi { background:rgba(255,253,247,.82); border:1px solid var(--line); padding:18px; border-radius:14px; box-shadow:0 10px 24px rgba(31,45,35,.05); }
+    .kpi span { display:block; color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; } .kpi strong { font-size:2rem; }
+    .section-head { display:flex; justify-content:space-between; gap:16px; align-items:center; margin:34px 0 14px; }
+    .chips { display:flex; flex-wrap:wrap; gap:7px; } .count-chip { padding:6px 9px; border:1px solid var(--line); background:var(--card); border-radius:999px; font-size:.78rem; }
+    .miner-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+    .miner-card { --accent:var(--blue); position:relative; overflow:hidden; background:var(--card); border:1px solid var(--line); border-top:5px solid var(--accent); border-radius:16px; padding:20px; box-shadow:0 14px 30px rgba(31,45,35,.07); }
+    .state-ok { --accent:var(--green); } .state-low,.state-hashboard { --accent:var(--amber); } .state-offline,.state-stale { --accent:var(--red); }
+    .miner-head { display:flex; justify-content:space-between; gap:12px; align-items:start; } .state-pill { color:white; background:var(--accent); border-radius:999px; padding:6px 9px; font-size:.72rem; font-weight:700; }
+    .primary-rate { font:700 2.25rem Georgia,serif; margin-top:20px; } .primary-rate small { font:600 .82rem Bahnschrift,sans-serif; color:var(--muted); } .freshness { margin:2px 0 16px; color:var(--muted); font-size:.82rem; }
+    .metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; } .metrics div { background:#f1efe6; border-radius:9px; padding:9px; } .metrics span,.decision span { display:block; color:var(--muted); font-size:.7rem; } .metrics strong { font-size:.88rem; }
+    .stability,.quality { margin-top:12px; padding:11px; border:1px solid var(--line); border-left:4px solid var(--blue); border-radius:10px; background:#f8f6ee; } .stability-watch,.quality-watch { border-left-color:var(--amber); } .stability-critical,.quality-critical { border-left-color:var(--red); } .stability-stable,.quality-stable { border-left-color:var(--green); } .stability div,.quality div { display:flex; justify-content:space-between; gap:12px; } .stability span,.quality span { color:var(--muted); font-size:.72rem; } .stability strong,.quality strong { font-size:.78rem; } .stability ul,.quality ul { margin:7px 0 0; padding-left:18px; color:var(--muted); font-size:.74rem; } .baseline { margin:6px 0 0; color:var(--muted); font-size:.72rem; }
+    .spark { width:100%; height:72px; margin:13px 0 6px; overflow:visible; } .spark polyline { fill:none; stroke:var(--accent); stroke-width:3; stroke-linecap:round; stroke-linejoin:round; } .threshold-line { stroke:#a9a395; stroke-width:1; stroke-dasharray:4 4; } .spark-empty { height:72px; display:grid; place-items:center; color:var(--muted); font-size:.78rem; }
+    .decision { display:flex; justify-content:space-between; align-items:end; gap:10px; border-top:1px solid var(--line); padding-top:11px; } .decision strong { text-align:right; font-size:.82rem; }
+    .table-wrap { overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:14px; } table { width:100%; border-collapse:collapse; min-width:760px; } th,td { text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); font-size:.82rem; } th { color:var(--muted); text-transform:uppercase; letter-spacing:.07em; font-size:.68rem; } tr:last-child td { border-bottom:0; }
+    .severity,.decision-tag { display:inline-block; border-radius:999px; padding:4px 7px; background:#e8e6dd; font-size:.7rem; font-weight:700; } .empty-panel,.empty-cell { padding:36px; text-align:center; color:var(--muted); background:var(--card); border:1px dashed var(--line); border-radius:14px; }
+    footer { margin-top:36px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:.78rem; }
+    @media (max-width:800px) { header { align-items:start; flex-direction:column; } .generated { text-align:left; } .kpis { grid-template-columns:repeat(2,1fr); } main { width:min(100% - 20px,1440px); padding-top:22px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header><div><p class="eyebrow">ASIC fleet / evidencia local</p><h1>Miner Alerts Operations</h1></div><div class="generated">Generado: 20/07/2026 21:57:50<br>Ventana: 24.0 h / stale: 900 s</div></header>
+  <section class="kpis" aria-label="Resumen de flota">
+    <div class="kpi"><span>Mineros</span><strong>4</strong></div>
+    <div class="kpi"><span>Saludables</span><strong>4</strong></div>
+    <div class="kpi"><span>Degradados</span><strong>0</strong></div>
+    <div class="kpi"><span>Eventos</span><strong>0</strong></div>
+    <div class="kpi"><span>Decisiones</span><strong>0</strong></div>
+  </section>
+  <section><div class="section-head"><div><h2>Estado actual</h2><p class="eyebrow">Stability Advisor + Mining Quality</p></div><div class="chips"><span class="count-chip">OK 4</span> <span class="count-chip">LEARNING 4</span> <span class="count-chip">QUALITY STABLE 4</span></div></div><div class="miner-grid">
+      <article class="miner-card state-ok">
+        <div class="miner-head">
+          <div>
+            <p class="eyebrow">192.168.100.23</p>
+            <h3>23</h3>
+          </div>
+          <span class="state-pill">OK</span>
+        </div>
+        <div class="primary-rate">99.32 <small>TH/s</small></div>
+        <p class="freshness">hace 3m</p>
+        <div class="metrics">
+          <div><span>Boards</span><strong>3/3</strong></div>
+          <div><span>Temp max</span><strong>82.0 C</strong></div>
+          <div><span>Potencia cadena</span><strong>2698 W</strong></div>
+        </div>
+        <div class="stability stability-learning">
+          <div><span>Stability Advisor</span><strong>LEARNING 1/12</strong></div>
+
+          <ul><li>Baseline en aprendizaje: 1/12 muestras saludables.</li></ul>
+        </div>
+        <div class="quality quality-stable">
+          <div><span>Mining Quality</span><strong>STABLE</strong></div>
+          <p class="baseline">Intervalo 761s: accepted 82, rejected 0, stale 0</p>
+          <ul><li>Sin degradacion de calidad en el ultimo intervalo.</li></ul>
+        </div>
+        <svg class="spark" viewBox="0 0 260 64" role="img" aria-label="Tendencia de hashrate"><line x1="0" y1="60.0" x2="260.0" y2="60.0" class="threshold-line" /><polyline points="0.0,4.0 260.0,4.0" /></svg>
+        <div class="decision"><span>Ultima decision</span><strong>sin decision reciente</strong></div>
+      </article>
+
+      <article class="miner-card state-ok">
+        <div class="miner-head">
+          <div>
+            <p class="eyebrow">192.168.100.24</p>
+            <h3>24</h3>
+          </div>
+          <span class="state-pill">OK</span>
+        </div>
+        <div class="primary-rate">100.23 <small>TH/s</small></div>
+        <p class="freshness">hace 3m</p>
+        <div class="metrics">
+          <div><span>Boards</span><strong>3/3</strong></div>
+          <div><span>Temp max</span><strong>82.0 C</strong></div>
+          <div><span>Potencia cadena</span><strong>2698 W</strong></div>
+        </div>
+        <div class="stability stability-learning">
+          <div><span>Stability Advisor</span><strong>LEARNING 1/12</strong></div>
+
+          <ul><li>Baseline en aprendizaje: 1/12 muestras saludables.</li></ul>
+        </div>
+        <div class="quality quality-stable">
+          <div><span>Mining Quality</span><strong>STABLE</strong></div>
+          <p class="baseline">Intervalo 761s: accepted 54, rejected 0, stale 0</p>
+          <ul><li>Sin degradacion de calidad en el ultimo intervalo.</li></ul>
+        </div>
+        <svg class="spark" viewBox="0 0 260 64" role="img" aria-label="Tendencia de hashrate"><line x1="0" y1="60.0" x2="260.0" y2="60.0" class="threshold-line" /><polyline points="0.0,7.2 260.0,4.0" /></svg>
+        <div class="decision"><span>Ultima decision</span><strong>sin decision reciente</strong></div>
+      </article>
+
+      <article class="miner-card state-ok">
+        <div class="miner-head">
+          <div>
+            <p class="eyebrow">192.168.100.25</p>
+            <h3>25</h3>
+          </div>
+          <span class="state-pill">OK</span>
+        </div>
+        <div class="primary-rate">92.38 <small>TH/s</small></div>
+        <p class="freshness">hace 3m</p>
+        <div class="metrics">
+          <div><span>Boards</span><strong>3/3</strong></div>
+          <div><span>Temp max</span><strong>73.0 C</strong></div>
+          <div><span>Potencia cadena</span><strong>2498 W</strong></div>
+        </div>
+        <div class="stability stability-learning">
+          <div><span>Stability Advisor</span><strong>LEARNING 1/12</strong></div>
+
+          <ul><li>Baseline en aprendizaje: 1/12 muestras saludables.</li></ul>
+        </div>
+        <div class="quality quality-stable">
+          <div><span>Mining Quality</span><strong>STABLE</strong></div>
+          <p class="baseline">Intervalo 761s: accepted 61, rejected 0, stale 0</p>
+          <ul><li>Sin degradacion de calidad en el ultimo intervalo.</li></ul>
+        </div>
+        <svg class="spark" viewBox="0 0 260 64" role="img" aria-label="Tendencia de hashrate"><line x1="0" y1="60.0" x2="260.0" y2="60.0" class="threshold-line" /><polyline points="0.0,4.1 260.0,4.0" /></svg>
+        <div class="decision"><span>Ultima decision</span><strong>sin decision reciente</strong></div>
+      </article>
+
+      <article class="miner-card state-ok">
+        <div class="miner-head">
+          <div>
+            <p class="eyebrow">192.168.100.26</p>
+            <h3>26</h3>
+          </div>
+          <span class="state-pill">OK</span>
+        </div>
+        <div class="primary-rate">99.65 <small>TH/s</small></div>
+        <p class="freshness">hace 3m</p>
+        <div class="metrics">
+          <div><span>Boards</span><strong>3/3</strong></div>
+          <div><span>Temp max</span><strong>77.0 C</strong></div>
+          <div><span>Potencia cadena</span><strong>2699 W</strong></div>
+        </div>
+        <div class="stability stability-learning">
+          <div><span>Stability Advisor</span><strong>LEARNING 1/12</strong></div>
+
+          <ul><li>Baseline en aprendizaje: 1/12 muestras saludables.</li></ul>
+        </div>
+        <div class="quality quality-stable">
+          <div><span>Mining Quality</span><strong>STABLE</strong></div>
+          <p class="baseline">Intervalo 762s: accepted 94, rejected 0, stale 0</p>
+          <ul><li>Sin degradacion de calidad en el ultimo intervalo.</li></ul>
+        </div>
+        <svg class="spark" viewBox="0 0 260 64" role="img" aria-label="Tendencia de hashrate"><line x1="0" y1="60.0" x2="260.0" y2="60.0" class="threshold-line" /><polyline points="0.0,4.0 260.0,5.3" /></svg>
+        <div class="decision"><span>Ultima decision</span><strong>sin decision reciente</strong></div>
+      </article>
+    </div></section>
+  <section><div class="section-head"><h2>Incidentes recientes</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Severidad</th><th>Tipo</th><th>Resumen</th></tr></thead><tbody><tr><td colspan="5" class="empty-cell">Sin eventos en la ventana</td></tr></tbody></table></div></section>
+  <section><div class="section-head"><h2>Decisiones de auto-reboot</h2></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Miner</th><th>Resultado</th><th>Hashrate</th><th>Temp</th></tr></thead><tbody><tr><td colspan="5" class="empty-cell">Sin decisiones en la ventana</td></tr></tbody></table></div></section>
+  <footer>Reporte read-only. `chain_voltage` representa evidencia de hashboard, no voltaje AC de entrada. Telegram permanece como superficie de control.</footer>
+</main>
+</body>
+</html>

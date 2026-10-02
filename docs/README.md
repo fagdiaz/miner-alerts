@@ -1,72 +1,67 @@
-# Miner Alerts — Centro de Documentación
+# Miner Alerts — Centro de Documentación y Mapa Maestro
 
-Bienvenido al centro de documentación técnica y operativa de **Miner Alerts**, el sistema de supervisión, telemetría y protección en tiempo real para granjas de minado ASIC (Antminer S19j Pro con firmware Vnish).
+Bienvenido al centro de documentación técnica y operativa de **Miner Alerts**, el sistema de supervisión, telemetría y gobernanza en tiempo real para granjas de minado ASIC (Antminer S19j Pro con firmware Vnish).
 
-Este directorio organiza la arquitectura, procedimientos de operador, propuestas de mejora, historial de auditoría y el marco formal de especificaciones del proyecto.
+El sistema se encuentra en **Modo de Observación Continua y Estabilización de Planta** tras la certificación y cierre del **Horizonte V5.2 de Gobernanza Integrada**.
 
 ---
 
-## 🗺️ Mapa de Navegación Documental
+## 🗺️ Mapa Maestro de Navegación
 
 ```
 docs/
-├── README.md                               <-- Este índice maestro
+├── README.md                               <-- Este mapa maestro interactivo
 ├── audit/
-│   └── DEVELOPMENT_LOG.md                  <-- Bitácora inmutable de desarrollo (Specs 001-075)
+│   ├── DEVELOPMENT_LOG.md                  <-- Bitácora inmutable de desarrollo (Specs 001-086)
+│   └── DIRECTIVES_HARMONIZATION_AUDIT.md   <-- Auditoría canónica de directivas y gobernanza
+├── speckit/                                <-- Marco de especificaciones y operación viva
+│   ├── ROADMAP.md                          <-- Backlog activo, matriz de riesgos y estado de specs
+│   ├── SPEC_PROGRAM.md                     <-- Marco programático, paquetes cerrados y DoD
+│   ├── RUNBOOK.md                          <-- Manual de operaciones y catálogo de comandos Telegram
+│   ├── DELIVERY_PLAN.md                    <-- Calendario de entregas y ventanas operativas
+│   ├── TECHNOLOGY_STRATEGY.md              <-- Decisiones de arquitectura y estrategia tecnológica
+│   └── MINER_DIAGNOSTICS.md                <-- Manual de la herramienta de diagnósticos CLI
 ├── proposals/
-│   ├── SYSTEM_IMPROVEMENT_PROPOSALS.md     <-- Propuestas maestras del sistema (PROP-001 a PROP-010)
-│   ├── PROP-009-contingency-stabilization-hypotheses.md <-- Estudio de estabilización de elevadores
-│   └── PROP-010-soft-landing-recovery-psu-protection.md <-- Protección de fuentes APW12 y Headroom Chilling
-└── speckit/                                <-- Marco de especificaciones y operación viva
-    ├── README.md                           <-- Guía del framework Speckit y ciclo de vida
-    ├── ROADMAP.md                          <-- Backlog activo, matriz de riesgos y estado de specs
-    ├── RUNBOOK.md                          <-- Manual de operaciones y catálogo de comandos Telegram
-    ├── SPEC_PROGRAM.md                     <-- Marco programático, límites arquitectónicos y DoD
-    ├── DELIVERY_PLAN.md                    <-- Calendario de entregas y ventanas de estabilización
-    ├── TECHNOLOGY_STRATEGY.md              <-- Decisiones de arquitectura y estrategia tecnológica
-    ├── MINER_DIAGNOSTICS.md                <-- Manual de la herramienta de diagnósticos CLI
-    ├── rfcs/                               <-- Requests for Comments (diseño arquitectónico)
-    │   ├── README.md                       <-- Índice y flujo de aprobación de RFCs
-    │   ├── RFC_TEMPLATE.md                 <-- Plantilla para nuevos RFCs
-    │   ├── RFC_TELEGRAM_INTERACTIVE_CONTROL.md
-    │   └── RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md
-    └── archive/                            <-- Archivo histórico y decisiones terminales
-        ├── README.md                       <-- Índice de documentos archivados
-        ├── HASHCORE_TOOLKIT_STRATEGY.md
-        ├── INTERFACE_STRATEGY.md
-        ├── V3_EXPANSION_PLAN.md
-        └── plans/                          <-- Planes de acción de fases cerradas
-            ├── ACTION_PLAN_V5_MODULARIZATION.md
-            ├── ACTION_PLAN_POST_V5_EVOLUTION.md
-            ├── ACTION_PLAN_V5_1_HORIZON.md
-            └── ACTION_PLAN_REPO_CLEANUP_AND_ROADMAP.md
+│   └── README.md                           <-- Registro y estado de propuestas de mejora (PROP-001 a PROP-021)
+└── archive/                                <-- Repositorio centralizado de archivo histórico
+    ├── README.md                           <-- Índice maestro del archivo histórico
+    ├── proposals/                          <-- Propuestas históricas archivadas
+    ├── historical_rfcs/                    <-- RFCs de Telegram y UX móvil implementadas
+    ├── historical_plans/                   <-- Planes de acción de fases cerradas (V3, V4, V5, V5.1)
+    ├── historical_audits/                  <-- Auditorías previas de directivas y QA
+    ├── historical_diagnostics/             <-- Capturas y baselines de telemetría de julio/agosto 2026
+    └── historical_artifacts/               <-- Artefactos de pruebas de recuperación
 ```
 
 ---
 
-## 📚 Guía Rápida por Rol
+## 🧭 Secciones Principales del Sistema
 
-### Para Operadores de Campo & Minería
-- **Operación diaria y comandos de Telegram**: [`speckit/RUNBOOK.md`](speckit/RUNBOOK.md).
-- **Diagnósticos de hardware y red 4028**: [`speckit/MINER_DIAGNOSTICS.md`](speckit/MINER_DIAGNOSTICS.md).
-- **Entendimiento de incidentes y alarmas**: [`speckit/RUNBOOK.md`](speckit/RUNBOOK.md) § Contingencias.
+### 1. Operación y Gobernanza Viva
+- **Auditoría Canónica de Directivas**: [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](audit/DIRECTIVES_HARMONIZATION_AUDIT.md) — Análisis de fricciones, resolución de interlocks Fan Governor / Elevator Budget / VNish, y directivas operativas vigentes.
+- **Manual de Operaciones (Runbook)**: [`docs/speckit/RUNBOOK.md`](speckit/RUNBOOK.md) — Catálogo de comandos de Telegram (`/menu`, `/status`, `/fans`, `/autopsia`, `/directivas`, `/efficiency`), manejo de contingencias y procedimientos de guardia.
+- **Diagnósticos de Red y Hardware**: [`docs/speckit/MINER_DIAGNOSTICS.md`](speckit/MINER_DIAGNOSTICS.md) — Procedimientos para socket 4028, API REST VNish y herramientas locales.
 
-### Para Desarrolladores & Agentes AI
-- **Backlog maestro y prioridades**: [`speckit/ROADMAP.md`](speckit/ROADMAP.md).
-- **Instrucciones para agentes e invariantes del monitor**: [`../AGENTS.md`](../AGENTS.md).
-- **Marco de especificaciones y Definición de Terminado (DoD)**: [`speckit/SPEC_PROGRAM.md`](speckit/SPEC_PROGRAM.md).
-- **Estrategia y principios tecnológicos**: [`speckit/TECHNOLOGY_STRATEGY.md`](speckit/TECHNOLOGY_STRATEGY.md).
-- **Historial de cambios y auditoría**: [`audit/DEVELOPMENT_LOG.md`](audit/DEVELOPMENT_LOG.md).
+### 2. Historial Canónico de Desarrollo
+- **Bitácora Inmutable**: [`docs/audit/DEVELOPMENT_LOG.md`](audit/DEVELOPMENT_LOG.md) — Registro cronológico inverso (*newest-first*) de todas las especificaciones implementadas, pruebas de regresión, mitigación de riesgos e incidentes certificados (Specs 001 a 086). **Regla de oro: estrictamente aditiva e inmutable**.
 
-### Para Arquitectura y Nuevas Propuestas
-- **Propuestas de mejora del sistema (PROP)**: [`proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md`](proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md).
-- **Requests for Comments (RFCs)**: [`speckit/rfcs/README.md`](speckit/rfcs/README.md).
-- **Historial de planes cerrados**: [`speckit/archive/README.md`](speckit/archive/README.md).
+### 3. Planificación y Backlog Activo
+- **Roadmap del Sistema**: [`docs/speckit/ROADMAP.md`](speckit/ROADMAP.md) — Estado de la flota, matriz de riesgos, backlog de observación continua y próxima iniciativa planificada ([Spec 087: Monolith Decoupling Phase 3](speckit/ROADMAP.md)).
+- **Programa de Especificaciones**: [`docs/speckit/SPEC_PROGRAM.md`](speckit/SPEC_PROGRAM.md) — Paquetes cerrados de Horizonte V5.2, dependencias técnicas y Definición de Terminado (DoD).
+- **Plan de Entrega y Ventanas**: [`docs/speckit/DELIVERY_PLAN.md`](speckit/DELIVERY_PLAN.md) — Ventana activa de observación continua y estabilización de planta a 2500W / 2700W.
+
+### 4. Propuestas de Mejora Resueltas
+- **Índice de Propuestas**: [`docs/proposals/README.md`](proposals/README.md) — Registro de todas las propuestas históricas (PROP-001 a PROP-021) implementadas, certificadas e integradas al código productivo.
+
+### 5. Repositorio de Archivo Histórico
+- **Archivo Consolidado**: [`docs/archive/README.md`](archive/README.md) — Documentos de fases previas, diagnósticos antiguos, planes cerrados y RFCs implementadas, preservados con trazabilidad Git sin ruido documental.
 
 ---
 
-## 🛡️ Reglas de Oro Documentales
+## 🛡️ Reglas de Oro de Calidad e Invariantes
 
-1. **La Joya del Proyecto**: [`audit/DEVELOPMENT_LOG.md`](audit/DEVELOPMENT_LOG.md) debe actualizarse en cada spec o cambio con un registro cronológico inverso (*newest-first*).
-2. **Backlog Único**: [`speckit/ROADMAP.md`](speckit/ROADMAP.md) es la única fuente de verdad para el estado de las especificaciones y riesgos.
-3. **Cero Secretos**: Ningún archivo bajo `docs/` debe contener contraseñas, tokens de Telegram, chat IDs de producción o datos confidenciales de la red.
+1. **Inmutabilidad del Development Log**: [`docs/audit/DEVELOPMENT_LOG.md`](audit/DEVELOPMENT_LOG.md) no se borra, no se trunca ni se reordena; solo admite entradas aditivas en el encabezado.
+2. **Backlog Único**: [`docs/speckit/ROADMAP.md`](speckit/ROADMAP.md) y [`docs/speckit/SPEC_PROGRAM.md`](speckit/SPEC_PROGRAM.md) son las únicas fuentes de verdad de estado técnico.
+3. **Cero Secretos en Repositorio**: `app/config.json`, `app/state.json`, contraseñas y tokens permanecen estrictamente fuera del control de versiones.
+4. **Formato Mobile-First**: Todas las interfaces de usuario para Telegram deben garantizar líneas de $\le 32$ columnas visibles.
+5. **Certificación Obligatoria**: Todo cambio debe validar `py_compile`, `git diff --check`, `pytest -q` y la compuerta de estabilización exhaustiva `speckit-stabilize`.

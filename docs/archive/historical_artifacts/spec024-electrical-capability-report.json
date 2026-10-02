@@ -1,0 +1,53 @@
+﻿{
+  "report_version": "1.0.0",
+  "generated_ts": "2026-08-29T21:52:00-03:00",
+  "source_id": "none",
+  "device_class": "none",
+  "vendor": "none",
+  "model": "none",
+  "firmware": "none",
+  "coverage": {
+    "channels": 0,
+    "phases": 0,
+    "outlets": 0
+  },
+  "result": "blocked",
+  "reason": "missing_hardware_dependency",
+  "inventory": {
+    "miners": [
+      {
+        "model": "Antminer S19j Pro",
+        "firmware": "Vnish",
+        "miner_domain_fields": {
+          "chain_voltage_mv_avg": "DC hashboard voltage (approx 13000-14500 mV), buck converter domain; NOT AC mains voltage",
+          "chain_power_w_total": "DC board total power, calculated from hashboard chip telemetry; NOT AC line active power",
+          "firmware_codes": [
+            "psu_error",
+            "power_voltage_low",
+            "power_voltage_high"
+          ]
+        },
+        "ac_mains_telemetry_capable": false
+      }
+    ],
+    "external_devices": {
+      "smart_pdu": null,
+      "network_ups": null,
+      "energy_meter": null
+    }
+  },
+  "protocol_evidence": {
+    "selected_protocol": null,
+    "authentication_mode": null,
+    "read_operation_allowlist": [],
+    "measurement_map": [],
+    "timeout_seconds": null,
+    "request_budget": null,
+    "documentation_reference": null
+  },
+  "gate_decision": {
+    "status": "blocked",
+    "blocker_summary": "No dedicated network-connected PDU, UPS, or power meter exists on the local mining network. Miner DC board voltage and power cannot be mislabeled as AC input line voltage.",
+    "adapter_approved": false
+  }
+}

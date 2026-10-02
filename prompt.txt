@@ -1,15 +1,19 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD Y PUESTA EN CONTEXTO - MINER ALERTS
+# PROMPT DE CONTINUIDAD Y PUESTA EN CONTEXTO MAESTRA - MINER ALERTS
 # FECHA: 2026-10-02
-# MODELO DESTINO: Gemini 3.8 Flash High (Primary Engine)
+# MODELO DESTINO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
+# RAMA ACTIVA: codex/022-adaptive-acquisition (Working tree 100% limpio)
+# ÚLTIMO COMMIT: 9954bbc feat(spec-086): incident autopsy engine and conversational QA supervisor (PROP-016)
 # ESTADO DEL SISTEMA: 1510 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING
 # ESTADO DE LA FLOTA: 4/4 mineros a 2700W (~395 TH/s continuos, 10.8 kW en cadenas)
 # ==============================================================================
 
-Hola Gemini. Estás iniciando una sesión fresca en el repositorio 'miner-alerts'.
-Esta ventana continúa el trabajo habiendo completado y certificado con éxito las Specs
-080 a 086 (Horizon V5.2 Gobernanza Integrada completado al 100%). Tu misión es tomar
-el control técnico con máxima precisión, seguridad operativa y rigor documental.
+Hola Gemini 3.8 Flash High. Estás asumiendo la conducción técnica del proyecto 'miner-alerts'
+en una sesión de relevo limpia y coordinada.
+
+Esta ventana retoma tras el trabajo colaborativo donde Claude Sonnet 4.6 y Gemini 3.8 Flash High
+completaron y certificaron con éxito las Specs 084, 085 y 086 (Horizonte V5.2 de Gobernanza
+Integrada 100% finalizado y en producción).
 
 --------------------------------------------------------------------------------
 1. LECTURA OBLIGATORIA DE DOCUMENTOS CLAVE (EN ESTE ORDEN)
@@ -17,62 +21,135 @@ el control técnico con máxima precisión, seguridad operativa y rigor document
 Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archivos:
 
 1. AGENTS.md
-   - Constitución técnica, jerarquía de modelos, protocolo de handoff y reglas DoD.
-2. docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md
-   - Informe maestro de la auditoría de directivas (16 directivas en 5 capas P0-P4).
-3. docs/audit/DEVELOPMENT_LOG.md (Primeras 3 entradas superiores newest-first):
-   - [2026-10-02] Spec 086: Autopsia Autónoma de Incidentes y Supervisor Conversacional Q&A en Telegram (PROP-016).
+   - Constitución técnica, jerarquía y roles de modelos, protocolo de handoff prompt.txt,
+     reglas de Spec Definition of Done (DoD) y compuertas speckit-qa / speckit-stabilize.
+2. .specify/memory/constitution.md
+   - Reglas maestras no negociables de seguridad operativa y protección de hardware.
+3. docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md
+   - Informe maestro de la auditoría de gobernanza (16 directivas en 5 capas P0-P4).
+4. docs/audit/DEVELOPMENT_LOG.md (Leer las primeras entradas superiores newest-first):
+   - [2026-10-02] Spec 086: Autopsia Autónoma de Incidentes y Supervisor Conversacional Q&A (PROP-016).
    - [2026-10-02] Spec 085: Governance Orchestrator Extraction — Desacoplamiento del Monolito (PROP-021).
    - [2026-10-01] Spec 084: Governance Dashboard (/directivas), Persistencia SQLite y Deadlock Watchdog (PROP-020).
-4. docs/speckit/ROADMAP.md (Horizonte actual y backlog):
-   - Muestra el estado del backlog y próximas iniciativas tras culminar V5.2.
-5. docs/speckit/SPEC_PROGRAM.md (Programa global de especificaciones).
-6. app/forensics/autopsy_engine.py y app/forensics/autopsy_card.py
-   - Motor forense autónomo post-mortem y generador de tarjetas mobile-first <= 32 cols.
+   - [2026-10-01] Spec 083: FGA Actuator Loop & Elevator Budget Gate Bridge (PROP-019).
+   - [2026-10-01] Spec 082: MinerGovernanceContext Frozen Dataclass (PROP-018).
+5. docs/speckit/ROADMAP.md
+   - Backlog activo, estado de iniciativas 34 a 38, y tareas de observación continua post-Spec 081.
+6. docs/speckit/SPEC_PROGRAM.md
+   - Límites arquitectónicos compartidos, autoridad de acción, topología de runtime y secuencia.
+7. app/governance/_orchestrator_state.py y app/governance/governor_cycle.py
+   - Módulos extraídos en Spec 085: estado compartido thread-safe y ciclo Fan Governor desacoplado.
+8. app/forensics/autopsy_engine.py, app/forensics/autopsy_card.py y app/forensics/conversational_qa.py
+   - Motor forense autónomo post-mortem, tarjetas mobile <= 32 cols y supervisor conversacional zero-cost.
 
 --------------------------------------------------------------------------------
 2. ESTADO OPERATIVO DE PRODUCCIÓN (TELEMETRÍA EN VIVO)
 --------------------------------------------------------------------------------
-Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W:
-- S19JPRO-23: 2700W | 99.73 TH/s | Fan 92% | Chips <80°C | Elevador 1 (2698W)
-- S19JPRO-24: 2700W | ~98-100 TH/s | Fan modulación lazo cerrado | Chips <70°C | Elevador 1 (2698W)
-- S19JPRO-25: 2700W | 100.17 TH/s | Fan 96% | Chips <80°C | Elevador 2 (2699W)
-- S19JPRO-26: 2700W | 97.98 TH/s | Fan 92% | Chips <78°C | Elevador 2 (2699W)
-- Total Flota: ~395.0 TH/s continuos, 10,795 W de potencia medida en cadenas.
+Toda la flota se encuentra operando en su nivel nominal óptimo a 2700W continuo:
+- S19JPRO-23: 2700W | 99.73 TH/s | Fan ~92% | Chips <80°C | Elevador 1 (~2698W)
+- S19JPRO-24: 2700W | ~98-100 TH/s | Fan lazo cerrado | Chips <70°C | Elevador 1 (~2698W)
+- S19JPRO-25: 2700W | 100.17 TH/s | Fan ~96% | Chips <80°C | Elevador 2 (~2699W)
+- S19JPRO-26: 2700W | 97.98 TH/s | Fan ~92% | Chips <78°C | Elevador 2 (~2699W)
+- Total Flota: ~395.0 TH/s continuos, 10.795 W medidos en cadenas de hash.
 - Servicio Windows: NSSM servicio `MinerAlerts` en estado SERVICE_RUNNING, liveness heartbeat activo.
+- Base de datos SQLite: Esquema v7 con tablas operativas (`operational_events`, `governance_snapshots`,
+  `incident_assessments`, `facility_agent_knowledge`, `chain_telemetry_samples`).
+- Suite de pruebas: 1510 passed, 75 subtests passed (0 fallos, 0 errores en ~42s).
 
 --------------------------------------------------------------------------------
-3. RESUMEN DE HITOS RECIENTES CERTIFICADOS (HORIZON V5.2 CULMINADO)
+3. HISTORIAL DE TRABAJO RECIENTE (SPECS 084, 085, 086)
 --------------------------------------------------------------------------------
-- Spec 082 (PROP-018): MinerGovernanceContext frozen dataclass y contrato inmutable entre subsistemas.
-- Spec 083 (PROP-019): Lazo actuador FGA cerrando ciclo con Elevator Budget (Gates 0 a 6).
-- Spec 084 (PROP-020): Governance Dashboard (/directivas), persistencia SQLite de snapshots y watchdog de deadlocks.
-- Spec 085 (PROP-021): Extracción de `governor_cycle.py`, creación de `_orchestrator_state.py` para desacoplar
-  handlers de Telegram (`fans.py`, `interventions.py`), reducción de 572 líneas en `miner_monitor.py`.
-- Spec 086 (PROP-016): Motor autónomo de autopsia forense post-mortem (`IncidentAutopsyEngine`),
-  clasificador determinístico regex en 7 categorías (`LINK_DROP`, `CHAIN_BREAK`, `THERMAL_SHUTDOWN`,
-  `PSU_FAULT`, `AUTOTUNE_STALL`, `POWER_LOSS`, `UNRESOLVED`), persistencia en SQLite (`incident_assessments`),
-  tarjetas mobile-first <= 32 cols, comandos Telegram `/autopsia [minero]` y supervisor conversacional Q&A
-  offline zero-cost. 12 tests nuevos en `tests/test_incident_autopsy.py`.
-- Suite global: 1510 passed, 75 subtests passed (0 fallos, 0 errores en 41.74s).
+
+A. Spec 084 (PROP-020): Governance Dashboard (/directivas) y Watchdog de Deadlocks
+   - Tabla SQLite `governance_snapshots` con índices de alto rendimiento.
+   - Dataclass `GovernanceSnapshot` y evaluador puro `evaluate_recovery_deadlock`.
+   - Comando `/directivas` en Telegram (vista global de flota y drill-down individual).
+   - Deadlock watchdog en tick loop para alertar bucles de enfriamiento (`>300s`) con cooldown de 1800s.
+   - 1483 tests PASS.
+
+B. Spec 085 (PROP-021): Descomposición del Monolito — Extracción del Fan Governor
+   - Módulo `app/governance/_orchestrator_state.py` con accessors thread-safe protegidos por Lock
+     (`get/set_governor_enabled`, `get/set_balancer_enabled`, `get/set_intervention_gov`, etc.).
+   - Eliminados todos los anti-patrones `globals().get("_GLOBAL_INTERVENTION_GOV")`.
+   - Comandos de Telegram `fans.py` e `interventions.py` desacoplados de variables directas de `miner_monitor.py`.
+   - Módulo `app/governance/governor_cycle.py` extrayendo `execute_governor_cycle` y `refresh_vnish_overclock_settings`.
+   - Reducción de 572 líneas en `miner_monitor.py` (de 9.406 a 8.834 líneas).
+   - 15 tests nuevos en `tests/test_governance_orchestrator.py`. Total 1498 tests PASS.
+   - DECISIÓN DE SEGURIDAD OPERATIVA: La extracción de `execute_balancer_cycle` y `check_autotune_watchdog`
+     fue pospuesta a Spec 087+ tras constatar que comparten más de 10 variables globales con `main()`
+     en ~25 sitios del loop de adquisición. Extraerlas requería una arquitectura de desacoplamiento dedicada.
+
+C. Spec 086 (PROP-016): Motor Autónomo de Autopsia Forense y Supervisor Conversacional Q&A
+   - `app/forensics/autopsy_engine.py`: Worker asíncrono con pool de hilos y timeout estricto <= 2.5s.
+     Clasificación determinística regex en 7 categorías: `LINK_DROP`, `CHAIN_BREAK`, `THERMAL_SHUTDOWN`,
+     `PSU_FAULT`, `AUTOTUNE_STALL`, `POWER_LOSS`, `UNRESOLVED`.
+   - `app/core/event_store.py`: Persistencia aditiva en tabla SQLite `incident_assessments`.
+   - `app/forensics/autopsy_card.py`: Tarjetas formateadas con ancho móvil estricto <= 32 columnas.
+   - `app/telegram/commands/autopsy.py`: Comando `/autopsia [minero]` (aliases `/causa_raiz`, `/autopsy`, `/investigar`).
+   - `app/forensics/conversational_qa.py`: Router semántico determinístico offline en lenguaje natural
+     ("<50ms, zero tokens, sin dependencias externas") para responder dudas sobre reinicios, red, térmica y fans.
+   - `app/miner_monitor.py`: Disparo automático no bloqueante ante reinicio `unexpected` (0 ms en loop principal).
+   - 12 tests nuevos en `tests/test_incident_autopsy.py`. Total 1510 tests PASS.
 
 --------------------------------------------------------------------------------
-4. PRÓXIMO OBJETIVO TÉCNICO EN EL BACKLOG
+4. MAPA ARQUITECTÓNICO ACTUAL TRAS SPEC 086
 --------------------------------------------------------------------------------
-Con el Horizonte V5.2 100% completado y certificado, consultar `docs/speckit/ROADMAP.md` y
-`docs/speckit/SPEC_PROGRAM.md` para coordinar con el operador la siguiente prioridad de trabajo:
-- Observación activa de producción (4 mineros estables a 2700W).
-- Fase 3 y 4 de desacoplamiento del monolito (`execute_balancer_cycle` / `check_autotune_watchdog`).
-- Próxima propuesta de valor o auditoría técnica.
+- `app/miner_monitor.py`: 8.876 líneas. Núcleo de adquisición 4028, loop principal `main()`,
+  reinicio de mineros (autoridad exclusiva), y coordinación de hilos.
+- `app/governance/`:
+  * `_orchestrator_state.py`: Estado mutable compartido thread-safe.
+  * `governor_cycle.py`: Modulación PWM en lazo cerrado de ventiladores y sincronización Vnish.
+  * `governance_context.py`: `MinerGovernanceContext` frozen dataclass (fuente de verdad unificada).
+  * `fan_governor.py`, `preset_balancer.py`, `elevator_budget.py`, `facility_agent.py`,
+    `fga_actuator.py`, `directives_dashboard.py`, `post_blackout_guard.py`, `phase_drop_discriminator.py`.
+- `app/forensics/`:
+  * `autopsy_engine.py`: Motor forense post-mortem.
+  * `autopsy_card.py`: Renderizador de tarjetas ejecutivas <= 32 columnas.
+  * `conversational_qa.py`: Supervisor conversacional Q&A offline en Telegram.
+- `app/telegram/`:
+  * `router.py`: Despacho modular de comandos y fallback conversacional.
+  * `commands/`: `autopsy.py`, `directives.py`, `fans.py`, `interventions.py`, `facility.py`, `help.py`, etc.
+  * `fleet_cards.py`, `help_center.py`, `callbacks.py`.
 
 --------------------------------------------------------------------------------
-5. REGLAS DE ORO E INVARIANTES DE SEGURIDAD OPERATIVA
+5. PRÓXIMAS OPCIONES DE TRABAJO EN EL BACKLOG
 --------------------------------------------------------------------------------
-1. NO DISRUPCIÓN INCONSULTA: Prohibido reiniciar mineros o alterar presets si están hasheando sanos.
-2. PROTECCIÓN DE SECRETOS: `app/config.json` y `app/state.json` NUNCA deben commitearse ni exponerse.
-3. FORMATO TELEGRAM: Todo mensaje o tarjeta de Telegram debe respetar el ancho móvil <= 32 columnas.
+Con el Horizonte V5.2 100% cerrado y certificado, coordinar con el operador cuál de los
+siguientes frentes priorizar:
+
+OPCIÓN 1 — Spec 087: Descomposición del Monolito Fase 3 (`execute_balancer_cycle` & `check_autotune_watchdog`)
+  - Meta: Continuar reduciendo `miner_monitor.py` hacia la meta del ROADMAP (<= 6.000 líneas).
+  - Alcance: Extraer `execute_balancer_cycle()` (~L3275-3520, ~250 líneas) a `app/governance/balancer_cycle.py`
+    y `check_autotune_watchdog()` a `app/governance/autotune_watchdog.py`.
+  - Desafío técnico: Diseñar una estructura de inyección o enriquecer `_orchestrator_state.py` para los
+    ~10 globals que interactúan con `main()` (`_POST_BLACKOUT_TRACKER`, `_ACTIVE_PHASE_DROPS`,
+    `_ACTIVE_SCHEDULED_WINDOW`, `_ELEVATOR_CONTINGENCY_STATES`, `_FACILITY_BUDGET_STATE`, etc.)
+    sin introducir acoplamiento circular.
+
+OPCIÓN 2 — Nueva Iniciativa de Mejora de Sistema (docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md)
+  - PROP-003: HW Error Tripwire (Rollback por degradación de silicio ante >50 errores de hardware en 10m).
+  - PROP-005: Latido de Gateway y Supresión de Tormentas por Fallo de Red Local (filtro ante reinicio de router).
+  - PROP-006: Tarjetas de Gráficos Comparativos Multi-Miner (/chart overlays en Telegram).
+
+OPCIÓN 3 — Auditoría de Observabilidad y Estabilidad Operativa
+  - Monitoreo continuo de la telemetría de producción a 2700W.
+  - Validación de salud de la base de datos SQLite y retención de snapshots de gobernanza.
+
+--------------------------------------------------------------------------------
+6. REGLAS DE ORO E INVARIANTES OPERATIVOS ESTRICTOS
+--------------------------------------------------------------------------------
+1. CERO DISRUPCIÓN DE HARDWARE: Prohibido reiniciar mineros o alterar presets si están hasheando sanos.
+   Cualquier acción real requiere validación previa en QA mode y confirmación explícita.
+2. PROTECCIÓN TOTAL DE SECRETOS: `app/config.json` y `app/state.json` jamás se versionan ni exponen.
+3. FORMATO TELEGRAM MOBILE-FIRST: Todo mensaje, tabla o tarjeta debe respetar ancho visible <= 32 columnas.
 4. GATES DE CALIDAD OBLIGATORIOS:
-   - Antes de implementar: ejecutar `speckit-qa`.
-   - Antes de commit/push: ejecutar `speckit-stabilize` (8 gates, tests 100% PASS, nssm restart).
-5. HIGIENE GIT: No dejar trailing whitespaces en ningún archivo modificado (`git diff --check`).
-6. MODEL WORKLOAD: Mantener Gemini 3.8 Flash High como motor principal recomendado.
+   - Antes de implementar: ejecutar skill `speckit-qa`.
+   - Antes de commit/push: ejecutar skill `speckit-stabilize` (8 compuertas, 100% tests PASS, restart NSSM).
+5. HIGIENE GIT: Cero trailing whitespaces en cualquier diff (`git diff --check`).
+6. ENCODING EN WINDOWS / POWERSHELL:
+   - NUNCA usar `Set-Content ... -Encoding UTF8` en archivos del proyecto (PowerShell introduce BOM \ufeff).
+   - Usar siempre herramientas de edición directa del agente (`write_to_file`, `replace_file_content`) o en
+     PowerShell: `[System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))`.
+7. MODEL WORKLOAD: Mantener Gemini 3.8 Flash High como motor principal para arquitectura, lógica pura,
+   tests exhaustivos y documentación; escalar a Claude Sonnet 4.6 (Thinking) únicamente para concurrencia
+   multihilo viva o máquinas de estados con riesgo de outages.

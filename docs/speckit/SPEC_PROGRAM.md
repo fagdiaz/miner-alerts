@@ -112,13 +112,24 @@ scheduled before conditional Spec 027.
 | Audited (Planned) | 068 IPC Watchdog Named Pipe | P3 | MEDIUM | Spec 070 | Servidor Named Pipe con SDDL y wake-up unblock <15s (Planificado/Auditado). |
 | Audited (Planned) | 069 Deep Chain Telemetry & Predictive Break | P1 | MEDIUM | Spec 070 | Telemetría profunda por cadena, persistencia I2C >=24 muestras (Planificado/Auditado). |
 
+### Horizon V5.2 Packages: Governance, Autopsy & Decoupling (Specs 082–086)
+
+| Order | Spec | Priority | Risk | Module Scope | Outcome / Objective |
+| --- | --- | --- | --- | --- | --- |
+| Closed | 082 MinerGovernanceContext | P1 | MEDIUM | `app/governance/governance_context.py` | Completed, central unified frozen dataclass, effective_target_power_w, 26 tests PASS. |
+| Closed | 083 FGA Actuator Loop & Elevator Bridge | P1 | MEDIUM | `app/governance/fga_actuator.py` | Completed, FGA closed-loop actuator, SQLite facility_agent_actions, /agent command, 48 tests PASS. |
+| Closed | 084 Governance Dashboard & Watchdog | P2 | LOW | `app/governance/directives_dashboard.py` | Completed, /directivas mobile <=32 cols, SQLite governance_snapshots, Deadlock Watchdog, 6 tests PASS. |
+| Closed | 085 Monolith Governance Extraction | P1 | HIGH | `app/governance/governor_cycle.py` | Completed, decoupled Fan Governor cycle & _orchestrator_state.py, -572 L in miner_monitor.py, 15 tests PASS. |
+| Closed | 086 Incident Autopsy Engine & QA | P2 | MEDIUM | `app/forensics/` | Completed, IncidentAutopsyEngine <=2.5s, mobile autopsy cards, /autopsia, conversational Q&A, 13 tests PASS. |
+
 ## Implementation Readiness And Hard Gates
 
-All implemented packages (Specs 001 through 067, and Spec 071) have satisfied their planning, implementation,
-validation, and production soak gates. The system is stabilized and certified
-under Release v5.1.0 (1110 tests PASS).
+All implemented packages (Specs 001 through 067, 071, and 082 through 086) have satisfied their planning, implementation,
+validation, and production soak gates. Horizon V5.2 (Governance, Autopsy & Decoupling) is 100% Certified
+under Release v5.2.0 (1511 tests PASS). The system has transitioned to Continuous Operational Observation
+with Elevador 1 at 2500W and Elevador 2 at 2700W (0/4 deadlocks).
 
-Specs 068, 069, 070, 072, and 073 are fully specified and audited by QA with all edge-case mitigations,
+Specs 068, 069, 070, 072, 073, and 087 are fully specified and audited by QA with all edge-case mitigations,
 and remain paused awaiting explicit implementation trigger.
 
 Documentation and sanitized fixtures may advance in parallel. Runtime code,

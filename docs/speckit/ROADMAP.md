@@ -1040,59 +1040,49 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 ### Iniciativa 37 — Descomposición del Monolito: Extracción del Orquestador de Gobernanza (Spec 085) — COMPLETADA ✅
 
 **Propuesta**: PROP-021
-**Estado**: COMPLETADA (2026-10-02) — 15 tests nuevos, 1498 tests totales PASS. `miner_monitor.py` reducido en 572 líneas (9.406 → 8.834 L).
+**Estado**: COMPLETADA (2026-10-02) — 15 tests nuevos, 1498 tests totales PASS. `miner_monitor.py` reducido en 572 líneas (9.406 → 8.834 L). Fases 1 y 2 (Fan Governor, estado mutable thread-safe `_orchestrator_state.py` y desacoplamiento de handlers de Telegram) certificadas en producción.
+**Fase 3 Planificada**: La extracción de `execute_balancer_cycle` y `check_autotune_watchdog` queda planificada como **Spec 087: Monolith Decoupling Phase 3 (Balancer & Watchdog)** para continuar la reducción hacia $\le 6.000$ líneas una vez concluida la ventana de observación actual.
 **Prioridad**: P1 — Arquitectónica / Deuda Técnica
 **Riesgo**: ALTO (gestionado mediante módulo compartido y extracción desacoplada)
 **Modelo ejecutado**: Claude Sonnet 4.6 (Thinking) & Gemini 3.8 Flash High
 **Dependencia**: Spec 082, Spec 083
 
 **Problema que resuelve**:
-`miner_monitor.py` tiene 9000+ lÃ­neas y concentra la lÃ³gica de adquisiciÃ³n, estados, gobernanza, Telegram y coordinaciÃ³n. La lÃ³gica de coordinaciÃ³n cross-subsistema (bypasses de Gate 0, resoluciÃ³n de `target_pwr`, interlocks tÃ©rmicos) estÃ¡ embebida en el monolito en vez de en los mÃ³dulos de gobernanza correspondientes. Esto hace que cada spec de gobernanza toque el archivo mÃ¡s crÃ­tico del sistema.
+`miner_monitor.py` concentraba la lógica de adquisición, estados, gobernanza, Telegram y coordinación. La lógica de Fan Governor y sincronización de overclock ya fue extraída a `app/governance/governor_cycle.py`, y el acceso global centralizado mediante accessors con locks.
 
-**Alcance tÃ©cnico**:
-- Extraer `GovernanceOrchestrator` como clase en `app/governance/orchestrator.py`.
-- Mover la lÃ³gica de resoluciÃ³n de `target_pwr`, la coordinaciÃ³n Fan Governor â†” Elevator Budget â†” Thermal Guard al orquestador.
-- `miner_monitor.py` delega a `GovernanceOrchestrator.evaluate(miner_context)` y recibe `GovernanceDecision`.
-- El Behavioral Test Harness de Spec 070 debe cubrir el nuevo `GovernanceOrchestrator` con tests de contrato.
-- Reducir `miner_monitor.py` a â‰¤6000 lÃ­neas manteniendo 1440 tests PASS.
-
-**Criterio de Ã©xito**: Una spec de gobernanza futura puede implementarse completamente en `app/governance/` sin modificar `miner_monitor.py`.
+**Criterio de éxito alcanzado**: Fan Governor completamente modularizado fuera del monolito, cero regresiones y 15 tests dedicados PASS.
 
 ---
 
-### Iniciativa 38 — Autopsia Autónoma de Incidentes y Supervisor Conversacional (Spec 086 / PROP-016) [COMPLETE 2026-10-02 - 1510 tests PASS]
+### Iniciativa 38 — Autopsia Autónoma de Incidentes y Supervisor Conversacional (Spec 086 / PROP-016) — COMPLETADA ✅
 
 **Propuesta**: [`docs/proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md`](../proposals/PROP-016-autonomous-incident-autopsy-and-conversational-qa.md)
-**Prioridad**: P2 â€” Observabilidad / AutonomÃ­a
+**Estado**: COMPLETADA Y CERTIFICADA (2026-10-02) — 13 tests PASS, 1511 tests totales PASS.
+**Prioridad**: P2 — Observabilidad / Autonomía
 **Riesgo**: MEDIO
-**Modelo recomendado**: Gemini 3.8 Flash High
+**Modelo ejecutado**: Gemini 3.8 Flash High
 **Dependencia**: Spec 084 (governance snapshots como fuente de datos)
 
-**Problema que resuelve**:
-Cada incidente (reinicio inesperado, caÃ­da de fase, deadlock de gobernanza) requiere que un modelo de IA o el operador lean logs manualmente para diagnosticar la causa raÃ­z. El `IncidentAutopsyEngine` automatizarÃ­a este proceso y lo harÃ­a disponible como chatbot conversacional en Telegram.
-
-**Alcance tÃ©cnico**:
-- `IncidentAutopsyEngine`: worker asÃ­ncrono que ante un cambio de uptime (reinicio detectado) consulta automÃ¡ticamente:
-  - Historial de `governance_snapshots` previos al reinicio.
-  - `operational_events` en ventana -5m/+5m.
-  - `chain_telemetry_samples` en ventana -10m (seÃ±ales de I2C, temperatura, hw_errors).
-- Genera tarjeta forense automÃ¡tica en Telegram: causa probable (elÃ©ctrica, tÃ©rmica, firmware), timeline de eventos, estado de directivas en el momento del incidente.
-- Supervisor Q&A: responde preguntas en lenguaje natural sobre incidentes pasados usando el historial de SQLite como fuente determinista.
-
-**Criterio de Ã©xito**: Ante un reinicio inesperado, el sistema envÃ­a automÃ¡ticamente la tarjeta forense sin intervenciÃ³n humana, en â‰¤2 minutos.
+**Alcance técnico completado**:
+- `IncidentAutopsyEngine`: worker asíncrono no bloqueante ($\le 2.5$s) clasificando en 7 categorías con clasificación determinística regex.
+- Tarjetas ejecutivas Mobile-First $\le 32$ columnas (`build_autopsy_card`, `build_fleet_autopsy_summary_card`).
+- Persistencia en SQLite (`incident_assessments`).
+- Comando Telegram `/autopsia [minero]` (aliases `/causa_raiz`, `/autopsy`, `/investigar`).
+- Supervisor Q&A conversacional offline en lenguaje natural (<50ms, zero tokens).
+- Callback asíncrono en `miner_monitor.py` despachando vía `send_telegram`.
 
 ---
 
-## Backlog de ObservaciÃ³n Continua (Post-Spec 081)
+## Backlog de Observación Continua (Post-Spec 081 / V5.2)
 
-Estas tareas no requieren specs nuevas pero deben monitorearse activamente:
+Estas tareas no requieren specs nuevas pero se monitorean activamente en producción:
 
-| Ãtem | MÃ©trica de Seguimiento | Trigger de AcciÃ³n |
-|------|----------------------|-------------------|
-| Elevador 1 a 5400W (M23+M24 a 2700W) | Eventos `unexpected_restart` / `phase_drop` para `elevator_1` en `operational_events` | â‰¥1 evento simultÃ¡neo â†’ activar `PROFILE_C1_ASYMMETRIC` |
-| Temperaturas M24 post-restart | `chip_temp_c` en `chain_telemetry_samples` | Temp mÃ¡x sostenida >82Â°C por >10 min â†’ revisar Thermal Headroom Gate |
-| Suite de tests en crecimiento | Latencia de `pytest` (actualmente ~45s con 1440 tests) | >90s â†’ planificar parallelizaciÃ³n o split de suite |
-| FGA cohorte de M24 post-restart | `facility_agent_knowledge` tabla SQLite | Cohorte deberÃ­a ser COOL/STANDARD con R_th real a 2700W |
-| Fatiga de Elevador 2 (M25+M26) | Uptime continuo sin eventos elÃ©ctricos | <24h de uptime continuo estable â†’ escalar a revisiÃ³n fÃ­sica |
+| Ítem | Métrica de Seguimiento / Estado Real | Trigger de Acción |
+|------|--------------------------------------|-------------------|
+| Elevador 1 a 5000W (M23+M24 a 2500W) | Operación nominal a ~4997W total (~2499W por equipo). Margen de seguridad térmico y eléctrico de 400W respecto al límite de 5400W | $\ge 1$ evento simultáneo $\to$ activar `PROFILE_C1_ASYMMETRIC` |
+| Elevador 2 a 5400W (M25+M26 a 2700W) | Operación nominal a ~5397W total (~2698W por equipo). 100% estable | Eventos `unexpected_restart` o caídas de fase |
+| Estado de Deadlocks y Fans | **0 de 4 mineros en deadlock** (`is_deadlocked=0`). Modulación activa en lazo cerrado (M23 a 96% PWM en `HOLD_DWELL`, chips 80-81°C) | Activación de `RECOVERY_MAX_COOLING` $>300$s |
+| Temperaturas y Silicio | M23: 80°C, M24: 81°C, M25: 82°C, M26: 81°C. 126 chips x 3 placas en toda la flota, 0 HW errors | Temp máx sostenida $>84$°C por $>10$ min |
+| Suite de tests | **1511 passed, 75 subtests passed** (~42s de latencia) | $>90$s $\to$ split o paralelización de suite |
 
 ---

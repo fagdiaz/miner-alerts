@@ -3,7 +3,42 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-02] - Estabilización Operativa Elevador 1 y Normalización Documental Horizonte V5.2
 
+* **Contexto**:
+  - Motivación: S19JPRO-23 y S19JPRO-24 en Elevador 1 se encontraban operando físicamente a ~2498-2499W con preset de 2500W en cgminer, mientras que `app/config.json` mantenía una directiva de potencia nominal de 2700.0W. La brecha de ~200W entre la potencia real y el target forzaba permanentemente la condición de `RECOVERY_MAX_COOLING` en el Fan Governor (100% PWM), disparando periódicamente alertas de deadlock en Telegram a través del watchdog de la Spec 084.
+  - Objetivo: Alinear operativamente `target_power_w` a 2500.0W para S19JPRO-23 y S19JPRO-24 en `app/config.json` manteniendo S19JPRO-25 y S19JPRO-26 a 2700.0W en Elevador 2; verificar la modulación térmica en lazo cerrado de los ventiladores, el cese total de alertas de deadlock, y ejecutar la normalización documental completa del Horizonte V5.2 de Gobernanza Integrada (`DELIVERY_PLAN.md`, `ROADMAP.md`, `SPEC_PROGRAM.md`, `DIRECTIVES_HARMONIZATION_AUDIT.md`).
+  - Baseline previo: 1511 tests PASS, 75 subtests PASS, NSSM MinerAlerts RUNNING (PID 46576).
+
+* **Implementación**:
+  1. Configuración Operativa (`app/config.json` - entorno local no versionado):
+     - Ajustado `target_power_w` a 2500.0W para S19JPRO-23 y S19JPRO-24 (Elevador 1).
+     - Mantenido `target_power_w` a 2700.0W para S19JPRO-25 y S19JPRO-26 (Elevador 2).
+     - Reiniciado el servicio Windows NSSM `MinerAlerts` adquiriendo mutex sin fricción.
+  2. Telemetría y Validación en Vivo:
+     - Erradicación total de `RECOVERY_MAX_COOLING` en toda la flota (0 de 4 mineros deadlocked).
+     - Cese completo de alertas periódicas de deadlock en Telegram.
+     - Ventiladores modulando en lazo cerrado térmico: M23 a 96% PWM en `HOLD_DWELL` (80.0°C), M24 a 81.0°C.
+     - Elevador 1 operando a ~4997W (~400W de margen eléctrico y térmico sobre el límite de 5400W).
+     - Elevador 2 operando nominal a ~5397W (límite de 5400W).
+     - Flota entregando ~387.5 TH/s continuos, 10.4 kW en cadenas de hash, cero chips caídos ni errores de hardware.
+  3. Armonización Documental Horizonte V5.2:
+     - `docs/speckit/DELIVERY_PLAN.md`: Integradas Specs 083, 084, 085, 086 y Estabilización Operativa V5.2 en calendario e hito 2026-10-02.
+     - `docs/speckit/ROADMAP.md`: Certificadas Fases 1 y 2 de Iniciativa 37 (-572 L monolito), planificada Fase 3 como Spec 087, completada Iniciativa 38, y actualizado backlog de observación con métricas reales.
+     - `docs/speckit/SPEC_PROGRAM.md`: Paquetes V5.2 cerrados y declarada la transición a Observación Operativa Continua.
+     - `docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`: Certificada la resolución definitiva de fricciones F-01 y F-02 y cerrada la auditoría.
+
+* **Resultados de Validación**:
+  - `py_compile`: exit 0 en `app/miner_monitor.py`, `app/governance/governor_cycle.py`, `app/governance/_orchestrator_state.py`, `app/forensics/autopsy_engine.py` ✅
+  - `git diff --check`: exit 0 (cero trailing whitespaces) ✅
+  - `pytest -q`: **1511 passed, 75 subtests passed** in 41.5s ✅
+  - NSSM Service: `MinerAlerts` en SERVICE_RUNNING ✅
+  - Transición del sistema a: **MODO SOLO MONITOREO CONTINUO**.
+
+* **Invariantes Preservados**:
+  - Hardware protegido térmicamente y sin fatiga en contactores ni fuentes.
+  - Secretos y estados locales preservados fuera del control de versiones.
+  - Formato Telegram Mobile-First $\le 32$ columnas respetado en todas las interfaces.
 
 ## [2026-10-02] - Estabilización Operativa y Hotfix de Despacho de Autopsia Asíncrona (Post-Spec 086)
 

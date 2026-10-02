@@ -1,4 +1,4 @@
-﻿# Miner Alerts Delivery Plan
+# Miner Alerts Delivery Plan
 
 **Planning baseline**: 2026-09-15
 **Planning horizon**: 2026-09-15 to 2026-12-20
@@ -88,6 +88,11 @@ safety gates are not compressed to recover an estimate.
 
 
 | Spec 082 MinerGovernanceContext | Closed 2026-10-01 | frozen dataclass centralizada, ctx param en Fan Governor, effective_target_power_w, 26 contract tests | 1466 tests PASS, 75 subtests PASS. |
+| Spec 083 FGA Actuator Loop | Closed 2026-10-01 | FGA ElevatorBudget Bridge, SQLite facility_agent_actions, /agent run y /agent history | 48 tests añadidos, 1477 tests PASS, 75 subtests PASS. |
+| Spec 084 Governance Dashboard | Closed 2026-10-01 | /directivas, snapshots SQLite, Deadlock Watchdog (>300s) | 6 tests añadidos, 1483 tests PASS, 75 subtests PASS. |
+| Spec 085 Governance Orchestrator | Closed 2026-10-02 | Extracción governor_cycle.py, _orchestrator_state.py, desacoplamiento fans.py e interventions.py, -572 L monolito | 15 tests añadidos, 1498 tests PASS, 75 subtests PASS. |
+| Spec 086 Incident Autopsy Engine | Closed 2026-10-02 | IncidentAutopsyEngine autónomo, tarjetas mobile <= 32 cols, /autopsia, Q&A conversacional offline | 12 tests añadidos, 1510 tests PASS, 75 subtests PASS. |
+| Estabilización Operativa V5.2 | Closed 2026-10-02 | Hotfix callback asíncrono, alineación de targets Elevador 1 (2500W), erradicación deadlocks (0/4), certificación speckit-stabilize | 1 test añadido, 1511 tests PASS, 75 subtests PASS. |
 
 ## Milestones
 
@@ -125,6 +130,7 @@ safety gates are not compressed to recover an estimate.
 | 2026-09-15 | V5.0.1 Hardware Resilience & Seasonality (Specs 061-063) | SQLite WAL mode, HW Error Tripwire y gobernador estacional, 993 tests PASS. |
 | 2026-09-15 | V5.0.2 Supervisory Hooks & Multi-Miner UX (Specs 064-065) | Pipeline declarativo de hooks en CoreSupervisoryEngine y gráficos comparativos multi-miner, 1047 tests PASS. |
 | 2026-09-15 | V5.0.3 Cold-Boot Fleet Grace Period Release (Spec 066) | Supresión de streaks de arranque, tarjeta 🟢 FLOTA RESTABLECIDA y 1062 tests PASS certificados en producción. |
+| 2026-10-02 | Horizon V5.2 Closed & Operational Observation | All 16 directives harmonized, 4 miners hashing stable, 1511 tests PASS, zero deadlocks. |
 
 ## Review And Bug-Fix Rhythm
 

@@ -1,75 +1,38 @@
 # ==============================================================================
-# PROMPT DE CONTINUIDAD Y PUESTA EN CONTEXTO MAESTRA - MINER ALERTS
-# FECHA: 2026-10-02 (Post-Alineación Operativa de Targets Elevador 1 a 2500W)
-# MODELO DESTINO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
-# RAMA ACTIVA: codex/022-adaptive-acquisition (Working tree 100% limpio)
-# ÚLTIMO COMMIT: c9d8aca chore: sync prompt.txt with certified stabilization and service restart
-# ESTADO DEL SISTEMA: 1511 tests PASS, 75 subtests PASS, 0 fallos, NSSM RUNNING (PID 46576)
-# ESTADO DE LA FLOTA: 4/4 mineros estables: Elevador 1 a 2500W (~5 kW) | Elevador 2 a 2700W (~5.4 kW)
-# TOTAL FLOTA: ~387 TH/s continuos, 10.4 kW en cadenas, CERO deadlocks (0/4)
+# ESTADO DEL SISTEMA: MODO SOLO MONITOREO CONTINUO
+# FECHA: 2026-10-02
+# MODELO PRINCIPAL RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
+# RAMA: codex/022-adaptive-acquisition
+# CERTIFICACIÓN: speckit-stabilize 8/8 GATES PASS | 1511 tests PASS (75 subtests PASS)
+# SERVICIO: Windows NSSM MinerAlerts RUNNING (PID activo)
 # ==============================================================================
 
-Hola Gemini 3.8 Flash High. Estás asumiendo la conducción técnica del proyecto 'miner-alerts'
-en una sesión de relevo limpia y coordinada.
+1. ESTADO GENERAL DE LA FLOTA Y GOBERNANZA
+- Horizonte V5.2 (Gobernanza Integrada, Autopsia Autónoma y Desacoplamiento) 100% completado y certificado.
+- Suite de pruebas de regresión: 1511 tests PASS, 75 subtests PASS (0 fallos).
+- Compilación de sintaxis py_compile: 100% exit 0 en todos los módulos de app/.
+- Depuración de transitorios completada (13 ítems limpiados, 4.35 MB liberados).
+- Repositorio y documentación completamente normalizados (ROADMAP, DELIVERY_PLAN, SPEC_PROGRAM, DIRECTIVES_HARMONIZATION_AUDIT, DEVELOPMENT_LOG).
+- Cero secretos versionados (app/config.json y app/state.json protegidos e intactos).
 
-Esta ventana retoma tras la resolución operativa de la discrepancia de targets en Elevador 1
-(mineros 23 y 24) solicitada explícitamente por el operador para mitigar las alertas de
-Deadlock Watchdog de la Spec 084.
+2. TELEMETRÍA OPERATIVA Y DIAGNÓSTICO EN VIVO (2026-10-02)
+- Elevador 2 (5400W nominal):
+  * S19JPRO-25: 2699W | Target: 2700W | Fans: 100% (HOLD_TARGET) | Temp: 82.0°C | Deadlocked: 0
+  * S19JPRO-26: 2698W | Target: 2700W | Fans: 100% (HOLD_TARGET) | Temp: 81.0°C | Deadlocked: 0
+  * Operación perfectamente nominal a ~5397W sostenidos.
+- Elevador 1 (5400W nominal, margen de seguridad):
+  * S19JPRO-24: 2498W | Target: 2500W | Fans: 100% (HOLD_TARGET) | Temp: 81.0°C | Deadlocked: 0
+  * S19JPRO-23: 2298W | Target: 2500W | Fans: 100% (RECOVERY_MAX_COOLING) | Temp: 80.0°C | Deadlocked: 1
+- DIAGNÓSTICO FORENSE S19JPRO-23:
+  * A las 16:34:44, la Cadena 1 de M23 alcanzó 84°C (COOLING_WARNING: SATURATED).
+  * El daemon interno de VNish (preset_switcher con decrease_temp: 84°C) ejecutó un desescalado térmico autónomo de 2500W a 2300W (consumo real 2298W).
+  * Al caer la potencia a 2298W mientras target_power_w en app/config.json permanece en 2500.0W, la condición Fan Governor (current_w < target_w - 120W) entró en RECOVERY_MAX_COOLING (100% fans).
+  * El Deadlock Watchdog (Spec 084) detectó la permanencia en RECOVERY_MAX_COOLING por >300s y emitió alerta a Telegram a las 16:44:14.
+  * Opciones operativas para el operador:
+    a) Alinear target_power_w de S19JPRO-23 a 2300.0W en app/config.json si la temperatura ambiental no permite sostener 2500W (elimina de inmediato el deadlock y permite modular fans a 82°C).
+    b) Permitir que VNish re-escale automáticamente a 2500W cuando la temperatura de chip baje de 79°C (rise_temp en VNish).
 
---------------------------------------------------------------------------------
-1. LECTURA OBLIGATORIA DE DOCUMENTOS CLAVE (EN ESTE ORDEN)
---------------------------------------------------------------------------------
-Antes de proponer o ejecutar cualquier cambio, ejecuta view_file en estos archivos:
-
-1. AGENTS.md
-   - Constitución técnica, jerarquía y roles de modelos, protocolo de handoff prompt.txt,
-     reglas de Spec Definition of Done (DoD) y compuertas speckit-qa / speckit-stabilize.
-2. .specify/memory/constitution.md
-   - Reglas maestras no negociables de seguridad operativa y protección de hardware.
-3. docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md
-   - Fricciones F-01 y F-02 ("El Nudo S19JPRO-24" y "Trampa de RECOVERY_MAX_COOLING").
-4. docs/audit/DEVELOPMENT_LOG.md (Primeras entradas superiores):
-   - Estabilización Operativa y Hotfix de Despacho de Autopsia Asíncrona (Post-Spec 086).
-   - Spec 086: Autopsia Autónoma de Incidentes y Supervisor Conversacional Q&A (PROP-016).
-   - Spec 085: Governance Orchestrator Extraction — Desacoplamiento del Monolito (PROP-021).
-   - Spec 084: Governance Dashboard (/directivas), Persistencia SQLite y Deadlock Watchdog (PROP-020).
-5. docs/speckit/ROADMAP.md y docs/speckit/SPEC_PROGRAM.md.
-
---------------------------------------------------------------------------------
-2. ESTADO OPERATIVO DE PRODUCCIÓN (14:48 HS)
---------------------------------------------------------------------------------
-Ajuste operacional aplicado en `app/config.json` a petición expresa del operador:
-- Elevador 1: `target_power_w: 2500.0` para S19JPRO-23 y S19JPRO-24.
-- Elevador 2: `target_power_w: 2700.0` para S19JPRO-25 y S19JPRO-26.
-
-TELEMETRÍA EN VIVO Y SNAPSHOTS DE GOBERNANZA:
-- S19JPRO-23: 2499W | Target 2500W | Fan 96% (HOLD_DWELL) | Chips 80.0°C | Deadlocked: 0
-- S19JPRO-24: 2498W | Target 2500W | Fan 100% (HOLD_TARGET) | Chips 81.0°C | Deadlocked: 0
-- S19JPRO-25: 2699W | Target 2700W | Fan 100% (HOLD_TARGET) | Chips 82.0°C | Deadlocked: 0
-- S19JPRO-26: 2698W | Target 2700W | Fan 92% (HOLD_TARGET) | Chips 81.0°C | Deadlocked: 0
-
-RESULTADOS DEL AJUSTE:
-1. `RECOVERY_MAX_COOLING` desactivado en toda la flota.
-2. Deadlocks activos: 0 de 4 mineros.
-3. Las alertas periódicas en Telegram del Watchdog de Deadlocks han cesado por completo.
-4. M23 moduló ventiladores de 100% a 96% en lazo cerrado térmico.
-5. Elevador 1 opera con un consumo seguro de ~4997W (margen eléctrico de ~400W).
-6. Elevador 2 opera a potencia nominal de 5397W (límite de 5400W).
-
---------------------------------------------------------------------------------
-3. PRÓXIMAS OPCIONES DE TRABAJO EN EL BACKLOG
---------------------------------------------------------------------------------
-1. CONTINUAR OBSERVACIÓN OPERATIVA:
-   - Monitorear la respuesta térmica de la flota con Elevador 1 a 2500W y Elevador 2 a 2700W.
-2. SPEC 087: Descomposición del Monolito Fase 3:
-   - Extraer `execute_balancer_cycle()` y `check_autotune_watchdog()` hacia `app/governance/`.
-
---------------------------------------------------------------------------------
-4. REGLAS DE ORO E INVARIANTES OPERATIVOS ESTRICTOS
---------------------------------------------------------------------------------
-1. CERO DISRUPCIÓN DE HARDWARE: Prohibido reiniciar mineros o alterar presets si están hasheando sanos.
-2. PROTECCIÓN TOTAL DE SECRETOS: `app/config.json` y `app/state.json` jamás se versionan ni exponen.
-3. FORMATO TELEGRAM MOBILE-FIRST: Ancho visible <= 32 columnas.
-4. GATES DE CALIDAD OBLIGATORIOS: speckit-qa antes de implementar, speckit-stabilize antes de push.
-5. MODEL WORKLOAD: Mantener Gemini 3.8 Flash High como motor principal; escalar a Claude Sonnet 4.6 (Thinking)
-   únicamente para concurrencia multihilo viva con riesgo de outages.
+3. DIRECTRICES DE OPERACIÓN ("MODO SOLO MONITOREO CONTINUO")
+- NO se requieren modificaciones de código en esta etapa. El sistema se encuentra en modo pasivo de observación continua.
+- El servicio Windows NSSM MinerAlerts se encarga de la supervisión continua, ingesta de telemetría y respuestas de Telegram (/autopsia, /directivas, etc.).
+- Toda intervención adicional de código queda congelada a menos que ocurra una avería física de hardware o un corte de red.

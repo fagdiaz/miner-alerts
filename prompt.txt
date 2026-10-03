@@ -1,32 +1,43 @@
 # ==============================================================================
-# ESTADO DEL SISTEMA: MODO SOLO MONITOREO CONTINUO (FLOTA A 2700W NOMINAL)
-# FECHA: 2026-10-03 (09:34 HS)
-# MODELO PRINCIPAL RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
-# RAMA: codex/022-adaptive-acquisition (Working tree limpio, 1511 tests PASS)
-# SERVICIO: Windows NSSM MinerAlerts RUNNING
-# ESTADO DE PLANTA (POST-ESCALADO ELEVADOR 1):
-#   - S19JPRO-23 (Elevador 1): Target 2700W | Current 2698W | Fan 92% (HOLD_DWELL) | Chip 60.0°C | Deadlock: 0
-#   - S19JPRO-24 (Elevador 1): Target 2700W | Current 2699W | Fan 92% (HOLD_DWELL) | Chip 75.0°C | Deadlock: 0
-#   - S19JPRO-25 (Elevador 2): Target 2700W | Current 2699W | Fan 92% (STEP_DOWN)  | Chip 77.0°C | Deadlock: 0
-#   - S19JPRO-26 (Elevador 2): Target 2700W | Current 2698W | Fan 92% (STEP_DOWN)  | Chip 76.0°C | Deadlock: 0
-# TOTAL FLOTA ACTUAL: ~395-400 TH/s | ~10.79 kW | 0 DEADLOCKS
+# ESTADO DE OBSERVACIÓN: SUPRESIÓN DE SPAM EN TELEGRAM Y HARDENING DE WATCHDOG
+# FECHA: 2026-10-03 (18:50 HS)
+# MODELO EJECUTOR: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
+# PRÓXIMO MODELO RECOMENDADO: Gemini 3.8 Flash High
+# RAMA: codex/022-adaptive-acquisition
+# CONTEXTO: 1514 tests PASS (+3 nuevos), 75 subtests PASS, 8/8 gates PASS, NSSM RUNNING
+# ESTADO FLOTA: ~400 TH/s (10.79 kW), Elevador 1 (2700W) y Elevador 2 (2700W)
 # ==============================================================================
 
-1. ESTADO DE PLANTA Y RESUMEN DE MANIOBRA
-- El escalado de Elevador 1 (S19JPRO-23 y S19JPRO-24) de 2500W a 2700W fue ejecutado de manera escalonada (staggered) y segura.
-- Ambos equipos fueron configurados en preset 2700W en VNish, completaron su ciclo de autotune e inicialización sin errores.
-- `app/config.json` fue alineado a `target_power_w: 2700.0` para S19JPRO-23 y S19JPRO-24.
-- El servicio Windows NSSM MinerAlerts fue reiniciado, superó el Cold-Boot Grace Period y notificó flota restablecida.
-- Las 4 máquinas de la planta operan ahora a 2700W nominal con 0 deadlocks y modulación de fans al 92% PWM.
+ESTADO DE PRODUCCIÓN Y HARDENING:
+El endurecimiento del Deadlock Watchdog y la supresión de falsas alarmas en Telegram
+ha sido completado con éxito, verificado al 100% y puesto en producción en caliente:
 
-2. BALANCE ELÉCTRICO Y TÉRMICO
-- Elevador 1: ~5397W (carga nominal plena de 5400W).
-- Elevador 2: ~5397W (carga nominal plena de 5400W).
-- Carga total en barras: ~10.79 kW.
-- Chips en rango óptimo: 60°C a 77°C.
-- Vigilancia para la tarde: si el calor ambiental hace que M23 toque 84°C, el autoswitcher de VNish bajará preventivamente a 2500W.
+1. WATCHDOG DISPARO POR FLANCO (EDGE-TRIGGERED):
+   - Eliminado el reenvío periódico ciego cada 1800s.
+   - Estado activo en memoria `_DEADLOCK_ALERT_ACTIVE[miner_name]`.
+   - Se emite una única alerta ante la transición de entrada a estancamiento (>300s)
+     con `is_command=False` (categoría WARNING).
+   - Se emite un mensaje único de recuperación cuando el minero normaliza:
+     `🟢 DESPEJADO: {miner_name} salió de estancamiento. Operando normal en {power_w:.0f}W.`
+     con categoría INFO y se resetea la bandera.
 
-3. DIRECTRICES DE OPERACIÓN ("MODO SOLO MONITOREO CONTINUO")
-- La planta se encuentra en régimen pleno de hashing.
-- Ninguna intervención adicional de código o configuración es requerida.
-- Mantener monitoreo pasivo continuo.
+2. ADAPTACIÓN TÉRMICA INTELIGENTE EN EVALUACIÓN DE DEADLOCK:
+   - `evaluate_recovery_deadlock` ahora recibe `rate_ths`, `active_boards` y `current_power_w`.
+   - Si el minero se encuentra hasheando normalmente (rate >= 80 TH/s, 3 placas y potencia
+     en un preset térmico >= 2200W), se descarta la condición de deadlock.
+   - Esto evita clasificar como falla los desescalados legítimos del firmware VNish durante
+     las horas calurosas de la tarde (`decrease_temp: 84`).
+
+3. SUPRESIÓN DE ALERTA CHAIN_HEALTH EN ARRANQUE / WARM-UP:
+   - `evaluate_chain_health_streak` y `_async_collect_chain_telemetry` ahora suprimen
+     estrictamente alertas de salud de cadena durante los primeros 120s tras un reinicio
+     o mientras `is_warming_up` esté activo, reseteando la racha para evitar disparos espurios.
+
+4. COMPUERTAS DE CALIDAD CERTIFICADAS:
+   - `pytest -q`: 1514 passed, 75 subtests passed (0 failures).
+   - `preflight_stabilize.ps1`: 8/8 gates PASS (Status: PASS).
+   - Servicio Windows NSSM `MinerAlerts` reiniciado y operando nominalmente.
+
+INSTRUCCIONES PARA LA PRÓXIMA SESIÓN:
+- Mantener el sistema en modo observación pasiva continua.
+- Continuar con el backlog prioritario de `docs/speckit/ROADMAP.md` según las indicaciones del operador.

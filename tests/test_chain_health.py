@@ -205,6 +205,49 @@ class ChainHealthAssessmentTests(unittest.TestCase):
         self.assertFalse(alert)
         self.assertIsNone(card)
 
+    def test_evaluate_chain_health_warming_up_and_elapsed_suppressed(self):
+        dead_ass = assess_miner_chains("S19JPRO-24", [self.stopped_chain])
+        streak_data = {"fault_streak": 2}
+
+        # 1. Warming up suppresses alert and resets streak
+        alert, card = evaluate_chain_health_streak(
+            streak_data,
+            dead_ass,
+            min_streak=1,
+            is_warming_up=True,
+            now_ts=1000.0,
+        )
+        self.assertFalse(alert)
+        self.assertIsNone(card)
+        self.assertEqual(streak_data["fault_streak"], 0)
+
+        # 2. Recent boot (elapsed < 120s) suppresses alert and resets streak
+        streak_data["fault_streak"] = 3
+        alert, card = evaluate_chain_health_streak(
+            streak_data,
+            dead_ass,
+            min_streak=1,
+            is_warming_up=False,
+            elapsed_seconds=45.0,
+            now_ts=1000.0,
+        )
+        self.assertFalse(alert)
+        self.assertIsNone(card)
+        self.assertEqual(streak_data["fault_streak"], 0)
+
+        # 3. Settled boot (elapsed >= 120s) and not warming up alerts normally
+        alert, card = evaluate_chain_health_streak(
+            streak_data,
+            dead_ass,
+            min_streak=1,
+            is_warming_up=False,
+            elapsed_seconds=180.0,
+            now_ts=1000.0,
+        )
+        self.assertTrue(alert)
+        self.assertIsNotNone(card)
+        self.assertEqual(streak_data["fault_streak"], 1)
+
     def test_build_chain_alert_card_format(self):
         miner_ass = assess_miner_chains("S19JPRO-24", [self.sensor_fault_chain])
         card = build_chain_alert_card("S19JPRO-24", miner_ass)

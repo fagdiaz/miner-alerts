@@ -49,6 +49,9 @@ def evaluate_recovery_deadlock(
     now_ts: float,
     is_warming_up: bool = False,
     threshold_seconds: float = 300.0,
+    rate_ths: Optional[float] = None,
+    active_boards: Optional[int] = None,
+    current_power_w: Optional[float] = None,
 ) -> bool:
     """Detect if a miner is trapped in ACTION_RECOVERY_MAX_COOLING for too long (F-02 deadlock)."""
     if is_warming_up:
@@ -58,7 +61,22 @@ def evaluate_recovery_deadlock(
     if recovery_since_ts is None:
         return False
     duration = float(now_ts) - float(recovery_since_ts)
-    return duration > float(threshold_seconds)
+    if duration <= float(threshold_seconds):
+        return False
+
+    # Thermal adaptation health check:
+    # If the miner is actively hashing at normal levels (rate >= 80 TH/s), has healthy boards (>= 3 or None),
+    # and power is an intermediate thermal preset (>= 2200W), this is an ambient temperature step-down
+    # governed legitimately by VNish, NOT a hardware cooling deadlock stall.
+    if (
+        rate_ths is not None
+        and rate_ths >= 80.0
+        and (active_boards is None or active_boards >= 3)
+        and (current_power_w is not None and current_power_w >= 2200.0)
+    ):
+        return False
+
+    return True
 
 
 def _pad_box_line(text: str, width: int = 32) -> str:
@@ -124,6 +142,9 @@ def build_fleet_directives_card(
                 ctx.recovery_since_ts,
                 ts,
                 ctx.is_warming_up,
+                rate_ths=ctx.rate_ths,
+                active_boards=ctx.active_boards,
+                current_power_w=ctx.current_power_w,
             )
             if deadlocked:
                 deadlocked_miners.append(m_short)

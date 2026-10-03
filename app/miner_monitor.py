@@ -2932,6 +2932,8 @@ def _async_collect_chain_telemetry(
     chat_id: Optional[str] = None,
     qa_mode: bool = False,
     qa_notify: bool = False,
+    states: Optional[Dict[str, Any]] = None,
+    state_lock: Optional[threading.Lock] = None,
 ) -> None:
     """Collect /api/v1/chains in background, record to EventStore, and evaluate predictive health (Spec 054)."""
     if event_store_inst is None or not event_store_inst.available:
@@ -2962,13 +2964,50 @@ def _async_collect_chain_telemetry(
                     min_streak = int(config.get("chain_health_min_streak", 2)) if config else 2
                     cooldown = float(config.get("chain_health_cooldown_s", 7200.0)) if config else 7200.0
                     sensor_alerts_enabled = bool(config.get("chain_health_sensor_alerts_enabled", False)) if config else False
+
+                    # Check boot elapsed and warm-up state to suppress transient startup chain alerts
+                    _m_st = None
+                    if states:
+                        if state_lock:
+                            with state_lock:
+                                for _k, _v in states.items():
+                                    if _k.startswith(f"{m_name}|") or getattr(_v, "name", "") == m_name:
+                                        _m_st = _v
+                                        break
+                        else:
+                            for _k, _v in states.items():
+                                if _k.startswith(f"{m_name}|") or getattr(_v, "name", "") == m_name:
+                                    _m_st = _v
+                                    break
+
+                    _is_warming = False
+                    _elapsed_s = None
+                    if _m_st is not None:
+                        _now_ts = time.time()
+                        _autotune_grace_s = float(config.get("autotune_grace_period_seconds", 900.0)) if config else 900.0
+                        _raw_elapsed = getattr(_m_st, "last_elapsed", None)
+                        if _raw_elapsed is not None:
+                            try:
+                                _elapsed_s = float(_raw_elapsed)
+                            except (TypeError, ValueError):
+                                _elapsed_s = None
+                        _reboot_pending = float(getattr(_m_st, "reboot_pending_until", 0.0))
+                        _is_warming = (
+                            (_elapsed_s is not None and 0 <= _elapsed_s < _autotune_grace_s)
+                            or (_reboot_pending > _now_ts)
+                        )
+
                     should_alert, alert_card = evaluate_chain_health_streak(
                         streak_data,
                         assessment,
                         min_streak=min_streak,
                         cooldown_s=cooldown,
                         alert_on_sensor_error=sensor_alerts_enabled,
+                        is_warming_up=_is_warming,
+                        elapsed_seconds=_elapsed_s,
                     )
+                    if (_is_warming or (_elapsed_s is not None and _elapsed_s < 120.0)) and assessment.overall_status in ("CHAIN_FAULT", "CHAIN_SENSOR_ERROR"):
+                        log(f"[CHAIN_HEALTH] Alert suppressed for miner={m_name} during boot/warming_up (status={assessment.overall_status}, elapsed={_elapsed_s}s, warming={_is_warming})")
                     if should_alert and alert_card:
                         if bot_token and chat_id and ((not qa_mode) or qa_notify):
                             send_telegram(
@@ -3297,6 +3336,7 @@ _LAST_SOFT_CONTINGENCY_PEAK_STATE: Optional[bool] = None
 _LAST_SOLAR_WINDOW_STATE: Optional[bool] = None
 _LAST_FGA_ACTUATOR_TS: float = 0.0
 _LAST_DEADLOCK_ALERT_TS: Dict[str, float] = {}
+_DEADLOCK_ALERT_ACTIVE: Dict[str, bool] = {}
 
 
 
@@ -5355,7 +5395,7 @@ def main() -> None:
         f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
     )
     qa_mode, qa_mode_source = qa_enabled(config)
-    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE, _LAST_SOLAR_WINDOW_STATE, _AUTOTUNE_WATCHDOG_STATE, _LAST_FGA_ACTUATOR_TS, _LAST_DEADLOCK_ALERT_TS
+    global _QA_MODE, _LAST_DAILY_DIGEST_DATE, _ACTIVE_SCHEDULED_WINDOW, _GLOBAL_INTERVENTION_GOV, _ELEVATOR_CONTINGENCY_STATES, _FACILITY_BUDGET_STATE, _LAST_SOFT_CONTINGENCY_PEAK_STATE, _LAST_SOLAR_WINDOW_STATE, _AUTOTUNE_WATCHDOG_STATE, _LAST_FGA_ACTUATOR_TS, _LAST_DEADLOCK_ALERT_TS, _DEADLOCK_ALERT_ACTIVE
     _QA_MODE = qa_mode
     qa_notify = qa_notify_enabled(config)
     qa_verbose = qa_verbose_enabled(config)
@@ -5967,7 +6007,7 @@ def main() -> None:
                         if chain_telemetry_enabled and event_store is not None and event_store.available:
                             threading.Thread(
                                 target=_async_collect_chain_telemetry,
-                                args=(valid_miners, event_store, vnish_api_password, name, config, bot_token, chat_id, qa_mode, qa_notify),
+                                args=(valid_miners, event_store, vnish_api_password, name, config, bot_token, chat_id, qa_mode, qa_notify, states, state_lock),
                                 daemon=True,
                                 name=f"ChainTelemetryReactive_{name}",
                             ).start()
@@ -6026,7 +6066,7 @@ def main() -> None:
                     if chain_telemetry_enabled and event_store is not None and event_store.available:
                         threading.Thread(
                             target=_async_collect_chain_telemetry,
-                            args=(valid_miners, event_store, vnish_api_password, name, config, bot_token, chat_id, qa_mode, qa_notify),
+                            args=(valid_miners, event_store, vnish_api_password, name, config, bot_token, chat_id, qa_mode, qa_notify, states, state_lock),
                             daemon=True,
                             name=f"ChainTelemetryTransition_{name}",
                         ).start()
@@ -8642,6 +8682,9 @@ def main() -> None:
                         _gov_ctx.recovery_since_ts,
                         now_ts,
                         _gov_ctx.is_warming_up,
+                        rate_ths=_gov_ctx.rate_ths,
+                        active_boards=_gov_ctx.active_boards,
+                        current_power_w=_gov_ctx.current_power_w,
                     )
 
                     if event_store is not None and event_store.available:
@@ -8663,10 +8706,11 @@ def main() -> None:
                             created_ts=now_ts,
                         )
 
-                    # Proactive deadlock alert (1800s cooldown per miner)
+                    # Edge-triggered proactive deadlock watchdog with clear notification
+                    _was_deadlocked_alerted = _DEADLOCK_ALERT_ACTIVE.get(_m_name, False)
                     if _is_deadlocked:
-                        _last_al = _LAST_DEADLOCK_ALERT_TS.get(_m_name, 0.0)
-                        if (now_ts - _last_al) >= 1800.0:
+                        if not _was_deadlocked_alerted:
+                            _DEADLOCK_ALERT_ACTIVE[_m_name] = True
                             _LAST_DEADLOCK_ALERT_TS[_m_name] = now_ts
                             _rec_dur = max(0.0, now_ts - (_gov_ctx.recovery_since_ts or now_ts))
                             _alert_msg = build_deadlock_alert_text(
@@ -8681,9 +8725,26 @@ def main() -> None:
                                 f"```\n{_alert_msg}\n```",
                                 "WARNING",
                                 f"deadlock_alert_{_m_name}",
-                                is_command=True,
+                                is_command=False,
                             )
                             log(f"[GOV_WATCHDOG] miner={_m_name} DEADLOCK alert sent to Telegram (duration={int(_rec_dur)}s)")
+                    else:
+                        if _was_deadlocked_alerted:
+                            _DEADLOCK_ALERT_ACTIVE[_m_name] = False
+                            _curr_p = float(_gov_ctx.current_power_w or 0.0)
+                            _clear_msg = (
+                                f"🟢 DESPEJADO: {_m_name} salió de estancamiento.\n"
+                                f"Operando normal en {_curr_p:.0f}W."
+                            )
+                            send_telegram(
+                                bot_token,
+                                str(chat_id),
+                                _clear_msg,
+                                "INFO",
+                                f"deadlock_clear_{_m_name}",
+                                is_command=False,
+                            )
+                            log(f"[GOV_WATCHDOG] miner={_m_name} DEADLOCK cleared (power={_curr_p:.0f}W)")
             except Exception as _snap_exc:
                 log(f"[GOV_SNAPSHOT_ERR] Error en snapshot de gobernanza: {_snap_exc}")
 
@@ -8731,7 +8792,7 @@ def main() -> None:
                             last_chain_collection_ts = completed_ts
                             threading.Thread(
                                 target=_async_collect_chain_telemetry,
-                                args=(valid_miners, event_store, vnish_api_password, None, config, bot_token, chat_id, qa_mode, qa_notify),
+                                args=(valid_miners, event_store, vnish_api_password, None, config, bot_token, chat_id, qa_mode, qa_notify, states, state_lock),
                                 daemon=True,
                                 name="ChainTelemetryScheduled",
                             ).start()

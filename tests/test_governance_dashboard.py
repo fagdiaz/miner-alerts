@@ -143,9 +143,53 @@ def test_evaluate_recovery_deadlock():
     # 4. Warming up suppresses deadlock
     assert evaluate_recovery_deadlock("ACTION_RECOVERY_MAX_COOLING", now - 500.0, now, is_warming_up=True) is False
 
-    # 5. Deadlock condition met (>300s continuous recovery cooling)
+    # 5. Deadlock condition met (>300s continuous recovery cooling) when no health data
     assert evaluate_recovery_deadlock("ACTION_RECOVERY_MAX_COOLING", now - 301.0, now, is_warming_up=False) is True
     assert evaluate_recovery_deadlock("ACTION_RECOVERY_MAX_COOLING", now - 600.0, now, is_warming_up=False) is True
+
+    # 6. Thermal adaptation health awareness: healthy miner downscaled by VNish (>=80 TH/s, 3 boards, >=2200W) is NOT deadlocked
+    assert evaluate_recovery_deadlock(
+        "ACTION_RECOVERY_MAX_COOLING",
+        now - 600.0,
+        now,
+        is_warming_up=False,
+        rate_ths=95.0,
+        active_boards=3,
+        current_power_w=2498.0,
+    ) is False
+
+    # 7. Real deadlock: hashrate collapsed despite intermediate power
+    assert evaluate_recovery_deadlock(
+        "ACTION_RECOVERY_MAX_COOLING",
+        now - 600.0,
+        now,
+        is_warming_up=False,
+        rate_ths=15.0,
+        active_boards=3,
+        current_power_w=2498.0,
+    ) is True
+
+    # 8. Real deadlock: missing hashboard
+    assert evaluate_recovery_deadlock(
+        "ACTION_RECOVERY_MAX_COOLING",
+        now - 600.0,
+        now,
+        is_warming_up=False,
+        rate_ths=95.0,
+        active_boards=2,
+        current_power_w=2498.0,
+    ) is True
+
+    # 9. Real deadlock: power collapsed (< 2200W)
+    assert evaluate_recovery_deadlock(
+        "ACTION_RECOVERY_MAX_COOLING",
+        now - 600.0,
+        now,
+        is_warming_up=False,
+        rate_ths=95.0,
+        active_boards=3,
+        current_power_w=1850.0,
+    ) is True
 
 
 def test_fleet_directives_card_formatting_max_32_cols():
@@ -385,3 +429,57 @@ def test_directives_command_router_dispatch():
     assert ok_unk is True
     unk_msg = sent_messages[-1][0]
     assert "no existe" in unk_msg
+
+
+def test_build_deadlock_alert_text_and_edge_policy():
+    """Verify deadlock alert formatting <= 32 cols and edge-triggered state transitions."""
+    alert_text = build_deadlock_alert_text(
+        miner_name="S19JPRO-23",
+        current_power_w=1800.0,
+        target_power_w=2700.0,
+        duration_seconds=360.0,
+    )
+    for line in alert_text.splitlines():
+        assert len(line) <= 32, f"Line exceeds 32 cols: '{line}'"
+    assert "S19JPRO-23" in alert_text
+    assert "RECOVERY_MAX_COOLING" in alert_text
+    assert "360s (>300s)" in alert_text
+
+    # Simulate edge-triggered policy tracking
+    active_alerts = {}
+    m_name = "S19JPRO-23"
+    sent = []
+
+    def mock_process_cycle(is_deadlocked: bool, power_w: float):
+        was_alerted = active_alerts.get(m_name, False)
+        if is_deadlocked:
+            if not was_alerted:
+                active_alerts[m_name] = True
+                sent.append(("ALERT", f"DEADLOCK {m_name}"))
+        else:
+            if was_alerted:
+                active_alerts[m_name] = False
+                sent.append(("CLEAR", f"DESPEJADO {m_name} {power_w:.0f}W"))
+
+    # Cycle 1: normal -> no alert
+    mock_process_cycle(False, 2700.0)
+    assert len(sent) == 0
+
+    # Cycle 2: enters deadlock -> single alert sent
+    mock_process_cycle(True, 1800.0)
+    assert len(sent) == 1
+    assert sent[-1][0] == "ALERT"
+
+    # Cycle 3: remains in deadlock -> NO duplicate alert sent (spam suppressed)
+    mock_process_cycle(True, 1800.0)
+    assert len(sent) == 1
+
+    # Cycle 4: exits deadlock -> single recovery clear sent
+    mock_process_cycle(False, 2695.0)
+    assert len(sent) == 2
+    assert sent[-1][0] == "CLEAR"
+    assert "2695W" in sent[-1][1]
+
+    # Cycle 5: remains normal -> NO duplicate clear sent
+    mock_process_cycle(False, 2700.0)
+    assert len(sent) == 2

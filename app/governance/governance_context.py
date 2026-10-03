@@ -105,6 +105,13 @@ class MinerGovernanceContext:
     is_stock_firmware: bool = False
     """True si el minero corre firmware stock Antminer."""
 
+    # ── Dominio Rendimiento & Salud de Cadenas ─────────────────────────────────
+    rate_ths: Optional[float] = None
+    """Tasa de hasheo actual en TH/s (last_rate_ths si disponible)."""
+
+    active_boards: Optional[int] = None
+    """Cantidad de placas activas detectadas (last_active_boards si disponible)."""
+
     # ── Timestamp de construcción ─────────────────────────────────────────────
     built_at_ts: float = field(default_factory=time.monotonic)
     """Monotonic timestamp de construcción del contexto (para latencia de auditoría)."""
@@ -237,6 +244,27 @@ class MinerGovernanceContext:
             or (_reboot_pending_until > now_ts)
         )
 
+        # Dominio Rendimiento y Salud de Cadenas
+        rate_ths: Optional[float] = (
+            getattr(state, "last_rate_ths", None)
+            or getattr(state, "rate_ths", None)
+        )
+        if rate_ths is not None:
+            try:
+                rate_ths = float(rate_ths)
+            except (TypeError, ValueError):
+                rate_ths = None
+
+        active_boards: Optional[int] = (
+            getattr(state, "last_active_boards", None)
+            or getattr(state, "active_boards", None)
+        )
+        if active_boards is not None:
+            try:
+                active_boards = int(active_boards)
+            except (TypeError, ValueError):
+                active_boards = None
+
         return cls(
             current_power_w=current_power_w,
             target_power_w=target_power_w,
@@ -258,5 +286,7 @@ class MinerGovernanceContext:
             fan_action=fan_action,
             recovery_since_ts=recovery_since_ts,
             is_stock_firmware=is_stock_firmware,
+            rate_ths=rate_ths,
+            active_boards=active_boards,
             built_at_ts=time.monotonic(),
         )

@@ -301,6 +301,8 @@ def evaluate_chain_health_streak(
     now_ts: Optional[float] = None,
     alert_on_sensor_error: bool = True,
     is_snoozed: bool = False,
+    is_warming_up: bool = False,
+    elapsed_seconds: Optional[float] = None,
 ) -> Tuple[bool, Optional[str]]:
     """Evaluate consecutive fault streaks and cooldown to avoid alert spam.
 
@@ -308,6 +310,11 @@ def evaluate_chain_health_streak(
         (should_alert: bool, alert_card_text: Optional[str])
     """
     if is_snoozed:
+        return False, None
+
+    # Suppress transient boot (< 120s) or warm-up chain fault alerts
+    if is_warming_up or (elapsed_seconds is not None and elapsed_seconds < 120.0):
+        streak_data["fault_streak"] = 0
         return False, None
 
     now = now_ts if now_ts is not None else time.time()

@@ -3,6 +3,52 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-03] - Hardening del Deadlock Watchdog y Supresión de Falsas Alarmas en Telegram
+
+* **Contexto**:
+  - Motivación: Durante la tarde del 2026-10-03, el operador reportó una tormenta excesiva de alertas en Telegram (15 alertas, de las cuales 11 correspondieron a falsas alarmas de deadlock de enfriamiento). El diagnóstico forense determinó que:
+    1. El Deadlock Watchdog en `app/miner_monitor.py` reexpedía ciegamente alertas periódicas cada 1800s (`now_ts - _last_al >= 1800.0`) con `is_command=True`, saltándose deduplicaciones y filtros de snooze.
+    2. No existía un deadlock ni estancamiento real: por el calor ambiental de la tarde, el firmware VNish desescaló preventivamente a 2500W para proteger el silicio (`decrease_temp: 84`), mientras los mineros hasheaban saludablemente a 95-100 TH/s con 0% de errores HW. Al tener `target_power_w=2700.0W` configurado, el monitor interpretó erróneamente `RECOVERY_MAX_COOLING` como bloqueo de enfriamiento.
+    3. Alertas transitorias de `CHAIN_HEALTH` se disparaban durante el ciclo de reinicio pasivo (< 120s) y microcortes de Ethernet.
+  - Objetivo: Implementar política de disparo por flanco (edge-triggered) en el Deadlock Watchdog con notificación única de alerta y notificación única de despeje/recuperación (`is_command=False`), integrar conciencia de salud térmica y rendimiento en `evaluate_recovery_deadlock` (`rate_ths >= 80.0`, 3 placas, preset >= 2200W), y suprimir alertas de `CHAIN_HEALTH` durante el arranque inicial (<120s) o fase de warm-up.
+  - Baseline previo: 1511 tests PASS, 75 subtests PASS.
+
+* **Implementación**:
+  1. `app/governance/governance_context.py`:
+     - Incorporados campos `rate_ths: Optional[float] = None` y `active_boards: Optional[int] = None` a `MinerGovernanceContext`.
+     - Actualizado método de fábrica puro `from_state()` para propagar la tasa de hasheo (`last_rate_ths` o `rate_ths`) y placas activas (`last_active_boards` o `active_boards`).
+  2. `app/governance/directives_dashboard.py`:
+     - Enriquecida la función `evaluate_recovery_deadlock` con parámetros opcionales `rate_ths`, `active_boards` y `current_power_w`.
+     - Si el minero se encuentra hasheando en niveles normales (`rate_ths >= 80.0`), con 3 placas activas y operando en preset térmico legítimo (`current_power_w >= 2200.0`), se descarta la clasificación de `DEADLOCK` crítico (evitando falsos positivos ante autotuning térmico ambiental de VNish).
+     - Actualizado `build_fleet_directives_card` para suministrar la telemetría de contexto a la evaluación.
+  3. `app/governance/chain_health.py`:
+     - Agregados parámetros `is_warming_up: bool = False` y `elapsed_seconds: Optional[float] = None` a `evaluate_chain_health_streak`.
+     - Supresión temprana de alertas de cadena y reseteo de racha transitoria durante los primeros 120 segundos de arranque o mientras la gracia de warm-up esté activa.
+  4. `app/miner_monitor.py`:
+     - Declarado estado global `_DEADLOCK_ALERT_ACTIVE: Dict[str, bool] = {}`.
+     - Erradicado el bucle de reenvío periódico cada 1800s. Implementada política estricta por flanco:
+       - Transición a deadlock persistente (>300s): emisión de 1 única alerta con `is_command=False` (categoría WARNING).
+       - Transición de salida de deadlock: emisión de 1 único mensaje de recuperación `🟢 DESPEJADO: {miner_name} salió de estancamiento. Operando normal en {power_w:.0f}W.` con categoría INFO.
+     - Pasados `states` y `state_lock` al worker `_async_collect_chain_telemetry` suprimiendo alertas espurias de `CHAIN_HEALTH` durante el arranque (< 120s) o autotune grace.
+  5. `tests/test_governance_dashboard.py`, `tests/test_chain_health.py` y `tests/test_governance_context_contracts.py`:
+     - Agregadas pruebas unitarias de contrato verificando:
+       - Regla de exclusión de deadlock ante adaptación térmica ambiental.
+       - Detección precisa de verdaderos deadlocks ante colapso de hashrate, caída de potencia o placa ausente.
+       - Transiciones de estado de disparo por flanco (entrada única, salida única, cero duplicados en sostenimiento).
+       - Supresión de alertas de salud de cadena durante warm-up y tiempo transcurrido < 120s.
+       - Propagación inmutable de `rate_ths` y `active_boards` en `MinerGovernanceContext`.
+
+* **Resultados de Validación**:
+  - `py_compile`: exit 0 en todos los módulos modificados.
+  - `git diff --check`: exit 0 (cero errores de formato).
+  - `pytest -q`: **1514 passed, 75 subtests passed** in 42.07s (+3 nuevas pruebas, cero fallas).
+  - Preflight Stabilize Gate: 8/8 gates PASS.
+
+* **Invariantes Preservados**:
+  - Formato Telegram Mobile-First <= 32 columnas por línea garantizado.
+  - Estado inmutable de gobernanza sin efectos secundarios.
+  - Supresión de spam sin comprometer la detección de fallas físicas reales de hardware.
+
 ## [2026-10-02] - Estabilización Operativa Elevador 1 y Normalización Documental Horizonte V5.2
 
 * **Contexto**:

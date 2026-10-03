@@ -191,6 +191,17 @@ class TestT003_FromStateNoneFields:
         assert ctx.thermal_lockout_active is False
         assert ctx.uptime_seconds is None
         assert ctx.is_warming_up is False
+        assert ctx.rate_ths is None
+        assert ctx.active_boards is None
+
+    def test_rate_ths_and_active_boards_propagated(self) -> None:
+        now_ts = time.time()
+        state = make_state(last_rate_ths=98.5, last_active_boards=3)
+        cfg = make_config()
+        ctx = MinerGovernanceContext.from_state(state, now_ts, cfg)
+
+        assert ctx.rate_ths == 98.5
+        assert ctx.active_boards == 3
 
     def test_fga_cohort_none_when_not_set(self) -> None:
         now_ts = time.time()

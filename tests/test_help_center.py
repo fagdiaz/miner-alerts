@@ -125,9 +125,28 @@ class TestHelpCenterRegistry(unittest.TestCase):
             "firmware",
             "selftest",
             "help",
+            "directivas",
+            "agent",
         ]
         for req in required:
             self.assertIn(req, HELP_COMMANDS, f"Missing required command '{req}' in catalog")
+
+    def test_directivas_and_agent_catalog_and_aliases(self):
+        """Verify directivas and agent commands and their aliases resolve cleanly."""
+        dir_cmd = lookup_command("directivas")
+        self.assertIsNotNone(dir_cmd)
+        self.assertEqual(dir_cmd.name, "directivas")
+        self.assertEqual(dir_cmd.category, "diag")
+        self.assertEqual(lookup_command("gov_status"), dir_cmd)
+        self.assertEqual(lookup_command("directives"), dir_cmd)
+        self.assertEqual(lookup_command("directiva"), dir_cmd)
+
+        agent_cmd = lookup_command("agent")
+        self.assertIsNotNone(agent_cmd)
+        self.assertEqual(agent_cmd.name, "agent")
+        self.assertEqual(agent_cmd.category, "ctrl")
+        self.assertEqual(lookup_command("agente"), agent_cmd)
+        self.assertEqual(lookup_command("fga"), agent_cmd)
 
 
 class TestHelpCenterLookupAndAliases(unittest.TestCase):

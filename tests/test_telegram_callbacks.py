@@ -607,6 +607,7 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             "S19JPRO-24|192.168.1.24:4028": st2,
         }
         self.state_lock = unittest.mock.MagicMock()
+        self.registry = CallbackTokenRegistry(ttl_seconds=60.0)
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -975,6 +976,155 @@ class TestDiagnosticCallbacksIntegration(unittest.TestCase):
             self.bot_token, "cb_diag_bad", text="⚠️ Opción no reconocida."
         )
         mock_edit_text.assert_not_called()
+
+    def test_reboot_command_1tap_keyboard(self):
+        """Verify RebootCommand generates 1-tap confirmation keyboard when token_registry is present."""
+        from app.telegram.commands.reboot import RebootCommand
+        from app.telegram.context import TelegramRequestContext
+        from pathlib import Path
+
+        sent_messages = []
+        def fake_send(text, **kwargs):
+            sent_messages.append((text, kwargs))
+            return True
+
+        req_ctx = TelegramRequestContext(
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            config=self.config,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=self.state_path,
+            token_registry=self.registry,
+            pending_reboots={},
+            pending_lock=self.state_lock,
+        )
+        req_ctx.send_message = fake_send
+
+        cmd = RebootCommand()
+        ok = cmd.handle(req_ctx, ["23"], update_id=501)
+        self.assertTrue(ok)
+        self.assertEqual(len(sent_messages), 1)
+        text, kwargs = sent_messages[0]
+        self.assertIn("Confirmar Reinicio", text)
+        markup = kwargs.get("reply_markup")
+        self.assertIsNotNone(markup)
+        inline_kb = markup.get("inline_keyboard", [])
+        self.assertEqual(len(inline_kb), 2)
+        confirm_btn = inline_kb[0][0]
+        self.assertTrue(confirm_btn["callback_data"].startswith("rb_cfm:"))
+        self.assertTrue(confirm_btn["callback_data"].endswith(":23"))
+        cancel_btn = inline_kb[1][0]
+        self.assertEqual(cancel_btn["callback_data"], "rb_ccl:23")
+
+    def test_reboot_no_ok_1tap_keyboard(self):
+        """Verify RebootNoOkCommand generates bulk confirmation keyboard."""
+        from app.telegram.commands.reboot import RebootNoOkCommand
+        from app.telegram.context import TelegramRequestContext
+        from app.miner_monitor import STATE_OFFLINE
+
+        # Put M23 into NO-OK state
+        with self.state_lock:
+            self.states["S19JPRO-23|192.168.1.23:4028"].state = STATE_OFFLINE
+
+        sent_messages = []
+        def fake_send(text, **kwargs):
+            sent_messages.append((text, kwargs))
+            return True
+
+        req_ctx = TelegramRequestContext(
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            config=self.config,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=self.state_path,
+            token_registry=self.registry,
+            pending_reboots={},
+            pending_lock=self.state_lock,
+        )
+        req_ctx.send_message = fake_send
+
+        cmd = RebootNoOkCommand()
+        ok = cmd.handle(req_ctx, [], update_id=502)
+        self.assertTrue(ok)
+        self.assertEqual(len(sent_messages), 1)
+        text, kwargs = sent_messages[0]
+        self.assertIn("NO-OK detectados", text)
+        markup = kwargs.get("reply_markup")
+        self.assertIsNotNone(markup)
+        inline_kb = markup.get("inline_keyboard", [])
+        self.assertEqual(len(inline_kb), 2)
+        self.assertIn("REINICIO MASIVO", inline_kb[0][0]["text"])
+        self.assertTrue(inline_kb[0][0]["callback_data"].endswith(":bulk_no_ok"))
+        self.assertEqual(inline_kb[1][0]["callback_data"], "rb_ccl:bulk_no_ok")
+
+    @unittest.mock.patch("app.miner_monitor.edit_message_reply_markup")
+    @unittest.mock.patch("app.miner_monitor.answer_callback_query")
+    @unittest.mock.patch("app.miner_monitor.run_hashcore_cli", return_value=(True, "rebooted"))
+    def test_callback_bulk_no_ok_cfm_and_ccl(self, mock_cli, mock_answer_cb, mock_edit_markup):
+        """Verify callback handling for bulk_no_ok cancel and confirmation."""
+        from app.miner_monitor import _handle_callback_query, STATE_OFFLINE
+
+        # 1. Test cancel (rb_ccl:bulk_no_ok)
+        cb_cancel = {
+            "id": "cb_bulk_ccl",
+            "from": {"id": 1206728163},
+            "data": "rb_ccl:bulk_no_ok",
+            "message": {"message_id": 201, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_cancel,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=self.state_path,
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=self.registry,
+        )
+        mock_answer_cb.assert_called_with(self.bot_token, "cb_bulk_ccl", text="❌ Reinicio cancelado")
+        mock_edit_markup.assert_called_with(
+            self.bot_token, str(self.chat_id), 201, {"inline_keyboard": [[{"text": "❌ Reinicio Masivo Cancelado", "callback_data": "noop"}]]}
+        )
+
+        # 2. Test confirm (rb_cfm:<token>:bulk_no_ok)
+        with self.state_lock:
+            self.states["S19JPRO-23|192.168.1.23:4028"].state = STATE_OFFLINE
+
+        tok = self.registry.create_token("bulk_no_ok", action="reboot_no_ok")
+        cb_confirm = {
+            "id": "cb_bulk_cfm",
+            "from": {"id": 1206728163},
+            "data": f"rb_cfm:{tok}:bulk_no_ok",
+            "message": {"message_id": 202, "chat": {"id": 1206728163}},
+        }
+        _handle_callback_query(
+            cb_confirm,
+            config=self.config,
+            bot_token=self.bot_token,
+            chat_id=self.chat_id,
+            miners=self.miners,
+            states=self.states,
+            state_lock=self.state_lock,
+            state_path=self.state_path,
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=False,
+            token_registry=self.registry,
+        )
+        mock_answer_cb.assert_called_with(self.bot_token, "cb_bulk_cfm", text="🚀 Reinicio masivo iniciado")
+        mock_cli.assert_called()
 
 
 if __name__ == "__main__":

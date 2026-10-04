@@ -4771,12 +4771,20 @@ def _handle_callback_query(
     if action.action_type == "rb_ccl":
         token_registry.invalidate_miner(action.miner_id)
         if message_id is not None:
-            edit_message_reply_markup(
-                bot_token,
-                str(cb_chat_id),
-                message_id,
-                build_alert_keyboard(action.miner_id),
-            )
+            if action.miner_id == "bulk_no_ok":
+                edit_message_reply_markup(
+                    bot_token,
+                    str(cb_chat_id),
+                    message_id,
+                    build_settled_keyboard("❌ Reinicio Masivo Cancelado"),
+                )
+            else:
+                edit_message_reply_markup(
+                    bot_token,
+                    str(cb_chat_id),
+                    message_id,
+                    build_alert_keyboard(action.miner_id),
+                )
         answer_callback_query(bot_token, cb_id, text="❌ Reinicio cancelado")
         return
 
@@ -4809,6 +4817,59 @@ def _handle_callback_query(
                 show_alert=True,
             )
             log("CB_REBOOT_QA_BLOCK miner=%s" % action.miner_id)
+            return
+
+        if action.miner_id == "bulk_no_ok":
+            # Bulk reboot execution for miners in NO-OK state
+            if message_id is not None:
+                edit_message_reply_markup(
+                    bot_token,
+                    str(cb_chat_id),
+                    message_id,
+                    build_settled_keyboard("✅ Reinicio Masivo Iniciado"),
+                )
+            answer_callback_query(bot_token, cb_id, text="🚀 Reinicio masivo iniciado")
+
+            BULK_REBOOT_CAP = 5
+            now_ts = time.time()
+            targets_to_reboot = []
+            with state_lock:
+                for m in miners:
+                    sk = f"{m['name']}|{m['host']}:{m.get('port', 4028)}"
+                    st = states.get(sk)
+                    if is_miner_no_ok(st):
+                        targets_to_reboot.append(m)
+
+            if len(targets_to_reboot) > BULK_REBOOT_CAP:
+                targets_to_reboot = targets_to_reboot[:BULK_REBOOT_CAP]
+
+            log(f"CB_BULK_REBOOT_START count={len(targets_to_reboot)}")
+            rebooted_names = []
+            for m in targets_to_reboot:
+                ok, msg_result = run_hashcore_cli(
+                    hashcore_cfg, m, "reboot", config, qa_mode, qa_allow_actions
+                )
+                record_action_outcome(
+                    event_store,
+                    occurred_ts=now_ts,
+                    miner=m,
+                    action="reboot",
+                    source="manual_bulk",
+                    ok=ok,
+                    message=msg_result,
+                )
+                sk = f"{m['name']}|{m['host']}:{m.get('port', 4028)}"
+                if ok:
+                    rebooted_names.append(display_name(m['name']))
+                    with state_lock:
+                        st = states.get(sk)
+                        if st:
+                            st.last_manual_reboot_ts = now_ts
+                            st.low_since_ts = None
+            with state_lock:
+                _payload = _build_state_payload(states, current_last_update_id)
+            _flush_state_payload(state_path, _payload)
+            log(f"CB_BULK_REBOOT_DONE targets={','.join(rebooted_names)}")
             return
 
         miner = resolve_miner(action.miner_id, miners)

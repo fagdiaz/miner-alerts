@@ -140,18 +140,34 @@ class RebootCommand(BaseCommandHandler):
                 "token": miner_token,
             }
 
-        msg = (
-            f"⚠️ *Confirmar Reinicio*: {display_name(miner['name'])}\n\n"
-            f"Para proceder, envíe:\n"
-            f"`/confirm {action} {miner_token} {code}`\n\n"
-            f"⏱️ Este código expira en 60 segundos."
-        )
+        # 1-Tap inline confirmation keyboard if token_registry is available
+        reply_markup = None
+        m_disp = display_name(miner['name'])
+        if context.token_registry is not None:
+            from app.telegram.callbacks import build_confirmation_keyboard
+            token = context.token_registry.create_token(miner_token, action="reboot")
+            reply_markup = build_confirmation_keyboard(m_disp, token)
+            msg = (
+                f"⚠️ *Confirmar Reinicio*: {m_disp}\n\n"
+                f"Toca el botón abajo para confirmar, o escribe:\n"
+                f"`/confirm {action} {miner_token} {code}`\n\n"
+                f"⏱️ Expira en 60 segundos."
+            )
+        else:
+            msg = (
+                f"⚠️ *Confirmar Reinicio*: {m_disp}\n\n"
+                f"Para proceder, envíe:\n"
+                f"`/confirm {action} {miner_token} {code}`\n\n"
+                f"⏱️ Este código expira en 60 segundos."
+            )
+
         context.send_message(
             msg,
             msg_type="REBOOT",
             dedup_key=f"cmd_reboot_{miner_token}",
             dbg_cmd="reboot:prompt",
             dbg_update_id=update_id,
+            reply_markup=reply_markup,
         )
         return True
 
@@ -234,12 +250,33 @@ class RebootNoOkCommand(BaseCommandHandler):
         if truncated:
             preview_lines.insert(1, "Se aplico limite: 5 maximos.")
 
+        reply_markup = None
+        if context.token_registry is not None:
+            token = context.token_registry.create_token("bulk_no_ok", action="reboot_no_ok")
+            reply_markup = {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": f"⚠️ CONFIRMAR REINICIO MASIVO ({len(targets)})",
+                            "callback_data": f"rb_cfm:{token}:bulk_no_ok",
+                        }
+                    ],
+                    [
+                        {
+                            "text": "❌ Cancelar",
+                            "callback_data": "rb_ccl:bulk_no_ok",
+                        }
+                    ],
+                ]
+            }
+
         context.send_message(
             "\n".join(preview_lines),
             msg_type="REBOOT",
             dedup_key="cmd_reboot_bulk_preview",
             dbg_cmd="reboot_no_ok",
             dbg_update_id=update_id,
+            reply_markup=reply_markup,
         )
         return True
 

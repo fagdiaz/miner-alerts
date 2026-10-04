@@ -1,43 +1,51 @@
 # ==============================================================================
-# ESTADO DE OBSERVACIÓN: SUPRESIÓN DE SPAM EN TELEGRAM Y HARDENING DE WATCHDOG
-# FECHA: 2026-10-03 (18:50 HS)
-# MODELO EJECUTOR: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
-# PRÓXIMO MODELO RECOMENDADO: Gemini 3.8 Flash High
+# ESTADO DE PRODUCCIÓN CERTIFICADO - MODERNIZACIÓN UX TELEGRAM Y SUPERVISIÓN
+# FECHA: 2026-10-03 23:18 UTC-3
 # RAMA: codex/022-adaptive-acquisition
-# CONTEXTO: 1514 tests PASS (+3 nuevos), 75 subtests PASS, 8/8 gates PASS, NSSM RUNNING
-# ESTADO FLOTA: ~400 TH/s (10.79 kW), Elevador 1 (2700W) y Elevador 2 (2700W)
+# CERTIFICACIÓN SPECKIT: PASS (8/8 Gates Aprobados)
+# ESTADO DE SUITE: 1518 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
+# SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
+# MODELO ACTIVO: Gemini 3.8 Flash High
+# PRÓXIMO MODELO RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
 # ==============================================================================
 
-ESTADO DE PRODUCCIÓN Y HARDENING:
-El endurecimiento del Deadlock Watchdog y la supresión de falsas alarmas en Telegram
-ha sido completado con éxito, verificado al 100% y puesto en producción en caliente:
+ESTADO DE LA FLOTA Y TELEMETRÍA EN TIEMPO REAL:
+--------------------------------------------------------------------------------
+• S19JPRO-23 (192.168.1.23:4028): Elevador 1 | Preset 2500W | Minando OK | 0 deadlocks | PWM lazo cerrado
+• S19JPRO-24 (192.168.1.24:4028): Elevador 1 | Preset 2500W | Minando OK | 0 deadlocks | PWM lazo cerrado
+• S19JPRO-25 (192.168.1.25:4028): Elevador 2 | Preset 2700W | Minando OK | 0 deadlocks | PWM lazo cerrado
+• S19JPRO-26 (192.168.1.26:4028): Elevador 2 | Preset 2700W | Minando OK | 0 deadlocks | PWM lazo cerrado
+• Telemetría de cadena: reactiva y continua (3 placas / 126 chips por equipo).
+• Heartbeat liveness: activo y actualizando periódicamente.
 
-1. WATCHDOG DISPARO POR FLANCO (EDGE-TRIGGERED):
-   - Eliminado el reenvío periódico ciego cada 1800s.
-   - Estado activo en memoria `_DEADLOCK_ALERT_ACTIVE[miner_name]`.
-   - Se emite una única alerta ante la transición de entrada a estancamiento (>300s)
-     con `is_command=False` (categoría WARNING).
-   - Se emite un mensaje único de recuperación cuando el minero normaliza:
-     `🟢 DESPEJADO: {miner_name} salió de estancamiento. Operando normal en {power_w:.0f}W.`
-     con categoría INFO y se resetea la bandera.
+CAMBIOS COMPLETADOS Y CERTIFICADOS EN ESTA ITERACIÓN:
+--------------------------------------------------------------------------------
+1. Teclados Inline de Confirmación 1-Tap para /reboot y /reboot_no_ok:
+   - `app/telegram/commands/reboot.py`: Se generan botones 1-Tap con tokens de 60s
+     (confirmación y cancelación directa con un toque), preservando fallback de comando manual.
+   - `app/miner_monitor.py`: Cableados los callbacks `rb_ccl:bulk_no_ok` y
+     `rb_cfm:<token>:bulk_no_ok` con validación de seguridad (límite de 5 mineros simultáneos).
+2. Expansión y Supresión de Silencios en el Chatbot Supervisor (Spec 086):
+   - `app/forensics/conversational_qa.py`: Incorporadas intenciones Regex para estado
+     de flota (`_RE_STATUS_FLEET`), potencia/elevadores (`_RE_POWER_ELEVATORS`),
+     directivas activas (`_RE_DIRECTIVES`) y saludos de cortesía (`_RE_GREETING`).
+   - Implementada tarjeta amigable de ayuda/fallback ante texto libre no reconocido,
+     erradicando silencios del bot y respetando el ancho máximo de 32 columnas.
+3. Catálogo del Centro de Ayuda (/help):
+   - `app/telegram/help_center.py`: Registrados los comandos anteriormente huérfanos
+     `/directivas` (categoría `diag`) y `/agent` (categoría `ctrl`), manteniendo
+     la compatibilidad con las 5 categorías oficiales.
+4. Botones de Acción Rápida en Fichas de Autopsia:
+   - `app/telegram/commands/autopsy.py`: Incorporados botones 1-Tap en autopsias individuales
+     para graficar (`chart:{m}`) y solicitar reinicio guiado (`rb_req:{m}`).
+5. Aseguramiento de Calidad y Pruebas Unitarias:
+   - Cobertura expandida en `test_telegram_callbacks.py`, `test_help_center.py` y
+     `test_incident_autopsy.py`. Suite completa en 1518 tests PASS.
 
-2. ADAPTACIÓN TÉRMICA INTELIGENTE EN EVALUACIÓN DE DEADLOCK:
-   - `evaluate_recovery_deadlock` ahora recibe `rate_ths`, `active_boards` y `current_power_w`.
-   - Si el minero se encuentra hasheando normalmente (rate >= 80 TH/s, 3 placas y potencia
-     en un preset térmico >= 2200W), se descarta la condición de deadlock.
-   - Esto evita clasificar como falla los desescalados legítimos del firmware VNish durante
-     las horas calurosas de la tarde (`decrease_temp: 84`).
-
-3. SUPRESIÓN DE ALERTA CHAIN_HEALTH EN ARRANQUE / WARM-UP:
-   - `evaluate_chain_health_streak` y `_async_collect_chain_telemetry` ahora suprimen
-     estrictamente alertas de salud de cadena durante los primeros 120s tras un reinicio
-     o mientras `is_warming_up` esté activo, reseteando la racha para evitar disparos espurios.
-
-4. COMPUERTAS DE CALIDAD CERTIFICADAS:
-   - `pytest -q`: 1514 passed, 75 subtests passed (0 failures).
-   - `preflight_stabilize.ps1`: 8/8 gates PASS (Status: PASS).
-   - Servicio Windows NSSM `MinerAlerts` reiniciado y operando nominalmente.
-
-INSTRUCCIONES PARA LA PRÓXIMA SESIÓN:
-- Mantener el sistema en modo observación pasiva continua.
-- Continuar con el backlog prioritario de `docs/speckit/ROADMAP.md` según las indicaciones del operador.
+DIRECTIVAS PARA LA PRÓXIMA SESIÓN:
+--------------------------------------------------------------------------------
+1. Leer AGENTS.md y este prompt.txt.
+2. La versión actual en producción está 100% estable y certificada.
+3. Próximas tareas planificadas en el roadmap:
+   - Supervisión pasiva de la flota y evaluación térmica según condiciones ambientales.
+   - Continuar con la Fase 3 de desacoplamiento del monolito (`Spec 087: Balancer & Watchdog`).

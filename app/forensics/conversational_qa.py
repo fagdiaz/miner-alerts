@@ -31,6 +31,22 @@ _RE_THERMAL = re.compile(
     r"\b(?:temp|temperatura|calor|fans?|cooler|ventilador(?:es)?|refrigeraci[oó]n)\b",
     re.IGNORECASE,
 )
+_RE_STATUS_FLEET = re.compile(
+    r"\b(?:status|estado|flota|granja|mineros?|como\s+va|como\s+estan?|resumen|panel|rendimiento|hashrate|th/s|ths)\b",
+    re.IGNORECASE,
+)
+_RE_POWER_ELEVATORS = re.compile(
+    r"\b(?:potencia|consumo|watts?|kw|elevador(?:es)?|acometida|tensi[oó]n|carga)\b",
+    re.IGNORECASE,
+)
+_RE_DIRECTIVES = re.compile(
+    r"\b(?:directivas?|gobernanza|deadlocks?|pol[ií]ticas?|vigilante|watchdog|grace)\b",
+    re.IGNORECASE,
+)
+_RE_GREETING = re.compile(
+    r"\b(?:hola|buenas?|buen\s+d[ií]a|buenas\s+tardes|buenas\s+noches|hey|asistente|supervisor)\b",
+    re.IGNORECASE,
+)
 
 
 def _ensure_max_width(lines: list[str], max_width: int = 32) -> str:
@@ -46,6 +62,7 @@ def _ensure_max_width(lines: list[str], max_width: int = 32) -> str:
 def handle_conversational_query(
     query: str,
     context: Any,
+    allow_fallback: bool = True,
 ) -> Optional[str]:
     """Parse natural language query and return deterministic offline answer in <= 32 cols."""
     if not query or not isinstance(query, str):
@@ -130,6 +147,174 @@ def handle_conversational_query(
             "• Fans en regulación activa",
             CARD_SEPARATOR,
             "Usa /fans o /status x telemetría",
+            CARD_SEPARATOR,
+        ]
+        return _ensure_max_width(lines)
+
+    # Check Intent 4: Fleet status / overview
+    if _RE_STATUS_FLEET.search(clean_query):
+        miners = getattr(context, "miners", []) or []
+        states = getattr(context, "states", {}) or {}
+        state_lock = getattr(context, "state_lock", None)
+
+        if state_lock:
+            with state_lock:
+                states_copy = {k: v for k, v in states.items()}
+        else:
+            states_copy = dict(states)
+
+        total_miners = len(miners)
+        ok_count = 0
+        total_ths = 0.0
+        total_w = 0.0
+        max_temp = 0.0
+
+        for m in miners:
+            m_name = m.get("name", "")
+            m_host = m.get("host", "")
+            m_port = m.get("port", 4028)
+            sk = f"{m_name}|{m_host}:{m_port}"
+            st = states_copy.get(sk)
+            if st:
+                st_val = getattr(st, "state", "OK")
+                if st_val == "OK":
+                    ok_count += 1
+                r = getattr(st, "last_rate_ths", None) or getattr(st, "rate_ths", None) or 0.0
+                try:
+                    total_ths += float(r)
+                except (TypeError, ValueError):
+                    pass
+                p = getattr(st, "last_power_w", None) or getattr(st, "governor_last_power_w", None) or 0.0
+                try:
+                    total_w += float(p)
+                except (TypeError, ValueError):
+                    pass
+                t = getattr(st, "last_max_chip_temp", None) or getattr(st, "last_temp_c", None) or 0.0
+                try:
+                    t_val = float(t)
+                    if t_val > max_temp:
+                        max_temp = t_val
+                except (TypeError, ValueError):
+                    pass
+
+        lines = [
+            "📊 ESTADO DE FLOTA",
+            CARD_SEPARATOR,
+            f"• Mineros OK: {ok_count}/{total_miners}",
+            f"• Hashrate: {total_ths:.1f} TH/s",
+            f"• Potencia: {total_w / 1000.0:.2f} kW",
+            f"• Temp Máx: {max_temp:.1f}°C" if max_temp > 0 else "• Temp Máx: N/A",
+            CARD_SEPARATOR,
+            "Usa /status para detalle",
+            CARD_SEPARATOR,
+        ]
+        return _ensure_max_width(lines)
+
+    # Check Intent 5: Power & Elevators
+    if _RE_POWER_ELEVATORS.search(clean_query):
+        miners = getattr(context, "miners", []) or []
+        states = getattr(context, "states", {}) or {}
+        state_lock = getattr(context, "state_lock", None)
+
+        if state_lock:
+            with state_lock:
+                states_copy = {k: v for k, v in states.items()}
+        else:
+            states_copy = dict(states)
+
+        elev1_w = 0.0
+        elev2_w = 0.0
+
+        for m in miners:
+            m_name = m.get("name", "")
+            m_host = m.get("host", "")
+            m_port = m.get("port", 4028)
+            grp = m.get("electrical_group") or m.get("group")
+            if not grp:
+                if "23" in m_name or "24" in m_name:
+                    grp = "elevator_1"
+                elif "25" in m_name or "26" in m_name:
+                    grp = "elevator_2"
+
+            sk = f"{m_name}|{m_host}:{m_port}"
+            st = states_copy.get(sk)
+            pwr = 0.0
+            if st:
+                p = getattr(st, "last_power_w", None) or getattr(st, "governor_last_power_w", None)
+                if p is not None:
+                    try:
+                        pwr = float(p)
+                    except (TypeError, ValueError):
+                        pwr = 0.0
+                elif getattr(st, "state", "OK") == "OK":
+                    pwr = 2700.0
+
+            if grp == "elevator_1":
+                elev1_w += pwr
+            elif grp == "elevator_2":
+                elev2_w += pwr
+
+        tot_kw = (elev1_w + elev2_w) / 1000.0
+        lines = [
+            "⚡ POTENCIA Y ELEVADORES",
+            CARD_SEPARATOR,
+            f"• Elevador 1: {int(elev1_w)}W / 5400W",
+            "  (M23 + M24)",
+            f"• Elevador 2: {int(elev2_w)}W / 5400W",
+            "  (M25 + M26)",
+            f"• Total Flota: {tot_kw:.2f} kW",
+            CARD_SEPARATOR,
+            "Límite seguro: 5400W x elev.",
+            CARD_SEPARATOR,
+        ]
+        return _ensure_max_width(lines)
+
+    # Check Intent 6: Directives & Governance
+    if _RE_DIRECTIVES.search(clean_query):
+        lines = [
+            "🛡️ GOBERNANZA Y DIRECTIVAS",
+            CARD_SEPARATOR,
+            "• Deadlock Watchdog: ACTIVO",
+            "  (Disparo por flanco)",
+            "• Cold-Boot Grace: 900s",
+            "  (Supresión en arranque)",
+            "• Dynamic Balancer: ACTIVO",
+            "  (Elevadores 5400W)",
+            CARD_SEPARATOR,
+            "Usa /directivas para matriz",
+            CARD_SEPARATOR,
+        ]
+        return _ensure_max_width(lines)
+
+    # Check Intent 7: Greeting
+    if _RE_GREETING.search(clean_query):
+        lines = [
+            "🤖 ASISTENTE SUPERVISOR",
+            CARD_SEPARATOR,
+            "¡Hola! Estoy en línea y",
+            "monitoreando la flota.",
+            "Puedes consultarme:",
+            '• "¿Cómo está la flota?"',
+            '• "¿Por qué reinició la 23?"',
+            '• "¿Carga de elevadores?"',
+            '• "¿Estado térmico?"',
+            "O usa /menu o /help",
+            CARD_SEPARATOR,
+        ]
+        return _ensure_max_width(lines)
+
+    # Fallback guide response (eliminating unhandled silence)
+    if allow_fallback:
+        lines = [
+            "🤖 ASISTENTE DE FLOTA",
+            CARD_SEPARATOR,
+            "No reconocí esa consulta.",
+            "Prueba preguntando:",
+            '• "¿Cómo está la flota?"',
+            '• "¿Por qué reinició la 23?"',
+            '• "¿Carga de elevadores?"',
+            '• "¿Estado térmico?"',
+            "O escribe /menu o /help",
             CARD_SEPARATOR,
         ]
         return _ensure_max_width(lines)

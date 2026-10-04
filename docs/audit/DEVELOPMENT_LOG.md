@@ -3,6 +3,50 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-03] - Modernización UX Telegram: Teclados 1-Tap, Chatbot Conversacional, Comandos Huérfanos y Acciones Rápidas
+
+* **Contexto**:
+  - Motivación: Optimizar y agilizar la experiencia de supervisión e intervención operativa desde clientes móviles de Telegram, reduciendo la fricción de tipear comandos manuales de confirmación de 6 dígitos bajo condiciones de urgencia en planta, enriquecer el supervisor conversacional para resolver consultas cotidianas sin requerir memorización de comandos, formalizar comandos huérfanos en el centro de ayuda, e integrar acciones rápidas contextuales tras el diagnóstico de autopsia.
+  - Objetivo:
+    1. Implementar teclados inline de confirmación 1-Tap para `/reboot <m>` y `/reboot_no_ok`, cableando el manejo seguro de callbacks de reinicio masivo en el monitor.
+    2. Expandir el supervisor conversacional (`conversational_qa.py`) con intenciones de estado general de flota, balance de potencia/elevadores, directivas de gobernanza, saludos de cortesía y respuesta guía amigable (cero silencios ante texto libre no reconocido).
+    3. Registrar formalmente los comandos `/directivas` y `/agent` en `help_center.py`, respetando las 5 categorías existentes y la restricción estricta de ancho <= 32 columnas.
+    4. Agregar botones de acción rápida 1-Tap (`chart` y `rb_req`) en las fichas de autopsia individual generadas por `/autopsy`.
+  - Baseline previo: 1514 tests PASS, 75 subtests PASS.
+
+* **Implementación**:
+  1. `app/telegram/commands/reboot.py`:
+     - Integrada la generación de teclados inline 1-Tap mediante `build_confirmation_keyboard` cuando `token_registry` está disponible en el contexto de solicitud.
+     - Para `/reboot_no_ok`, se genera un teclado inline con confirmación de reinicio masivo (`rb_cfm:<token>:bulk_no_ok`) y cancelación rápida (`rb_ccl:bulk_no_ok`).
+     - Preservada compatibilidad total hacia atrás con el flujo de comando escrito `/confirm reboot <m> <code>`.
+  2. `app/miner_monitor.py`:
+     - Cableados los callbacks `rb_ccl:bulk_no_ok` (cancelación de reinicio masivo) y `rb_cfm:<token>:bulk_no_ok` (ejecución masiva acotada a un máximo de 5 mineros NO-OK simultáneos).
+     - Validación de seguridad con `qa_allow_actions`, consumo de token y confirmación visual inmediata de estado en la botonera de Telegram.
+  3. `app/forensics/conversational_qa.py`:
+     - Incorporadas expresiones regulares e intenciones conversacionales: `_RE_STATUS_FLEET`, `_RE_POWER_ELEVATORS`, `_RE_DIRECTIVES`, `_RE_GREETING`.
+     - Implementada tarjeta de guía interactiva de bienvenida y fallback amigable cuando el mensaje libre no coincide con una autopsia ni intención específica, erradicando por completo el silencio del bot.
+     - Cumplimiento estricto del límite de ancho visual de 32 columnas por línea.
+  4. `app/telegram/help_center.py`:
+     - Registrado el comando `/directivas` en la categoría `diag` (Diagnóstico y Auditoría).
+     - Registrado el comando `/agent` en la categoría `ctrl` (Control y Operaciones).
+     - Actualizado `HELP_CATEGORIES` y validado el formateo compacto.
+  5. `app/telegram/commands/autopsy.py`:
+     - Incorporados botones inline de acción rápida 1-Tap en la autopsia individual: `chart:{m_id}` (histórico visual) y `rb_req:{m_id}` (solicitud de reinicio rápido).
+  6. Cobertura de Pruebas:
+     - `tests/test_help_center.py`: Verificación de registro, descripciones y navegación de categorías.
+     - `tests/test_incident_autopsy.py`: Verificación integral de todas las nuevas intenciones conversacionales y fallback con guía de ayuda.
+     - `tests/test_telegram_callbacks.py`: Pruebas de integración de teclados 1-Tap para `/reboot`, `/reboot_no_ok`, y callbacks de confirmación masiva.
+
+* **Resultados de Validación**:
+  - `py_compile`: exit 0 en todos los módulos de producción y herramientas.
+  - `pytest -q`: **1518 passed, 75 subtests passed** in 42.80s (+4 nuevas pruebas, 100% PASS).
+  - Preflight Stabilize Gate: 8/8 gates PASS (`preflight_stabilize.ps1`).
+
+* **Invariantes Preservados**:
+  - Formato Telegram Mobile-First <= 32 columnas por línea garantizado.
+  - Seguridad operacional: tokens de un solo uso con expiración de 60 segundos.
+  - Secretos y estados locales (`app/config.json`, `app/state.json`) preservados intactos y fuera de control de versiones.
+
 ## [2026-10-03] - Hardening del Deadlock Watchdog y Supresión de Falsas Alarmas en Telegram
 
 * **Contexto**:

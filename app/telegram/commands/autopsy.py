@@ -128,11 +128,24 @@ class AutopsyCommand(BaseCommandHandler):
             )
             card = build_autopsy_card(report)
 
+        reply_markup = None
+        if rec:
+            m_id = str(miner_name).replace("S19JPRO-", "").replace("MINER-", "").replace("MINER_", "")
+            reply_markup = {
+                "inline_keyboard": [
+                    [
+                        {"text": "📊 Ver Telemetría", "callback_data": f"chart:{m_id}"},
+                        {"text": "🔄 Reiniciar", "callback_data": f"rb_req:{m_id}"},
+                    ]
+                ]
+            }
+
         context.send_message(
             card,
             msg_type="AUTOPSY",
             dedup_key=f"cmd_autopsy_{update_id}",
             dbg_cmd="autopsia",
             dbg_update_id=update_id,
+            reply_markup=reply_markup,
         )
         return True

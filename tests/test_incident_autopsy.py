@@ -286,9 +286,46 @@ def test_conversational_qa_supervisor(tmp_path):
         for line in ans_thm.splitlines():
             assert visible_line_width(line) <= 32
 
-        # 5. Unrelated text
-        ans_none = handle_conversational_query("hola que tal hoy?", mock_context)
-        assert ans_none is None
+        # 5. Greeting
+        ans_greet = handle_conversational_query("hola que tal hoy?", mock_context)
+        assert ans_greet is not None
+        assert "ASISTENTE" in ans_greet
+        for line in ans_greet.splitlines():
+            assert visible_line_width(line) <= 32
+
+        # 6. Fleet status
+        ans_fleet = handle_conversational_query("¿cómo está la flota?", mock_context)
+        assert ans_fleet is not None
+        assert "ESTADO DE FLOTA" in ans_fleet
+        for line in ans_fleet.splitlines():
+            assert visible_line_width(line) <= 32
+
+        # 7. Power and elevators
+        ans_pwr = handle_conversational_query("¿cuál es la potencia y carga de elevadores?", mock_context)
+        assert ans_pwr is not None
+        assert "POTENCIA Y ELEVADORES" in ans_pwr
+        for line in ans_pwr.splitlines():
+            assert visible_line_width(line) <= 32
+
+        # 8. Governance directives
+        ans_gov = handle_conversational_query("¿qué directivas y políticas hay?", mock_context)
+        assert ans_gov is not None
+        assert "GOBERNANZA Y DIRECTIVAS" in ans_gov
+        for line in ans_gov.splitlines():
+            assert visible_line_width(line) <= 32
+
+        # 9. Unrecognized query returns friendly fallback guide
+        ans_fallback = handle_conversational_query("consulta no reconocida xyz 12345", mock_context)
+        assert ans_fallback is not None
+        assert "No reconocí esa consulta" in ans_fallback
+        for line in ans_fallback.splitlines():
+            assert visible_line_width(line) <= 32
+
+        # 10. Fallback disabled returns None
+        assert handle_conversational_query("consulta no reconocida xyz 12345", mock_context, allow_fallback=False) is None
+
+        # 11. Empty string returns None
+        assert handle_conversational_query("", mock_context) is None
     finally:
         store.close()
 

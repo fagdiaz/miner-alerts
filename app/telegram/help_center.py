@@ -318,6 +318,19 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
         aliases=["reanudar"],
         danger_level="safe",
     ),
+    "agent": CommandDefinition(
+        name="agent",
+        summary="Estado del agente supervisor.",
+        usage="/agent [status|log]",
+        category="ctrl",
+        detail=[
+            "Muestra el estado operativo del agente,",
+            "última sincronización y ciclo de control.",
+        ],
+        examples=["/agent", "/agent status"],
+        aliases=["agente", "fga"],
+        danger_level="safe",
+    ),
 
     # ── Diagnóstico & Eventos (diag) ──
     "events": CommandDefinition(
@@ -462,6 +475,19 @@ HELP_COMMANDS: Dict[str, CommandDefinition] = {
         aliases=["causa_raiz", "autopsy", "investigar"],
         danger_level="safe",
     ),
+    "directivas": CommandDefinition(
+        name="directivas",
+        summary="Políticas activas y gobernanza.",
+        usage="/directivas [watchdog|grace|all]",
+        category="diag",
+        detail=[
+            "Inspecciona el watchdog de deadlocks,",
+            "período de gracia cold-boot y balanceo.",
+        ],
+        examples=["/directivas", "/directivas watchdog"],
+        aliases=["gov_status", "directives", "directiva"],
+        danger_level="safe",
+    ),
 }
 
 HELP_CATEGORIES: Dict[str, HelpCategory] = {
@@ -502,6 +528,7 @@ HELP_CATEGORIES: Dict[str, HelpCategory] = {
             "snoozed",
             "shutdown",
             "resume",
+            "agent",
         ],
     ),
     "diag": HelpCategory(
@@ -522,6 +549,7 @@ HELP_CATEGORIES: Dict[str, HelpCategory] = {
             "selftest",
             "chains",
             "help",
+            "directivas",
         ],
     ),
 }

@@ -6,9 +6,9 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (87 de 87 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Spec 087 Desacoplamiento de Callbacks COMPLETADA).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (88 de 88 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Spec 088 Desacoplamiento de Ciclos de Gobernanza COMPLETADA).
 - **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico (92% PWM en 26).
-- **Programa Maestro de Desacoplamiento del Monolito**: Fase 1 completada (`Spec 087: Callbacks de Telegram`, -1.508 LOC). Próxima: `Spec 088: Ciclos de Gobernanza`.
+- **Programa Maestro de Desacoplamiento del Monolito**: Fases 1 y 2 completadas (`Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, -1.896 LOC acumuladas). Próxima: `Spec 089: Telemetría de Hardware`.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ---
@@ -1089,6 +1089,23 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 - Desacoplamiento de `app/telegram/router.py` para despacho directo en `app.telegram.*`.
 - Shims de re-export en `app/miner_monitor.py` preservando 100% de compatibilidad con tests.
 - Reducción neta de -1.508 líneas en `app/miner_monitor.py` (de 9.160 a 7.652 LOC).
+
+---
+
+### Iniciativa 40 — Desacoplamiento de Ciclos de Gobernanza (Spec 088) — COMPLETADA ✅
+
+**Documento**: `specs/088-governance-cycles-decoupling/spec.md`
+**Estado**: COMPLETADA Y CERTIFICADA (2026-10-07) — 1522 tests PASS, 75 subtests PASS.
+**Prioridad**: P1 — Deuda Técnica / Modularización
+**Riesgo**: BAJO
+**Modelo ejecutado**: Gemini 3.8 Flash High
+**Dependencia**: Programa Maestro de Modularización (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`)
+
+**Alcance técnico completado**:
+- Creación de `app/governance/balancer_cycle.py` y migración de `execute_balancer_cycle` (~253 LOC).
+- Extracción de `check_autotune_watchdog` y `execute_autotune_watchdog_cycle` (~140 LOC) en `app/governance/autotune_watchdog.py`.
+- Shims de re-export en `app/miner_monitor.py` preservando 100% de compatibilidad con tests y herramientas externas.
+- Reducción neta de -388 líneas en `app/miner_monitor.py` (de 7.652 a 7.264 LOC; -1.896 LOC acumuladas).
 
 ---
 

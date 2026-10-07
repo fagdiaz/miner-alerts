@@ -3,6 +3,30 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-07] - Spec 088: Desacoplamiento de Ciclos de Gobernanza (Preset Balancer y Autotune Watchdog)
+
+* **Contexto**:
+  - Motivación: Segunda fase del Programa Maestro de Modularización Arquitectónica (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`). Modularización de los bucles de gobernanza periódica y control de hardware de potencia fuera del orquestador monolítico `app/miner_monitor.py`.
+  - Objetivo: Extraer `execute_balancer_cycle` (~253 LOC) y `check_autotune_watchdog` (~140 LOC) hacia módulos dedicados en `app/governance/`, preservando sincronización thread-safe (`state_lock`, `_orchestrator_state`), compatibilidad total con mocks en tests y cero regresiones en planta.
+  - Baseline previo: 1522 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/governance/balancer_cycle.py`:
+     - Creado módulo especializado para el ciclo del Dynamic Power & Preset Balancer.
+     - Contiene `execute_balancer_cycle` con sincronización de estado vía `app.governance._orchestrator_state` y despacho dinámico de helpers de monitor (`extract_miner_stability_metrics`, `safe_set_miner_preset`, `refresh_vnish_overclock_settings`, `send_telegram`, `log`).
+  2. `app/governance/autotune_watchdog.py`:
+     - Incorporado `check_autotune_watchdog` y alias `execute_autotune_watchdog_cycle`.
+     - Ingestión paralela en una sola pasada de resúmenes VNish y rescate seguro de mineros trabados en auto-tuning.
+  3. `app/miner_monitor.py`:
+     - Reemplazadas 391 líneas de implementación por shims limpios de re-exportación (`execute_balancer_cycle`, `check_autotune_watchdog`, `execute_autotune_watchdog_cycle`).
+     - Monolito reducido de 7.652 a 7.264 líneas (-388 LOC netas; -1.896 LOC acumuladas).
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Sintaxis limpia verificada en `miner_monitor.py`, `balancer_cycle.py` y `autotune_watchdog.py`.
+  - Pruebas focalizadas: 33/33 tests PASS en `test_autotune_watchdog.py`, `test_hw_error_tripwire.py` y `test_preset_balancer_integration.py`.
+  - `pytest -q`: 1522 passed, 75 subtests passed (0 fallos, 0 errores).
+  - Preflight Stabilization Gate: 8/8 gates PASS.
+
 ## [2026-10-07] - Spec 087: Desacoplamiento de Callbacks de Telegram del Monolito
 
 * **Contexto**:

@@ -21,8 +21,10 @@ Upon detection:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
+import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.governance.adaptive_contingency import normalize_miner_name
 from app.governance.elevator_budget import parse_preset_wattage
@@ -229,3 +231,157 @@ class AutotuneWatchdogState:
             hardware_ceiling_locks={str(k): str(v) for k, v in data.get("hardware_ceiling_locks", {}).items()},
             last_rescue_ts={str(k): float(v) for k, v in data.get("last_rescue_ts", {}).items()},
         )
+
+
+_logger = logging.getLogger("miner_alerts.autotune_watchdog")
+
+
+def check_autotune_watchdog(
+    miners: list,
+    states: Dict[str, Any],
+    state_lock: threading.Lock,
+    config: dict,
+    now_ts: float,
+    send_telegram_fn: Optional[Callable] = None,
+    bot_token: str = "",
+    chat_id: str = "",
+    qa_mode: bool = False,
+    summaries: Optional[Dict[str, dict]] = None,
+    log_fn: Optional[Callable[[str], None]] = None,
+) -> list:
+    """Supervises active miners for autotune stalls (Spec 078 / PROP-013 / QA Hardening / Spec 088).
+
+    If any miner is stuck in 'auto-tuning' for > autotune_timeout_s (default 600s)
+    with hashrate < 20 TH/s, steps down to safe preset with auto_restart_mining=True,
+    locks hardware ceiling, and alerts Telegram.
+
+    Single-pass parallel ingestion prevents port 80 socket exhaustion on ASIC control boards.
+    """
+    import app.miner_monitor as mm
+    _log = log_fn or getattr(mm, "log", _logger.info)
+
+    from app.governance._orchestrator_state import get_intervention_gov
+    from app.governance.intervention_policy import ACTION_AUTOTUNE_WATCHDOG, should_allow_intervention
+    from app.governance.elevator_budget import get_miner_max_hardware_preset, parse_preset_wattage
+    from app.vnish.client import fetch_fleet_vnish_summaries, safe_set_miner_preset
+
+    # Spec 057: Check intervention governance for Autotune Watchdog
+    gov_obj = getattr(mm, "_GLOBAL_INTERVENTION_GOV", None) or get_intervention_gov()
+    if gov_obj is not None:
+        allowed, reason = should_allow_intervention(ACTION_AUTOTUNE_WATCHDOG, gov_obj, now_ts)
+        if not allowed:
+            return []
+
+    timeout_s = float(config.get("autotune_timeout_s", 600.0))
+    min_ths = float(config.get("autotune_min_active_hashrate_ths", 20.0))
+    vnish_pw = str(config.get("vnish_api_password", "admin"))
+    req_timeout = float(config.get("fan_governor_request_timeout", 2.5))
+
+    autotune_state = getattr(mm, "_AUTOTUNE_WATCHDOG_STATE", None)
+    facility_state = getattr(mm, "_FACILITY_BUDGET_STATE", None)
+
+    # Single-pass ingestion: fetch all summaries in parallel if not pre-provided
+    if summaries is None:
+        hosts = [m.get("host") for m in miners if m.get("host")]
+        summaries = fetch_fleet_vnish_summaries(hosts, timeout=req_timeout)
+
+    stalls_handled = []
+    for m_item in miners:
+        m_host = m_item.get("host")
+        m_name = m_item.get("name") or str(m_host)
+        if not m_host:
+            continue
+
+        summary = summaries.get(m_host)
+        if not summary:
+            continue
+
+        m_state = summary.get("miner_state", "")
+        m_state_time = summary.get("miner_state_time", 0)
+        hr_rt = summary.get("hr_realtime_ths", 0.0)
+
+        hw_max = get_miner_max_hardware_preset(m_name, config=config)
+
+        m_sk = f"{m_name}|{m_host}:{m_item.get('port', 4028)}"
+        with state_lock:
+            st = states.get(m_sk)
+            curr_p = (
+                getattr(st, "vnish_discovered_preset", None)
+                or getattr(st, "balancer_preset", None)
+                or m_item.get("target_power_w", "2700W")
+            ) if st else "2700W"
+
+        decision = evaluate_autotune_stall(
+            miner_name=m_name,
+            miner_state=m_state,
+            miner_state_time=m_state_time,
+            current_hashrate_ths=hr_rt,
+            current_preset=str(curr_p),
+            timeout_s=timeout_s,
+            min_hashrate_ths=min_ths,
+            max_hardware_preset=hw_max,
+        )
+
+        if decision.is_stalled and decision.action == ACTION_AUTOTUNE_STALLED:
+            _log(f"[AUTOTUNE_WATCHDOG] STALL DETECTED on {m_name}: {decision.reason}")
+            if autotune_state is not None:
+                autotune_state.record_stall_rescue(
+                    miner_name=m_name,
+                    locked_preset=decision.safe_preset,
+                    now_ts=now_ts,
+                )
+            # Record incident quiet on the elevator group to suppress secondary noise
+            m_group = m_item.get("electrical_group") or m_item.get("group")
+            if m_group and facility_state is not None:
+                facility_state.record_group_incident(m_group, now_ts)
+
+            if not qa_mode:
+                ok_set, msg_set = safe_set_miner_preset(
+                    m_host,
+                    vnish_pw,
+                    decision.safe_preset,
+                    timeout=req_timeout,
+                    clamp_top_preset=True,
+                    top_preset=decision.safe_preset,
+                    auto_restart_mining=True,
+                )
+                _log(f"[AUTOTUNE_WATCHDOG] Rescate aplicado a {m_name}: {curr_p} -> {decision.safe_preset} (ok={ok_set}, msg={msg_set})")
+            else:
+                ok_set = True
+                msg_set = "qa_mode_simulated"
+
+            if ok_set:
+                if facility_state is not None:
+                    facility_state.record_transition(m_name, decision.safe_preset, now_ts)
+                with state_lock:
+                    if st:
+                        st.balancer_preset = decision.safe_preset
+                        st.vnish_discovered_top_preset = decision.safe_preset
+                        st.vnish_discovered_preset = decision.safe_preset
+                        st.vnish_discovered_target_power_w = float(parse_preset_wattage(decision.safe_preset))
+                        st.last_preset_change_ts = now_ts
+
+                tg_fn = send_telegram_fn or getattr(mm, "send_telegram", None)
+                if tg_fn:
+                    tg_msg = (
+                        f"🚨 *WATCHDOG: AUTOTUNE TRABADO RESCATADO*\n\n"
+                        f"• Minero: *{m_name}* (Elevador: `{m_group or 'N/D'}`)\n"
+                        f"• Problema: *Atrapado en auto-tuning durante {m_state_time}s* (> {timeout_s:.0f}s) a *{curr_p}* con hashrate {hr_rt:.2f} TH/s.\n"
+                        f"• Causa física: Límite de silicio / falla de PLLs.\n"
+                        f"• Acción de rescate: *Desescalado a {decision.safe_preset}* con reinicio de minado transaccional.\n"
+                        f"• Protección: Cerrojo de hardware fijado en *{decision.safe_preset}* y ventana de reposo de 300s en elevador."
+                    )
+                    tg_fn(
+                        bot_token,
+                        str(chat_id),
+                        tg_msg,
+                        "CRITICAL",
+                        f"autotune_stall_{m_name}",
+                        is_command=True,
+                    )
+            stalls_handled.append(decision)
+
+    return stalls_handled
+
+
+execute_autotune_watchdog_cycle = check_autotune_watchdog

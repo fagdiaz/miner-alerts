@@ -1,6 +1,6 @@
 # ==============================================================================
-# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 088 (CICLOS DE GOBERNANZA)
-# FECHA: 2026-10-07 18:45 UTC-3
+# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 089 (TELEMETRÍA DE HARDWARE)
+# FECHA: 2026-10-07 20:20 UTC-3
 # RAMA: codex/022-adaptive-acquisition
 # ESTADO DE SUITE: 1522 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
 # SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
@@ -12,28 +12,32 @@ ESTADO DE PRODUCCIÓN Y FLOTA:
 --------------------------------------------------------------------------------
 • Toda la flota operando nominalmente a 2700W (4x 2700W, ~400 TH/s, 10.6 kW).
 • M26 estabilizado y modulando ventiladores en 92% PWM (5580 RPM) a 77-80°C.
-• Spec 087 (Callbacks de Telegram) 100% COMPLETADA: -1.508 LOC en miner_monitor.py.
+• Spec 087 (Callbacks de Telegram): -1.508 LOC completada y certificada.
+• Spec 088 (Ciclos de Gobernanza): -388 LOC completada y certificada (-1.896 LOC acumuladas).
 • Servicio NSSM MinerAlerts reiniciado y verificado en producción (SERVICE_RUNNING).
 • Preflight de estabilización: 8/8 gates PASS.
 
-OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 088 (CICLOS DE GOBERNANZA)
+OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 089 (TELEMETRÍA DE HARDWARE Y SOCKETS ASIC 4028)
 --------------------------------------------------------------------------------
 Continuar el Programa Maestro de Modularización Arquitectónica
 (docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md).
-Extraer ~1.800 líneas de bucles de gobernanza periódica (Fan Governor, Preset Balancer,
-Soft Contingency, Solar Envelope, Chain Health) desde `app/miner_monitor.py`
-hacia `app/governance/cycles/` sin tocar contratos ni alterar hardware en planta.
+Extraer la telemetría de cadenas (_async_collect_chain_telemetry, ~418 LOC) hacia
+app/hardware/chain_collector.py, depurar sockets 4028 duplicados delegando a
+app/network/cgminer_client.py, y migrar formateadores de texto de diagnóstico
+hacia app/telegram/fleet_cards.py (~1.000 LOC netas).
 
 ARCHIVOS DE REFERENCIA:
 - Documento maestro: `docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`
-- Próxima feature: `specs/088-governance-cycles-decoupling/spec.md`
+- Próxima feature: `specs/089-hardware-telemetry-decoupling/spec.md`
+- Plan de implementación: `specs/089-hardware-telemetry-decoupling/plan.md`
+- Tareas: `specs/089-hardware-telemetry-decoupling/tasks.md`
 - Historial de cambios: `docs/audit/DEVELOPMENT_LOG.md`
 - Roadmap: `docs/speckit/ROADMAP.md`
 
 INSTRUCCIÓN DE ARRANQUE PARA LA PRÓXIMA SESIÓN:
 --------------------------------------------------------------------------------
-1. Actualizar `.specify/feature.json` a `specs/088-governance-cycles-decoupling`.
-2. Leer `specs/088-governance-cycles-decoupling/tasks.md`.
-3. Ejecutar la extracción secuencial según el plan de la Spec 088.
+1. Actualizar `.specify/feature.json` a `specs/089-hardware-telemetry-decoupling`.
+2. Leer `specs/089-hardware-telemetry-decoupling/tasks.md`.
+3. Ejecutar la extracción secuencial según el plan de la Spec 089.
 4. Mantener shims en `miner_monitor.py` para compatibilidad de tests (1522 PASS).
 5. Validar con `py_compile`, `pytest -q`, preflight_stabilize.ps1 y reiniciar NSSM.

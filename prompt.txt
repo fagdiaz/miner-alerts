@@ -1,6 +1,6 @@
 # ==============================================================================
-# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 089 (TELEMETRÍA DE HARDWARE)
-# FECHA: 2026-10-07 20:20 UTC-3
+# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 090 (TEST INVARIANTS MODERNIZATION)
+# FECHA: 2026-10-07 20:40 UTC-3
 # RAMA: codex/022-adaptive-acquisition
 # ESTADO DE SUITE: 1522 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
 # SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
@@ -13,31 +13,31 @@ ESTADO DE PRODUCCIÓN Y FLOTA:
 • Toda la flota operando nominalmente a 2700W (4x 2700W, ~400 TH/s, 10.6 kW).
 • M26 estabilizado y modulando ventiladores en 92% PWM (5580 RPM) a 77-80°C.
 • Spec 087 (Callbacks de Telegram): -1.508 LOC completada y certificada.
-• Spec 088 (Ciclos de Gobernanza): -388 LOC completada y certificada (-1.896 LOC acumuladas).
+• Spec 088 (Ciclos de Gobernanza): -388 LOC completada y certificada.
+• Spec 089 (Telemetría de Cadenas & Sockets ASIC): -620 LOC completada y certificada (-2.430 LOC acumuladas).
 • Servicio NSSM MinerAlerts reiniciado y verificado en producción (SERVICE_RUNNING).
-• Preflight de estabilización: 8/8 gates PASS.
+• Preflight de estabilización: 8/8 gates PASS (0 fallos).
 
-OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 089 (TELEMETRÍA DE HARDWARE Y SOCKETS ASIC 4028)
+OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 090 (MODERNIZACIÓN DE TESTS GETSOURCE DE MAIN)
 --------------------------------------------------------------------------------
 Continuar el Programa Maestro de Modularización Arquitectónica
 (docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md).
-Extraer la telemetría de cadenas (_async_collect_chain_telemetry, ~418 LOC) hacia
-app/hardware/chain_collector.py, depurar sockets 4028 duplicados delegando a
-app/network/cgminer_client.py, y migrar formateadores de texto de diagnóstico
-hacia app/telegram/fleet_cards.py (~1.000 LOC netas).
+Desacoplar las aserciones de `inspect.getsource(main)` en `tests/test_startup_grace_period.py:222`
+para verificar el comportamiento funcional con `SupervisoryBehavioralHarness` en lugar de
+inspeccionar texto crudo de la función `main()`. Esto deja el camino 100% despejado para la
+Spec 091 (Core Daemon Hookification & Cierre V6.0, donde `main()` baja a <100 líneas).
 
 ARCHIVOS DE REFERENCIA:
 - Documento maestro: `docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`
-- Próxima feature: `specs/089-hardware-telemetry-decoupling/spec.md`
-- Plan de implementación: `specs/089-hardware-telemetry-decoupling/plan.md`
-- Tareas: `specs/089-hardware-telemetry-decoupling/tasks.md`
+- Próxima feature: `specs/090-test-invariants-modernization/spec.md`
+- Plan de implementación: `specs/090-test-invariants-modernization/plan.md`
+- Tareas: `specs/090-test-invariants-modernization/tasks.md`
 - Historial de cambios: `docs/audit/DEVELOPMENT_LOG.md`
 - Roadmap: `docs/speckit/ROADMAP.md`
 
 INSTRUCCIÓN DE ARRANQUE PARA LA PRÓXIMA SESIÓN:
 --------------------------------------------------------------------------------
-1. Actualizar `.specify/feature.json` a `specs/089-hardware-telemetry-decoupling`.
-2. Leer `specs/089-hardware-telemetry-decoupling/tasks.md`.
-3. Ejecutar la extracción secuencial según el plan de la Spec 089.
-4. Mantener shims en `miner_monitor.py` para compatibilidad de tests (1522 PASS).
-5. Validar con `py_compile`, `pytest -q`, preflight_stabilize.ps1 y reiniciar NSSM.
+1. Actualizar `.specify/feature.json` a `specs/090-test-invariants-modernization`.
+2. Leer `specs/090-test-invariants-modernization/tasks.md`.
+3. Ejecutar la modernización de los tests según el plan de la Spec 090.
+4. Validar con `py_compile`, `pytest -q`, preflight_stabilize.ps1 y registrar en docs/audit/DEVELOPMENT_LOG.md.

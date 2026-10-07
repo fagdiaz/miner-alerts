@@ -9,8 +9,16 @@ Zero I/O, zero database connections, zero threading locks.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from app.core.event_store import EventStore
+
+STATE_LOW = "LOW"
+STATE_OFFLINE = "OFFLINE"
+STATE_HASHBOARD = "HASHBOARD"
 
 from app.telegram.command_center import CC_NAV_MAIN, build_inline_keyboard
 from app.telegram.help_center import (
@@ -391,3 +399,319 @@ def render_fleet_status_card(
         lines.append(summary_line)
 
     return "\n".join(lines), build_diagnostic_keyboard("status")
+
+
+# ── Spec 089: Diagnostic Text Builders & Resolution Helpers ──────────────
+
+def display_name(raw_name: str) -> str:
+    """Return compact display identifier for miner name (e.g. S19JPRO-23 -> 23)."""
+    if "-" in raw_name:
+        return raw_name.split("-")[-1]
+    return raw_name
+
+
+def format_rate(rate: Optional[float]) -> str:
+    """Format hashrate in TH/s."""
+    if rate is None:
+        return "N/A"
+    return f"{rate:.1f} TH/s"
+
+
+def _short_text(text: str, limit: int = 160) -> str:
+    """Bound text to a limit, appending ellipsis if truncated."""
+    cleaned = " ".join(str(text or "").split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[: max(0, limit - 3)]}..."
+
+
+def resolve_miner(input_name: str, miners: list) -> Optional[dict]:
+    """Resolve miner dictionary from name, display name, or host/ip."""
+    needle = input_name.strip().lower()
+    for miner in miners:
+        raw = str(miner.get("name", "")).lower()
+        disp = display_name(miner.get("name", "")).lower()
+        if needle == raw or needle == disp:
+            return miner
+    for miner in miners:
+        host = str(miner.get("host") or miner.get("ip") or "").strip().lower()
+        if host and (needle == host or needle == host.split(":")[-1]):
+            return miner
+    return None
+
+
+def build_stability_health_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+    *,
+    now_ts: float,
+    window_hours: float = 168.0,
+    min_samples: int = 12,
+    stale_after_seconds: float = 900.0,
+) -> str:
+    """Render bounded historical health without contacting miners or running actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico historico temporalmente no disponible."
+    from app.core.stability_profile import analyze_stability, render_stability_assessment
+    selected_miners = miners
+    token = str(miner_token or "").strip()
+    if token and token.lower() != "all":
+        selected = resolve_miner(token, miners)
+        if not selected:
+            return "Miner no encontrado."
+        selected_miners = [selected]
+    omitted_miners = max(0, len(selected_miners) - 10)
+    selected_miners = selected_miners[:10]
+
+    safe_hours = max(1.0, min(float(window_hours), 720.0))
+    safe_min_samples = max(3, min(int(min_samples), 288))
+    safe_stale = max(30.0, float(stale_after_seconds))
+    since_ts = float(now_ts) - safe_hours * 3600.0
+    sample_limit = min(2_500, max(288, safe_min_samples * 20))
+    blocks = ["HEALTH (historial local)"]
+    for miner in selected_miners:
+        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        samples = event_store.list_samples(
+            miner_key=state_key,
+            since_ts=since_ts,
+            limit=sample_limit,
+        )
+        if event_store.last_error:
+            return "Diagnostico historico temporalmente no disponible."
+        assessment = analyze_stability(
+            samples,
+            now_ts=now_ts,
+            stale_after_seconds=safe_stale,
+            min_samples=safe_min_samples,
+        )
+        blocks.append(
+            render_stability_assessment(
+                display_name(str(miner["name"])),
+                assessment,
+            )
+        )
+    if omitted_miners:
+        blocks.append(f"... {omitted_miners} mineros omitidos por limite de salida.")
+    return "\n\n".join(blocks)
+
+
+def build_mining_quality_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+    *,
+    now_ts: Optional[float] = None,
+    window_hours: float = 24.0,
+    min_intervals: int = 3,
+    reject_warning_percent: float = 1.0,
+    stale_warning_percent: float = 1.0,
+    hw_error_delta_warning: int = 50,
+    no_share_warning_seconds: float = 900.0,
+) -> str:
+    """Render bounded mining quality from SQLite without miner IO or actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico de calidad temporalmente no disponible."
+    from app.core.mining_quality import analyze_mining_quality, render_mining_quality
+    selected_miners = miners
+    token = str(miner_token or "").strip()
+    if token and token.lower() != "all":
+        selected = resolve_miner(token, miners)
+        if not selected:
+            return "Miner no encontrado."
+        selected_miners = [selected]
+    omitted_miners = max(0, len(selected_miners) - 10)
+    selected_miners = selected_miners[:10]
+
+    safe_now = time.time() if now_ts is None else float(now_ts)
+    safe_hours = max(1.0, min(float(window_hours), 720.0))
+    safe_min_intervals = max(1, min(int(min_intervals), 48))
+    since_ts = safe_now - safe_hours * 3600.0
+    blocks = ["QUALITY (historial local)"]
+    for miner in selected_miners:
+        state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        samples = event_store.list_samples(
+            miner_key=state_key,
+            since_ts=since_ts,
+            limit=100,
+        )
+        if event_store.last_error:
+            return "Diagnostico de calidad temporalmente no disponible."
+        assessment = analyze_mining_quality(
+            samples,
+            min_intervals=safe_min_intervals,
+            reject_warning_percent=reject_warning_percent,
+            stale_warning_percent=stale_warning_percent,
+            hw_error_delta_warning=hw_error_delta_warning,
+            no_share_warning_seconds=no_share_warning_seconds,
+        )
+        blocks.append(
+            render_mining_quality(
+                display_name(str(miner["name"])),
+                assessment,
+            )
+        )
+    if omitted_miners:
+        blocks.append(f"... {omitted_miners} mineros omitidos por limite de salida.")
+    return "\n\n".join(blocks)
+
+
+def build_firmware_events_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+) -> str:
+    """Render bounded Vnish evidence from SQLite without miner IO or actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico de firmware temporalmente no disponible."
+    from app.vnish.logs import render_firmware_events
+
+    token = str(miner_token or "").strip()
+    miner_key: Optional[str] = None
+    title = "FIRMWARE EVENTS"
+    severities: Optional[tuple[str, ...]] = ("warning", "critical")
+    limit = 6
+    if token and token.lower() != "all":
+        miner = resolve_miner(token, miners)
+        if not miner:
+            return "Miner no encontrado."
+        miner_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        title = f"FIRMWARE EVENTS - {display_name(str(miner['name']))}"
+        severities = None
+    elif token.lower() == "all":
+        severities = None
+        limit = 10
+
+    rows = event_store.list_firmware_events(
+        limit=limit,
+        miner_key=miner_key,
+        severities=severities,
+    )
+    if event_store.last_error:
+        return "Diagnostico de firmware temporalmente no disponible."
+    return render_firmware_events(rows, title=title, limit=limit)
+
+
+def build_miner_diagnosis_text(
+    event_store: Optional[EventStore],
+    miners: list[dict[str, Any]],
+    miner_token: Optional[str],
+    *,
+    now_ts: Optional[float] = None,
+    stale_after_seconds: float = 900.0,
+    firmware_window_hours: float = 24.0,
+    collector_stale_seconds: float = 3_600.0,
+) -> str:
+    """Correlate bounded persisted evidence without live miner IO or actions."""
+    if event_store is None or not event_store.available:
+        return "Diagnostico operativo temporalmente no disponible."
+    from app.core.mining_quality import analyze_mining_quality
+    selected_miners = miners
+    token = str(miner_token or "").strip()
+    if token and token.lower() != "all":
+        selected = resolve_miner(token, miners)
+        if not selected:
+            return "Miner no encontrado."
+        selected_miners = [selected]
+    omitted = max(0, len(selected_miners) - 10)
+    selected_miners = selected_miners[:10]
+
+    effective_now = time.time() if now_ts is None else float(now_ts)
+    safe_stale = max(30.0, min(float(stale_after_seconds), 86_400.0))
+    safe_firmware_window = max(1.0, min(float(firmware_window_hours), 720.0))
+    safe_collector_stale = max(60.0, min(float(collector_stale_seconds), 86_400.0))
+    firmware_since = effective_now - safe_firmware_window * 3_600.0
+    collector_run = event_store.latest_collector_run()
+    collector_text = "SIN EJECUCIONES"
+    if collector_run:
+        collector_age = max(
+            0.0,
+            effective_now - float(collector_run.get("completed_ts") or 0.0),
+        )
+        collector_status = str(collector_run.get("status") or "unknown").upper()
+        if collector_age > safe_collector_stale:
+            collector_status = f"STALE/{collector_status}"
+        collector_text = f"{collector_status} age={int(collector_age)}s"
+
+    blocks: list[str] = []
+    for miner in selected_miners:
+        miner_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+        samples = event_store.list_samples(miner_key=miner_key, limit=24)
+        events = event_store.list_events(miner_key=miner_key, limit=1)
+        decision = event_store.latest_reboot_decision(miner_key=miner_key)
+        firmware = event_store.list_firmware_events(
+            miner_key=miner_key,
+            source_since_ts=firmware_since,
+            severities=("warning", "critical"),
+            limit=3,
+        )
+        if event_store.last_error:
+            return "Diagnostico operativo temporalmente no disponible."
+
+        name = display_name(str(miner["name"]))
+        status = "NO_DATA"
+        signal = "sin muestras persistidas"
+        quality_label = "N/A"
+        conclusion = "Esperar una muestra valida antes de diagnosticar."
+        if samples:
+            latest = samples[0]
+            observed_ts = float(latest.get("observed_ts") or 0.0)
+            age = max(0.0, effective_now - observed_ts)
+            state = str(latest.get("state") or "UNKNOWN").upper()
+            responded = bool(latest.get("responded"))
+            rate = latest.get("rate_ths")
+            threshold = latest.get("threshold_ths")
+            signal = (
+                f"{state} rate={format_rate(rate)} threshold={format_rate(threshold)} "
+                f"age={int(age)}s"
+            )
+            quality = analyze_mining_quality(samples, min_intervals=3)
+            quality_label = quality.status.upper()
+            if age > safe_stale:
+                status = "STALE"
+                conclusion = "Telemetria vencida; no inferir necesidad de reboot."
+            elif not responded or state in (STATE_OFFLINE, STATE_HASHBOARD):
+                status = "CRITICAL"
+                conclusion = "Falla actual verificable; revisar evidencia antes de actuar."
+            elif state == STATE_LOW:
+                status = "WATCH"
+                conclusion = "Hashrate bajo actual; respetar sustained LOW y guardrails."
+            elif firmware or quality.status in ("watch", "critical"):
+                status = "WATCH"
+                conclusion = "Senal actual estable con evidencia reciente para revisar."
+            else:
+                status = "OK"
+                conclusion = "Sin evidencia operativa reciente que justifique intervenir."
+
+        firmware_text = "sin warning/critical en ventana"
+        if firmware:
+            latest_firmware = firmware[0]
+            firmware_text = (
+                f"{len(firmware)} fresh; {latest_firmware.get('severity')} "
+                f"{latest_firmware.get('code')} @ {latest_firmware.get('source_ts_text')}"
+            )
+        event_text = "sin evento"
+        if events:
+            latest_event = events[0]
+            event_text = (
+                f"{latest_event.get('event_type')} - "
+                f"{_short_text(str(latest_event.get('summary') or ''), 80)}"
+            )
+        decision_text = str(decision.get("result")) if decision else "sin decision"
+        blocks.append(
+            "\n".join(
+                [
+                    f"DIAGNOSE {name} - {status}",
+                    f"Signal: {signal}",
+                    f"Quality: {quality_label}",
+                    f"Firmware {safe_firmware_window:g}h: {firmware_text}",
+                    f"Evento: {event_text}",
+                    f"Auto-reboot: {decision_text}",
+                    f"Collector: {collector_text}",
+                    f"Conclusion: {conclusion}",
+                ]
+            )
+        )
+    if omitted:
+        blocks.append(f"... {omitted} mineros omitidos por limite de salida.")
+    return "\n\n".join(blocks)

@@ -3,7 +3,31 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-10-07] - Spec 088: Desacoplamiento de Ciclos de Gobernanza (Preset Balancer y Autotune Watchdog)
+## [2026-10-07] - Spec 089: Desacoplamiento de Telemetría de Cadenas y Sockets ASIC 4028
+
+* **Contexto**:
+  - Motivación: Tercera fase del Programa Maestro de Modularización Arquitectónica (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`). Reducción drástica de `app/miner_monitor.py` extrayendo la recolección asíncrona de cadenas de hashboards, predicción de rotura de silicon y constructores de texto de diagnóstico Telegram.
+  - Objetivo: Extraer `_async_collect_chain_telemetry` y `_async_evaluate_predictive_chain_break` hacia `app/hardware/chain_collector.py`, mover los constructores de reportes de diagnóstico a `app/telegram/fleet_cards.py`, y consolidar sockets 4028 con re-exportación limpia, preservando compatibilidad total con tests existentes y cero regresiones en planta.
+  - Baseline previo: 1522 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/hardware/chain_collector.py` y `app/hardware/__init__.py`:
+     - Creado nuevo submódulo de hardware para la ingestión asíncrona de telemetría de chips (`_async_collect_chain_telemetry`) y evaluación predictiva de fallas en cadenas (`_async_evaluate_predictive_chain_break`).
+     - Almacenamiento desacoplado de rachas de salud (`_CHAIN_HEALTH_STREAKS`, `_SETTINGS_HEALTH_TIMESTAMPS`, `_SETTINGS_CORRUPTION_ALERTS`) con resolución dinámica de helpers de log y Telegram.
+  2. `app/telegram/fleet_cards.py`:
+     - Incorporados formateadores de texto diagnósticos: `build_stability_health_text`, `build_mining_quality_text`, `build_firmware_events_text`, `build_miner_diagnosis_text` junto con helpers de resolución (`resolve_miner`, `display_name`, `format_rate`, `_short_text`).
+     - Importación diferida/localizada para evitar dependencias circulares con `app.core.event_store`.
+  3. `app/miner_monitor.py`:
+     - Reemplazadas 641 líneas de implementación por shims de re-exportación tipados.
+     - Monolito reducido de 7.264 a 6.644 líneas (-620 LOC netas; -2.430 LOC acumuladas).
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Sintaxis limpia verificada en `app/hardware/__init__.py`, `app/hardware/chain_collector.py`, `app/telegram/fleet_cards.py`, `app/miner_monitor.py`.
+  - Pruebas focalizadas: 123/123 tests PASS en `test_chain_health.py`, `test_chain_predictive_rules.py`, `test_mining_quality.py`, `test_stability_profile.py`, `test_vnish_logs.py`, `test_resolve_miner.py`, `test_monitor_incidents.py`, `test_supervisory_core_behavioral.py`.
+  - Pruebas globales: `pytest -q`: 1522 passed, 75 subtests passed (0 fallos, 0 errores).
+  - Preflight Stabilization Gate: 8/8 gates PASS.
+  - Verificación en servicio real: NSSM `MinerAlerts` reiniciado limpiamente (`SERVICE_RUNNING`, ~400 TH/s, telemetría de cadenas corriendo en paralelo).
+
 
 * **Contexto**:
   - Motivación: Segunda fase del Programa Maestro de Modularización Arquitectónica (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`). Modularización de los bucles de gobernanza periódica y control de hardware de potencia fuera del orquestador monolítico `app/miner_monitor.py`.

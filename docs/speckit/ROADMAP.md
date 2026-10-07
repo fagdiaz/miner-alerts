@@ -6,9 +6,9 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (88 de 88 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Spec 088 Desacoplamiento de Ciclos de Gobernanza COMPLETADA).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (89 de 89 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Spec 089 Desacoplamiento de Telemetría de Cadenas COMPLETADA).
 - **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico (92% PWM en 26).
-- **Programa Maestro de Desacoplamiento del Monolito**: Fases 1 y 2 completadas (`Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, -1.896 LOC acumuladas). Próxima: `Spec 089: Telemetría de Hardware`.
+- **Programa Maestro de Desacoplamiento del Monolito**: Fases 1, 2 y 3 completadas (`Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, -2.430 LOC acumuladas). Próxima: `Spec 090: Watchdog IPC`.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ---
@@ -1104,8 +1104,22 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 **Alcance técnico completado**:
 - Creación de `app/governance/balancer_cycle.py` y migración de `execute_balancer_cycle` (~253 LOC).
 - Extracción de `check_autotune_watchdog` y `execute_autotune_watchdog_cycle` (~140 LOC) en `app/governance/autotune_watchdog.py`.
+---
+
+### Iniciativa 41 — Desacoplamiento de Telemetría de Cadenas y Sockets ASIC (Spec 089) — COMPLETADA ✅
+
+**Documento**: `specs/089-hardware-telemetry-decoupling/spec.md`
+**Estado**: COMPLETADA Y CERTIFICADA (2026-10-07) — 1522 tests PASS, 75 subtests PASS.
+**Prioridad**: P1 — Deuda Técnica / Modularización
+**Riesgo**: BAJO
+**Modelo ejecutado**: Gemini 3.8 Flash High
+**Dependencia**: Programa Maestro de Modularización (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`)
+
+**Alcance técnico completado**:
+- Creación de `app/hardware/chain_collector.py` y migración de `_async_collect_chain_telemetry` y `_async_evaluate_predictive_chain_break` (~350 LOC).
+- Extracción de formateadores de texto diagnóstico (`build_stability_health_text`, `build_mining_quality_text`, `build_firmware_events_text`, `build_miner_diagnosis_text`) y helpers de resolución hacia `app/telegram/fleet_cards.py` (~320 LOC).
 - Shims de re-export en `app/miner_monitor.py` preservando 100% de compatibilidad con tests y herramientas externas.
-- Reducción neta de -388 líneas en `app/miner_monitor.py` (de 7.652 a 7.264 LOC; -1.896 LOC acumuladas).
+- Reducción neta de -620 líneas en `app/miner_monitor.py` (de 7.264 a 6.644 LOC; -2.430 LOC acumuladas).
 
 ---
 

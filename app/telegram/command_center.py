@@ -701,7 +701,7 @@ def render_shutdown_confirmation(
         "2. Purga térmica (45s coolers)",
         "3. Snooze de mantenimiento (4h)",
         "",
-        "⏱️ _Confirmación expira en 60s._",
+        "⏱️ _Confirmación expira en 180s._",
         "─" * 32,
     ]
     keyboard = build_inline_keyboard([

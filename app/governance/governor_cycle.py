@@ -327,9 +327,23 @@ def execute_governor_cycle(
             # Reemplaza la lógica inline dispersa por una fuente de verdad única por ciclo.
             gov_ctx = MinerGovernanceContext.from_state(state, now_ts, miner)
 
+            # Reconcile hardware reality if governor_duty diverged from hardware telemetry
+            # (e.g. manual operator override, Thermal Guard, reboot, or maintenance resume)
+            _eff_duty = state.governor_duty
+            _last_hw_duty = getattr(state, "last_fan_duty_percent", None)
+            if (
+                _last_hw_duty is not None
+                and seconds_since >= gov_cfg.dwell_seconds
+                and (_eff_duty is None or abs(_eff_duty - int(round(_last_hw_duty))) >= 2)
+            ):
+                _eff_duty = int(round(_last_hw_duty))
+                with state_lock:
+                    state.governor_duty = _eff_duty
+                    state.governor_holds = 0
+
             decision = compute_governor_step(
                 max_temp_c=state.governor_last_temp_c,
-                current_duty=state.governor_duty,
+                current_duty=_eff_duty,
                 seconds_since_last_change=seconds_since,
                 consecutive_holds=state.governor_holds,
                 consecutive_failures=state.governor_failures,

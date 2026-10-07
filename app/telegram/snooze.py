@@ -54,9 +54,11 @@ def parse_snooze_args(arg_str: str) -> Tuple[Optional[str], float]:
 
 
 def is_miner_snoozed(state: Any, now_ts: Optional[float] = None) -> bool:
-    """Return True if the miner state has an active, unexpired snooze."""
+    """Return True if the miner state has an active, unexpired snooze or is in shutdown maintenance."""
     if state is None:
         return False
+    if getattr(state, "is_shutdown_maintenance", False):
+        return True
     until = getattr(state, "snooze_until_ts", None)
     if until is None:
         return False
@@ -153,7 +155,8 @@ def filter_snoozed_episodes(
 ) -> Any:
     """Filter out opened and persistent episodes for miners that are currently snoozed.
     
-    Recoveries are preserved so the operator is informed if an ASIC resumes normal mining.
+    Recoveries are preserved for normal operations, but suppressed if the miner is in
+    shutdown maintenance to avoid noise during intentional stops.
     """
     if batch is None or getattr(batch, "empty", False):
         return batch
@@ -162,18 +165,24 @@ def filter_snoozed_episodes(
     filtered_opened = []
     for ep in getattr(batch, "opened", []):
         st = states.get(getattr(ep, "miner_key", ""))
-        if not is_miner_snoozed(st, curr):
+        if not is_miner_snoozed(st, curr) and not getattr(st, "is_shutdown_maintenance", False):
             filtered_opened.append(ep)
 
     filtered_persistent = []
     for ep in getattr(batch, "persistent", []):
         st = states.get(getattr(ep, "miner_key", ""))
-        if not is_miner_snoozed(st, curr):
+        if not is_miner_snoozed(st, curr) and not getattr(st, "is_shutdown_maintenance", False):
             filtered_persistent.append(ep)
+
+    filtered_recovered = []
+    for ep in getattr(batch, "recovered", []):
+        st = states.get(getattr(ep, "miner_key", ""))
+        if not getattr(st, "is_shutdown_maintenance", False):
+            filtered_recovered.append(ep)
 
     return type(batch)(
         opened=filtered_opened,
         persistent=filtered_persistent,
-        recovered=list(getattr(batch, "recovered", [])),
+        recovered=filtered_recovered,
     )
 

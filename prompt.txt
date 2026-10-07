@@ -1,51 +1,57 @@
 # ==============================================================================
-# ESTADO DE PRODUCCIÓN CERTIFICADO - MODERNIZACIÓN UX TELEGRAM Y SUPERVISIÓN
-# FECHA: 2026-10-03 23:18 UTC-3
+# ESTADO DE PRODUCCIÓN Y HANDOFF - NORMALIZACIÓN INTEGRAL DE FLOTA Y PARADA SEGURA
+# FECHA: 2026-10-07 12:40 UTC-3
 # RAMA: codex/022-adaptive-acquisition
-# CERTIFICACIÓN SPECKIT: PASS (8/8 Gates Aprobados)
-# ESTADO DE SUITE: 1518 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
-# SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
-# MODELO ACTIVO: Gemini 3.8 Flash High
-# PRÓXIMO MODELO RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
+# ESTADO DE SUITE: 1522 tests PASS, 75 subtests PASS (0 fallos, 0 errores en 42.28s)
+# PREFLIGHT STABILIZE: 8/8 COMPUERTAS PASS (100% CERTIFICADO)
+# SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING, PID 92216)
+# MODELO EJECUTOR: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
+# PRÓXIMO MODELO RECOMENDADO: Gemini 3.8 Flash High
 # ==============================================================================
 
-ESTADO DE LA FLOTA Y TELEMETRÍA EN TIEMPO REAL:
+ESTADO DE LA FLOTA EN TIEMPO REAL (07/10/2026 12:38 UTC-3):
 --------------------------------------------------------------------------------
-• S19JPRO-23 (192.168.1.23:4028): Elevador 1 | Preset 2500W | Minando OK | 0 deadlocks | PWM lazo cerrado
-• S19JPRO-24 (192.168.1.24:4028): Elevador 1 | Preset 2500W | Minando OK | 0 deadlocks | PWM lazo cerrado
-• S19JPRO-25 (192.168.1.25:4028): Elevador 2 | Preset 2700W | Minando OK | 0 deadlocks | PWM lazo cerrado
-• S19JPRO-26 (192.168.1.26:4028): Elevador 2 | Preset 2700W | Minando OK | 0 deadlocks | PWM lazo cerrado
-• Telemetría de cadena: reactiva y continua (3 placas / 126 chips por equipo).
-• Heartbeat liveness: activo y actualizando periódicamente.
+• S19JPRO-23 (192.168.100.23:4028): Operativo | 2700W (2698W) | Temp 77-83°C | Duty 100% (Protección térmica activa)
+• S19JPRO-24 (192.168.100.24:4028): Operativo | 2700W (2698W) | Temp 77-81°C | Duty 100% (Gobernador en setpoint)
+• S19JPRO-25 (192.168.100.25:4028): Operativo | 2700W (2698W) | Temp 78-82°C | Duty 92%  (Gobernador modulando en lazo cerrado)
+• S19JPRO-26 (192.168.100.26:4028): Operativo | 2700W (2698W) | Temp 77-80°C | Duty 92%  (5580 RPM - ANOMALÍA RESUELTA Y CERTIFICADA)
 
-CAMBIOS COMPLETADOS Y CERTIFICADOS EN ESTA ITERACIÓN:
+RESOLUCIÓN DEFINITIVA DE LA CAUSA RAÍZ EN S19JPRO-26:
 --------------------------------------------------------------------------------
-1. Teclados Inline de Confirmación 1-Tap para /reboot y /reboot_no_ok:
-   - `app/telegram/commands/reboot.py`: Se generan botones 1-Tap con tokens de 60s
-     (confirmación y cancelación directa con un toque), preservando fallback de comando manual.
-   - `app/miner_monitor.py`: Cableados los callbacks `rb_ccl:bulk_no_ok` y
-     `rb_cfm:<token>:bulk_no_ok` con validación de seguridad (límite de 5 mineros simultáneos).
-2. Expansión y Supresión de Silencios en el Chatbot Supervisor (Spec 086):
-   - `app/forensics/conversational_qa.py`: Incorporadas intenciones Regex para estado
-     de flota (`_RE_STATUS_FLEET`), potencia/elevadores (`_RE_POWER_ELEVATORS`),
-     directivas activas (`_RE_DIRECTIVES`) y saludos de cortesía (`_RE_GREETING`).
-   - Implementada tarjeta amigable de ayuda/fallback ante texto libre no reconocido,
-     erradicando silencios del bot y respetando el ancho máximo de 32 columnas.
-3. Catálogo del Centro de Ayuda (/help):
-   - `app/telegram/help_center.py`: Registrados los comandos anteriormente huérfanos
-     `/directivas` (categoría `diag`) y `/agent` (categoría `ctrl`), manteniendo
-     la compatibilidad con las 5 categorías oficiales.
-4. Botones de Acción Rápida en Fichas de Autopsia:
-   - `app/telegram/commands/autopsy.py`: Incorporados botones 1-Tap en autopsias individuales
-     para graficar (`chart:{m}`) y solicitar reinicio guiado (`rb_req:{m}`).
-5. Aseguramiento de Calidad y Pruebas Unitarias:
-   - Cobertura expandida en `test_telegram_callbacks.py`, `test_help_center.py` y
-     `test_incident_autopsy.py`. Suite completa en 1518 tests PASS.
+1. Diagnóstico de Causa Raíz Confirmado:
+   - S19JPRO-26 había sido reanudado tras una intervención pero retenía `governor_duty = 92` en memoria/disco,
+     mientras que el hardware real operaba físicamente al 100% PWM forzado por `THERMAL_GUARD` previo.
+   - Al coincidir la temperatura en banda (<= 81°C) y creer que ya estaba en el piso acústico/potencia (92%),
+     el gobernador calculaba `STEP_DOWN 92` con `requires_write: False`, impidiendo enviar escrituras al ASIC.
+2. Solución Arquitectónica Implementada:
+   - En `app/governance/governor_cycle.py`, se implementó reconciliación automática de telemetría de hardware:
+     si `last_fan_duty_percent` difiere de `governor_duty` en >= 2% tras la ventana de dwell, el gobernador
+     recalibra su estado a la realidad física de la máquina antes de evaluar el paso.
+   - En `app/governance/thermal_guard.py`, toda acción de ventiladores al 100% actualiza sincrónicamente
+     `state.governor_duty = 100`, `governor_last_change_ts = now_ts` y `governor_holds = 0`.
+   - En `app/telegram/commands/maintenance.py` (`ResumeCommand`) y en `_handle_command_center_callback` (`resume`),
+     se sincroniza `governor_duty = 100` para iniciar el control en lazo cerrado desde régimen seguro.
+   - En `app/miner_monitor.py` (L6311), telemetría sincroniza `governor_duty` ante discrepancias externas >= 2%.
+3. Evidencia en Planta:
+   - El Fan Governor tomó el control de S19JPRO-26, despachó `safe_set_fan_duty` a 98% y luego a 92% PWM.
+   - El ASIC 192.168.100.26 respondió inmediatamente bajando de 6000 RPM a 5580 RPM, manteniendo silicio en 77-80°C.
 
-DIRECTIVAS PARA LA PRÓXIMA SESIÓN:
+PLAN DE 5 FASES DE PARADA SEGURA Y CERO-DELAY: 100% IMPLEMENTADO Y CERTIFICADO
 --------------------------------------------------------------------------------
-1. Leer AGENTS.md y este prompt.txt.
-2. La versión actual en producción está 100% estable y certificada.
-3. Próximas tareas planificadas en el roadmap:
-   - Supervisión pasiva de la flota y evaluación térmica según condiciones ambientales.
-   - Continuar con la Fase 3 de desacoplamiento del monolito (`Spec 087: Balancer & Watchdog`).
+• Fase 1: Feedback In-Flight Instantáneo en Telegram (<300ms) mediante edición de mensaje in-place
+  ("🛑 PARADA SEGURA EN CURSO... ⏳ Parando equipos seleccionados...") y botón inactivo `noop`.
+• Fase 2: Supresión Total de Autopsias y Alertas Falsas en Mantenimiento programado:
+  - `expected_shutdown` en `app/core/restart_intelligence.py` clasifica como benignos reinicios post-parada (300s).
+  - Supresión de episodios de apertura/recuperación en `app/telegram/snooze.py` (`filter_snoozed_episodes`).
+• Fase 3: Supresión de Soft-Contingencia y Notificaciones Solares cuando la flota activa es 0 (0W).
+• Fase 4: Despertador Cero-Delay (`_WAKEUP_EVENT: threading.Event` y `trigger_immediate_tick()`)
+  reemplazando `time.sleep(poll_seconds)` pasivo para reacción instantánea ante directivas de Telegram.
+• Fase 5: Robustez en `/resume` con ventana de calentamiento térmico (180s) y tarjeta guiada con
+  instrucciones de reconexión eléctrica ante disyuntores/térmicas seccionadas.
+
+PRÓXIMO PASO RECOMENDADO:
+--------------------------------------------------------------------------------
+• Ejecutar la Fase 1 del Plan Maestro de Desacoplamiento del Monolito:
+  `Spec 087: Monolith Decoupling Master Plan` (ver `docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`
+  y `specs/087-monolith-decoupling/tasks.md`).
+• Modelo recomendado: `Gemini 3.8 Flash High` (Primary Engine según AGENTS.md).

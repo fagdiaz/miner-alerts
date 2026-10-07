@@ -384,9 +384,14 @@ class WatchdogIsolationTests(unittest.TestCase):
             tick_tail.rindex(persistence_target),
             tick_tail.index("write_heartbeat_atomic("),
         )
+        sleep_target = (
+            "_WAKEUP_EVENT.wait"
+            if "_WAKEUP_EVENT.wait" in tick_tail
+            else "time.sleep(poll_seconds)"
+        )
         self.assertLess(
             tick_tail.index("write_heartbeat_atomic("),
-            tick_tail.index("time.sleep(poll_seconds)"),
+            tick_tail.index(sleep_target),
         )
         heartbeat_block = tick_tail[
             tick_tail.index("if heartbeat_enabled:") : tick_tail.index(

@@ -93,11 +93,14 @@ class CallbackTokenRegistry:
         self._ttl_seconds = ttl_seconds
         self._max_tokens = max_tokens
         self._lock = threading.Lock()
-        # Mapping: token -> (miner_id, action, created_ts)
-        self._tokens: Dict[str, Tuple[str, str, float]] = {}
+        # Mapping: token -> (miner_id, action, created_ts, [ttl_seconds])
+        self._tokens: Dict[str, Tuple[Any, ...]] = {}
 
     def _prune(self, now: float):
-        expired = [tok for tok, (_, _, ts) in list(self._tokens.items()) if now - ts > self._ttl_seconds]
+        expired = [
+            tok for tok, entry in list(self._tokens.items())
+            if now - entry[2] > (entry[3] if len(entry) > 3 else self._ttl_seconds)
+        ]
         for tok in expired:
             self._tokens.pop(tok, None)
 
@@ -108,12 +111,13 @@ class CallbackTokenRegistry:
             for tok, _ in sorted_tokens[:to_remove]:
                 self._tokens.pop(tok, None)
 
-    def create_token(self, miner_id: str, action: str = "reboot") -> str:
+    def create_token(self, miner_id: str, action: str = "reboot", ttl: Optional[float] = None) -> str:
         now = time.time()
+        effective_ttl = float(ttl) if ttl is not None else self._ttl_seconds
         with self._lock:
             self._prune(now)
             token = secrets.token_hex(3)  # 6 hex chars
-            self._tokens[token] = (miner_id, action, now)
+            self._tokens[token] = (miner_id, action, now, effective_ttl)
             return token
 
     generate = create_token
@@ -127,15 +131,19 @@ class CallbackTokenRegistry:
             if entry is None:
                 return False, None, "token_not_found"
 
-            miner_id, action, created_ts = entry
-            if now - created_ts > self._ttl_seconds:
+            miner_id = entry[0]
+            action = entry[1]
+            created_ts = entry[2]
+            tok_ttl = entry[3] if len(entry) > 3 else self._ttl_seconds
+
+            if now - created_ts > tok_ttl:
                 return False, None, "token_expired"
 
             return True, miner_id, "ok"
 
     def invalidate_miner(self, miner_id: str) -> int:
         with self._lock:
-            to_del = [tok for tok, (m_id, _, _) in list(self._tokens.items()) if m_id == miner_id]
+            to_del = [tok for tok, entry in list(self._tokens.items()) if entry[0] == miner_id]
             for tok in to_del:
                 self._tokens.pop(tok, None)
             return len(to_del)

@@ -225,6 +225,12 @@ def process_emergency_thermal_guard(
     if state is None:
         return None
 
+    # Blindaje de seguridad operacional: la orden humana de mantenimiento prevalece SIEMPRE
+    # sobre la automatización térmica. THERMAL_GUARD nunca debe intervenir ni reactivar minería
+    # en un equipo en parada programada (/shutdown o is_shutdown_maintenance == True).
+    if getattr(state, "is_shutdown_maintenance", False):
+        return None
+
     name = miner.get("name", "Unknown")
     host = miner.get("host", "")
 
@@ -312,6 +318,9 @@ def process_emergency_thermal_guard(
                 min_preset=target_preset,
             )
             ok_f, err_f = set_fan(host, vnish_pw, 100)
+            state.governor_duty = 100
+            state.governor_last_change_ts = now_ts
+            state.governor_holds = 0
             log(
                 f"[THERMAL_GUARD] EMERGENCY DOWNSTEP dispatched for {name} to {target_preset}W "
                 f"(temp={max_temp_c:.1f}°C): preset_ok={ok_p} err={err_p} fans_100_ok={ok_f}"
@@ -345,6 +354,9 @@ def process_emergency_thermal_guard(
         else:
             ok_s, err_s = stop_mining(host, vnish_pw)
             ok_f, err_f = set_fan(host, vnish_pw, 100)
+            state.governor_duty = 100
+            state.governor_last_change_ts = now_ts
+            state.governor_holds = 0
             log(
                 f"[THERMAL_GUARD] EMERGENCY PAUSE dispatched for {name} "
                 f"(temp={max_temp_c:.1f}°C): stop_ok={ok_s} err={err_s} fans_100_ok={ok_f}"
@@ -367,6 +379,7 @@ def process_emergency_thermal_guard(
         state.thermal_pause_until_ts = None
         state.last_preset_change_ts = now_ts
         state.balancer_preset = resume_preset
+        state.is_shutdown_maintenance = False
 
         if qa_mode:
             log(f"[THERMAL_GUARD] (QA) RESUME MINING for {name} at {resume_preset}W (temp={max_temp_c:.1f}°C)")
@@ -374,6 +387,9 @@ def process_emergency_thermal_guard(
             set_preset(host, vnish_pw, resume_preset, clamp_top_preset=True, top_preset=resume_preset, min_preset=resume_preset)
             ok_r, err_r = resume_mining(host, vnish_pw)
             set_fan(host, vnish_pw, 100)
+            state.governor_duty = 100
+            state.governor_last_change_ts = now_ts
+            state.governor_holds = 0
             log(
                 f"[THERMAL_GUARD] RESUMED MINING for {name} at {resume_preset}W "
                 f"(temp={max_temp_c:.1f}°C): resume_ok={ok_r} err={err_r}"

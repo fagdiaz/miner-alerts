@@ -1,7 +1,68 @@
- Historial de Desarrollo y Cambios - Miner Alerts
+# Historial de Desarrollo y Cambios - Miner Alerts
 
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
+
+## [2026-10-07] - Optimización de Parada Segura, Cero-Delay en Telegram y Normalización de Lazo Cerrado del Fan Governor
+
+* **Contexto**:
+  - Motivación: Resolver las fricciones operativas detectadas durante las maniobras de parada segura y reactivación de flota: retraso en la confirmación de Telegram por esperas del ciclo de sondeo (hasta 30s), alertas espurias de soft-contingencia/solar con la flota apagada (0W), autopsias falsas de reinicio disparadas al detener intencionalmente los equipos, y bloqueo de ventiladores al 100% PWM en S19JPRO-26.
+  - Objetivo:
+    1. Fase 1: Feedback in-flight visual instantáneo (<300ms) al confirmar la parada segura en Telegram con edición de mensaje in-place y callback noop.
+    2. Fase 2: Supresión total de autopsias falsas y alertas de recuperación durante el mantenimiento programado (`expected_shutdown` en `restart_intelligence.py` y filtrado en `snooze.py`).
+    3. Fase 3: Supresión de notificaciones de contingencia y envolvente solar cuando la flota activa sea 0 (actualización en memoria sin spam en Telegram).
+    4. Fase 4: Despertador de cero-delay (`_WAKEUP_EVENT: threading.Event` y `trigger_immediate_tick()`) reemplazando `time.sleep()` para respuesta inmediata tras directivas de Telegram.
+    5. Fase 5: Robustez en `/resume` con ventana de calentamiento térmico (180s) y tarjeta guiada ante equipos sin conexión eléctrica.
+    6. Normalización del Fan Governor: Blindaje estricto en `THERMAL_GUARD` para subordinarse a la orden humana de mantenimiento, y reconciliación de telemetría de hardware (`last_fan_duty_percent`) con `governor_duty` en `governor_cycle.py` y `miner_monitor.py`, resolviendo la causa raíz del bloqueo de ventiladores al 100% en S19JPRO-26.
+  - Baseline previo: 1520 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/miner_monitor.py`:
+     - Implementado `_WAKEUP_EVENT = threading.Event()` y `trigger_immediate_tick()`, reemplazando el `time.sleep(poll_seconds)` pasivo al final del bucle principal.
+     - En `_handle_command_center_callback` (`sd_cfm`), despacho de edición visual inmediata in-place ("🛑 PARADA SEGURA EN CURSO... ⏳ Parando equipos seleccionados...") previo a la llamada paralela de parada.
+     - Agregado handler para callback inactivo `noop`.
+     - Cableado `last_shutdown_ts` en `classify_restart` e inhibición de motor de autopsias y contingencias adaptativas si `is_shutdown_maintenance == True`.
+     - Silenciamiento de alertas de soft-contingencia y ventanas solares cuando `active_miners == 0`.
+     - Reconciliación de telemetría de ventiladores: actualización de `governor_duty` desde `vnish_telemetry.fan_pwm_percent` ante divergencias físicas >= 2% transcurrida la ventana de asentamiento (30s).
+  2. `app/governance/governor_cycle.py`:
+     - Incorporada reconciliación de hardware: si `last_fan_duty_percent` difiere de `governor_duty` en >= 2% tras la ventana de dwell, alinea `_eff_duty` y `state.governor_duty` con la realidad física antes de evaluar `compute_governor_step`. Esto garantiza que los equipos con ventiladores forzados externamente al 100% comiencen a granular inmediatamente hacia su piso de potencia (92% para 2700W) sin quedar atrapados en un falso `HOLD_TARGET`.
+  3. `app/governance/thermal_guard.py`:
+     - Blindaje operacional: `process_emergency_thermal_guard` evalúa `getattr(state, "is_shutdown_maintenance", False)` y retorna inmediatamente `None` si el minero fue detenido por el operador, prohibiendo reanudar minería sobre equipos en mantenimiento físico.
+     - Sincronización de estado: en `EMERGENCY DOWNSTEP`, `EMERGENCY PAUSE` y `ACTION_THERMAL_RESUME`, registra explícitamente `governor_duty = 100`, `governor_last_change_ts = now_ts` y `governor_holds = 0`.
+  4. `app/telegram/commands/maintenance.py`:
+     - En `ResumeCommand`: aplicación de gracia de calentamiento térmico (`snooze_until_ts = now_ts + 180.0`) y reseteo de `governor_duty = 100`, `governor_last_change_ts = now_ts`, `governor_holds = 0` para una reanudación limpia en lazo cerrado.
+     - Tarjeta guiada ante falla de conectividad eléctrica con instrucciones de energizar interruptores de protección.
+     - Disparo inmediato de `trigger_immediate_tick()` tras procesar el comando.
+  5. `app/core/restart_intelligence.py` & `app/telegram/snooze.py`:
+     - Reconocimiento de `expected_shutdown` cuando el reinicio ocurre dentro de los 300s posteriores a una parada de mantenimiento (`last_shutdown_ts`).
+     - Supresión de episodios en apertura y recuperación para mineros en mantenimiento.
+
+* **Resultados de Validación y Evidencia Operativa**:
+  - `py_compile`: exit 0 en todos los módulos de producción.
+  - `pytest -q`: **1522 passed, 75 subtests passed** in 42.28s (100% PASS, 0 fallos).
+  - Preflight Stabilization: **8/8 compuertas PASS** (`preflight_stabilize.ps1`).
+  - Verificación en Hardware Real (S19JPRO-26):
+    - Al reiniciar el servicio, el gobernador detectó la divergencia de hardware (100% vs 92%), tomó el control con `STEP_DOWN`, emitió `safe_set_fan_duty(192.168.100.26, 92)` y los ventiladores modularon físicamente de 100% PWM (6000 RPM) a **92% PWM (5580 RPM)** con temperaturas de silicio estables a **77-80°C** en régimen de 2700W (2698W reales).
+  - Servicio Windows NSSM `MinerAlerts`: `SERVICE_RUNNING`, activo en PID 92216.
+
+
+## [2026-10-07] - Auditoría Forense: Reactivación de Flota y Causa Raíz de Ventiladores al 100% en S19JPRO-26
+
+* **Contexto**:
+  - Motivación: Tras la maniobra de corte eléctrico por parada segura y su posterior reenergización, el operador detectó que mientras S19JPRO-23, 24 y 25 modularon sus ventiladores a valores normales (92-96%), S19JPRO-26 permaneció con ventiladores trabados al 100% PWM (6000 RPM) a pesar de estar operando a 2700W con temperatura de silicio moderada (79°C).
+  - Objetivo: Reconstruir la cronología completa de la reactivación, determinar la causa raíz exacta del bloqueo de ventiladores en S19JPRO-26, generar documentación de auditoría forense y preparar el handoff para la nueva sesión de trabajo.
+  - Baseline: 1520 tests PASS, 75 subtests PASS.
+
+* **Hallazgos y Diagnóstico**:
+  1. A las 08:51:05 hs, `/resume` reactivó 23, 24 y 25 limpiando su flag de mantenimiento, pero excluyó a 26, el cual retuvo `is_shutdown_maintenance: True` en `app/state.json`.
+  2. A las 09:08:11 hs, `THERMAL_GUARD` detectó a 26 detenido y frío (50°C), reactivó la minería a 2300W y fijó por diseño los ventiladores al 100% PWM (`set_fan(..., 100)`). Sin embargo, `THERMAL_GUARD` no alteró el flag `is_shutdown_maintenance` del monitor.
+  3. En cada ciclo, el Fan Governor (`app/governance/governor_cycle.py`, L168) omitió a 26 por tener `is_shutdown_maintenance == True`, impidiendo que modulara en lazo cerrado para enfriar a setpoint (82°C).
+  4. A las 11:00:41 hs, `THERMAL_GUARD` liberó el preset a 2700W (`ACTION_THERMAL_UNCLAMP`), pero el gobernador continuó omitiendo a 26 debido al flag remanente.
+
+* **Documentación y Handoff**:
+  - Generado artefacto de auditoría: `auditoria_reactivacion_y_fanes_26.md`.
+  - Actualizado `prompt.txt` con el diagnóstico forense consolidado y las tareas para la nueva ventana.
+  - Formulado el plan de 5 fases para optimización de parada segura y cero-delay en `plan_optimizacion_parada_y_reanudacion.md`.
 
 ## [2026-10-03] - Modernización UX Telegram: Teclados 1-Tap, Chatbot Conversacional, Comandos Huérfanos y Acciones Rápidas
 

@@ -138,6 +138,22 @@ class RestartIntelligenceTests(unittest.TestCase):
         self.assertEqual("preset", result.action_source)
         self.assertEqual(9_800.0, result.action_ts)
 
+    def test_recent_shutdown_action_is_expected_shutdown(self) -> None:
+        """Una parada programada reciente debe atribuirse como expected_shutdown."""
+        result = classify_restart(
+            restart_reason="elapsed_reset",
+            detected_ts=10_000.0,
+            last_manual_action_ts=None,
+            last_auto_action_ts=None,
+            last_shutdown_ts=9_850.0,
+            attribution_window_seconds=900,
+        )
+
+        self.assertEqual("expected_shutdown", result.classification)
+        self.assertEqual("info", result.severity)
+        self.assertEqual("shutdown", result.action_source)
+        self.assertEqual(150.0, result.action_age_seconds)
+
 
 if __name__ == "__main__":
     unittest.main()

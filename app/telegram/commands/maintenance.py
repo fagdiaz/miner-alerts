@@ -262,7 +262,7 @@ class ShutdownCommand(BaseCommandHandler):
         selected_ids = [extract_miner_identifier(m) for m in selected_miners]
         token = ""
         if context.token_registry:
-            token = context.token_registry.create_token(mask, action="shutdown")
+            token = context.token_registry.create_token(mask, action="shutdown", ttl=180.0)
         sd_text, sd_markup = render_shutdown_confirmation(selected_ids, token, mask)
         context.send_message(
             sd_text,
@@ -340,29 +340,61 @@ class ResumeCommand(BaseCommandHandler):
         from app.governance.fleet_shutdown import resolve_selected_miners
         target_miners = resolve_selected_miners(mask, miners)
         vnish_pw = str(context.config.get("vnish_api_password", "admin"))
-        res_ok, results = execute_parallel_resume(
-            miners=target_miners,
-            states=context.states,
-            state_lock=context.state_lock,
-            vnish_password=vnish_pw,
-        )
+        results = execute_parallel_resume(target_miners, vnish_pw)
+        now_ts = time.time()
+        with context.state_lock:
+            for m in target_miners:
+                m_id = extract_miner_identifier(m)
+                res = results.get(m_id)
+                if res and res.success:
+                    success_ids.append(m_id)
+                    sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                    st = context.states.get(sk)
+                    if st:
+                        st.is_shutdown_maintenance = False
+                        st.shutdown_maintenance_ts = 0.0
+                        # Spec 066: Gracia de calentamiento térmico post-reanudación (180s)
+                        # Previene falsas alarmas de LOW hashrate o fallas de cadenas transitorias
+                        st.snooze_until_ts = now_ts + 180.0
+                        st.governor_duty = 100
+                        st.governor_last_change_ts = now_ts
+                        st.governor_holds = 0
+                elif res:
+                    errors[m_id] = res.error or "error desconocido"
         context.persist_state_safely()
 
-        if res_ok:
-            card_text, card_markup = render_resume_success_card(results)
+        # Despertar inmediato del bucle principal de supervisión (cero-delay)
+        try:
+            from app.miner_monitor import trigger_immediate_tick
+            trigger_immediate_tick()
+        except Exception:
+            pass
+
+        if success_ids:
+            card_text = render_resume_success_card(success_ids)
             context.send_message(
                 card_text,
-                reply_markup=card_markup,
                 msg_type="RESUME",
                 dedup_key="cmd_resume_ok",
                 dbg_cmd="resume",
                 dbg_update_id=update_id,
             )
-        else:
-            card_text, card_markup = render_shutdown_error_card("Reanudar Minado", results)
+        if errors:
+            is_conn_error = all("connect" in str(err).lower() or "timeout" in str(err).lower() for err in errors.values())
+            if is_conn_error and not success_ids:
+                card_text = (
+                    "⚠️ *EQUIPOS SIN CONEXIÓN*\n"
+                    "─" * 32 + "\n"
+                    "No se pudo conectar con los mineros.\n"
+                    "Si cortó la corriente, primero suba\n"
+                    "las llaves térmicas y espere 60-90s\n"
+                    "a que inicien antes de usar /resume.\n"
+                    "─" * 32
+                )
+            else:
+                card_text = render_shutdown_error_card(errors)
             context.send_message(
                 card_text,
-                reply_markup=card_markup,
                 msg_type="ERROR",
                 dedup_key="cmd_resume_err",
                 dbg_cmd="resume",

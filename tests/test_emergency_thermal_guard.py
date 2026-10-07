@@ -435,6 +435,30 @@ class TestProcessEmergencyThermalGuard(unittest.TestCase):
         self.assertEqual(self.state.vnish_discovered_top_preset, "2700")
         self.mock_send_tg.assert_called_once()
 
+    def test_process_guard_skips_when_is_shutdown_maintenance(self):
+        """Verifica que la orden de parada humana prevalece y el thermal guard no interviene ni reactiva minería."""
+        self.state.is_shutdown_maintenance = True
+        self.state.thermal_pause_until_ts = 1000.0  # Elegible para reanudación si no estuviera en mantenimiento
+
+        action = process_emergency_thermal_guard(
+            miner=self.miner,
+            state=self.state,
+            max_temp_c=50.0,
+            config=self.config,
+            now_ts=1500.0,
+            vnish_pw="admin",
+            safe_set_preset_fn=self.mock_set_preset,
+            safe_stop_fn=self.mock_stop_mining,
+            safe_resume_fn=self.mock_resume_mining,
+            safe_set_fan_fn=self.mock_set_fan,
+            send_telegram_fn=self.mock_send_tg,
+            log_fn=self.mock_log,
+        )
+        self.assertIsNone(action)
+        self.mock_resume_mining.assert_not_called()
+        self.mock_stop_mining.assert_not_called()
+        self.mock_set_fan.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

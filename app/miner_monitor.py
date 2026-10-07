@@ -172,6 +172,27 @@ _LOGGER: Optional[logging.Logger] = None
 _QA_TX_COUNTS: Dict[int, int] = {}
 _PERF_LOGGED: Dict[int, bool] = {}
 _HTTP_SESSION: Optional[requests.Session] = None
+_HTTP_SESSION_LOCK = threading.Lock()
+
+
+def get_telegram_session() -> requests.Session:
+    """Return a persistent, thread-safe requests.Session with HTTP Keep-Alive connection pooling."""
+    global _HTTP_SESSION
+    if _HTTP_SESSION is None:
+        with _HTTP_SESSION_LOCK:
+            if _HTTP_SESSION is None:
+                s = requests.Session()
+                adapter = requests.adapters.HTTPAdapter(
+                    pool_connections=20,
+                    pool_maxsize=20,
+                    max_retries=2,
+                )
+                s.mount("https://", adapter)
+                s.mount("http://", adapter)
+                _HTTP_SESSION = s
+    return _HTTP_SESSION
+
+
 _TELEGRAM_POLLER_TS: Optional[float] = None
 _TELEGRAM_SENDER_TS: Optional[float] = None
 _NO_WINDOW_CREATION_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -1643,7 +1664,7 @@ def answer_callback_query(
         payload["show_alert"] = True
     t0 = time.perf_counter()
     try:
-        session = _HTTP_SESSION or requests.Session()
+        session = get_telegram_session()
         resp = session.post(url, json=payload, timeout=5.0)
         ms = int((time.perf_counter() - t0) * 1000)
         if resp.status_code != 200:
@@ -1680,7 +1701,7 @@ def edit_message_reply_markup(
     }
     t0 = time.perf_counter()
     try:
-        session = _HTTP_SESSION or requests.Session()
+        session = get_telegram_session()
         resp = session.post(url, json=payload, timeout=5.0)
         ms = int((time.perf_counter() - t0) * 1000)
         if resp.status_code != 200:
@@ -1725,7 +1746,7 @@ def edit_message_text(
 
     t0 = time.perf_counter()
     try:
-        session = _HTTP_SESSION or requests.Session()
+        session = get_telegram_session()
         resp = session.post(url, json=payload, timeout=5.0)
         ms = int((time.perf_counter() - t0) * 1000)
         if resp.status_code == 200:
@@ -1768,7 +1789,7 @@ def send_telegram_photo(
     files = {"photo": ("chart.png", photo_bytes, "image/png")}
     t0 = time.perf_counter()
     try:
-        session = _HTTP_SESSION or requests.Session()
+        session = get_telegram_session()
         resp = session.post(url, data=data, files=files, timeout=timeout)
         ms = int((time.perf_counter() - t0) * 1000)
         if resp.status_code != 200:
@@ -1811,7 +1832,7 @@ def edit_telegram_photo(
     files = {"file_0": ("chart.png", photo_bytes, "image/png")}
     t0 = time.perf_counter()
     try:
-        session = _HTTP_SESSION or requests.Session()
+        session = get_telegram_session()
         resp = session.post(url, data=data, files=files, timeout=timeout)
         ms = int((time.perf_counter() - t0) * 1000)
         if resp.status_code != 200:
@@ -1832,10 +1853,8 @@ def edit_telegram_photo(
 
 
 def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> None:
-    global _HTTP_SESSION, _TELEGRAM_SENDER_TS
-    if _HTTP_SESSION is None:
-        _HTTP_SESSION = requests.Session()
-    session = _HTTP_SESSION
+    global _TELEGRAM_SENDER_TS
+    session = get_telegram_session()
     tg_send_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     if not tg_send_url.startswith("https://api.telegram.org/bot"):
         log("[ERROR] URL Telegram invalida (sendMessage).")
@@ -3337,6 +3356,13 @@ _LAST_SOLAR_WINDOW_STATE: Optional[bool] = None
 _LAST_FGA_ACTUATOR_TS: float = 0.0
 _LAST_DEADLOCK_ALERT_TS: Dict[str, float] = {}
 _DEADLOCK_ALERT_ACTIVE: Dict[str, bool] = {}
+_WAKEUP_EVENT: threading.Event = threading.Event()
+
+
+def trigger_immediate_tick() -> None:
+    """Despierta el bucle principal de supervisión de inmediato sin esperar el sueño de poll_seconds."""
+    _WAKEUP_EVENT.set()
+
 
 
 
@@ -3795,8 +3821,8 @@ def _handle_command_center_callback(
         answer_callback_query(bot_token, cb_id, text="⚠️ Opción no reconocida.")
         return
 
-    # Acknowledge immediately to clear the UI spinner
-    answer_callback_query(bot_token, cb_id)
+    # Defer acknowledgement to allow show_alert modals or instant ack before I/O
+    answered = False
 
     global _GLOBAL_INTERVENTION_GOV
     with state_lock:
@@ -3890,36 +3916,89 @@ def _handle_command_center_callback(
                 new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
         elif action.target == "sd_tog":
             new_mask = action.param or ("0" * len(miners))
+            answer_callback_query(bot_token, cb_id)
+            answered = True
             new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask=new_mask)
         elif action.target == "sd_all":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
             new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="1" * len(miners))
         elif action.target == "sd_clr":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
             new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+        elif action.target == "noop":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+            return
         elif action.target == "sd_req":
             mask = action.param or ("0" * len(miners))
             if mask.count("1") == 0:
                 answer_callback_query(bot_token, cb_id, text="⚠️ Marcá al menos un minero con las casillas ⬜.", show_alert=True)
+                answered = True
                 return
+            answer_callback_query(bot_token, cb_id)
+            answered = True
             selected_miners = resolve_selected_miners(mask, miners)
             selected_ids = [extract_miner_identifier(m) for m in selected_miners]
-            token = token_registry.create_token(mask, action="shutdown")
+            token = token_registry.create_token(mask, action="shutdown", ttl=180.0)
             new_text, new_markup = render_shutdown_confirmation(selected_ids, token, mask)
         elif action.target == "sd_ccl":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
             token_registry.invalidate_miner(action.param or "")
             new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask=action.param or ("0" * len(miners)))
         elif action.target == "sd_cfm":
             valid, stored_mask, reason = token_registry.consume_token(action.token or "")
             if not valid or stored_mask != action.param:
-                answer_callback_query(bot_token, cb_id, text="⚠️ Token inválido o expirado.", show_alert=True)
+                answer_callback_query(bot_token, cb_id, text="⏱️ Parada segura: Timeout (expirada).", show_alert=True)
+                answered = True
+                new_text = (
+                    "⏱️ *PARADA SEGURA: TIMEOUT*\n"
+                    "─" * 32 + "\n"
+                    "El tiempo de confirmación de\n"
+                    "parada ha expirado (180s).\n\n"
+                    "Los mineros continúan operando\n"
+                    "de forma nominal sin cambios.\n"
+                    "─" * 32
+                )
+                from app.telegram.command_center import CC_ACT_PREFIX, CC_NAV_MAIN, build_inline_keyboard
+                new_markup = build_inline_keyboard([
+                    [{"text": "🔄 Repetir Procedimiento", "callback_data": f"{CC_ACT_PREFIX}sd_req:{action.param or ('1' * len(miners))}"}],
+                    [{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}],
+                ])
+                if message_id is not None and new_text and new_markup:
+                    edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)
                 return
             if qa_mode and not qa_allow_actions:
                 answer_callback_query(bot_token, cb_id, text="🚫 Parada bloqueada (modo QA).", show_alert=True)
+                answered = True
                 return
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+
+            # Fase 1: Feedback In-Flight Inmediato en Telegram (<300ms)
+            in_flight_text = (
+                "🛑 *PARADA SEGURA EN CURSO*\n"
+                + ("─" * 32) + "\n"
+                + "⏳ Parando equipos seleccionados...\n"
+                + "Enviando orden a mineros en paralelo.\n"
+                + "Por favor espere confirmación...\n"
+                + ("─" * 32)
+            )
+            from app.telegram.command_center import CC_ACT_PREFIX, build_inline_keyboard
+            in_flight_markup = build_inline_keyboard([
+                [{"text": "⏳ Parando equipos seleccionados...", "callback_data": f"{CC_ACT_PREFIX}noop"}],
+            ])
+            if message_id is not None and cb_chat_id is not None:
+                edit_message_text(bot_token, str(cb_chat_id), message_id, in_flight_text, reply_markup=in_flight_markup)
+
             mask = action.param or ("0" * len(miners))
             selected_miners = resolve_selected_miners(mask, miners)
             target_ids = [extract_miner_identifier(m) for m in selected_miners]
             vnish_pw = str(config.get("vnish_api_password", "admin"))
             results = execute_parallel_shutdown(selected_miners, vnish_pw)
+            trigger_immediate_tick()
             now_ts = time.time()
             with state_lock:
                 for m in selected_miners:
@@ -4038,8 +4117,13 @@ def _handle_command_center_callback(
                             st = states.get(sk)
                             if st:
                                 st.is_shutdown_maintenance = False
-                                st.snooze_until_ts = None
-                            log(f"[RESUME] Miner {m_id} mining resumed: maintenance snooze cleared")
+                                st.shutdown_maintenance_ts = 0.0
+                                # Spec 066: Gracia de calentamiento térmico post-reanudación (180s)
+                                st.snooze_until_ts = now_ts + 180.0
+                                st.governor_duty = 100
+                                st.governor_last_change_ts = now_ts
+                                st.governor_holds = 0
+                            log(f"[RESUME] Miner {m_id} mining resumed: warm-up grace 180s active")
                     _payload = _build_state_payload(states, current_last_update_id)
                 _flush_state_payload(state_path, _payload)
 
@@ -4067,9 +4151,22 @@ def _handle_command_center_callback(
                 errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
                 success_ids = [r.miner_id for r in results.values() if r.success]
                 if errors and not success_ids:
-                    new_text = render_shutdown_error_card(errors)
+                    is_conn_error = all("connect" in str(err).lower() or "timeout" in str(err).lower() for err in errors.values())
+                    if is_conn_error:
+                        new_text = (
+                            "⚠️ *EQUIPOS SIN CONEXIÓN*\n"
+                            "─" * 32 + "\n"
+                            "No se pudo conectar con los mineros.\n"
+                            "Si cortó la corriente, primero suba\n"
+                            "las llaves térmicas y espere 60-90s\n"
+                            "a que inicien antes de usar /resume.\n"
+                            "─" * 32
+                        )
+                    else:
+                        new_text = render_shutdown_error_card(errors)
                 else:
                     new_text = render_resume_success_card(success_ids)
+                trigger_immediate_tick()
                 new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
         elif action.target == "rb_req" and action.miner_id:
             miner = resolve_miner(action.miner_id, miners)
@@ -4078,6 +4175,7 @@ def _handle_command_center_callback(
                 st = states_snapshot.get(sk)
                 if st and getattr(st, "is_shutdown_maintenance", False):
                     answer_callback_query(bot_token, cb_id, text="⚠️ Minero en Parada Segura (Mantenimiento). Usá /resume primero.", show_alert=True)
+                    answered = True
                     return
             token = token_registry.create_token(action.miner_id, action="reboot")
             new_text, new_markup = render_reboot_confirmation(action.miner_id, token)
@@ -4087,11 +4185,28 @@ def _handle_command_center_callback(
         elif action.target == "rb_cfm" and action.token and action.miner_id:
             valid, m_id, reason = token_registry.consume_token(action.token)
             if not valid or m_id != action.miner_id:
-                answer_callback_query(bot_token, cb_id, text="⚠️ Token inválido o expirado.", show_alert=True)
+                answer_callback_query(bot_token, cb_id, text="⏱️ Token inválido o expirado.", show_alert=True)
+                answered = True
+                new_text = (
+                    "⏱️ *CONFIRMACIÓN EXPIRADA*\n"
+                    "─" * 32 + "\n"
+                    f"El código de reinicio para el\n"
+                    f"minero {action.miner_id} ha expirado.\n\n"
+                    "Solicitá un nuevo reinicio.\n"
+                    "─" * 32
+                )
+                from app.telegram.command_center import CC_ACT_PREFIX, CC_NAV_MAIN, build_inline_keyboard
+                new_markup = build_inline_keyboard([
+                    [{"text": f"🔄 Reintentar {action.miner_id}", "callback_data": f"{CC_ACT_PREFIX}rb_req:{action.miner_id}"}],
+                    [{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}],
+                ])
+                if message_id is not None and new_text and new_markup:
+                    edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)
                 return
 
             if qa_mode and not qa_allow_actions:
                 answer_callback_query(bot_token, cb_id, text="🚫 Reinicio bloqueado (modo QA).", show_alert=True)
+                answered = True
                 return
 
             miner = resolve_miner(action.miner_id, miners)
@@ -4103,7 +4218,10 @@ def _handle_command_center_callback(
                 st = states_snapshot.get(sk)
                 if st and getattr(st, "is_shutdown_maintenance", False):
                     answer_callback_query(bot_token, cb_id, text="⚠️ Minero en Parada Segura (Mantenimiento). Usá /resume primero.", show_alert=True)
+                    answered = True
                     return
+                answer_callback_query(bot_token, cb_id)
+                answered = True
                 now_ts = time.time()
                 ok, msg_result = run_hashcore_cli(
                     hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions
@@ -4179,6 +4297,10 @@ def _handle_command_center_callback(
             _flush_state_payload(state_path, _payload)
             log(f"[INTERVENTIONS] Timer set: sub={sub} expires_at={_GLOBAL_INTERVENTION_GOV.expires_at_ts}")
             new_text, new_markup = render_interventions_menu(_GLOBAL_INTERVENTION_GOV, now_ts)
+
+    if not answered:
+        answer_callback_query(bot_token, cb_id)
+        answered = True
 
     if message_id is not None and new_text and new_markup:
         edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)
@@ -5200,7 +5322,8 @@ def telegram_polling_worker(
                 continue
             t0 = time.monotonic()
             last_ref_before = last_update_id_ref["value"]
-            resp = requests.get(tg_updates_url, params=params, timeout=timeout_used)
+            session = get_telegram_session()
+            resp = session.get(tg_updates_url, params=params, timeout=timeout_used)
             _TELEGRAM_POLLER_TS = time.time()
             if resp.status_code >= 400:
                 body = _redact_telegram_token(resp.text or "", bot_token)[:300]
@@ -6188,9 +6311,18 @@ def main() -> None:
                         state.governor_last_temp_c = vnish_telemetry.max_temp_c
                     if vnish_telemetry.chain_power_w_total is not None:
                         state.governor_last_power_w = vnish_telemetry.chain_power_w_total
-                    if state.governor_duty is None and vnish_telemetry.fan_pwm_percent is not None:
-                        # Seed initial duty from hardware reading
-                        state.governor_duty = int(round(vnish_telemetry.fan_pwm_percent))
+                    if vnish_telemetry.fan_pwm_percent is not None:
+                        _hw_duty = int(round(vnish_telemetry.fan_pwm_percent))
+                        if state.governor_duty is None:
+                            # Seed initial duty from hardware reading
+                            state.governor_duty = _hw_duty
+                        elif (
+                            now_ts - (state.governor_last_change_ts or 0.0) >= 30.0
+                            and abs(state.governor_duty - _hw_duty) >= 2
+                        ):
+                            # Reconcile external fan change (reboot, thermal guard, manual GUI)
+                            state.governor_duty = _hw_duty
+                            state.governor_holds = 0
                 else:
                     # When miner does not respond, clear telemetry so governor does not act on stale data
                     state.governor_last_temp_c = None
@@ -6300,7 +6432,11 @@ def main() -> None:
                         log(f"[COOLING_WARNING] miner={name_display} status={cooling_ass.status}")
 
                 # P0 Closed-Loop Thermal Tripwire Hardware Protection (Emergency Shedding & Pause)
-                if not first_tick and (responded or getattr(state, "thermal_pause_until_ts", None) is not None):
+                if (
+                    not first_tick
+                    and not getattr(state, "is_shutdown_maintenance", False)
+                    and (responded or getattr(state, "thermal_pause_until_ts", None) is not None)
+                ):
                     try:
                         from app.governance.thermal_guard import process_emergency_thermal_guard
                         process_emergency_thermal_guard(
@@ -6398,6 +6534,7 @@ def main() -> None:
                         last_manual_action_ts=state.last_manual_reboot_ts,
                         last_auto_action_ts=state.last_auto_reboot_ts,
                         last_preset_change_ts=getattr(state, "last_preset_change_ts", None),
+                        last_shutdown_ts=getattr(state, "shutdown_maintenance_ts", None),
                         attribution_window_seconds=restart_attribution_window_seconds,
                     )
                     incident_id = None
@@ -6483,7 +6620,11 @@ def main() -> None:
                         f"group_load={elev_circumstance.get('group_total_power_w', 0.0):.0f}W"
                     )
                     # Spec 078: Record elevator group incident to activate 300s quiet window
-                    if m_group and restart_classification.classification == "unexpected":
+                    if (
+                        m_group
+                        and restart_classification.classification == "unexpected"
+                        and not getattr(state, "is_shutdown_maintenance", False)
+                    ):
                         try:
                             _FACILITY_BUDGET_STATE.record_group_incident(m_group, now_ts)
                             log(
@@ -6493,7 +6634,10 @@ def main() -> None:
                         except Exception as _iq_err:
                             log(f"[WARN] Error registrando incident quiet: {_iq_err}")
                     # Spec 086 / PROP-016: Trigger asynchronous autopsy engine for unexpected restart
-                    if restart_classification.classification == "unexpected":
+                    if (
+                        restart_classification.classification == "unexpected"
+                        and not getattr(state, "is_shutdown_maintenance", False)
+                    ):
                         try:
                             _autopsy_eng = globals().get("_INCIDENT_AUTOPSY_ENGINE")
                             if _autopsy_eng is None and event_store is not None:
@@ -6535,6 +6679,7 @@ def main() -> None:
                     # Spec 057: Adaptive Elevator Contingency Check
                     if (
                         restart_classification.classification == "unexpected"
+                        and not getattr(state, "is_shutdown_maintenance", False)
                         and m_group
                         and m_group in ("elevator_1", "elevator_2")
                         and bool(config.get("adaptive_contingency_enabled", True))
@@ -8233,32 +8378,45 @@ def main() -> None:
                 from app.vnish.client import safe_set_miner_preset
                 sched = evaluate_soft_contingency_schedule(config=config)
 
+                # Calcular mineros activos con consumo real (>300W) y sin mantenimiento
+                active_mining_count = 0
+                for _m in valid_miners:
+                    _msk = f"{_m.get('name','')}|{_m.get('host','')}:{_m.get('port',4028)}"
+                    with state_lock:
+                        _mst = states.get(_msk)
+                        if _mst and _mst.last_responded and not getattr(_mst, "is_shutdown_maintenance", False):
+                            if (getattr(_mst, "last_power_w", 0) or 0) > 300:
+                                active_mining_count += 1
+
                 # Schedule state change notification
                 if _LAST_SOFT_CONTINGENCY_PEAK_STATE is None:
                     _LAST_SOFT_CONTINGENCY_PEAK_STATE = sched.is_peak_window
                 elif sched.is_peak_window != _LAST_SOFT_CONTINGENCY_PEAK_STATE:
                     _LAST_SOFT_CONTINGENCY_PEAK_STATE = sched.is_peak_window
-                    if sched.is_peak_window:
-                        notif_sched = (
-                            f"⚡ *SOFT-CONTINGENCIA HORARIA ACTIVADA*\n\n"
-                            f"• Ventana: *{sched.window_name}* (Día hábil pico).\n"
-                            f"• Protección: Limitando potencia de elevadores a *5000W* (máx 2500W/minero).\n"
-                            f"• Desescalada paulatina: Mineros en 2700W desescalan de a 1 por vez cada 180s para cuidar la bajada compartida."
+                    if active_mining_count > 0:
+                        if sched.is_peak_window:
+                            notif_sched = (
+                                f"⚡ *SOFT-CONTINGENCIA HORARIA ACTIVADA*\n\n"
+                                f"• Ventana: *{sched.window_name}* (Día hábil pico).\n"
+                                f"• Protección: Limitando potencia de elevadores a *5000W* (máx 2500W/minero).\n"
+                                f"• Desescalada paulatina: Mineros en 2700W desescalan de a 1 por vez cada 180s para cuidar la bajada compartida."
+                            )
+                        else:
+                            notif_sched = (
+                                f"🌱 *SOFT-CONTINGENCIA HORARIA FINALIZADA*\n\n"
+                                f"• Estado: *Horario valle / red estable* ({sched.window_name}).\n"
+                                f"• Autorizada exploración escalonada hasta 2700W (5400W/elevador) respetando reposo de acometida."
+                            )
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            notif_sched,
+                            "CONTINGENCY",
+                            f"soft_contingency_sched_{sched.window_name}",
+                            is_command=True,
                         )
                     else:
-                        notif_sched = (
-                            f"🌱 *SOFT-CONTINGENCIA HORARIA FINALIZADA*\n\n"
-                            f"• Estado: *Horario valle / red estable* ({sched.window_name}).\n"
-                            f"• Autorizada exploración escalonada hasta 2700W (5400W/elevador) respetando reposo de acometida."
-                        )
-                    send_telegram(
-                        bot_token,
-                        str(chat_id),
-                        notif_sched,
-                        "CONTINGENCY",
-                        f"soft_contingency_sched_{sched.window_name}",
-                        is_command=True,
-                    )
+                        log(f"[CONTINGENCY_QUIET] Soft-contingencia horaria conmutada a is_peak={sched.is_peak_window} silenciosamente (flota offline/detenida)")
 
                 # Spec 078: Monitor fleet maximum chip temperature for solar thermal envelope
                 max_fleet_chip_temp = 0.0
@@ -8279,28 +8437,31 @@ def main() -> None:
                     _LAST_SOLAR_WINDOW_STATE = solar_eval.is_solar_window
                 elif solar_eval.is_solar_window != _LAST_SOLAR_WINDOW_STATE:
                     _LAST_SOLAR_WINDOW_STATE = solar_eval.is_solar_window
-                    if solar_eval.is_solar_window:
-                        notif_solar = (
-                            f"☀️ *ENVOLVENTE TÉRMICA SOLAR ACTIVADA*\n\n"
-                            f"• Franja: *11:00 a 17:00 hs* (Pico de radiación solar).\n"
-                            f"• Protección: Techo preventivo en *2500W* para evitar corte brusco VNish (84°C).\n"
-                            f"• Chip más caliente: *{max_fleet_chip_temp:.1f}°C*."
+                    if active_mining_count > 0:
+                        if solar_eval.is_solar_window:
+                            notif_solar = (
+                                f"☀️ *ENVOLVENTE TÉRMICA SOLAR ACTIVADA*\n\n"
+                                f"• Franja: *11:00 a 17:00 hs* (Pico de radiación solar).\n"
+                                f"• Protección: Techo preventivo en *2500W* para evitar corte brusco VNish (84°C).\n"
+                                f"• Chip más caliente: *{max_fleet_chip_temp:.1f}°C*."
+                            )
+                        else:
+                            notif_solar = (
+                                f"🌱 *ENVOLVENTE TÉRMICA SOLAR FINALIZADA*\n\n"
+                                f"• Estado: *Fuera de franja solar* (temperaturas en descenso).\n"
+                                f"• Chip más caliente: *{max_fleet_chip_temp:.1f}°C*.\n"
+                                f"• Operación: Autorizada reanudación de escalada hacia 2700W según condiciones de red."
+                            )
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            notif_solar,
+                            "CONTINGENCY",
+                            f"solar_thermal_window_{'active' if solar_eval.is_solar_window else 'ended'}",
+                            is_command=True,
                         )
                     else:
-                        notif_solar = (
-                            f"🌱 *ENVOLVENTE TÉRMICA SOLAR FINALIZADA*\n\n"
-                            f"• Estado: *Fuera de franja solar* (temperaturas en descenso).\n"
-                            f"• Chip más caliente: *{max_fleet_chip_temp:.1f}°C*.\n"
-                            f"• Operación: Autorizada reanudación de escalada hacia 2700W según condiciones de red."
-                        )
-                    send_telegram(
-                        bot_token,
-                        str(chat_id),
-                        notif_solar,
-                        "CONTINGENCY",
-                        f"solar_thermal_window_{'active' if solar_eval.is_solar_window else 'ended'}",
-                        is_command=True,
-                    )
+                        log(f"[SOLAR_QUIET] Envolvente solar conmutada a is_solar={solar_eval.is_solar_window} silenciosamente (flota offline/detenida)")
 
                 # Unified ground-truth wattage resolver (checks discovered top preset, active preset, balancer preset, and actual consumed power)
                 def _get_miner_wattage(m_item):
@@ -8976,7 +9137,8 @@ def main() -> None:
             # _poll_interval_seconds guarda el valor de configuración para el cálculo.
             _last_tick_duration = max(0.0, time.monotonic() - tick_start)
             poll_seconds = max(0.0, _poll_interval_seconds - (time.monotonic() - tick_start))
-            time.sleep(poll_seconds)
+            _WAKEUP_EVENT.wait(timeout=poll_seconds)  # Reemplaza time.sleep(poll_seconds) para cero-delay
+            _WAKEUP_EVENT.clear()
     except KeyboardInterrupt:
         log("Detenido por usuario")
     finally:

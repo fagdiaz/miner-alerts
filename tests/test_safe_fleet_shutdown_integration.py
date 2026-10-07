@@ -364,10 +364,13 @@ class TestSafeFleetShutdownIntegration(unittest.TestCase):
         )
 
         mock_exec_shutdown.assert_called_once()
-        mock_edit.assert_called_once()
-        args, _ = mock_edit.call_args
-        self.assertIn("PARADA EN PROGRESO", args[3])
-        self.assertIn("23", args[3])
+        self.assertEqual(mock_edit.call_count, 2)
+        call1_args, _ = mock_edit.call_args_list[0]
+        self.assertIn("PARADA SEGURA EN CURSO", call1_args[3])
+        self.assertIn("Parando equipos seleccionados", call1_args[3])
+        call2_args, _ = mock_edit.call_args_list[1]
+        self.assertIn("PARADA EN PROGRESO", call2_args[3])
+        self.assertIn("23", call2_args[3])
 
         st23 = states["S19JPRO-23|192.168.100.23:4028"]
         self.assertTrue(st23.is_shutdown_maintenance)
@@ -375,6 +378,54 @@ class TestSafeFleetShutdownIntegration(unittest.TestCase):
 
         st24 = states["S19JPRO-24|192.168.100.24:4028"]
         self.assertFalse(st24.is_shutdown_maintenance)
+
+    @patch("app.miner_monitor.edit_message_text")
+    @patch("app.miner_monitor.answer_callback_query")
+    @patch("app.governance.fleet_shutdown.execute_parallel_shutdown")
+    def test_callback_sd_cfm_expired_token_shows_alert_and_in_place_card(self, mock_exec_shutdown, mock_answer, mock_edit):
+        """cc:act:sd_cfm with expired token answers once with show_alert=True and edits view to retry card."""
+        # Create expired token
+        expired_token = self.reg.create_token("1000", action="shutdown", ttl=0.0)
+        time.sleep(0.01)
+
+        cb_cfm = {
+            "id": "cb_cfm_exp",
+            "data": f"cc:act:sd_cfm:{expired_token}:1000",
+            "message": {"message_id": 5007, "chat": {"id": 100}},
+            "from": {"id": 100},
+        }
+
+        _handle_command_center_callback(
+            cb_query=cb_cfm,
+            config=self.config,
+            bot_token="fake_token",
+            chat_id="100",
+            cb_chat_id=100,
+            message_id=5007,
+            cb_id="cb_cfm_exp",
+            miners=self.miners,
+            states={},
+            state_lock=self.lock,
+            state_path=self.state_path,
+            current_last_update_id=1,
+            hashcore_cfg={},
+            event_store=None,
+            qa_mode=False,
+            qa_allow_actions=True,
+            token_registry=self.reg,
+        )
+
+        mock_exec_shutdown.assert_not_called()
+        mock_answer.assert_called_once_with(
+            "fake_token",
+            "cb_cfm_exp",
+            text="⏱️ Parada segura: Timeout (expirada).",
+            show_alert=True,
+        )
+        mock_edit.assert_called_once()
+        args, kwargs = mock_edit.call_args
+        self.assertIn("PARADA SEGURA: TIMEOUT", args[3])
+        self.assertIn("Repetir Procedimiento", str(kwargs.get("reply_markup")))
 
     @patch("app.miner_monitor.edit_message_text")
     @patch("app.miner_monitor.answer_callback_query")
@@ -427,7 +478,8 @@ class TestSafeFleetShutdownIntegration(unittest.TestCase):
 
         st23 = states["S19JPRO-23|192.168.100.23:4028"]
         self.assertFalse(st23.is_shutdown_maintenance)
-        self.assertIsNone(st23.snooze_until_ts)
+        self.assertIsNotNone(st23.snooze_until_ts)
+        self.assertGreater(st23.snooze_until_ts, time.time())
 
     @patch("app.miner_monitor.threading.Thread")
     @patch("app.miner_monitor.edit_message_text")

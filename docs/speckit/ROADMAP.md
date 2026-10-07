@@ -1,15 +1,15 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-10-03
+**Last reviewed**: 2026-10-07
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (86 de 86 especificaciones completadas y evidenciadas — **1518 tests PASS, 75 subtests PASS** — Horizonte V5.2 100% CERRADO Y CERTIFICADO en Producción).
-- **Estado Operativo de Flota (2026-10-02)**: Elevador 1 a 2500W (~5000W, margen de seguridad de 400W), Elevador 2 a 2700W (5397W nominal), 4 mineros en hash nominal continuo (~387.5-395 TH/s), 0 deadlocks en toda la flota, ventiladores modulando en lazo cerrado térmico.
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (86 de 86 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Horizonte V5.2 100% CERRADO Y CERTIFICADO en Producción).
+- **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico (92% PWM en 26).
 - **Horizonte V5.2 (Gobernanza Integrada, Autopsia Autónoma y Desacoplamiento)**: 100% CERRADO Y CERTIFICADO (Specs 082, 083, 084, 085 y 086).
-- **Próxima Iniciativa Planificada**: `Spec 087: Monolith Decoupling Phase 3 (Balancer & Watchdog)` (Fase 3 de Iniciativa 37: desacoplamiento de `execute_balancer_cycle` y `check_autotune_watchdog`).
+- **Próxima Iniciativa Planificada**: `Spec 087: Monolith Decoupling Master Plan` (Plan Maestro de 5 Fases para desacoplar `miner_monitor.py` a $\le 500$ L sin paradas operativas).
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ---

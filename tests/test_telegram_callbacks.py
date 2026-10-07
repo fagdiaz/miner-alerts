@@ -112,6 +112,19 @@ class TestTelegramCallbacks(unittest.TestCase):
         self.assertFalse(valid)
         self.assertEqual(reason, "token_expired")
 
+    def test_token_registry_custom_ttl(self):
+        # Default registry TTL is 60s, but this token has custom ttl of 180s
+        token = self.registry.create_token(miner_id="1111", action="shutdown", ttl=180.0)
+
+        # Age by 70s (> default 60s, but < custom 180s)
+        entry = self.registry._tokens[token]
+        self.registry._tokens[token] = (entry[0], entry[1], time.time() - 70.0, entry[3])
+
+        valid, m_id, reason = self.registry.consume_token(token)
+        self.assertTrue(valid)
+        self.assertEqual(m_id, "1111")
+        self.assertEqual(reason, "ok")
+
     def test_token_registry_capacity_bounding(self):
         # Max capacity is 5
         tokens = [self.registry.create_token(miner_id=str(i), action="reboot") for i in range(10)]

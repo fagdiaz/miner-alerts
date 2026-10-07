@@ -23,6 +23,12 @@ SYNC IMPACT REPORT
   reserve Claude Opus 4.6 Thinking for persistent architectural deadlocks.
 - Amendment 1.5.0: upgrade Primary Engine to Gemini 3.8 Flash High (with 3.7 Flash High as compatible baseline),
   retaining the scaled escalation protocol to Claude Sonnet 4.6 (Thinking) and Claude Opus 4.6 (Thinking).
+- Amendment 1.6.0: Single-Spec Execution Invariant & Pre-Implementation Deep Analysis Rule:
+  strictly mandate that at most ONE spec may be actively implemented and modified in code at a time;
+  forbid mixing code changes across specs; allow designing and planning future specs in advance but require
+  complete sequential lifecycle closeout (design -> implementation -> validation -> speckit-stabilize -> release)
+  for each spec before activating the next; mandate rigorous pre-implementation analysis and professional
+  Python engineering standards.
 -->
 
 # Miner Alerts Constitution
@@ -65,6 +71,26 @@ Higher-reasoning models MUST be invoked on-demand only when the specific task re
 
 Every model at the conclusion of its turn or session MUST leave an updated, ready-to-run prompt in `prompt.txt`. The prompt MUST provide the simplest yet most optimal and functional way for the next model to enter context easily (either by explaining key context explicitly in `prompt.txt` or by giving specific, line-bounded or full-file Markdown reading directives). In console text output, the model MUST explicitly inform the user which model to select next (recommending `Gemini 3.8 Flash High`, `Claude Sonnet 4.6 (Thinking)`, or `Claude Opus 4.6 (Thinking)`).
 
+### IX. Single-Spec Execution Invariant (Máximo Una Spec a la Vez)
+
+At any given moment, **AT MOST ONE SPEC MAY BE ACTIVELY IMPLEMENTED OR MODIFIED IN CODE**.
+1. **Sequential Atomic Lifecycle**: While multiple future specs may be designed, drafted, and planned in advance (`spec.md`, `plan.md`, `tasks.md`), code implementation and production modifications are strictly sequential.
+2. **No Spec Cross-Contamination**: Agents and models MUST NOT mix, merge, or implement changes belonging to multiple specs within the same turn or branch.
+3. **Full Spec Closeout Gate**: Before activating a new spec for code modification in `.specify/feature.json`, the preceding active spec MUST complete its entire lifecycle:
+   - 100% of tasks checked in `tasks.md`.
+   - Comprehensive test validation ($\ge 1522$ tests PASS, 0 failures, 0 regressions).
+   - Preflight verification and documentary normalization via `speckit-stabilize`.
+   - Recording in `docs/audit/DEVELOPMENT_LOG.md`.
+   - Feature-scoped commit and push to remote.
+4. Violating this rule by attempting multi-spec concurrent code execution is considered a violation of project governance.
+
+### X. Pre-Implementation Deep Analysis & Engineering Professionalism
+
+Before modifying or refactoring production code in any spec, the agent MUST perform an exhaustive, deep technical analysis:
+1. **State & Concurrency Audit**: Identify all shared state variables (e.g. `is_shutdown_maintenance`, `governor_duty`), lock hierarchies, and thread boundaries involved.
+2. **No Half-Baked Refactors**: Code extractions must be complete, modular, and adhere to clean architecture (high cohesion, low coupling, single responsibility). Retaining dead legacy code or creating partial wrappers without migrating callers is strictly prohibited.
+3. **Test Invariant Respect**: Verify all existing test contracts and harness mocks. If a test relies on legacy assumptions, modernize the test thoughtfully rather than bypassing or compromising production design.
+
 ## Development Workflow And Quality Gates
 
 - Read `.specify/feature.json`, the active spec directory, this constitution,
@@ -87,4 +113,4 @@ Every model at the conclusion of its turn or session MUST leave an updated, read
 - Amendments MUST update affected docs under `docs/speckit/` and active specs.
 - Reviews MUST verify production safety, config hygiene, Telegram control safety, Windows compatibility, and validation evidence.
 
-**Version**: 1.4.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-08-27
+**Version**: 1.6.0 | **Ratified**: 2026-07-11 | **Last Amended**: 2026-10-07

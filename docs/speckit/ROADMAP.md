@@ -6,10 +6,9 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (86 de 86 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Horizonte V5.2 100% CERRADO Y CERTIFICADO en Producción).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (87 de 87 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Spec 087 Desacoplamiento de Callbacks COMPLETADA).
 - **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico (92% PWM en 26).
-- **Horizonte V5.2 (Gobernanza Integrada, Autopsia Autónoma y Desacoplamiento)**: 100% CERRADO Y CERTIFICADO (Specs 082, 083, 084, 085 y 086).
-- **Próxima Iniciativa Planificada**: `Spec 087: Monolith Decoupling Master Plan` (Plan Maestro de 5 Fases para desacoplar `miner_monitor.py` a $\le 500$ L sin paradas operativas).
+- **Programa Maestro de Desacoplamiento del Monolito**: Fase 1 completada (`Spec 087: Callbacks de Telegram`, -1.508 LOC). Próxima: `Spec 088: Ciclos de Gobernanza`.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ---
@@ -1071,6 +1070,25 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 - Comando Telegram `/autopsia [minero]` (aliases `/causa_raiz`, `/autopsy`, `/investigar`).
 - Supervisor Q&A conversacional offline en lenguaje natural (<50ms, zero tokens).
 - Callback asíncrono en `miner_monitor.py` despachando vía `send_telegram`.
+
+---
+
+### Iniciativa 39 — Desacoplamiento de Callbacks de Telegram del Monolito (Spec 087) — COMPLETADA ✅
+
+**Documento**: `specs/087-telegram-callbacks-decoupling/spec.md`
+**Estado**: COMPLETADA Y CERTIFICADA (2026-10-07) — 1522 tests PASS, 75 subtests PASS.
+**Prioridad**: P1 — Deuda Técnica / Modularización
+**Riesgo**: BAJO
+**Modelo ejecutado**: Gemini 3.8 Flash High
+**Dependencia**: Programa Maestro de Modularización (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`)
+
+**Alcance técnico completado**:
+- Migración de `_handle_command_center_callback` (~540 LOC) hacia `app/telegram/command_center.py`.
+- Migración de `_handle_help_callback` (~45 LOC) hacia `app/telegram/help_center.py`.
+- Migración de `_handle_diagnostic_callback` (~240 LOC) y `_handle_callback_query` (~680 LOC) hacia `app/telegram/callbacks.py`.
+- Desacoplamiento de `app/telegram/router.py` para despacho directo en `app.telegram.*`.
+- Shims de re-export en `app/miner_monitor.py` preservando 100% de compatibilidad con tests.
+- Reducción neta de -1.508 líneas en `app/miner_monitor.py` (de 9.160 a 7.652 LOC).
 
 ---
 

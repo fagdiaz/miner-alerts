@@ -3,6 +3,33 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-07] - Spec 087: Desacoplamiento de Callbacks de Telegram del Monolito
+
+* **Contexto**:
+  - Motivación: Primera fase del Programa Maestro de Modularización Arquitectónica (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`). Reducción drástica del monolito `app/miner_monitor.py` extrayendo el subsistema completo de callbacks interactivos hacia módulos especializados dentro de `app/telegram/`.
+  - Objetivo: Extraer ~1.500 líneas de código de presentación y ruteo de Telegram manteniendo 100% de retrocompatibilidad con tests existentes, cero regresiones operativas y preservando la sincronización de cerrojos (`state_lock`, `_orchestrator_state`).
+  - Baseline previo: 1522 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/telegram/command_center.py`:
+     - Migrado `_handle_command_center_callback` (~540 LOC) para el manejo de Command Center (`cc:*`), parada segura de flota, toggles de intervenciones de gobernanza y reinicios manuales.
+     - Implementado despacho dinámico hacia helpers del monitor (`mm.answer_callback_query`, `mm.edit_message_text`, `mm.send_telegram`, `mm.threading.Thread`) para total retrocompatibilidad con tests parcheados.
+  2. `app/telegram/help_center.py`:
+     - Migrado `_handle_help_callback` (~45 LOC) para navegación in-place por categorías y comandos del Centro de Ayuda (`help:*`).
+  3. `app/telegram/callbacks.py`:
+     - Migrado `_handle_diagnostic_callback` (~240 LOC) para refresco de tarjetas de diagnóstico (`diag:ref:*`).
+     - Migrado `_handle_callback_query` (~680 LOC) para despacho discreto de autopsias, diagnósticos, gráficos multi-rango, snoozes de mantenimiento, flasheo Vnish y ventanas programadas.
+  4. `app/telegram/router.py`:
+     - Desacopladas las importaciones de callbacks: el router ahora despacha directamente hacia `app.telegram.*` sin importar funciones de callback desde `miner_monitor.py`.
+  5. `app/miner_monitor.py`:
+     - Reemplazadas 1.512 líneas de lógica de callbacks por shims limpios de re-exportación (`_handle_command_center_callback`, `_handle_help_callback`, `_handle_diagnostic_callback`, `_handle_callback_query`).
+     - Tamaño del archivo reducido de 9.160 a 7.652 líneas (-1.508 LOC).
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Sintaxis limpia verificada en todos los módulos (`miner_monitor.py`, `callbacks.py`, `command_center.py`, `help_center.py`, `router.py`).
+  - `pytest -q`: 1522 passed, 75 subtests passed (0 fallos, 0 errores).
+  - Preflight Stabilization Gate: 8/8 gates PASS.
+
 ## [2026-10-07] - Optimización de Parada Segura, Cero-Delay en Telegram y Normalización de Lazo Cerrado del Fan Governor
 
 * **Contexto**:

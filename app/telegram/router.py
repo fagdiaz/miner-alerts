@@ -151,7 +151,7 @@ class TelegramCallbackRouter:
 
         # 1. Command Center callbacks (cc:*)
         if cb_data.startswith("cc:"):
-            from app.miner_monitor import _handle_command_center_callback
+            from app.telegram.command_center import _handle_command_center_callback
             _handle_command_center_callback(
                 cb_query,
                 config=context.config,
@@ -175,7 +175,7 @@ class TelegramCallbackRouter:
 
         # 2. Help callbacks (help:*)
         if cb_data.startswith("help:"):
-            from app.miner_monitor import _handle_help_callback
+            from app.telegram.help_center import _handle_help_callback
             _handle_help_callback(
                 cb_query,
                 bot_token=context.bot_token,
@@ -187,7 +187,7 @@ class TelegramCallbackRouter:
 
         # 3. Diagnostic callbacks (diag:*)
         if cb_data.startswith("diag:"):
-            from app.miner_monitor import _handle_diagnostic_callback
+            from app.telegram.callbacks import _handle_diagnostic_callback
             _handle_diagnostic_callback(
                 cb_query,
                 config=context.config,
@@ -203,7 +203,7 @@ class TelegramCallbackRouter:
             return
 
         # 4. Discrete action callbacks (rb_*, snz:*, chart:*)
-        from app.miner_monitor import _handle_callback_query
+        from app.telegram.callbacks import _handle_callback_query
         _handle_callback_query(
             cb_query,
             config=context.config,

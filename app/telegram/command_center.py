@@ -7,6 +7,7 @@ All functions in this module are strictly deterministic and free of network I/O.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -843,3 +844,543 @@ def render_interventions_menu(
     return "\n".join(lines), build_inline_keyboard(rows)
 
 
+def _handle_command_center_callback(
+    cb_query: dict,
+    *,
+    config: dict,
+    bot_token: str,
+    chat_id: str,
+    cb_chat_id: Any,
+    message_id: Optional[int],
+    cb_id: str,
+    miners: list,
+    states: Dict[str, Any],
+    state_lock: threading.Lock,
+    state_path: Path,
+    current_last_update_id: Optional[int],
+    hashcore_cfg: dict,
+    event_store: Optional[Any],
+    qa_mode: bool,
+    qa_allow_actions: bool,
+    token_registry: Any,
+) -> None:
+    """Handle Command Center callbacks (cc:*) with instant ACK and in-place navigation (Spec 043 & 087)."""
+    import app.miner_monitor as mm
+    answer_callback_query = lambda *a, **kw: mm.answer_callback_query(*a, **kw)
+    edit_message_text = lambda *a, **kw: mm.edit_message_text(*a, **kw)
+    send_telegram = lambda *a, **kw: mm.send_telegram(*a, **kw)
+    _build_state_payload = lambda *a, **kw: mm._build_state_payload(*a, **kw)
+    _flush_state_payload = lambda *a, **kw: mm._flush_state_payload(*a, **kw)
+    trigger_immediate_tick = lambda *a, **kw: mm.trigger_immediate_tick(*a, **kw)
+    record_action_outcome = lambda *a, **kw: mm.record_action_outcome(*a, **kw)
+    run_hashcore_cli = lambda *a, **kw: mm.run_hashcore_cli(*a, **kw)
+    resolve_miner = lambda *a, **kw: mm.resolve_miner(*a, **kw)
+    display_name = lambda *a, **kw: mm.display_name(*a, **kw)
+    log = lambda *a, **kw: mm.log(*a, **kw)
+    MinerState = mm.MinerState
+    from app.governance._orchestrator_state import get_intervention_gov, set_intervention_gov
+    from app.governance.fleet_shutdown import (
+        DEFAULT_IDLE_FAN_DUTY,
+        DEFAULT_MAINTENANCE_SNOOZE_HOURS,
+        DEFAULT_PURGE_FAN_DUTY,
+        DEFAULT_PURGE_SECONDS,
+        OperationResult,
+        execute_parallel_fan_duty,
+        execute_parallel_resume,
+        execute_parallel_shutdown,
+        extract_miner_identifier,
+        render_resume_success_card,
+        render_safe_area_card,
+        render_shutdown_error_card,
+        render_shutdown_in_progress,
+        resolve_selected_miners,
+        toggle_selection_bitmask,
+    )
+    cb_data = cb_query.get("data") or ""
+    action = parse_command_center_callback(cb_data)
+    if not action:
+        answer_callback_query(bot_token, cb_id, text="⚠️ Opción no reconocida.")
+        return
+
+    # Defer acknowledgement to allow show_alert modals or instant ack before I/O
+    answered = False
+
+    _GLOBAL_INTERVENTION_GOV = getattr(mm, "_GLOBAL_INTERVENTION_GOV", None) or get_intervention_gov()
+    with state_lock:
+        states_snapshot = {k: v for k, v in states.items()}
+
+    new_text: Optional[str] = None
+    new_markup: Optional[Dict[str, Any]] = None
+
+    if action.kind == "nav":
+        if action.target == "main":
+            new_text, new_markup = render_main_dashboard(states_snapshot, config, miners)
+        elif action.target == "metrics":
+            new_text, new_markup = render_metrics_view(states_snapshot, miners)
+        elif action.target == "reboot":
+            new_text, new_markup = render_reboot_menu(states_snapshot, miners)
+        elif action.target == "profiles":
+            new_text, new_markup = render_profiles_view(states_snapshot, miners)
+        elif action.target == "alerts":
+            new_text, new_markup = render_alerts_view(states_snapshot, config, miners)
+        elif action.target == "silent":
+            new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+        elif action.target == "shutdown":
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+        elif action.target == "resume":
+            new_text, new_markup = render_resume_menu(states_snapshot, miners)
+        elif action.target == "interventions":
+            new_text, new_markup = render_interventions_menu(_GLOBAL_INTERVENTION_GOV)
+    elif action.kind == "act":
+        if action.target == "refresh":
+            view = action.param or "main"
+            if view == "metrics":
+                new_text, new_markup = render_metrics_view(states_snapshot, miners)
+            elif view == "reboot":
+                new_text, new_markup = render_reboot_menu(states_snapshot, miners)
+            elif view == "profiles":
+                new_text, new_markup = render_profiles_view(states_snapshot, miners)
+            elif view == "alerts":
+                new_text, new_markup = render_alerts_view(states_snapshot, config, miners)
+            elif view == "silent":
+                new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+            elif view == "shutdown":
+                new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+            elif view == "resume":
+                new_text, new_markup = render_resume_menu(states_snapshot, miners)
+            elif view == "interventions":
+                new_text, new_markup = render_interventions_menu(_GLOBAL_INTERVENTION_GOV)
+            else:
+                new_text, new_markup = render_main_dashboard(states_snapshot, config, miners)
+
+        elif action.target == "silent":
+            sub = (action.param or "").strip().lower()
+            _sm_target_max = int(config.get("silent_mode_target_max_duty", 50))
+            _SM_DURATIONS = {
+                "30m": 30, "1h": 60, "2h": 120, "4h": 240, "6h": 360, "indef": None,
+            }
+            if sub in ("off", "cancelar", "desactivar"):
+                with state_lock:
+                    for m in miners:
+                        sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                        st = states.get(sk)
+                        if st is not None and st.silent_mode_active:
+                            st.silent_mode_active = False
+                            st.silent_mode_revert_ts = None
+                    _payload = _build_state_payload(states, current_last_update_id)
+                    states_snapshot = {k: v for k, v in states.items()}
+                _flush_state_payload(state_path, _payload)
+                log("[SILENT_MODE] Manually cancelled via Command Center button")
+                new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+            elif sub in _SM_DURATIONS:
+                duration_min = _SM_DURATIONS[sub]
+                revert_ts = (time.time() + duration_min * 60.0) if duration_min is not None else None
+                with state_lock:
+                    for m in miners:
+                        sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                        st = states.get(sk)
+                        if st is None:
+                            states[sk] = MinerState()
+                            st = states[sk]
+                        if not st.silent_mode_active:
+                            st.silent_mode_prev_duty = st.governor_duty
+                            st.silent_mode_prev_preset = st.balancer_preset
+                        st.silent_mode_active = True
+                        st.silent_mode_revert_ts = revert_ts
+                        st.silent_mode_target_max_duty = _sm_target_max
+                    _payload = _build_state_payload(states, current_last_update_id)
+                    states_snapshot = {k: v for k, v in states.items()}
+                _flush_state_payload(state_path, _payload)
+                log(f"[SILENT_MODE] Activated via Command Center button: sub={sub} max={_sm_target_max}%")
+                new_text, new_markup = render_silent_mode_view(states_snapshot, config, miners)
+        elif action.target == "sd_tog":
+            new_mask = action.param or ("0" * len(miners))
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask=new_mask)
+        elif action.target == "sd_all":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="1" * len(miners))
+        elif action.target == "sd_clr":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask="0" * len(miners))
+        elif action.target == "noop":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+            return
+        elif action.target == "sd_req":
+            mask = action.param or ("0" * len(miners))
+            if mask.count("1") == 0:
+                answer_callback_query(bot_token, cb_id, text="⚠️ Marcá al menos un minero con las casillas ⬜.", show_alert=True)
+                answered = True
+                return
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+            selected_miners = resolve_selected_miners(mask, miners)
+            selected_ids = [extract_miner_identifier(m) for m in selected_miners]
+            token = token_registry.create_token(mask, action="shutdown", ttl=180.0)
+            new_text, new_markup = render_shutdown_confirmation(selected_ids, token, mask)
+        elif action.target == "sd_ccl":
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+            token_registry.invalidate_miner(action.param or "")
+            new_text, new_markup = render_shutdown_menu(states_snapshot, miners, selected_mask=action.param or ("0" * len(miners)))
+        elif action.target == "sd_cfm":
+            valid, stored_mask, reason = token_registry.consume_token(action.token or "")
+            if not valid or stored_mask != action.param:
+                answer_callback_query(bot_token, cb_id, text="⏱️ Parada segura: Timeout (expirada).", show_alert=True)
+                answered = True
+                new_text = (
+                    "⏱️ *PARADA SEGURA: TIMEOUT*\n"
+                    "─" * 32 + "\n"
+                    "El tiempo de confirmación de\n"
+                    "parada ha expirado (180s).\n\n"
+                    "Los mineros continúan operando\n"
+                    "de forma nominal sin cambios.\n"
+                    "─" * 32
+                )
+                new_markup = build_inline_keyboard([
+                    [{"text": "🔄 Repetir Procedimiento", "callback_data": f"{CC_ACT_PREFIX}sd_req:{action.param or ('1' * len(miners))}"}],
+                    [{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}],
+                ])
+                if message_id is not None and new_text and new_markup:
+                    edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)
+                return
+            if qa_mode and not qa_allow_actions:
+                answer_callback_query(bot_token, cb_id, text="🚫 Parada bloqueada (modo QA).", show_alert=True)
+                answered = True
+                return
+            answer_callback_query(bot_token, cb_id)
+            answered = True
+
+            # Fase 1: Feedback In-Flight Inmediato en Telegram (<300ms)
+            in_flight_text = (
+                "🛑 *PARADA SEGURA EN CURSO*\n"
+                + ("─" * 32) + "\n"
+                + "⏳ Parando equipos seleccionados...\n"
+                + "Enviando orden a mineros en paralelo.\n"
+                + "Por favor espere confirmación...\n"
+                + ("─" * 32)
+            )
+            in_flight_markup = build_inline_keyboard([
+                [{"text": "⏳ Parando equipos seleccionados...", "callback_data": f"{CC_ACT_PREFIX}noop"}],
+            ])
+            if message_id is not None and cb_chat_id is not None:
+                edit_message_text(bot_token, str(cb_chat_id), message_id, in_flight_text, reply_markup=in_flight_markup)
+
+            mask = action.param or ("0" * len(miners))
+            selected_miners = resolve_selected_miners(mask, miners)
+            target_ids = [extract_miner_identifier(m) for m in selected_miners]
+            vnish_pw = str(config.get("vnish_api_password", "admin"))
+            results = execute_parallel_shutdown(selected_miners, vnish_pw)
+            trigger_immediate_tick()
+            now_ts = time.time()
+            with state_lock:
+                for m in selected_miners:
+                    m_id = extract_miner_identifier(m)
+                    res = results.get(m_id)
+                    if res and res.success:
+                        sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                        st = states.get(sk)
+                        if st is None:
+                            states[sk] = MinerState()
+                            st = states[sk]
+                        st.is_shutdown_maintenance = True
+                        st.shutdown_maintenance_ts = now_ts
+                        st.snooze_until_ts = now_ts + (DEFAULT_MAINTENANCE_SNOOZE_HOURS * 3600.0)
+                        log(f"[SHUTDOWN] Miner {m_id} safe stop OK: maintenance snooze 4h active")
+                    _payload = _build_state_payload(states, current_last_update_id)
+                _flush_state_payload(state_path, _payload)
+
+            for m in selected_miners:
+                m_id = extract_miner_identifier(m)
+                res = results.get(m_id)
+                record_action_outcome(
+                    event_store,
+                    occurred_ts=now_ts,
+                    miner=m,
+                    action="stop_mining",
+                    source="manual_shutdown",
+                    ok=(res.success if res else False),
+                    message=("Parada segura exitosa" if res and res.success else (res.error if res else "Error")),
+                )
+
+            errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
+            success_ids = [r.miner_id for r in results.values() if r.success]
+            stopped_miners = [m for m in selected_miners if results.get(extract_miner_identifier(m)) and results[extract_miner_identifier(m)].success]
+
+            if stopped_miners:
+                # Spec 049: Active Thermal Purge Ramp (100% PWM)
+                fan_res = execute_parallel_fan_duty(stopped_miners, DEFAULT_PURGE_FAN_DUTY, vnish_pw)
+                for sm in stopped_miners:
+                    sm_id = extract_miner_identifier(sm)
+                    r_item = fan_res.get(sm_id)
+                    f_ok = r_item.success if r_item else False
+                    log(f"[SHUTDOWN_PURGE] Miner {sm_id} thermal purge ramp 100% {'OK' if f_ok else 'FAILED'}")
+                    record_action_outcome(
+                        event_store,
+                        occurred_ts=time.time(),
+                        miner=sm,
+                        action="purge_fan_ramp",
+                        source="thermal_purge",
+                        ok=f_ok,
+                        message="Rampa activa 100% de purga térmica iniciada" if f_ok else "Fallo al modular coolers a 100%",
+                    )
+
+            if errors and not success_ids:
+                new_text = render_shutdown_error_card(errors)
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+            else:
+                new_text = render_shutdown_in_progress(success_ids, purge_seconds=DEFAULT_PURGE_SECONDS, purge_duty=DEFAULT_PURGE_FAN_DUTY)
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+                if success_ids:
+                    target_miners_for_purge = list(stopped_miners)
+                    def _purge_and_notify(targets=list(success_ids), target_miners=target_miners_for_purge, chat=cb_chat_id, pw=vnish_pw):
+                        try:
+                            time.sleep(DEFAULT_PURGE_SECONDS)
+                            if target_miners:
+                                # Spec 049: Acoustic contrast drop to idle floor (40% PWM)
+                                idle_res = execute_parallel_fan_duty(target_miners, DEFAULT_IDLE_FAN_DUTY, pw)
+                                for tm in target_miners:
+                                    tm_id = extract_miner_identifier(tm)
+                                    r_idle = idle_res.get(tm_id)
+                                    f_ok = r_idle.success if r_idle else False
+                                    log(f"[SHUTDOWN_PURGE] Miner {tm_id} acoustic drop to idle floor 40% {'OK' if f_ok else 'FAILED'}")
+                                    record_action_outcome(
+                                        event_store,
+                                        occurred_ts=time.time(),
+                                        miner=tm,
+                                        action="purge_idle_drop",
+                                        source="acoustic_contrast",
+                                        ok=f_ok,
+                                        message="Caída a reposo acústico 40% exitosa" if f_ok else "Fallo al modular coolers a reposo",
+                                    )
+                            safe_card = render_safe_area_card(targets, snooze_hours=DEFAULT_MAINTENANCE_SNOOZE_HOURS, idle_duty=DEFAULT_IDLE_FAN_DUTY)
+                            send_telegram(
+                                bot_token,
+                                str(chat),
+                                safe_card,
+                                "SHUTDOWN_SAFE",
+                                "shutdown_safe_purge",
+                                is_command=True,
+                            )
+                        except Exception as _th_exc:
+                            log(f"[SHUTDOWN_PURGE_ERR] Excepcion en hilo ShutdownPurgeNotify: {type(_th_exc).__name__}: {_th_exc}")
+                    thread_cls = getattr(getattr(mm, "threading", threading), "Thread", threading.Thread)
+                    t = thread_cls(target=_purge_and_notify, daemon=True, name="ShutdownPurgeNotify")
+                    t.start()
+        elif action.target == "resume":
+            target_id = action.miner_id or "all"
+            if target_id == "all":
+                target_miners = list(miners)
+            else:
+                m_obj = resolve_miner(target_id, miners)
+                target_miners = [m_obj] if m_obj else []
+
+            if not target_miners:
+                new_text = f"❌ Minero {target_id} no encontrado."
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+            else:
+                vnish_pw = str(config.get("vnish_api_password", "admin"))
+                now_ts = time.time()
+                results = execute_parallel_resume(target_miners, vnish_pw)
+                with state_lock:
+                    for m in target_miners:
+                        m_id = extract_miner_identifier(m)
+                        res = results.get(m_id)
+                        if res and res.success:
+                            sk = f"{m.get('name','')}|{m.get('host','')}:{m.get('port',4028)}"
+                            st = states.get(sk)
+                            if st:
+                                st.is_shutdown_maintenance = False
+                                st.shutdown_maintenance_ts = 0.0
+                                # Spec 066: Gracia de calentamiento térmico post-reanudación (180s)
+                                st.snooze_until_ts = now_ts + 180.0
+                                st.governor_duty = 100
+                                st.governor_last_change_ts = now_ts
+                                st.governor_holds = 0
+                            log(f"[RESUME] Miner {m_id} mining resumed: warm-up grace 180s active")
+                    _payload = _build_state_payload(states, current_last_update_id)
+                _flush_state_payload(state_path, _payload)
+
+                for m in target_miners:
+                    m_id = extract_miner_identifier(m)
+                    res = results.get(m_id)
+                    record_action_outcome(
+                        event_store,
+                        occurred_ts=now_ts,
+                        miner=m,
+                        action="resume_mining",
+                        source="manual_resume",
+                        ok=(res.success if res else False),
+                        message=("Reanudación exitosa" if res and res.success else (res.error if res else "Error")),
+                    )
+
+                # Spec 049: Restore fan duty from idle floor upon resume
+                resumed_miners = [m for m in target_miners if results.get(extract_miner_identifier(m)) and results[extract_miner_identifier(m)].success]
+                if resumed_miners:
+                    execute_parallel_fan_duty(resumed_miners, DEFAULT_PURGE_FAN_DUTY, vnish_pw)
+                    for rm in resumed_miners:
+                        rm_id = extract_miner_identifier(rm)
+                        log(f"[RESUME] Miner {rm_id} coolers restored to active duty")
+
+                errors = {r.miner_id: r.error for r in results.values() if not r.success and r.error}
+                success_ids = [r.miner_id for r in results.values() if r.success]
+                if errors and not success_ids:
+                    is_conn_error = all("connect" in str(err).lower() or "timeout" in str(err).lower() for err in errors.values())
+                    if is_conn_error:
+                        new_text = (
+                            "⚠️ *EQUIPOS SIN CONEXIÓN*\n"
+                            "─" * 32 + "\n"
+                            "No se pudo conectar con los mineros.\n"
+                            "Si cortó la corriente, primero suba\n"
+                            "las llaves térmicas y espere 60-90s\n"
+                            "a que inicien antes de usar /resume.\n"
+                            "─" * 32
+                        )
+                    else:
+                        new_text = render_shutdown_error_card(errors)
+                else:
+                    new_text = render_resume_success_card(success_ids)
+                trigger_immediate_tick()
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+        elif action.target == "rb_req" and action.miner_id:
+            miner = resolve_miner(action.miner_id, miners)
+            if miner:
+                sk = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                st = states_snapshot.get(sk)
+                if st and getattr(st, "is_shutdown_maintenance", False):
+                    answer_callback_query(bot_token, cb_id, text="⚠️ Minero en Parada Segura (Mantenimiento). Usá /resume primero.", show_alert=True)
+                    answered = True
+                    return
+            token = token_registry.create_token(action.miner_id, action="reboot")
+            new_text, new_markup = render_reboot_confirmation(action.miner_id, token)
+        elif action.target == "rb_ccl":
+            token_registry.invalidate_miner(action.miner_id or "")
+            new_text, new_markup = render_reboot_menu(states_snapshot, miners)
+        elif action.target == "rb_cfm" and action.token and action.miner_id:
+            valid, m_id, reason = token_registry.consume_token(action.token)
+            if not valid or m_id != action.miner_id:
+                answer_callback_query(bot_token, cb_id, text="⏱️ Token inválido o expirado.", show_alert=True)
+                answered = True
+                new_text = (
+                    "⏱️ *CONFIRMACIÓN EXPIRADA*\n"
+                    "─" * 32 + "\n"
+                    f"El código de reinicio para el\n"
+                    f"minero {action.miner_id} ha expirado.\n\n"
+                    "Solicitá un nuevo reinicio.\n"
+                    "─" * 32
+                )
+                new_markup = build_inline_keyboard([
+                    [{"text": f"🔄 Reintentar {action.miner_id}", "callback_data": f"{CC_ACT_PREFIX}rb_req:{action.miner_id}"}],
+                    [{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}],
+                ])
+                if message_id is not None and new_text and new_markup:
+                    edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)
+                return
+
+            if qa_mode and not qa_allow_actions:
+                answer_callback_query(bot_token, cb_id, text="🚫 Reinicio bloqueado (modo QA).", show_alert=True)
+                answered = True
+                return
+
+            miner = resolve_miner(action.miner_id, miners)
+            if not miner:
+                new_text = f"❌ Minero {action.miner_id} no encontrado."
+                _, new_markup = render_reboot_menu(states_snapshot, miners)
+            else:
+                sk = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                st = states_snapshot.get(sk)
+                if st and getattr(st, "is_shutdown_maintenance", False):
+                    answer_callback_query(bot_token, cb_id, text="⚠️ Minero en Parada Segura (Mantenimiento). Usá /resume primero.", show_alert=True)
+                    answered = True
+                    return
+                answer_callback_query(bot_token, cb_id)
+                answered = True
+                now_ts = time.time()
+                ok, msg_result = run_hashcore_cli(
+                    hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions
+                )
+                record_action_outcome(
+                    event_store,
+                    occurred_ts=now_ts,
+                    miner=miner,
+                    action="reboot",
+                    source="manual",
+                    ok=ok,
+                    message=msg_result,
+                )
+                state_key = f"{miner['name']}|{miner['host']}:{miner['port']}"
+                if ok:
+                    with state_lock:
+                        state = states.get(state_key)
+                        if state:
+                            state.last_manual_reboot_ts = now_ts
+                            state.low_since_ts = None
+                        _payload = _build_state_payload(states, current_last_update_id)
+                    _flush_state_payload(state_path, _payload)
+                    new_text = f"✅ *Reinicio de {display_name(miner['name'])}*: Iniciado correctamente.\n\nEnfriamiento activo por 15m."
+                else:
+                    new_text = f"❌ *Reinicio FAIL*: {display_name(miner['name'])}\nDetalle: {msg_result}"
+                new_markup = build_inline_keyboard([[{"text": "⬅️ Volver al Menú", "callback_data": CC_NAV_MAIN}]])
+        elif action.target == "int_all":
+            from app.governance.intervention_policy import apply_governance_toggle
+            sub = (action.param or "").strip().lower()
+            now_ts = time.time()
+            tgt = "all_on" if sub == "on" else "all_off"
+            _GLOBAL_INTERVENTION_GOV = apply_governance_toggle(_GLOBAL_INTERVENTION_GOV, tgt, now_ts)
+            mm._GLOBAL_INTERVENTION_GOV = _GLOBAL_INTERVENTION_GOV
+            set_intervention_gov(_GLOBAL_INTERVENTION_GOV)
+            with state_lock:
+                for st in states.values():
+                    st.intervention_gov = _GLOBAL_INTERVENTION_GOV
+                _payload = _build_state_payload(states, current_last_update_id)
+                states_snapshot = {k: v for k, v in states.items()}
+            _flush_state_payload(state_path, _payload)
+            log(f"[INTERVENTIONS] Toggle all: {tgt} (reason={_GLOBAL_INTERVENTION_GOV.disabled_reason})")
+            new_text, new_markup = render_interventions_menu(_GLOBAL_INTERVENTION_GOV, now_ts)
+        elif action.target == "int_tog":
+            from app.governance.intervention_policy import apply_governance_toggle
+            sub = (action.param or "").strip().lower()
+            now_ts = time.time()
+            tgt = f"toggle_{sub}"
+            _GLOBAL_INTERVENTION_GOV = apply_governance_toggle(_GLOBAL_INTERVENTION_GOV, tgt, now_ts)
+            mm._GLOBAL_INTERVENTION_GOV = _GLOBAL_INTERVENTION_GOV
+            set_intervention_gov(_GLOBAL_INTERVENTION_GOV)
+            with state_lock:
+                for st in states.values():
+                    st.intervention_gov = _GLOBAL_INTERVENTION_GOV
+                _payload = _build_state_payload(states, current_last_update_id)
+                states_snapshot = {k: v for k, v in states.items()}
+            _flush_state_payload(state_path, _payload)
+            log(f"[INTERVENTIONS] Toggle individual: {tgt}")
+            new_text, new_markup = render_interventions_menu(_GLOBAL_INTERVENTION_GOV, now_ts)
+        elif action.target == "int_tim":
+            from app.governance.intervention_policy import apply_governance_toggle
+            sub = (action.param or "").strip().lower()
+            now_ts = time.time()
+            dur_map = {"30m": 1800.0, "1h": 3600.0, "2h": 7200.0, "4h": 14400.0, "indef": None}
+            dur = dur_map.get(sub)
+            if _GLOBAL_INTERVENTION_GOV.master_enabled and dur is not None:
+                _GLOBAL_INTERVENTION_GOV = apply_governance_toggle(_GLOBAL_INTERVENTION_GOV, "all_off", now_ts, duration_seconds=dur)
+            else:
+                _GLOBAL_INTERVENTION_GOV = apply_governance_toggle(_GLOBAL_INTERVENTION_GOV, "timer", now_ts, duration_seconds=dur)
+            mm._GLOBAL_INTERVENTION_GOV = _GLOBAL_INTERVENTION_GOV
+            set_intervention_gov(_GLOBAL_INTERVENTION_GOV)
+            with state_lock:
+                for st in states.values():
+                    st.intervention_gov = _GLOBAL_INTERVENTION_GOV
+                _payload = _build_state_payload(states, current_last_update_id)
+                states_snapshot = {k: v for k, v in states.items()}
+            _flush_state_payload(state_path, _payload)
+            log(f"[INTERVENTIONS] Timer set: sub={sub} expires_at={_GLOBAL_INTERVENTION_GOV.expires_at_ts}")
+            new_text, new_markup = render_interventions_menu(_GLOBAL_INTERVENTION_GOV, now_ts)
+
+    if not answered:
+        answer_callback_query(bot_token, cb_id)
+        answered = True
+
+    if message_id is not None and new_text and new_markup:
+        edit_message_text(bot_token, str(cb_chat_id), message_id, new_text, reply_markup=new_markup)

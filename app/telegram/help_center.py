@@ -959,3 +959,45 @@ def render_legacy_help_detail(cmd_name: str) -> str:
             "La confirmacion expira en 60s y se pierde si reinicia el servicio.",
         ])
     return "\n".join(lines)
+
+
+def _handle_help_callback(
+    cb_query: dict,
+    *,
+    bot_token: str,
+    cb_chat_id: Any,
+    message_id: Optional[int],
+    cb_id: str,
+) -> None:
+    """Handle Help Center callbacks (help:*) with instant ACK and in-place navigation (Spec 045 & 087)."""
+    from app.miner_monitor import answer_callback_query, edit_message_text, log
+
+    cb_data = cb_query.get("data") or ""
+    action = parse_help_callback(cb_data)
+    if not action:
+        log(f"HELP_CB_PARSE_FAIL cb_id={cb_id} data={cb_data[:40]!r}")
+        answer_callback_query(bot_token, cb_id, text="⚠️ Opción no reconocida.")
+        return
+
+    # Acknowledge immediately to clear the UI spinner (< 50ms)
+    answer_callback_query(bot_token, cb_id)
+
+    new_text: Optional[str] = None
+    new_markup: Optional[Dict[str, Any]] = None
+
+    if action.kind == "nav" and action.target == "home":
+        new_text, new_markup = render_help_home()
+    elif action.kind == "cat":
+        new_text, new_markup = render_help_category(action.target)
+    elif action.kind == "cmd":
+        new_text, new_markup = render_help_command_detail(action.target)
+
+    if message_id is not None and new_text and new_markup:
+        edit_message_text(
+            bot_token,
+            str(cb_chat_id),
+            message_id,
+            new_text,
+            reply_markup=new_markup,
+            parse_mode="Markdown",
+        )

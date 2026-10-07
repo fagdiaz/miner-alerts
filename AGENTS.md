@@ -11,10 +11,10 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-`specs/066-cold-boot-grace/plan.md` (Spec 066: Cold-Boot Fleet Grace Period Post-Arranque PROP-001)
+Declarado en `.specify/feature.json` (Actualmente: `specs/087-telegram-callbacks-decoupling/plan.md`)
 
 Active production observation gate:
-`specs/066-cold-boot-grace/plan.md` (Production Certified Stage; Baseline 1062 tests PASS, Windows Service RUNNING)
+V5.2.0 Operational Baseline (1522 tests PASS, 75 subtests PASS, Windows Service RUNNING, ~400 TH/s nominal).
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
 
@@ -25,6 +25,11 @@ Do not infer runtime safety from checked tasks alone. Runtime evidence and logs 
 - Config example: `app/config.example.json`.
 - Real config/state: `app/config.json`, `app/state.json` are local runtime files and must not be committed.
 - Integrations: Telegram Bot API polling, ASIC API 4028, Hashcore Toolkit CLI.
+
+## Single-Spec Execution Invariant & Deep Analysis Rule
+
+1. **Máximo Una Spec a la Vez en Implementación**: Está terminantemente prohibido implementar código o alterar archivos de producción de más de una spec de manera concurrente. Aunque múltiples specs futuras pueden ser diseñadas y planificadas en paralelo (`spec.md`, `plan.md`, `tasks.md`), la ejecución de código es estrictamente secuencial y atómica: cada spec debe completar su ciclo completo (Diseño -> Código -> Tests -> speckit-stabilize -> Release) antes de activar la siguiente en `.specify/feature.json`.
+2. **Análisis Profundo Pre-Implementación**: Antes de escribir una sola línea de código, el agente debe analizar a fondo la arquitectura, variables compartidas (`states`), hilos concurrentes, efectos colaterales en planta y contratos de prueba. Quedan prohibidos los refactors a medias o parches superficiales: toda extracción debe ser limpia, modular, tipada y con retrocompatibilidad garantizada.
 
 ## Stabilization Priority
 
@@ -66,6 +71,5 @@ Every implemented spec must:
 5. Leave unverified behavior explicitly marked as unverified or blocked.
 6. Keep commits manual and feature-scoped.
 7. Execute `speckit-stabilize` as the authoritative quality, documentary normalization, and safe release closeout gate before final commit/push. If any gate fails, address the findings in the generated `STABILIZATION_REPORT_*.md` before proceeding.
-
 
 <!-- SPECKIT END -->

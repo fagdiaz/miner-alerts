@@ -1,57 +1,39 @@
 # ==============================================================================
-# ESTADO DE PRODUCCIÓN Y HANDOFF - NORMALIZACIÓN INTEGRAL DE FLOTA Y PARADA SEGURA
-# FECHA: 2026-10-07 12:40 UTC-3
+# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 088 (CICLOS DE GOBERNANZA)
+# FECHA: 2026-10-07 18:45 UTC-3
 # RAMA: codex/022-adaptive-acquisition
-# ESTADO DE SUITE: 1522 tests PASS, 75 subtests PASS (0 fallos, 0 errores en 42.28s)
-# PREFLIGHT STABILIZE: 8/8 COMPUERTAS PASS (100% CERTIFICADO)
-# SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING, PID 92216)
+# ESTADO DE SUITE: 1522 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
+# SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
 # MODELO EJECUTOR: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
-# PRÓXIMO MODELO RECOMENDADO: Gemini 3.8 Flash High
+# PRÓXIMO MODELO RECOMENDADO TRAS EJECUCIÓN: Gemini 3.8 Flash High
 # ==============================================================================
 
-ESTADO DE LA FLOTA EN TIEMPO REAL (07/10/2026 12:38 UTC-3):
+ESTADO DE PRODUCCIÓN Y FLOTA:
 --------------------------------------------------------------------------------
-• S19JPRO-23 (192.168.100.23:4028): Operativo | 2700W (2698W) | Temp 77-83°C | Duty 100% (Protección térmica activa)
-• S19JPRO-24 (192.168.100.24:4028): Operativo | 2700W (2698W) | Temp 77-81°C | Duty 100% (Gobernador en setpoint)
-• S19JPRO-25 (192.168.100.25:4028): Operativo | 2700W (2698W) | Temp 78-82°C | Duty 92%  (Gobernador modulando en lazo cerrado)
-• S19JPRO-26 (192.168.100.26:4028): Operativo | 2700W (2698W) | Temp 77-80°C | Duty 92%  (5580 RPM - ANOMALÍA RESUELTA Y CERTIFICADA)
+• Toda la flota operando nominalmente a 2700W (4x 2700W, ~400 TH/s, 10.6 kW).
+• M26 estabilizado y modulando ventiladores en 92% PWM (5580 RPM) a 77-80°C.
+• Spec 087 (Callbacks de Telegram) 100% COMPLETADA: -1.508 LOC en miner_monitor.py.
+• Servicio NSSM MinerAlerts reiniciado y verificado en producción (SERVICE_RUNNING).
+• Preflight de estabilización: 8/8 gates PASS.
 
-RESOLUCIÓN DEFINITIVA DE LA CAUSA RAÍZ EN S19JPRO-26:
+OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 088 (CICLOS DE GOBERNANZA)
 --------------------------------------------------------------------------------
-1. Diagnóstico de Causa Raíz Confirmado:
-   - S19JPRO-26 había sido reanudado tras una intervención pero retenía `governor_duty = 92` en memoria/disco,
-     mientras que el hardware real operaba físicamente al 100% PWM forzado por `THERMAL_GUARD` previo.
-   - Al coincidir la temperatura en banda (<= 81°C) y creer que ya estaba en el piso acústico/potencia (92%),
-     el gobernador calculaba `STEP_DOWN 92` con `requires_write: False`, impidiendo enviar escrituras al ASIC.
-2. Solución Arquitectónica Implementada:
-   - En `app/governance/governor_cycle.py`, se implementó reconciliación automática de telemetría de hardware:
-     si `last_fan_duty_percent` difiere de `governor_duty` en >= 2% tras la ventana de dwell, el gobernador
-     recalibra su estado a la realidad física de la máquina antes de evaluar el paso.
-   - En `app/governance/thermal_guard.py`, toda acción de ventiladores al 100% actualiza sincrónicamente
-     `state.governor_duty = 100`, `governor_last_change_ts = now_ts` y `governor_holds = 0`.
-   - En `app/telegram/commands/maintenance.py` (`ResumeCommand`) y en `_handle_command_center_callback` (`resume`),
-     se sincroniza `governor_duty = 100` para iniciar el control en lazo cerrado desde régimen seguro.
-   - En `app/miner_monitor.py` (L6311), telemetría sincroniza `governor_duty` ante discrepancias externas >= 2%.
-3. Evidencia en Planta:
-   - El Fan Governor tomó el control de S19JPRO-26, despachó `safe_set_fan_duty` a 98% y luego a 92% PWM.
-   - El ASIC 192.168.100.26 respondió inmediatamente bajando de 6000 RPM a 5580 RPM, manteniendo silicio en 77-80°C.
+Continuar el Programa Maestro de Modularización Arquitectónica
+(docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md).
+Extraer ~1.800 líneas de bucles de gobernanza periódica (Fan Governor, Preset Balancer,
+Soft Contingency, Solar Envelope, Chain Health) desde `app/miner_monitor.py`
+hacia `app/governance/cycles/` sin tocar contratos ni alterar hardware en planta.
 
-PLAN DE 5 FASES DE PARADA SEGURA Y CERO-DELAY: 100% IMPLEMENTADO Y CERTIFICADO
---------------------------------------------------------------------------------
-• Fase 1: Feedback In-Flight Instantáneo en Telegram (<300ms) mediante edición de mensaje in-place
-  ("🛑 PARADA SEGURA EN CURSO... ⏳ Parando equipos seleccionados...") y botón inactivo `noop`.
-• Fase 2: Supresión Total de Autopsias y Alertas Falsas en Mantenimiento programado:
-  - `expected_shutdown` en `app/core/restart_intelligence.py` clasifica como benignos reinicios post-parada (300s).
-  - Supresión de episodios de apertura/recuperación en `app/telegram/snooze.py` (`filter_snoozed_episodes`).
-• Fase 3: Supresión de Soft-Contingencia y Notificaciones Solares cuando la flota activa es 0 (0W).
-• Fase 4: Despertador Cero-Delay (`_WAKEUP_EVENT: threading.Event` y `trigger_immediate_tick()`)
-  reemplazando `time.sleep(poll_seconds)` pasivo para reacción instantánea ante directivas de Telegram.
-• Fase 5: Robustez en `/resume` con ventana de calentamiento térmico (180s) y tarjeta guiada con
-  instrucciones de reconexión eléctrica ante disyuntores/térmicas seccionadas.
+ARCHIVOS DE REFERENCIA:
+- Documento maestro: `docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`
+- Próxima feature: `specs/088-governance-cycles-decoupling/spec.md`
+- Historial de cambios: `docs/audit/DEVELOPMENT_LOG.md`
+- Roadmap: `docs/speckit/ROADMAP.md`
 
-PRÓXIMO PASO RECOMENDADO:
+INSTRUCCIÓN DE ARRANQUE PARA LA PRÓXIMA SESIÓN:
 --------------------------------------------------------------------------------
-• Ejecutar la Fase 1 del Plan Maestro de Desacoplamiento del Monolito:
-  `Spec 087: Monolith Decoupling Master Plan` (ver `docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`
-  y `specs/087-monolith-decoupling/tasks.md`).
-• Modelo recomendado: `Gemini 3.8 Flash High` (Primary Engine según AGENTS.md).
+1. Actualizar `.specify/feature.json` a `specs/088-governance-cycles-decoupling`.
+2. Leer `specs/088-governance-cycles-decoupling/tasks.md`.
+3. Ejecutar la extracción secuencial según el plan de la Spec 088.
+4. Mantener shims en `miner_monitor.py` para compatibilidad de tests (1522 PASS).
+5. Validar con `py_compile`, `pytest -q`, preflight_stabilize.ps1 y reiniciar NSSM.

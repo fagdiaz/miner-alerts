@@ -1,11 +1,10 @@
 # ==============================================================================
-# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 090 (TEST INVARIANTS MODERNIZATION)
-# FECHA: 2026-10-07 20:40 UTC-3
+# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 091 (CORE DAEMON HOOKIFICATION & V6.0 CLOSEOUT)
+# FECHA: 2026-10-07 20:50 UTC-3
 # RAMA: codex/022-adaptive-acquisition
-# ESTADO DE SUITE: 1522 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
+# ESTADO DE SUITE: 1525 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
 # SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
-# MODELO EJECUTOR: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
-# PRÓXIMO MODELO RECOMENDADO TRAS EJECUCIÓN: Gemini 3.8 Flash High
+# MODELO EJECUTOR RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
 # ==============================================================================
 
 ESTADO DE PRODUCCIÓN Y FLOTA:
@@ -15,29 +14,34 @@ ESTADO DE PRODUCCIÓN Y FLOTA:
 • Spec 087 (Callbacks de Telegram): -1.508 LOC completada y certificada.
 • Spec 088 (Ciclos de Gobernanza): -388 LOC completada y certificada.
 • Spec 089 (Telemetría de Cadenas & Sockets ASIC): -620 LOC completada y certificada (-2.430 LOC acumuladas).
-• Servicio NSSM MinerAlerts reiniciado y verificado en producción (SERVICE_RUNNING).
+• Spec 090 (Modernización de Tests Invariantes): 100% completada y certificada (1525 tests PASS).
+• Desbloqueo arquitectónico de `main()` conseguido (0 tests acoplados a getsource(main)).
 • Preflight de estabilización: 8/8 gates PASS (0 fallos).
 
-OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 090 (MODERNIZACIÓN DE TESTS GETSOURCE DE MAIN)
+OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 091 (CORE DAEMON HOOKIFICATION & V6.0 CLOSEOUT)
 --------------------------------------------------------------------------------
-Continuar el Programa Maestro de Modularización Arquitectónica
+Fase final del Programa Maestro de Modularización Arquitectónica
 (docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md).
-Desacoplar las aserciones de `inspect.getsource(main)` en `tests/test_startup_grace_period.py:222`
-para verificar el comportamiento funcional con `SupervisoryBehavioralHarness` en lugar de
-inspeccionar texto crudo de la función `main()`. Esto deja el camino 100% despejado para la
-Spec 091 (Core Daemon Hookification & Cierre V6.0, donde `main()` baja a <100 líneas).
+Conectar las etapas de supervisión procedurales de `main()` en `app/miner_monitor.py`
+a los hooks declarativos ya implementados en `app/core/engine.py` (PreTick, Acquisition,
+Detection, Governance, Actuator, Persistence, PostTick).
+Reducir `main()` a un runner minimalista de <= 100 líneas, llevando `miner_monitor.py`
+a <= 450 LOC totales (reducción de -4.800 LOC, de 6.644 a <450 LOC).
+Certificar el cierre definitivo del monolito y lanzamiento de V6.0.
 
 ARCHIVOS DE REFERENCIA:
 - Documento maestro: `docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`
-- Próxima feature: `specs/090-test-invariants-modernization/spec.md`
-- Plan de implementación: `specs/090-test-invariants-modernization/plan.md`
-- Tareas: `specs/090-test-invariants-modernization/tasks.md`
+- Próxima feature: `specs/091-core-daemon-hookification/spec.md`
+- Plan de implementación: `specs/091-core-daemon-hookification/plan.md`
+- Tareas: `specs/091-core-daemon-hookification/tasks.md`
+- Arquitectura de Hooks: `app/core/engine.py`
 - Historial de cambios: `docs/audit/DEVELOPMENT_LOG.md`
 - Roadmap: `docs/speckit/ROADMAP.md`
 
 INSTRUCCIÓN DE ARRANQUE PARA LA PRÓXIMA SESIÓN:
 --------------------------------------------------------------------------------
-1. Actualizar `.specify/feature.json` a `specs/090-test-invariants-modernization`.
-2. Leer `specs/090-test-invariants-modernization/tasks.md`.
-3. Ejecutar la modernización de los tests según el plan de la Spec 090.
-4. Validar con `py_compile`, `pytest -q`, preflight_stabilize.ps1 y registrar en docs/audit/DEVELOPMENT_LOG.md.
+1. Actualizar `.specify/feature.json` a `specs/091-core-daemon-hookification`.
+2. Leer `specs/091-core-daemon-hookification/tasks.md` y `plan.md`.
+3. Ejecutar la transformación modular del loop principal conectando con `app/core/engine.py`.
+4. Validar con `py_compile`, `pytest -q` (>= 1525 tests PASS), `preflight_stabilize.ps1` (8/8 gates).
+5. Reiniciar NSSM service MinerAlerts, registrar en docs/audit/DEVELOPMENT_LOG.md y cerrar con `speckit-stabilize`.

@@ -3,7 +3,31 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
-## [2026-10-07] - Spec 089: Desacoplamiento de Telemetría de Cadenas y Sockets ASIC 4028
+## [2026-10-07] - Spec 090: Modernización de Contratos de Test Invariantes (Desbloqueo de main())
+
+* **Contexto**:
+  - Motivación: Cuarta fase del Programa Maestro de Modularización Arquitectónica (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`). Desacoplamiento de las pruebas de inspección de código fuente `inspect.getsource(main)` en `tests/test_startup_grace_period.py:222` que bloqueaban la reducción estructural de `main()`.
+  - Objetivo: Reemplazar las comprobaciones de strings crudos (`source.index(...)`) por verificación funcional black-box mediante `SupervisoryBehavioralHarness`, certificando las 5 precedencias de auto-reboot sin acoplamiento al texto del archivo principal.
+  - Baseline previo: 1522 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `tests/test_startup_grace_period.py`:
+     - Refactorizada la clase `TestStartupGraceInvariantContracts` eliminando por completo `inspect.getsource(main)` y todas las llamadas a `source.index(...)`.
+     - Implementadas 4 pruebas funcionales exhaustivas con `SupervisoryBehavioralHarness`:
+       * `test_spec_066_helpers_and_state_contracts`: Verifica presencia y funcionalidad de helpers de flota restablecida y constantes de estado.
+       * `test_reboot_safety_precedence_hierarchy_blackbox`: Valida la jerarquía estricta de 5 compuertas (Startup Guard > Sustained LOW > Interlocks > Cooldown > Hashcore Action).
+       * `test_hashboard_detection_precedence_over_low_hashrate`: Verifica prioridad determinista de falla de placas sobre déficit de hashrate.
+       * `test_timer_lifecycle_resets_on_successful_reboot`: Verifica el reseteo atómico de temporizadores y contadores de autoreinicio.
+  2. Auditoría integral de la suite de pruebas:
+     - Certificado que no queda ninguna otra prueba en `tests/` inspeccionando el código fuente de `main()`. Camino 100% libre para la modularización declarativa de `main()` en Spec 091.
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Sintaxis limpia verificada en `tests/test_startup_grace_period.py`.
+  - Pruebas focalizadas: 55/55 tests PASS en `test_startup_grace_period.py` y `test_supervisory_core_behavioral.py`.
+  - Pruebas globales: `pytest -q`: 1525 passed, 75 subtests passed (0 fallos, 0 errores, +3 tests netos).
+  - Preflight Stabilization Gate: 8/8 gates PASS.
+  - Verificación en servicio real: NSSM `MinerAlerts` en ejecución continua (`SERVICE_RUNNING`, ~400 TH/s nominal).
+
 
 * **Contexto**:
   - Motivación: Tercera fase del Programa Maestro de Modularización Arquitectónica (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`). Reducción drástica de `app/miner_monitor.py` extrayendo la recolección asíncrona de cadenas de hashboards, predicción de rotura de silicon y constructores de texto de diagnóstico Telegram.

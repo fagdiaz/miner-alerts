@@ -6,9 +6,9 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (89 de 89 especificaciones completadas y evidenciadas — **1522 tests PASS, 75 subtests PASS** — Spec 089 Desacoplamiento de Telemetría de Cadenas COMPLETADA).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (90 de 90 especificaciones completadas y evidenciadas — **1525 tests PASS, 75 subtests PASS** — Spec 090 Modernización de Tests Invariantes COMPLETADA).
 - **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico (92% PWM en 26).
-- **Programa Maestro de Desacoplamiento del Monolito**: Fases 1, 2 y 3 completadas (`Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, -2.430 LOC acumuladas). Próxima: `Spec 090: Watchdog IPC`.
+- **Programa Maestro de Desacoplamiento del Monolito**: Fases 1, 2, 3 y 4 completadas (`Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`). Próxima: `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ---
@@ -1119,7 +1119,21 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 - Creación de `app/hardware/chain_collector.py` y migración de `_async_collect_chain_telemetry` y `_async_evaluate_predictive_chain_break` (~350 LOC).
 - Extracción de formateadores de texto diagnóstico (`build_stability_health_text`, `build_mining_quality_text`, `build_firmware_events_text`, `build_miner_diagnosis_text`) y helpers de resolución hacia `app/telegram/fleet_cards.py` (~320 LOC).
 - Shims de re-export en `app/miner_monitor.py` preservando 100% de compatibilidad con tests y herramientas externas.
-- Reducción neta de -620 líneas en `app/miner_monitor.py` (de 7.264 a 6.644 LOC; -2.430 LOC acumuladas).
+---
+
+### Iniciativa 42 — Modernización de Contratos de Test Invariantes (Spec 090) — COMPLETADA ✅
+
+**Documento**: `specs/090-test-invariants-modernization/spec.md`
+**Estado**: COMPLETADA Y CERTIFICADA (2026-10-07) — 1525 tests PASS, 75 subtests PASS.
+**Prioridad**: P1 — Desbloqueo Arquitectónico
+**Riesgo**: BAJO (100% en tests)
+**Modelo ejecutado**: Gemini 3.8 Flash High
+**Dependencia**: Programa Maestro de Modularización (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`)
+
+**Alcance técnico completado**:
+- Desacoplamiento de `inspect.getsource(main)` en `tests/test_startup_grace_period.py:222`.
+- Verificación funcional black-box determinista con `SupervisoryBehavioralHarness` para la jerarquía de 5 precedencias de auto-reboot.
+- Desbloqueo arquitectónico 100% de `main()` para el cierre definitivo en Spec 091.
 
 ---
 

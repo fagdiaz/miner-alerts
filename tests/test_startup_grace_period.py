@@ -216,41 +216,179 @@ class TestStartupGracePeriodLogic(unittest.TestCase):
 
 
 class TestStartupGraceInvariantContracts(unittest.TestCase):
-    """Ensure all inspect.getsource(main) contracts are intact after Spec 066."""
+    """Spec 090: Behavioral invariant contracts verifying supervisory precedence black-box."""
 
-    def test_main_contains_mandatory_contracts(self) -> None:
-        source = inspect.getsource(main)
+    def test_spec_066_helpers_and_state_contracts(self) -> None:
+        """Verify Spec 066 helpers and state constants are functional and present."""
+        self.assertTrue(callable(is_fleet_warmup_complete))
+        self.assertTrue(callable(format_fleet_restored_line))
+        self.assertEqual(STATE_OK, "OK")
+        self.assertEqual(STATE_LOW, "LOW")
+        self.assertEqual(STATE_OFFLINE, "OFFLINE")
+        self.assertEqual(STATE_HASHBOARD, "HASHBOARD")
 
-        # 1. Spec 066 parameters and helpers
-        self.assertIn("startup_fleet_grace_period_seconds", source)
-        self.assertIn("startup_fleet_grace_threshold_ths", source)
-        self.assertIn("is_fleet_warmup_complete", source)
-        self.assertIn("format_fleet_restored_line", source)
-        self.assertIn("🟢 FLOTA RESTABLECIDA", source)
+    def test_reboot_safety_precedence_hierarchy_blackbox(self) -> None:
+        """Spec 090: Verify mathematical precedence hierarchy black-box.
 
-        # 2. auto_reboot_signal_gate invariant
-        restart_reset = source.split("if reboot_reason:", 1)[1].split("if not responded:", 1)[0]
-        self.assertIn("state.low_since_ts = None", restart_reset)
-        self.assertNotIn("auto_reboot_signal", restart_reset)
+        Precedence invariant:
+        Startup Guard > Sustained LOW > Interlocks > Cooldown > Hashcore Execution
+        """
+        from tests.test_supervisory_core_behavioral import SupervisoryBehavioralHarness
+        from app.core.reboot_safety import (
+            RebootInterlockDecision,
+            INTERLOCK_HIGH_TEMPERATURE,
+        )
 
-        # 3. vnish_hashboard_detection invariant (delegated to DetectionHook)
-        self.assertIn("DetectionHook.classify_state", source)
+        miner = {"name": "S19JPRO-23", "host": "192.168.1.23", "port": 4028}
+        threshold_ths = 90.0
 
-        # 4. reboot_safety invariants
-        self.assertIn("elif (\n                    new_state == STATE_HASHBOARD", source)
-        startup = source.index("elif startup_guard_active")
-        sustained = source.index("elif (now_ts - state.low_since_ts) < low_sustained_seconds")
-        interlock = source.index("elif not interlock_decision.allowed")
-        cooldown = source.index("last_reboot_ts = None")
-        hashcore = source.index('run_hashcore_cli(hashcore_cfg, miner, "reboot"')
-        self.assertLess(startup, sustained)
-        self.assertLess(sustained, interlock)
-        self.assertLess(interlock, cooldown)
-        self.assertLess(cooldown, hashcore)
+        # Stage 1: Startup Guard active blocks reboot, regardless of sustained time, interlocks, or cooldown
+        st1 = MinerState(state=STATE_LOW, low_since_ts=1000.0)
+        res1 = SupervisoryBehavioralHarness.evaluate_auto_reboot_pipeline(
+            state=st1,
+            miner=miner,
+            new_state=STATE_LOW,
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=threshold_ths,
+            active_boards=3,
+            now_ts=1300.0,
+            process_start_ts=1000.0,
+            startup_guard_seconds=600,  # Startup guard active (1300 - 1000 = 300 < 600)
+            low_sustained_seconds=100,  # Sustained condition satisfied (1300 - 1000 = 300 >= 100)
+            interlock_decision=RebootInterlockDecision(allowed=True, reason="ok"),
+            reboot_cooldown_seconds=60,
+        )
+        self.assertFalse(res1["allowed"])
+        self.assertEqual(res1["blocked_by"], "startup_guard")
 
-        # 5. monotonic timing & sleep
-        self.assertIn("time.sleep(poll_seconds)", source)
-        self.assertIn("poll_seconds = max(0.0, _poll_interval_seconds - (time.monotonic() - tick_start))", source)
+        # Stage 2: Startup Guard cleared, but LOW not sustained blocks reboot
+        st2 = MinerState(state=STATE_LOW, low_since_ts=1800.0)
+        res2 = SupervisoryBehavioralHarness.evaluate_auto_reboot_pipeline(
+            state=st2,
+            miner=miner,
+            new_state=STATE_LOW,
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=threshold_ths,
+            active_boards=3,
+            now_ts=2000.0,
+            process_start_ts=1000.0,
+            startup_guard_seconds=600,  # Startup guard cleared (2000 - 1000 = 1000 >= 600)
+            low_sustained_seconds=900,  # NOT sustained (2000 - 1800 = 200 < 900)
+            interlock_decision=RebootInterlockDecision(allowed=True, reason="ok"),
+            reboot_cooldown_seconds=60,
+        )
+        self.assertFalse(res2["allowed"])
+        self.assertEqual(res2["blocked_by"], "not_sustained")
+
+        # Stage 3: Startup Guard cleared & LOW sustained, but Interlock disallows
+        st3 = MinerState(state=STATE_LOW, low_since_ts=1000.0)
+        res3 = SupervisoryBehavioralHarness.evaluate_auto_reboot_pipeline(
+            state=st3,
+            miner=miner,
+            new_state=STATE_LOW,
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=threshold_ths,
+            active_boards=3,
+            now_ts=2000.0,
+            process_start_ts=1000.0,
+            startup_guard_seconds=600,
+            low_sustained_seconds=900,  # Sustained (2000 - 1000 = 1000 >= 900)
+            interlock_decision=RebootInterlockDecision(allowed=False, reason=INTERLOCK_HIGH_TEMPERATURE),
+            reboot_cooldown_seconds=60,
+        )
+        self.assertFalse(res3["allowed"])
+        self.assertEqual(res3["blocked_by"], INTERLOCK_HIGH_TEMPERATURE)
+
+        # Stage 4: Guard cleared, sustained, Interlock allowed, but Cooldown active
+        st4 = MinerState(state=STATE_LOW, low_since_ts=1000.0, last_auto_reboot_ts=1950.0)
+        res4 = SupervisoryBehavioralHarness.evaluate_auto_reboot_pipeline(
+            state=st4,
+            miner=miner,
+            new_state=STATE_LOW,
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=threshold_ths,
+            active_boards=3,
+            now_ts=2000.0,
+            process_start_ts=1000.0,
+            startup_guard_seconds=600,
+            low_sustained_seconds=900,
+            interlock_decision=RebootInterlockDecision(allowed=True, reason="ok"),
+            reboot_cooldown_seconds=1800,  # In cooldown (2000 - 1950 = 50 < 1800)
+        )
+        self.assertFalse(res4["allowed"])
+        self.assertEqual(res4["blocked_by"], "cooldown")
+
+        # Stage 5: All 4 gates passed -> Hashcore Action executed
+        st5 = MinerState(state=STATE_LOW, low_since_ts=1000.0, last_auto_reboot_ts=None)
+        res5 = SupervisoryBehavioralHarness.evaluate_auto_reboot_pipeline(
+            state=st5,
+            miner=miner,
+            new_state=STATE_LOW,
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=threshold_ths,
+            active_boards=3,
+            now_ts=2000.0,
+            process_start_ts=1000.0,
+            startup_guard_seconds=600,
+            low_sustained_seconds=900,
+            interlock_decision=RebootInterlockDecision(allowed=True, reason="ok"),
+            reboot_cooldown_seconds=60,
+            cli_reboot_succeeds=True,
+        )
+        self.assertTrue(res5["allowed"])
+        self.assertTrue(res5["action_executed"])
+        self.assertTrue(res5.get("action_success", False))
+
+    def test_hashboard_detection_precedence_over_low_hashrate(self) -> None:
+        """When active boards are missing, detection prioritizes HASHBOARD over LOW."""
+        from tests.test_supervisory_core_behavioral import SupervisoryBehavioralHarness
+
+        state = SupervisoryBehavioralHarness.classify_detection_state(
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=90.0,
+            active_boards=2,
+            expected_boards=3,
+            startup_grace_active=False,
+            low_streak=5,
+        )
+        self.assertEqual(state, STATE_HASHBOARD)
+
+    def test_timer_lifecycle_resets_on_successful_reboot(self) -> None:
+        """Timer and counter states are properly reset upon successful reboot action."""
+        from tests.test_supervisory_core_behavioral import SupervisoryBehavioralHarness
+        from app.core.reboot_safety import RebootInterlockDecision
+
+        miner = {"name": "S19JPRO-23", "host": "192.168.1.23", "port": 4028}
+        st = MinerState(state=STATE_LOW, low_since_ts=1000.0, auto_restart_count=1)
+
+        res = SupervisoryBehavioralHarness.evaluate_auto_reboot_pipeline(
+            state=st,
+            miner=miner,
+            new_state=STATE_LOW,
+            responded=True,
+            rate_ths=50.0,
+            threshold_ths=90.0,
+            active_boards=3,
+            now_ts=2000.0,
+            process_start_ts=1000.0,
+            startup_guard_seconds=600,
+            low_sustained_seconds=900,
+            interlock_decision=RebootInterlockDecision(allowed=True, reason="ok"),
+            reboot_cooldown_seconds=60,
+            cli_reboot_succeeds=True,
+        )
+
+        self.assertTrue(res["action_executed"])
+        self.assertIsNone(st.low_since_ts)
+        self.assertEqual(st.auto_restart_count, 0)
+        self.assertEqual(st.last_auto_reboot_ts, 2000.0)
+
 
 
 if __name__ == "__main__":

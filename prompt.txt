@@ -1,8 +1,8 @@
 # ==============================================================================
-# ESTADO DEL PROYECTO: ESTABILIZACIÓN CERTIFICADA POST-BLACKOUT — V6.0 PRODUCCIÓN
-# FECHA: 2026-10-08 15:10 UTC-3
+# ESTADO DEL PROYECTO: ESTABILIZACIÓN CERTIFICADA TELEGRAM AUDIT — V6.0 PRODUCCIÓN
+# FECHA: 2026-10-08 15:52 UTC-3
 # RAMA: codex/022-adaptive-acquisition (sincronizada con origin)
-# ESTADO DE SUITE: 1529 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
+# ESTADO DE SUITE: 1530 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
 # PREFLIGHT GATES: 8/8 PASS
 # SERVICIO NSSM: MinerAlerts en ejecución (Running, reiniciado limpiamente)
 # REPORTES: docs/audit/POST_OUTAGE_AUDIT_REPORT.md y docs/audit/DEVELOPMENT_LOG.md
@@ -11,23 +11,25 @@
 
 ESTADO OPERATIVO Y DE CERTIFICACIÓN:
 --------------------------------------------------------------------------------
-1. Hotfix Post-Blackout Aplicado y Certificado:
-   - Corregido import de `record_elevator_restart_circumstance` en `app/core/engine.py:1244` hacia `preset_balancer`.
-   - Incorporado re-export defensivo en `app/governance/adaptive_contingency.py`.
-   - Incorporado test unitario `test_detection_hook_execute_restart_circumstance_branch` en `tests/test_supervisory_hooks.py`.
-   - 0 excepciones en `logs/err.log` tras el reinicio del servicio NSSM.
+1. Auditoría Quirúrgica de Mensajería Telegram y Hotfix de Daily Digest:
+   - Identificada y eliminada causa raíz de emisión de Reportes Diarios duplicados post-reinicio de servicio.
+   - `StateManager.build_payload` respaldado con `_LAST_DAILY_DIGEST_DATE` (evita sobreescritura con null en ticks de persistencia).
+   - Inyección y sincronización bidireccional de `last_daily_digest_date` en `CoreSupervisoryEngine.initialize()` y `execute_tick()`.
+   - Persistencia inmediata a disco en `PostTickHook.execute()` al despachar `DAILY_DIGEST_SENT`.
+   - Desacoplado import circular en `app/telegram/poller.py:76` invocando `_parse_message_command()` localmente.
+   - Incorporado test unitario `test_state_manager_preserves_daily_digest_date_across_saves` en `tests/test_daily_digest.py`.
 2. Monolito `miner_monitor.py`: 324 LOC exactas (meta <= 450 LOC 100% cumplida).
-3. Suite de Tests: 1529 passed, 75 subtests passed en 38.33s. Cero regresiones.
+3. Suite de Tests: 1530 passed, 75 subtests passed en 37.48s. Cero regresiones.
 4. Preflight Stabilization Gate: 8/8 gates PASS.
-5. Servicio Windows NSSM: En ejecución continua (`Running`, ticks limpios en `logs/out.log`).
+5. Servicio Windows NSSM: En ejecución continua (`Running`, ticks limpios en `logs/out.log`, sin emisiones espurias de digest).
 6. Flota en producción:
    - S19JPRO-23: HOLD_STABLE en 2300W
    - S19JPRO-24: STEP_DOWN_RESTARTS a 2150W (protección por inestabilidad de red post-corte)
-   - S19JPRO-25: HOLD_STABLE / STEP_DOWN_CASCADE
+   - S19JPRO-25: HOLD_STABLE
    - S19JPRO-26: HOLD_STABLE en 2300W
-   - 0 deadlocks en toda la flota.
+   - 0 deadlocks en toda la flota (~400 TH/s nominal).
 
 PRÓXIMAS ACCIONES:
 --------------------------------------------------------------------------------
 - Continuar con el régimen de observación continua de producción.
-- Todas las especificaciones del programa (Specs 001 a 091) se encuentran 100% completadas y certificadas.
+- Todas las especificaciones del programa (Specs 001 a 091) y auditorías de mensajería se encuentran 100% completadas y certificadas.

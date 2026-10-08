@@ -1,8 +1,8 @@
 # ==============================================================================
-# ESTADO DEL PROYECTO: SPEC 091 COMPLETADA — HORIZON V6.0 OFICIALMENTE PUBLICADO
-# FECHA: 2026-10-07 22:45 UTC-3
+# ESTADO DEL PROYECTO: SPEC 091 CERTIFICADA — HORIZON V6.0 EN PRODUCCIÓN
+# FECHA: 2026-10-08 02:15 UTC-3
 # RAMA: codex/022-adaptive-acquisition
-# ESTADO DE SUITE: 1525 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
+# ESTADO DE SUITE: 1527 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
 # PREFLIGHT GATES: 8/8 PASS
 # SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
 # MODELO EJECUTOR RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
@@ -10,9 +10,11 @@
 
 ESTADO DE PRODUCCIÓN Y FLOTA:
 --------------------------------------------------------------------------------
-• Flota completa operando nominalmente a 2700W (4x 2700W, ~400 TH/s, 10.6 kW).
+• Flota operando nominalmente (~400 TH/s, 10.6 kW).
 • M26 y flota estabilizados con Fan Governor modulando en lazo cerrado térmico.
 • Servicio NSSM MinerAlerts en producción continua bajo supervisión declarativa V6.0.
+• DetectionHook y ActuatorHook operando en tiempo real con FSM determinista, telemetría asíncrona y jerarquía estricta de auto-reboot.
+• Bug de temporización WARMING_UP (elapsed=0.0s) corregido; temporizador de gracia avanza normalmente.
 • 0 deadlocks en toda la flota, logs limpios en `logs/out.log` sin excepciones.
 
 HITOS ARQUITECTÓNICOS ALCANZADOS (PROGRAMA DE DESACOPLAMIENTO V6.0 100% CERRADO):
@@ -26,7 +28,8 @@ HITOS ARQUITECTÓNICOS ALCANZADOS (PROGRAMA DE DESACOPLAMIENTO V6.0 100% CERRADO
   - Inicialización encapsulada en `CoreSupervisoryEngine.initialize()`.
   - Monolito reducido de 6.646 a 324 LOC (-6.322 LOC netas; -8.752 LOC acumuladas).
   - Shims de re-exportación tipados preservando 100% compatibilidad con tests.
-  - Preflight 8/8 gates PASS (1525 tests PASS, 75 subtests PASS).
+  - Endurecimiento en runtime de hooks de detección y actuación completado y certificado.
+  - Preflight 8/8 gates PASS (1527 tests PASS, 75 subtests PASS).
 
 ESTADO OPERATIVO POST-V6.0:
 --------------------------------------------------------------------------------

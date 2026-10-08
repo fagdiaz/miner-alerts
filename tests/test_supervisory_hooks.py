@@ -924,6 +924,86 @@ class TestActuatorHook(unittest.TestCase):
         self.assertFalse(res_sustained["allowed"])
         self.assertEqual("not_sustained", res_sustained["reason"])
 
+    def test_detection_hook_execute_transitions_state(self) -> None:
+        """Verify DetectionHook.execute() updates state, streaks, and signals."""
+        from app.core.engine import DetectionHook
+        from app.miner_monitor import MinerState
+
+        miner = {"name": "m1", "host": "127.0.0.1", "port": 4028}
+        st = MinerState(state="OK")
+        ctx = _make_context()
+        ctx.config["fails_before_alert"] = 1
+        ctx.config["recovery_successes"] = 1
+
+        hook = DetectionHook()
+        tick_data = {
+            "miner_results": {
+                "m1|127.0.0.1:4028": {
+                    "miner": miner,
+                    "state": st,
+                    "responded": True,
+                    "rate_ths": 20.0,
+                    "elapsed": 1000,
+                    "previous_elapsed": 970,
+                    "reboot_reason": "",
+                    "active_boards": 2,  # Missing board -> HASHBOARD
+                    "vnish_telemetry": None,
+                    "quality_telemetry": None,
+                }
+            },
+            "states": {"m1|127.0.0.1:4028": st},
+            "startup_grace_active": False,
+        }
+
+        res = hook.execute(ctx, 1, 2000.0, tick_data)
+        self.assertIsNotNone(res)
+        self.assertTrue(res["detection_completed"])
+        self.assertEqual("HASHBOARD", st.state)
+        self.assertEqual(2000.0, st.hashboard_since_ts)
+        self.assertEqual("HASHBOARD", res["current_tick_signals"]["m1|127.0.0.1:4028"])
+
+    def test_actuator_hook_execute_triggers_reboot_when_eligible(self) -> None:
+        """Verify ActuatorHook.execute() dispatches auto-reboot when all gates pass."""
+        from unittest.mock import patch
+        from app.core.engine import ActuatorHook
+        from app.miner_monitor import MinerState
+
+        miner = {"name": "m1", "host": "127.0.0.1", "port": 4028}
+        st = MinerState(state="LOW", low_since_ts=1000.0)
+        ctx = _make_context(qa_mode=False)
+        ctx.qa_allow_actions = True
+        ctx.config["startup_guard_seconds"] = 600
+        ctx.config["low_sustained_seconds"] = 900
+        ctx.config["reboot_cooldown_seconds"] = 1800
+
+        hook = ActuatorHook()
+        tick_data = {
+            "miner_results": {
+                "m1|127.0.0.1:4028": {
+                    "miner": miner,
+                    "state": st,
+                    "responded": True,
+                    "rate_ths": 20.0,
+                    "elapsed": 5000,
+                    "active_boards": 3,
+                    "vnish_telemetry": None,
+                    "quality_telemetry": None,
+                }
+            },
+            "states": {"m1|127.0.0.1:4028": st},
+            "startup_grace_active": False,
+            "process_start_ts": 1000.0,
+        }
+
+        with patch("app.core.system.run_hashcore_cli", return_value=(True, "reboot ok")):
+            res = hook.execute(ctx, 1, 3000.0, tick_data)
+
+        self.assertIsNotNone(res)
+        self.assertTrue(res["actuator_completed"])
+        self.assertIn("m1", res["reboots_triggered"])
+        self.assertEqual(3000.0, st.last_auto_reboot_ts)
+        self.assertIn(3000.0, st.auto_reboot_timestamps)
+
 
 if __name__ == "__main__":
     unittest.main()

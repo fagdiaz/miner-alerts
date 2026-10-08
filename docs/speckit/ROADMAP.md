@@ -1,12 +1,12 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-10-07
+**Last reviewed**: 2026-10-08
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (91 de 91 especificaciones completadas y evidenciadas — **1525 tests PASS, 75 subtests PASS** — Spec 091 Disolución Definitiva del Monolito COMPLETADA — **RELEASE MAYOR V6.0**).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (91 de 91 especificaciones completadas y evidenciadas — **1527 tests PASS, 75 subtests PASS** — Spec 091 Disolución Definitiva del Monolito COMPLETADA — **RELEASE MAYOR V6.0**).
 - **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico.
 - **Programa Maestro de Desacoplamiento del Monolito**: **100% COMPLETADO** (Fases 1 a 5: `Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`, `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`). Monolito disuelto definitivamente: `miner_monitor.py` reducido a 324 LOC.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).

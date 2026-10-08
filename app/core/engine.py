@@ -229,6 +229,8 @@ class CoreSupervisoryEngine:
             "states": states,
             "last_update_id_ref": last_update_id_ref,
             "now_ts": now_ts,
+            "process_start_ts": getattr(self, "process_start_ts", now_ts),
+            "previous_signals": getattr(self, "_last_signals", {}),
             "tick_sequence": self._tick_sequence,
         }
         if extra_tick_data:
@@ -272,6 +274,11 @@ class CoreSupervisoryEngine:
                 )
             result.hook_results.append(hook_result)
 
+        if "current_tick_signals" in tick_data:
+            self._last_signals = tick_data["current_tick_signals"]
+        result.miners_responded = len(tick_data.get("tick_responded_miners", []))
+        result.miners_failed = len(tick_data.get("tick_failed_miners", []))
+        result.reboots_triggered = tick_data.get("reboots_triggered", [])
         return result
 
     # ------------------------------------------------------------------
@@ -927,7 +934,385 @@ class DetectionHook(SupervisoryHook):
         now_ts: float,
         tick_data: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        return None
+        from app.core.config import log
+        from app.core.pipeline import format_fleet_restored_line, format_rate
+        from app.core.reboot_safety import (
+            STATE_HASHBOARD,
+            STATE_LOW,
+            STATE_OFFLINE,
+            STATE_OK,
+        )
+        from app.core.restart_intelligence import classify_restart
+        from app.governance.energy_efficiency import (
+            assess_miner_efficiency,
+            evaluate_efficiency_alerts,
+        )
+        from app.governance.fan_health import (
+            assess_miner_cooling,
+            evaluate_cooling_alerts,
+        )
+        from app.governance.thermal_guard import process_emergency_thermal_guard
+        from app.hardware.chain_collector import _async_collect_chain_telemetry
+        from app.telegram.fleet_cards import display_name
+        from app.telegram.sender import send_telegram
+        from app.vnish.presets import (
+            assess_miner_preset,
+            evaluate_preset_alerts,
+        )
+
+        miner_results = tick_data.get("miner_results", {})
+        startup_grace_active = tick_data.get("startup_grace_active", False)
+        states = tick_data.get("states", {})
+        config = context.config
+        state_lock = context.state_lock
+        event_store = context.event_store
+        bot_token = context.bot_token
+        chat_id = context.chat_id
+        qa_mode = context.qa_mode
+        qa_notify = context.qa_notify
+
+        fails_before_alert = int(config.get("fails_before_alert", 3))
+        recovery_successes = int(config.get("recovery_successes", 1))
+        threshold_ths = context.threshold_ths
+        expected_boards = int(config.get("expected_boards", 3))
+        notify_reboot = bool(config.get("notify_reboot", True))
+        reboot_cooldown_seconds = int(config.get("reboot_cooldown_seconds", 1800))
+        reboot_window_seconds = int(config.get("reboot_window_seconds", 300))
+        chain_telemetry_enabled = bool(config.get("chain_telemetry_enabled", True))
+        vnish_api_password = str(config.get("vnish_api_password", "admin"))
+
+        reboot_names_tick: List[str] = []
+        current_tick_signals: Dict[str, str] = {}
+
+        for state_key, res in miner_results.items():
+            miner = res["miner"]
+            state = res["state"]
+            responded = res["responded"]
+            rate_ths = res["rate_ths"]
+            elapsed = res["elapsed"]
+            previous_elapsed = res["previous_elapsed"]
+            reboot_reason = res["reboot_reason"]
+            active_boards = res["active_boards"]
+            vnish_telemetry = res["vnish_telemetry"]
+            name = miner["name"]
+            name_display = display_name(name)
+            host = miner["host"]
+
+            with state_lock:
+                if not responded:
+                    state.offline_streak += 1
+                    state.low_streak = 0
+                    state.ok_streak = 0
+                elif rate_ths is None:
+                    state.offline_streak = 0
+                    state.low_streak = 0
+                    state.ok_streak = 0
+                elif rate_ths < threshold_ths:
+                    state.low_streak += 1
+                    state.offline_streak = 0
+                    state.ok_streak = 0
+                else:
+                    state.ok_streak += 1
+                    state.low_streak = 0
+                    state.offline_streak = 0
+
+                if startup_grace_active:
+                    state.offline_streak = 0
+                    state.low_streak = 0
+
+                prev_state = state.state
+                new_state = DetectionHook.classify_state(
+                    responded=responded,
+                    rate_ths=rate_ths,
+                    threshold_ths=threshold_ths,
+                    active_boards=active_boards,
+                    expected_boards=expected_boards,
+                    startup_grace_active=startup_grace_active,
+                    offline_streak=state.offline_streak,
+                    low_streak=state.low_streak,
+                    ok_streak=state.ok_streak,
+                    fails_before_alert=fails_before_alert,
+                    recovery_successes=recovery_successes,
+                    prev_state=prev_state or STATE_OK,
+                )
+
+                if new_state != prev_state and new_state in (STATE_HASHBOARD, STATE_LOW):
+                    if chain_telemetry_enabled and event_store is not None and getattr(event_store, "available", False):
+                        threading.Thread(
+                            target=_async_collect_chain_telemetry,
+                            args=(
+                                context.miners,
+                                event_store,
+                                vnish_api_password,
+                                name,
+                                config,
+                                bot_token,
+                                chat_id,
+                                qa_mode,
+                                qa_notify,
+                                states,
+                                state_lock,
+                            ),
+                            daemon=True,
+                            name=f"ChainTelemetryTransition_{name}",
+                        ).start()
+
+                state.state = new_state
+
+                if new_state == STATE_OK:
+                    state.low_streak = 0
+                    state.offline_streak = 0
+                    state.hashboard_since_ts = None
+                    state.auto_restart_count = 0
+
+                if new_state == STATE_LOW:
+                    if state.low_since_ts is None:
+                        state.low_since_ts = now_ts
+                else:
+                    state.low_since_ts = None
+                    state.low_streak = 0
+
+                if new_state == STATE_HASHBOARD:
+                    if state.hashboard_since_ts is None:
+                        state.hashboard_since_ts = now_ts
+                else:
+                    state.hashboard_since_ts = None
+
+                if startup_grace_active:
+                    state.low_since_ts = None
+                    state.hashboard_since_ts = None
+
+            # State transition logging and event recording
+            if new_state != prev_state and prev_state is not None:
+                log(f"[{name_display}] Transición de estado: {prev_state} -> {new_state}")
+                if event_store is not None and getattr(event_store, "available", False):
+                    try:
+                        event_store.record_event(
+                            occurred_ts=now_ts,
+                            miner_key=state_key,
+                            miner_name=name_display,
+                            host=host,
+                            event_type="state_transition",
+                            severity="warning" if new_state != STATE_OK else "info",
+                            previous_state=prev_state,
+                            new_state=new_state,
+                            rate_ths=rate_ths,
+                            threshold_ths=threshold_ths,
+                            summary=f"{prev_state} -> {new_state}",
+                            details={
+                                "active_boards": active_boards,
+                                "expected_boards": expected_boards,
+                                "responded": responded,
+                            },
+                        )
+                    except Exception:
+                        pass
+
+                # Telegram alert dispatch for state changes
+                if (not qa_mode) or qa_notify:
+                    if new_state == STATE_OK:
+                        all_ok = all(
+                            getattr(s, "state", None) == STATE_OK
+                            for s in states.values()
+                        )
+                        if all_ok:
+                            restored_text = "🟢 *FLOTA RESTABLECIDA*\n\nTodos los mineros operando normalmente.\n\n"
+                            for m_item in context.miners:
+                                m_st = states.get(f"{m_item['name']}|{m_item['host']}:{m_item.get('port', 4028)}")
+                                m_r = getattr(m_st, "last_rate_ths", None)
+                                m_t = getattr(m_st, "last_max_chip_temp", None)
+                                restored_text += format_fleet_restored_line(display_name(m_item["name"]), m_r, m_t) + "\n"
+                            send_telegram(
+                                bot_token,
+                                str(chat_id),
+                                restored_text,
+                                "STATUS",
+                                "fleet_restored",
+                            )
+                        else:
+                            send_telegram(
+                                bot_token,
+                                str(chat_id),
+                                f"🟢 *{name_display} RECUPERADO*\n\nEstado restablecido a *OK* ({format_rate(rate_ths)}).",
+                                "STATUS",
+                                f"recovered_{name}",
+                            )
+                    elif new_state == STATE_HASHBOARD:
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            f"⚠️ *FALLA DE PLACAS*\n\nMinero: *{name_display}*\nPlacas activas: *{active_boards}/{expected_boards}*\nHashrate: *{format_rate(rate_ths)}*\n\nEstado: *HASHBOARD*",
+                            "HASHBOARD",
+                            f"hashboard_{name}",
+                        )
+                    elif new_state == STATE_LOW:
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            f"⚠️ *BAJA PRODUCCIÓN*\n\nMinero: *{name_display}*\nHashrate: *{format_rate(rate_ths)}* (umbral: {threshold_ths:.1f} TH/s)\n\nEstado: *LOW*",
+                            "LOW_HASHRATE",
+                            f"low_{name}",
+                        )
+                    elif new_state == STATE_OFFLINE:
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            f"🔴 *MINERO OFFLINE*\n\nMinero: *{name_display}* ({host})\nSin respuesta del socket 4028.\n\nEstado: *OFFLINE*",
+                            "OFFLINE",
+                            f"offline_{name}",
+                        )
+
+            # Preventative health checks
+            cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
+            if cooling_alert_enabled and responded and vnish_telemetry:
+                cooling_ass = assess_miner_cooling(
+                    miner_name=name_display,
+                    max_temp_c=vnish_telemetry.max_temp_c,
+                    fan_rpm_max=vnish_telemetry.fan_rpm_max,
+                    fan_pwm_percent=vnish_telemetry.fan_pwm_percent,
+                    diagnostic_flags=vnish_telemetry.diagnostic_flags,
+                    rate_ths=rate_ths,
+                    critical_temp_c=float(config.get("cooling_critical_temp_c", 84.5)),
+                    saturate_temp_c=float(config.get("cooling_saturate_temp_c", 84.0)),
+                    saturate_pwm_pct=float(config.get("cooling_saturate_pwm_pct", 98.0)),
+                    saturate_rpm=int(config.get("cooling_saturate_rpm", 5800)),
+                    fan_mode=vnish_telemetry.fan_mode,
+                )
+                cooling_warning = evaluate_cooling_alerts(
+                    state=state,
+                    assessment=cooling_ass,
+                    now_ts=now_ts,
+                    config=config,
+                )
+                is_currently_snoozed = (
+                    state.snooze_until_ts is not None and now_ts < state.snooze_until_ts
+                )
+                if cooling_warning and not is_currently_snoozed and ((not qa_mode) or qa_notify):
+                    send_telegram(
+                        bot_token,
+                        str(chat_id),
+                        cooling_warning,
+                        "COOLING_WARNING",
+                        "cooling_warning",
+                    )
+                    log(f"[COOLING_WARNING] miner={name_display} status={cooling_ass.status}")
+
+            # Thermal guard protection
+            if not getattr(state, "is_shutdown_maintenance", False) and (
+                responded or getattr(state, "thermal_pause_until_ts", None) is not None
+            ):
+                try:
+                    process_emergency_thermal_guard(
+                        miner=miner,
+                        state=state,
+                        max_temp_c=vnish_telemetry.max_temp_c if (responded and vnish_telemetry) else getattr(state, "governor_last_temp_c", None),
+                        config=config,
+                        now_ts=now_ts,
+                        vnish_pw=vnish_api_password,
+                        qa_mode=qa_mode,
+                        qa_notify=qa_notify,
+                        bot_token=bot_token,
+                        chat_id=str(chat_id),
+                    )
+                except Exception as _tg_exc:
+                    log(f"[THERMAL_GUARD_ERR] Emergency thermal guard error for miner={name_display}: {_tg_exc}")
+
+            # Restart detection
+            if reboot_reason and previous_elapsed is not None and elapsed is not None:
+                restart_attribution_window_seconds = int(config.get("restart_attribution_window_seconds", 3600))
+                restart_classification = classify_restart(
+                    restart_reason=reboot_reason,
+                    detected_ts=now_ts,
+                    last_manual_action_ts=state.last_manual_reboot_ts,
+                    last_auto_action_ts=state.last_auto_reboot_ts,
+                    last_preset_change_ts=getattr(state, "last_preset_change_ts", None),
+                    last_shutdown_ts=getattr(state, "shutdown_maintenance_ts", None),
+                    attribution_window_seconds=restart_attribution_window_seconds,
+                )
+                m_group = miner.get("electrical_group", "default")
+                recent_chain_samples = None
+                if event_store is not None and getattr(event_store, "available", False):
+                    try:
+                        recent_chain_samples = (
+                            event_store.get_latest_chain_samples(name)
+                            or event_store.get_latest_chain_samples(name_display)
+                            or event_store.get_latest_chain_samples(state_key)
+                        )
+                    except Exception:
+                        pass
+
+                from app.governance.adaptive_contingency import record_elevator_restart_circumstance
+                elev_circumstance = record_elevator_restart_circumstance(
+                    miner_name=name_display,
+                    electrical_group=m_group,
+                    miners=context.miners,
+                    states=states,
+                    now_ts=now_ts,
+                    cascade_window_s=float(config.get("preset_balancer_group_cascade_window_s", 1800.0)),
+                    chain_samples=recent_chain_samples,
+                )
+                restart_details = {
+                    "reason": reboot_reason,
+                    "first_tick": False,
+                    "electrical_group": m_group,
+                    "group_total_power_w": elev_circumstance.get("group_total_power_w", 0.0),
+                    "pre_restart_power_w": state.governor_last_power_w,
+                    "pre_restart_temp_c": state.governor_last_temp_c,
+                    "is_elevator_cascade": elev_circumstance.get("is_elevator_cascade", False),
+                    "cascade_peer": elev_circumstance.get("cascade_peer"),
+                    "cascade_delta_s": elev_circumstance.get("cascade_delta_s"),
+                    "culprit_chain": elev_circumstance.get("culprit_chain"),
+                }
+                incident_summary = f"Uptime reiniciado: {previous_elapsed}s -> {elapsed}s"
+                culprit = elev_circumstance.get("culprit_chain")
+                if culprit and isinstance(culprit, dict):
+                    incident_summary += f" | Causa aislada: Cadena {culprit.get('chain_id')} ({culprit.get('reason')})"
+
+                if event_store is not None and getattr(event_store, "available", False):
+                    try:
+                        event_store.record_event(
+                            occurred_ts=now_ts,
+                            miner_key=state_key,
+                            miner_name=name_display,
+                            host=host,
+                            event_type="restart_detected",
+                            severity=restart_classification.severity,
+                            classification=restart_classification.classification,
+                            previous_state=prev_state,
+                            new_state=new_state,
+                            rate_ths=rate_ths,
+                            threshold_ths=threshold_ths,
+                            previous_elapsed=previous_elapsed,
+                            current_elapsed=elapsed,
+                            action_source=restart_classification.action_source,
+                            action_ts=restart_classification.action_ts,
+                            summary=incident_summary,
+                            details=restart_details,
+                        )
+                    except Exception:
+                        pass
+                log(f"[{name_display}] Reinicio detectado ({reboot_reason}): {incident_summary}")
+
+                if notify_reboot:
+                    if (now_ts - (state.last_reboot_ts or 0.0)) >= reboot_cooldown_seconds:
+                        if new_state in (STATE_LOW, STATE_OFFLINE):
+                            reboot_names_tick.append(name_display)
+                            state.last_reboot_ts = now_ts
+                            state.reboot_pending_until = 0.0
+                            state.reboot_pending_reason = ""
+                            state.reboot_pending_elapsed = None
+                        else:
+                            state.reboot_pending_until = now_ts + reboot_window_seconds
+                            state.reboot_pending_reason = reboot_reason
+                            state.reboot_pending_elapsed = elapsed
+
+            current_tick_signals[state_key] = new_state
+
+        return {
+            "detection_completed": True,
+            "reboot_names_tick": reboot_names_tick,
+            "current_tick_signals": current_tick_signals,
+        }
 
 
 class ActuatorHook(SupervisoryHook):
@@ -1083,7 +1468,266 @@ class ActuatorHook(SupervisoryHook):
         now_ts: float,
         tick_data: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        return None
+        from app.core.config import log, _short_text
+        from app.core.pipeline import record_action_outcome, record_auto_reboot_decision
+        from app.core.reboot_safety import (
+            STATE_HASHBOARD,
+            STATE_LOW,
+            STATE_OFFLINE,
+            STATE_OK,
+            classify_auto_reboot_signal,
+            evaluate_auto_reboot_interlocks,
+        )
+        from app.core.restart_intelligence import (
+            _async_execute_mining_restart,
+            _async_execute_preset_restart,
+            evaluate_auto_restart_candidate,
+            evaluate_preset_restart_candidate,
+        )
+        from app.core.system import run_hashcore_cli
+        from app.telegram.fleet_cards import display_name
+        from app.telegram.sender import send_telegram
+
+        miner_results = tick_data.get("miner_results", {})
+        startup_grace_active = tick_data.get("startup_grace_active", False)
+        process_start_ts = tick_data.get("process_start_ts", now_ts)
+        previous_signals = tick_data.get("previous_signals", {})
+        config = context.config
+        state_lock = context.state_lock
+        event_store = context.event_store
+        bot_token = context.bot_token
+        chat_id = context.chat_id
+        qa_mode = context.qa_mode
+        qa_allow_actions = context.qa_allow_actions
+        qa_notify = context.qa_notify
+
+        threshold_ths = context.threshold_ths
+        expected_boards = int(config.get("expected_boards", 3))
+        auto_restart_mining_enabled = bool(config.get("auto_restart_mining_enabled", True))
+        auto_restart_min_elapsed_seconds = int(config.get("auto_restart_min_elapsed_seconds", 120))
+        auto_restart_cooldown_seconds = int(config.get("auto_restart_cooldown_seconds", 300))
+        auto_restart_max_retries = int(config.get("auto_restart_max_retries_before_reboot", 3))
+        safe_recovery_pre_clamp_preset = str(config.get("safe_recovery_pre_clamp_preset", "2300W"))
+        vnish_api_password = str(config.get("vnish_api_password", "admin"))
+        hashcore_cfg = context.hashcore_cfg or config.get("hashcore", {})
+
+        reboots_triggered: List[str] = []
+
+        for state_key, res in miner_results.items():
+            miner = res["miner"]
+            state = res["state"]
+            responded = res["responded"]
+            rate_ths = res["rate_ths"]
+            elapsed = res["elapsed"]
+            active_boards = res["active_boards"]
+            vnish_telemetry = res["vnish_telemetry"]
+            quality_telemetry = res["quality_telemetry"]
+            name = miner["name"]
+            name_display = display_name(name)
+            host = miner["host"]
+
+            is_hash_degraded = (
+                state.state in (STATE_LOW, STATE_HASHBOARD)
+                or (rate_ths is not None and rate_ths <= 0.0)
+                or (active_boards is not None and active_boards == 0)
+            )
+
+            # 1. Preset Watchdog (Spec 081 / PROP-017)
+            if not is_hash_degraded:
+                if getattr(state, "vnish_restart_required", False) and responded and auto_restart_mining_enabled:
+                    miner_is_warming = (elapsed is not None and elapsed < auto_restart_min_elapsed_seconds) or startup_grace_active
+                    curr_chip_t = (
+                        vnish_telemetry.max_temp_c
+                        if vnish_telemetry and vnish_telemetry.max_temp_c is not None
+                        else getattr(state, "governor_last_temp_c", None)
+                    )
+                    t_pause = (
+                        getattr(state, "thermal_pause_until_ts", None) is not None
+                        and now_ts < state.thermal_pause_until_ts
+                    )
+                    is_preset_cand, preset_reason = evaluate_preset_restart_candidate(
+                        now_ts=now_ts,
+                        vnish_restart_required=True,
+                        is_hash_degraded=False,
+                        is_warming_up=miner_is_warming,
+                        max_chip_temp_c=curr_chip_t,
+                        detected_ts=getattr(state, "vnish_restart_detected_ts", None),
+                        last_restart_ts=getattr(state, "last_preset_restart_ts", None),
+                        soak_window_seconds=float(config.get("preset_restart_soak_seconds", 300.0)),
+                        cooldown_seconds=float(config.get("preset_restart_cooldown_seconds", 180.0)),
+                        max_safe_temp_c=float(config.get("preset_restart_max_temp_c", 80.0)),
+                        thermal_pause_active=t_pause,
+                    )
+                    if is_preset_cand:
+                        if qa_mode and not qa_allow_actions:
+                            log(f"[PRESET-WATCHDOG] blocked_by=qa miner={name_display} reason={preset_reason}")
+                        else:
+                            with state_lock:
+                                state.last_preset_restart_ts = now_ts
+                            target_p_str = getattr(state, "balancer_preset", "2300W") or "2300W"
+                            threading.Thread(
+                                target=_async_execute_preset_restart,
+                                args=(
+                                    host,
+                                    vnish_api_password,
+                                    name,
+                                    miner,
+                                    target_p_str,
+                                    bot_token,
+                                    chat_id,
+                                    qa_mode,
+                                    qa_notify,
+                                    event_store,
+                                ),
+                                daemon=True,
+                                name=f"PresetRestart_{name}",
+                            ).start()
+
+            # 2. Level 1: Soft Auto-Restart (Vnish API)
+            if auto_restart_mining_enabled and responded:
+                is_restart_cand, restart_reason, restart_cd = evaluate_auto_restart_candidate(
+                    now_ts=now_ts,
+                    responded=responded,
+                    rate_ths=rate_ths,
+                    threshold_ths=threshold_ths,
+                    active_boards=active_boards,
+                    expected_boards=expected_boards,
+                    miner_state="mining" if responded else "stopped",
+                    restart_required=getattr(state, "vnish_restart_required", False),
+                    reboot_required=False,
+                    auto_restart_enabled=auto_restart_mining_enabled,
+                    last_auto_restart_ts=state.last_auto_restart_ts,
+                    auto_restart_cooldown_seconds=auto_restart_cooldown_seconds,
+                    auto_restart_count=state.auto_restart_count,
+                    max_retries_before_reboot=auto_restart_max_retries,
+                    in_maintenance=getattr(state, "is_shutdown_maintenance", False),
+                    is_snoozed=(state.snooze_until_ts is not None and now_ts < state.snooze_until_ts),
+                    elapsed=elapsed,
+                    min_elapsed_seconds=auto_restart_min_elapsed_seconds,
+                    startup_grace_active=startup_grace_active,
+                )
+                if is_restart_cand:
+                    if qa_mode and not qa_allow_actions:
+                        log(f"[AUTO-RESTART] blocked_by=qa miner={name_display} reason={restart_reason}")
+                    else:
+                        with state_lock:
+                            state.last_auto_restart_ts = now_ts
+                            state.auto_restart_count += 1
+                        threading.Thread(
+                            target=_async_execute_mining_restart,
+                            args=(
+                                host,
+                                vnish_api_password,
+                                name,
+                                miner,
+                                restart_reason,
+                                state.auto_restart_count,
+                                auto_restart_max_retries,
+                                bot_token,
+                                chat_id,
+                                qa_mode,
+                                qa_notify,
+                                event_store,
+                                safe_recovery_pre_clamp_preset,
+                            ),
+                            daemon=True,
+                            name=f"AutoRestart_{name}",
+                        ).start()
+
+            # 3. Level 2: Auto-Reboot (Hashcore CLI)
+            curr_signal = classify_auto_reboot_signal(responded, rate_ths, threshold_ths)
+            interlock_decision = evaluate_auto_reboot_interlocks(
+                current_miner_key=state_key,
+                current_signal=curr_signal,
+                previous_signals=previous_signals,
+                previous_signals_observed_ts=now_ts,
+                evaluated_ts=now_ts,
+                fleet_snapshot_max_age_seconds=float(config.get("auto_reboot_fleet_snapshot_max_age_seconds", 300.0)),
+                fleet_min_affected=int(config.get("auto_reboot_fleet_guard_min_affected", 2)),
+                max_temp_c=vnish_telemetry.max_temp_c if vnish_telemetry else None,
+                thermal_guard_enabled=bool(config.get("auto_reboot_thermal_guard_enabled", True)),
+                thermal_limit_c=float(config.get("auto_reboot_max_temp_c", 82.0)),
+                fleet_guard_enabled=bool(config.get("auto_reboot_fleet_guard_enabled", True)),
+                firmware_transition_guard_enabled=bool(config.get("auto_reboot_firmware_transition_guard_enabled", True)),
+                chains_transitioning_count=quality_telemetry.chains_transitioning_count if quality_telemetry else 0,
+            )
+
+            decision_dict = ActuatorHook.evaluate_auto_reboot_policy(
+                state=state,
+                miner=miner,
+                new_state=state.state,
+                responded=responded,
+                rate_ths=rate_ths,
+                threshold_ths=threshold_ths,
+                active_boards=active_boards,
+                expected_boards=expected_boards,
+                now_ts=now_ts,
+                process_start_ts=process_start_ts,
+                startup_guard_seconds=int(config.get("startup_guard_seconds", 600)),
+                low_sustained_seconds=int(config.get("low_sustained_seconds", 900)),
+                hashboard_sustained_seconds=int(config.get("hashboard_sustained_seconds", 600)),
+                hashboard_reboot_enabled=bool(config.get("hashboard_reboot_enabled", True)),
+                reboot_cooldown_seconds=int(config.get("reboot_cooldown_seconds", 1800)),
+                max_reboots_per_window=int(config.get("max_reboots_per_window", 3)),
+                auto_reboot_window_seconds=int(config.get("auto_reboot_window_seconds", 21600)),
+                interlock_decision=interlock_decision,
+                qa_mode=qa_mode,
+                qa_allow_actions=qa_allow_actions,
+            )
+
+            if event_store is not None and getattr(event_store, "available", False):
+                record_auto_reboot_decision(
+                    event_store,
+                    evaluated_ts=now_ts,
+                    miner=miner,
+                    state=state,
+                    result=decision_dict.get("reason", "unknown"),
+                    rate_ths=rate_ths,
+                    threshold_ths=threshold_ths,
+                    low_elapsed_seconds=(now_ts - state.low_since_ts) if state.low_since_ts else None,
+                    active_boards=active_boards,
+                    expected_boards=expected_boards,
+                    startup_guard_active=(now_ts - process_start_ts) < int(config.get("startup_guard_seconds", 600)),
+                    qa_mode=qa_mode,
+                    cooldown_remaining_seconds=None,
+                    window_count=len(getattr(state, "auto_reboot_timestamps", [])),
+                    window_seconds=int(config.get("auto_reboot_window_seconds", 21600)),
+                    telemetry=vnish_telemetry,
+                    details={"signal": decision_dict.get("signal")},
+                )
+
+            if decision_dict["allowed"]:
+                ok, msg = run_hashcore_cli(hashcore_cfg, miner, "reboot", config, qa_mode, qa_allow_actions)
+                record_action_outcome(
+                    event_store,
+                    occurred_ts=now_ts,
+                    miner=miner,
+                    action="reboot",
+                    source="auto",
+                    ok=ok,
+                    message=msg,
+                )
+                if ok:
+                    with state_lock:
+                        state.last_auto_reboot_ts = now_ts
+                        state.auto_reboot_timestamps.append(now_ts)
+                        state.low_since_ts = None
+                        state.auto_restart_count = 0
+                    reboots_triggered.append(name_display)
+                    log(f"[AUTO-REBOOT] {name_display} auto-reboot ejecutado con éxito vía Hashcore.")
+                    if (not qa_mode) or qa_notify:
+                        send_telegram(
+                            bot_token,
+                            str(chat_id),
+                            f"🚨 *AUTO-REBOOT ENVIADO*\n\nMinero: *{name_display}*\nAcción: Reinicio eléctrico aplicado vía Hashcore.",
+                            "REBOOT",
+                            f"auto_reboot_{name}",
+                        )
+
+        return {
+            "actuator_completed": True,
+            "reboots_triggered": reboots_triggered,
+        }
 
 
 # ---------------------------------------------------------------------------

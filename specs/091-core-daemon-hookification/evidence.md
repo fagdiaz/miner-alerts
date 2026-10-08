@@ -2,9 +2,9 @@
 
 ## 1. Quality Gates Summary
 - **Python Syntax Compilation**: `py_compile app/miner_monitor.py app/core/engine.py app/core/pipeline.py app/core/config.py app/core/models.py app/core/system.py app/telegram/sender.py` -> **PASS**
-- **Regression Suite**: `pytest -q tests/` -> **1525 passed, 75 subtests passed in 42.81s** -> **PASS**
+- **Regression Suite**: `pytest -q tests/` -> **1527 passed, 75 subtests passed in 39.63s** -> **PASS**
 - **Preflight Certification**: `preflight_stabilize.ps1` -> **8/8 gates PASS**
-- **Windows NSSM Service**: `MinerAlerts` -> **SERVICE_RUNNING** (~400 TH/s nominal, clean continuous ticks in `logs/out.log`, zero runtime exceptions)
+- **Windows NSSM Service**: `MinerAlerts` -> **SERVICE_RUNNING** (~400 TH/s nominal, clean continuous ticks in `logs/out.log`, active `DetectionHook` & `ActuatorHook`, zero runtime exceptions)
 
 ## 2. Monolith Decoupling Metrics (Horizon V6.0 Milestone)
 - Monolith initial lines: 6,646 LOC (post-Spec 090)

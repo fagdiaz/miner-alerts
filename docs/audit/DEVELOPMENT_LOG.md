@@ -3,6 +3,28 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-08] - Spec 091: Activación Integral y Endurecimiento del Pipeline de Hooks en Runtime (Horizon V6.0 Certification)
+
+* **Contexto**:
+  - Motivación: Auditoría profunda post-modularización de la Spec 091. Se descubrió que `DetectionHook.execute()` y `ActuatorHook.execute()` operaban como stubs declarativos mínimos, y que la inicialización del ciclo de monitoreo no inyectaba `process_start_ts`, manteniendo `startup_grace_period` perpetuamente en `elapsed=0.0s`.
+  - Objetivo: Conectar plenamente la lógica operativa activa en `DetectionHook` (clasificación de estados FSM, alertas Telegram en transiciones, telemetría asíncrona de cadenas, detección de reinicios) y `ActuatorHook` (ejecución de Tier-1 soft restart y Tier-2 Hashcore CLI auto-reboot bajo estricta jerarquía de interlocks y cooldowns), corregir el cómputo de `process_start_ts` en `CoreSupervisoryEngine`, y certificar la suite con 1527 tests sin regresiones.
+  - Baseline previo: 1525 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/core/engine.py`:
+     - Implementado el cuerpo completo de `DetectionHook.execute()`: actualización de rachas de hashrate, clasificación FSM determinista, recolección asíncrona de telemetría de cadenas ante degradación, logging y despacho de alertas Telegram en transiciones (`OK -> HASHBOARD/LOW/OFFLINE`), monitoreo preventivo de salud térmica y de chips, y verificación de contingencias por reinicio.
+     - Implementado el cuerpo completo de `ActuatorHook.execute()`: ejecución de Tier-1 soft restart / autotune watchdog y Tier-2 Hashcore CLI auto-reboot respetando las 5 precedencias canónicas, evaluación de interlocks de flota, registro atómico en `states[miner_id]` y notificación por Telegram.
+     - Corregido `execute_tick()` para inyectar `process_start_ts` y `previous_signals` en `tick_data`, resolviendo el bloqueo permanente del período de calentamiento (`WARMING_UP`), y poblar métricas en `TickResult` (`miners_responded`, `miners_failed`, `reboots_triggered`).
+  2. `tests/test_supervisory_hooks.py`:
+     - Incorporados tests de integración directa para validación de ejecución en runtime: `test_detection_hook_execute_transitions_state` y `test_actuator_hook_execute_triggers_reboot_when_eligible`.
+     - 57/57 tests PASS en `test_supervisory_hooks.py`.
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Sintaxis limpia verificada en `app/core/engine.py` y `tests/test_supervisory_hooks.py`.
+  - Pruebas globales: `pytest -q`: 1527 passed, 75 subtests passed en 39.13s (0 fallos, 0 errores, +2 tests netos).
+  - Preflight Stabilization Gate: 8/8 gates PASS (`git-diff`, `secrets`, `py_compile`, `config`, `pytest`, `windows-service`, `fleet`, `speckit-dod`).
+  - Verificación en servicio real: Windows NSSM `MinerAlerts` validado, reiniciado limpiamente sin `WARMING_UP` perpetuo, gobernanza de flota activa (~400 TH/s nominal).
+
 ## [2026-10-07] - Spec 091: Pipeline Declarativo de Hooks y Disolución Definitiva del Monolito (Horizon V6.0)
 
 * **Contexto**:

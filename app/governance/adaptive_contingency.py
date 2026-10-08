@@ -24,6 +24,7 @@ from app.governance.preset_balancer import (
     DEFAULT_PRESET_LADDER,
     PresetTier,
     find_preset_index,
+    record_elevator_restart_circumstance,
 )
 
 # Canonical canary assignments per electrical group

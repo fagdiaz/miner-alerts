@@ -3,6 +3,28 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-08] - Spec 091: Hotfix Post-Blackout y Blindaje de Importación en DetectionHook (V6.0 Stabilized)
+
+* **Contexto**:
+  - Motivación: Durante el retorno de tensión y reinicio del servidor tras un corte de luz en planta, la inicialización del ciclo de monitoreo detectó el arranque inicial de los mineros (`is_first_seen_restart` / `unexpected_restart`). Al evaluar las condiciones del elevador eléctrico en esa rama condicional, `DetectionHook.execute()` capturó en runtime un `ImportError` al intentar importar `record_elevator_restart_circumstance` desde `app.governance.adaptive_contingency`.
+  - Objetivo: Corregir la ruta canónica de importación de `record_elevator_restart_circumstance` en `DetectionHook`, agregar re-export defensivo en `app.governance.adaptive_contingency`, incorporar test unitario de regresión y estabilizar la suite global en 1529 tests PASS.
+  - Baseline previo: 1528 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/core/engine.py`:
+     - Corregida la importación en `DetectionHook.execute()` (L1244): redirigida hacia `app.governance.preset_balancer` (módulo de definición canónica de `record_elevator_restart_circumstance`).
+  2. `app/governance/adaptive_contingency.py`:
+     - Incorporado re-export defensivo de `record_elevator_restart_circumstance` desde `preset_balancer` para garantizar tolerancia e interoperabilidad retroactiva ante cualquier invocación externa.
+  3. `tests/test_supervisory_hooks.py`:
+     - Añadido test unitario `test_detection_hook_execute_restart_circumstance_branch` para ejercitar y validar de forma aislada la rama de `reboot_reason` y cálculo de carga del elevador ante reinicios.
+     - 58/58 tests PASS en `test_supervisory_hooks.py`.
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Sintaxis limpia verificada en `app/core/engine.py` y `app/governance/adaptive_contingency.py`.
+  - Pruebas globales: `pytest -q`: 1529 passed, 75 subtests passed en 38.33s (0 fallos, 0 errores, +1 test neto).
+  - Preflight Stabilization Gate: 8/8 gates PASS (`git-diff`, `secrets`, `py_compile`, `config`, `pytest`, `windows-service`, `fleet`, `speckit-dod`).
+  - Verificación en servicio real: Servicio Windows NSSM `MinerAlerts` reiniciado y verificado en ejecución continua sin excepciones.
+
 ## [2026-10-08] - Spec 091: Activación Integral y Endurecimiento del Pipeline de Hooks en Runtime (Horizon V6.0 Certification)
 
 * **Contexto**:

@@ -962,6 +962,40 @@ class TestActuatorHook(unittest.TestCase):
         self.assertEqual(2000.0, st.hashboard_since_ts)
         self.assertEqual("HASHBOARD", res["current_tick_signals"]["m1|127.0.0.1:4028"])
 
+    def test_detection_hook_execute_restart_circumstance_branch(self) -> None:
+        """Verify DetectionHook.execute() handles restart detection and elevator circumstance."""
+        from app.core.engine import DetectionHook
+        from app.miner_monitor import MinerState
+
+        miner = {"name": "m1", "host": "127.0.0.1", "port": 4028, "electrical_group": "elevator_1"}
+        st = MinerState(state="OK")
+        ctx = _make_context()
+        ctx.miners = [miner]
+
+        hook = DetectionHook()
+        tick_data = {
+            "miner_results": {
+                "m1|127.0.0.1:4028": {
+                    "miner": miner,
+                    "state": st,
+                    "responded": True,
+                    "rate_ths": 90.0,
+                    "elapsed": 10,
+                    "previous_elapsed": 5000,
+                    "reboot_reason": "Reinicio detectado (uptime: 10s)",
+                    "active_boards": 3,
+                    "vnish_telemetry": None,
+                    "quality_telemetry": None,
+                }
+            },
+            "states": {"m1|127.0.0.1:4028": st},
+            "startup_grace_active": False,
+        }
+
+        res = hook.execute(ctx, 1, 2000.0, tick_data)
+        self.assertIsNotNone(res)
+        self.assertTrue(res["detection_completed"])
+
     def test_actuator_hook_execute_triggers_reboot_when_eligible(self) -> None:
         """Verify ActuatorHook.execute() dispatches auto-reboot when all gates pass."""
         from unittest.mock import patch

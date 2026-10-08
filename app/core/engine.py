@@ -1241,7 +1241,7 @@ class DetectionHook(SupervisoryHook):
                     except Exception:
                         pass
 
-                from app.governance.adaptive_contingency import record_elevator_restart_circumstance
+                from app.governance.preset_balancer import record_elevator_restart_circumstance
                 elev_circumstance = record_elevator_restart_circumstance(
                     miner_name=name_display,
                     electrical_group=m_group,

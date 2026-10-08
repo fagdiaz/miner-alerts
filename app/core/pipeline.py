@@ -266,25 +266,35 @@ def record_auto_reboot_decision(
     miner: dict,
     state: MinerState,
     result: str,
-    responded: bool,
-    rate_ths: Optional[float],
-    threshold_ths: float,
-    active_boards: Optional[int],
-    expected_boards: int,
-    telemetry: VnishTelemetry,
-    startup_guard_active: bool,
-    qa_mode: bool,
-    cooldown_remaining_seconds: Optional[float],
-    window_seconds: int,
+    responded: bool = True,
+    rate_ths: Optional[float] = None,
+    threshold_ths: float = 0.0,
+    active_boards: Optional[int] = None,
+    expected_boards: int = 3,
+    telemetry: Any = None,
+    startup_guard_active: bool = False,
+    qa_mode: bool = False,
+    cooldown_remaining_seconds: Optional[float] = None,
+    window_seconds: int = 21600,
+    low_elapsed_seconds: Optional[float] = None,
+    window_count: Optional[int] = None,
     details: Optional[Dict[str, Any]] = None,
+    **extra: Any,
 ) -> None:
     if event_store is None or not getattr(event_store, "available", False):
         return
-    low_elapsed = None
-    if state.low_since_ts is not None:
+    if low_elapsed_seconds is not None:
+        low_elapsed = low_elapsed_seconds
+    elif state.low_since_ts is not None:
         low_elapsed = max(0.0, evaluated_ts - state.low_since_ts)
     elif state.hashboard_since_ts is not None:
         low_elapsed = max(0.0, evaluated_ts - state.hashboard_since_ts)
+    else:
+        low_elapsed = None
+
+    if window_count is None:
+        window_count = len(getattr(state, "auto_reboot_timestamps", []))
+
     event_store.record_reboot_decision(
         evaluated_ts=evaluated_ts,
         miner_key=f"{miner.get('name')}|{miner.get('host')}:{miner.get('port')}",
@@ -301,9 +311,9 @@ def record_auto_reboot_decision(
         startup_guard_active=startup_guard_active,
         qa_mode=qa_mode,
         cooldown_remaining_seconds=cooldown_remaining_seconds,
-        window_count=len(state.auto_reboot_timestamps),
+        window_count=window_count,
         window_seconds=window_seconds,
-        telemetry=telemetry.as_dict() if hasattr(telemetry, "as_dict") else {},
+        telemetry=telemetry.as_dict() if hasattr(telemetry, "as_dict") else (telemetry if isinstance(telemetry, dict) else {}),
         details=details,
     )
 

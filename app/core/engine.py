@@ -1682,6 +1682,7 @@ class ActuatorHook(SupervisoryHook):
                     miner=miner,
                     state=state,
                     result=decision_dict.get("reason", "unknown"),
+                    responded=responded,
                     rate_ths=rate_ths,
                     threshold_ths=threshold_ths,
                     low_elapsed_seconds=(now_ts - state.low_since_ts) if state.low_since_ts else None,

@@ -2,7 +2,7 @@
 # ESTADO DEL PROYECTO: SPEC 091 CERTIFICADA — HORIZON V6.0 EN PRODUCCIÓN
 # FECHA: 2026-10-08 02:15 UTC-3
 # RAMA: codex/022-adaptive-acquisition
-# ESTADO DE SUITE: 1527 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
+# ESTADO DE SUITE: 1528 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
 # PREFLIGHT GATES: 8/8 PASS
 # SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
 # MODELO EJECUTOR RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)

@@ -6,8 +6,8 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 ## [2026-10-08] - Spec 091: Activación Integral y Endurecimiento del Pipeline de Hooks en Runtime (Horizon V6.0 Certification)
 
 * **Contexto**:
-  - Motivación: Auditoría profunda post-modularización de la Spec 091. Se descubrió que `DetectionHook.execute()` y `ActuatorHook.execute()` operaban como stubs declarativos mínimos, y que la inicialización del ciclo de monitoreo no inyectaba `process_start_ts`, manteniendo `startup_grace_period` perpetuamente en `elapsed=0.0s`.
-  - Objetivo: Conectar plenamente la lógica operativa activa en `DetectionHook` (clasificación de estados FSM, alertas Telegram en transiciones, telemetría asíncrona de cadenas, detección de reinicios) y `ActuatorHook` (ejecución de Tier-1 soft restart y Tier-2 Hashcore CLI auto-reboot bajo estricta jerarquía de interlocks y cooldowns), corregir el cómputo de `process_start_ts` en `CoreSupervisoryEngine`, y certificar la suite con 1527 tests sin regresiones.
+  - Motivación: Auditoría profunda post-modularización de la Spec 091. Se descubrió que `DetectionHook.execute()` y `ActuatorHook.execute()` operaban como stubs declarativos mínimos, que la inicialización del ciclo de monitoreo no inyectaba `process_start_ts` (manteniendo `startup_grace_period` perpetuamente en `elapsed=0.0s`), y que `record_auto_reboot_decision` presentaba divergencia de firma de palabras clave levantando `TypeError` en el hook de actuación.
+  - Objetivo: Conectar plenamente la lógica operativa activa en `DetectionHook` (clasificación de estados FSM, alertas Telegram en transiciones, telemetría asíncrona de cadenas, detección de reinicios) y `ActuatorHook` (ejecución de Tier-1 soft restart y Tier-2 Hashcore CLI auto-reboot bajo estricta jerarquía de interlocks y cooldowns), corregir el cómputo de `process_start_ts` en `CoreSupervisoryEngine`, flexibilizar `record_auto_reboot_decision` contra `**extra` kwargs, y certificar la suite con 1528 tests sin regresiones.
   - Baseline previo: 1525 tests PASS, 75 subtests PASS.
 
 * **Implementación Técnica**:
@@ -15,15 +15,19 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
      - Implementado el cuerpo completo de `DetectionHook.execute()`: actualización de rachas de hashrate, clasificación FSM determinista, recolección asíncrona de telemetría de cadenas ante degradación, logging y despacho de alertas Telegram en transiciones (`OK -> HASHBOARD/LOW/OFFLINE`), monitoreo preventivo de salud térmica y de chips, y verificación de contingencias por reinicio.
      - Implementado el cuerpo completo de `ActuatorHook.execute()`: ejecución de Tier-1 soft restart / autotune watchdog y Tier-2 Hashcore CLI auto-reboot respetando las 5 precedencias canónicas, evaluación de interlocks de flota, registro atómico en `states[miner_id]` y notificación por Telegram.
      - Corregido `execute_tick()` para inyectar `process_start_ts` y `previous_signals` en `tick_data`, resolviendo el bloqueo permanente del período de calentamiento (`WARMING_UP`), y poblar métricas en `TickResult` (`miners_responded`, `miners_failed`, `reboots_triggered`).
-  2. `tests/test_supervisory_hooks.py`:
+     - Suministrado argumento `responded=responded` en el despacho de decisiones de autoreinicio.
+  2. `app/core/pipeline.py`:
+     - Flexibilizada la función `record_auto_reboot_decision`: soporte para argumentos opcionales explícitos (`low_elapsed_seconds`, `window_count`, `responded=True`), fallback determinista a cómputo sobre `state`, y captura defensiva de `**extra` kwargs eliminando cualquier potencial `TypeError` en tiempo de ejecución.
+  3. `tests/test_supervisory_hooks.py` y `tests/test_reboot_decision_audit.py`:
      - Incorporados tests de integración directa para validación de ejecución en runtime: `test_detection_hook_execute_transitions_state` y `test_actuator_hook_execute_triggers_reboot_when_eligible`.
-     - 57/57 tests PASS en `test_supervisory_hooks.py`.
+     - Incorporado `test_record_auto_reboot_decision_flexible_kwargs` validando tolerancia y persistencia con argumentos variables.
+     - 58/58 tests PASS en hooks y decisiones de reinicio.
 
 * **Verificación y Pruebas**:
-  - `py_compile`: Sintaxis limpia verificada en `app/core/engine.py` y `tests/test_supervisory_hooks.py`.
-  - Pruebas globales: `pytest -q`: 1527 passed, 75 subtests passed en 39.13s (0 fallos, 0 errores, +2 tests netos).
+  - `py_compile`: Sintaxis limpia verificada en `app/core/engine.py`, `app/core/pipeline.py` y tests.
+  - Pruebas globales: `pytest -q`: 1528 passed, 75 subtests passed en 38.42s (0 fallos, 0 errores, +3 tests netos).
   - Preflight Stabilization Gate: 8/8 gates PASS (`git-diff`, `secrets`, `py_compile`, `config`, `pytest`, `windows-service`, `fleet`, `speckit-dod`).
-  - Verificación en servicio real: Windows NSSM `MinerAlerts` validado, reiniciado limpiamente sin `WARMING_UP` perpetuo, gobernanza de flota activa (~400 TH/s nominal).
+  - Verificación en servicio real: Windows NSSM `MinerAlerts` reiniciado limpiamente, `logs/err.log` en silencio total (0 excepciones), `WARMING_UP` avanzando normalmente, y gobernanza de flota activa (~400 TH/s nominal).
 
 ## [2026-10-07] - Spec 091: Pipeline Declarativo de Hooks y Disolución Definitiva del Monolito (Horizon V6.0)
 

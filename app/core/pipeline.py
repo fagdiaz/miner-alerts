@@ -736,6 +736,8 @@ class PostTickHook(SupervisoryHook):
         tick_data: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         global _LAST_DAILY_DIGEST_DATE
+        if _LAST_DAILY_DIGEST_DATE is None and getattr(context, "last_daily_digest_date", None):
+            _LAST_DAILY_DIGEST_DATE = context.last_daily_digest_date
         config = context.config
         bot_token = context.bot_token
         chat_id = context.chat_id
@@ -783,6 +785,13 @@ class PostTickHook(SupervisoryHook):
                     else:
                         _LAST_DAILY_DIGEST_DATE = due_slot
                     log(f"DAILY_DIGEST_SENT slot={due_slot} date={today_ar_str} time={daily_digest_time}")
+                    if context.state_manager is not None:
+                        context.last_daily_digest_date = _LAST_DAILY_DIGEST_DATE
+                        from app.core.state_manager import set_last_daily_digest_date
+                        set_last_daily_digest_date(_LAST_DAILY_DIGEST_DATE)
+                        last_update_id_ref = tick_data.get("last_update_id_ref", {})
+                        last_update_id = last_update_id_ref.get("value") if last_update_id_ref else None
+                        context.state_manager.save(states, last_update_id, _LAST_DAILY_DIGEST_DATE)
                 except Exception as exc:
                     log(f"DAILY_DIGEST_ERR exc={exc}")
 

@@ -225,6 +225,11 @@ class CoreSupervisoryEngine:
         if tick_sequence is not None:
             self._tick_sequence = tick_sequence
 
+        import app.core.pipeline as _pipeline
+        current_digest_date = (
+            getattr(_pipeline, "_LAST_DAILY_DIGEST_DATE", None)
+            or getattr(self._ctx, "last_daily_digest_date", None)
+        )
         tick_data: Dict[str, Any] = {
             "states": states,
             "last_update_id_ref": last_update_id_ref,
@@ -232,6 +237,7 @@ class CoreSupervisoryEngine:
             "process_start_ts": getattr(self, "process_start_ts", now_ts),
             "previous_signals": getattr(self, "_last_signals", {}),
             "tick_sequence": self._tick_sequence,
+            "last_daily_digest_date": current_digest_date,
         }
         if extra_tick_data:
             tick_data.update(extra_tick_data)
@@ -276,6 +282,8 @@ class CoreSupervisoryEngine:
 
         if "current_tick_signals" in tick_data:
             self._last_signals = tick_data["current_tick_signals"]
+        if tick_data.get("last_daily_digest_date"):
+            self._ctx.last_daily_digest_date = tick_data["last_daily_digest_date"]
         result.miners_responded = len(tick_data.get("tick_responded_miners", []))
         result.miners_failed = len(tick_data.get("tick_failed_miners", []))
         result.reboots_triggered = tick_data.get("reboots_triggered", [])
@@ -584,6 +592,7 @@ class CoreSupervisoryEngine:
             _ELEVATOR_CONTINGENCY_STATES,
             _GLOBAL_INTERVENTION_GOV,
         )
+        import app.core.pipeline as _pipeline
 
         state_manager = StateManager(
             state_path,
@@ -591,6 +600,9 @@ class CoreSupervisoryEngine:
             flush_lock=_SAVE_STATE_LOCK,
             get_globals_fn=lambda: vars(_mm),
         )
+
+        loaded_digest_date = state_manager.last_daily_digest_date
+        _pipeline._LAST_DAILY_DIGEST_DATE = loaded_digest_date
 
         monitor_ctx = build_monitor_context(
             config=config,
@@ -610,6 +622,7 @@ class CoreSupervisoryEngine:
             governance=_GLOBAL_INTERVENTION_GOV,
             elevator_contingency=_ELEVATOR_CONTINGENCY_STATES,
             scheduled_window=_ACTIVE_SCHEDULED_WINDOW,
+            last_daily_digest_date=loaded_digest_date,
         )
 
         sender_thread = threading.Thread(

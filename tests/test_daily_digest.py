@@ -296,6 +296,47 @@ class TestDailyDigestIntegration(unittest.TestCase):
             loaded_states, last_id = load_state(state_file)
             self.assertEqual(last_id, 10)
 
+    def test_state_manager_preserves_daily_digest_date_across_saves(self):
+        import threading
+        from app.core.models import MinerState
+        from app.core.state_manager import (
+            StateManager,
+            load_state,
+            save_state,
+            get_last_daily_digest_date,
+            set_last_daily_digest_date,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_file = Path(tmpdir) / "state.json"
+            states = {"m1": MinerState("m1")}
+
+            # 1. Initial save with explicit digest date
+            save_state(state_file, states, last_update_id=1, last_daily_digest_date="2026-10-08@10:00")
+            self.assertEqual(get_last_daily_digest_date(), "2026-10-08@10:00")
+
+            # 2. Load state
+            loaded_states, loaded_id = load_state(state_file)
+            self.assertEqual(loaded_id, 1)
+            self.assertEqual(get_last_daily_digest_date(), "2026-10-08@10:00")
+
+            # 3. Create StateManager instance and save WITHOUT passing digest date
+            # This simulates regular tick saves by PersistenceHook
+            lock = threading.RLock()
+            sm = StateManager(state_file, lock)
+            sm.save(loaded_states, last_update_id=2)  # last_daily_digest_date is None by default
+
+            # Verify that state.json STILL contains the digest date and was not wiped to null
+            raw = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertEqual(raw.get("last_daily_digest_date"), "2026-10-08@10:00")
+            self.assertEqual(sm.last_daily_digest_date, "2026-10-08@10:00")
+
+            # 4. Update via property/helper
+            sm.last_daily_digest_date = "2026-10-08@10:00,2026-10-08@22:00"
+            sm.save(loaded_states, last_update_id=3)
+            raw2 = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertEqual(raw2.get("last_daily_digest_date"), "2026-10-08@10:00,2026-10-08@22:00")
+
     def test_digest_benchmark_on_real_db_if_present(self):
         real_db = Path("data/miner_alerts.db")
         if not real_db.exists():

@@ -3,6 +3,40 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-08] - Spec 091: Auditoría Quirúrgica de Mensajería Telegram y Preservación de Estado de Daily Digest
+
+* **Contexto**:
+  - Motivación: Solicitud de auditoría quirúrgica integral sobre el subsistema de mensajería de Telegram (enrutamiento de comandos, callbacks, formato de tarjetas y estado del bot). El análisis forense en runtime identificó que tras cada reinicio del servicio posterior a las 10:00 AM (incluidos los reinicios por corte de luz o mantenimiento), se emitía un reporte diario ("Reporte Diario") duplicado al chat del operador.
+  - Causa Raíz:
+    1. En `app/core/state_manager.py`, `StateManager.build_payload()` serializaba el parámetro `"last_daily_digest_date": last_daily_digest_date` directamente sin recurrir al global `_LAST_DAILY_DIGEST_DATE`. Como `PersistenceHook` invocaba `state_manager.save()` sin pasar dicho argumento en ticks regulares, `state.json` se sobreescribía con `"last_daily_digest_date": null`.
+    2. Al reiniciar el servicio, `load_state()` leía `None`. `get_due_digest_slot()` evaluaba que la ventana de las 10:00 ya había pasado y que `last_sent` era nulo, disparando inmediatamente un nuevo digest duplicado.
+    3. `app/core/engine.py` no sincronizaba el `_LAST_DAILY_DIGEST_DATE` cargado desde `state.json` hacia `app.core.pipeline._LAST_DAILY_DIGEST_DATE` ni inyectaba el slot actual en `tick_data` de `execute_tick()`.
+    4. En `app/telegram/poller.py` (L76), existía un import circular innecesario `from app.miner_monitor import _parse_message_command`, existiendo ya la función canónica local en el mismo archivo.
+  - Objetivo: Preservar de forma robusta e idempotente la fecha/slot del reporte diario en `state.json` y memoria (`StateManager`, `Pipeline`, `Engine`), persistir inmediatamente al emitir el digest, eliminar la duplicación post-reinicio y desacoplar el import en `poller.py`.
+  - Baseline previo: 1529 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/core/state_manager.py`:
+     - Corregido `StateManager.build_payload()` para respaldar `last_daily_digest_date` en `_LAST_DAILY_DIGEST_DATE` cuando el argumento es `None`.
+     - Implementadas propiedades `@property last_daily_digest_date` (getter y setter) y funciones a nivel de módulo `get_last_daily_digest_date()` y `set_last_daily_digest_date(val)`.
+  2. `app/core/engine.py`:
+     - En `initialize()`: sincronizado `_pipeline._LAST_DAILY_DIGEST_DATE` y `build_monitor_context(..., last_daily_digest_date=...)` con el estado deserializado de `state.json`.
+     - En `execute_tick()`: inyectado `last_daily_digest_date` actual en `tick_data` para los hooks y sincronizado de retorno a `self._ctx.last_daily_digest_date`.
+  3. `app/core/pipeline.py`:
+     - En `PostTickHook.execute()`: inicializado defensivo de `_LAST_DAILY_DIGEST_DATE` desde `context.last_daily_digest_date`. Al despachar `DAILY_DIGEST_SENT`, actualización inmediata en `context.state_manager`, `set_last_daily_digest_date()` y guardado atómico inmediato en disco.
+  4. `app/telegram/poller.py`:
+     - Eliminado import innecesario `from app.miner_monitor import _parse_message_command`, invocando la función localmente de forma directa.
+  5. `tests/test_daily_digest.py`:
+     - Incorporado test unitario `test_state_manager_preserves_daily_digest_date_across_saves` validando que `StateManager.save()` preserva la clave `"last_daily_digest_date"` en el archivo físico `state.json` a través de múltiples ticks sin sobreescrituras en nulo.
+     - 13/13 tests PASS en `test_daily_digest.py`.
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Verificada sintaxis limpia en `app/core/state_manager.py`, `app/core/engine.py`, `app/core/pipeline.py`, `app/telegram/poller.py` y `tests/test_daily_digest.py`.
+  - Pruebas globales: `pytest -q`: 1530 passed, 75 subtests passed en 37.48s (0 fallos, 0 errores, +1 test neto).
+  - Preflight Stabilization Gate: 8/8 compuertas PASS (`git-diff`, `secrets`, `py_compile`, `config`, `pytest`, `windows-service`, `fleet`, `speckit-dod`).
+  - Depuración transitoria: `cleanup_transients.ps1` ejecutado con 13 elementos limpiados (4.39 MB liberados) preservando la integridad de archivos protegidos.
+  - Verificación en servicio real: Servicio Windows NSSM `MinerAlerts` reiniciado. Se verificó que `state.json` mantiene `"last_daily_digest_date": "2026-10-08@10:00"` y en los reinicios posteriores ya NO se emiten digests duplicados en `logs/out.log`. Flota operando normalmente (~400 TH/s nominal).
+
 ## [2026-10-08] - Spec 091: Hotfix Post-Blackout y Blindaje de Importación en DetectionHook (V6.0 Stabilized)
 
 * **Contexto**:

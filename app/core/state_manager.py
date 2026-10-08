@@ -114,10 +114,19 @@ class StateManager:
         cont_states = g.get("_ELEVATOR_CONTINGENCY_STATES") or {}
         sch_win = g.get("_ACTIVE_SCHEDULED_WINDOW")
 
+        global _LAST_DAILY_DIGEST_DATE
+        if last_daily_digest_date is not None:
+            _LAST_DAILY_DIGEST_DATE = last_daily_digest_date
+        effective_digest_date = (
+            last_daily_digest_date
+            if last_daily_digest_date is not None
+            else _LAST_DAILY_DIGEST_DATE
+        )
+
         payload: Dict[str, Any] = {
             "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
             "last_update_id": last_update_id,
-            "last_daily_digest_date": last_daily_digest_date,
+            "last_daily_digest_date": effective_digest_date,
             "scheduled_maintenance": sch_win.to_dict() if sch_win is not None else None,
             "intervention_governance": gov_obj.to_dict() if gov_obj is not None else None,
             "elevator_contingency": (
@@ -178,6 +187,17 @@ class StateManager:
     def serialize_miner_state(state: Any) -> Dict[str, Any]:
         """Convert a MinerState instance to a JSON-serialisable dict (Spec 072)."""
         return _serialise_miner_state(state)
+
+    @property
+    def last_daily_digest_date(self) -> Optional[str]:
+        """Get the globally tracked last daily digest date."""
+        return _LAST_DAILY_DIGEST_DATE
+
+    @last_daily_digest_date.setter
+    def last_daily_digest_date(self, val: Optional[str]) -> None:
+        """Set the globally tracked last daily digest date."""
+        global _LAST_DAILY_DIGEST_DATE
+        _LAST_DAILY_DIGEST_DATE = val
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +306,17 @@ serialize_miner_state = _serialise_miner_state
 
 _SAVE_STATE_LOCK = threading.Lock()
 _LAST_DAILY_DIGEST_DATE: Optional[str] = None
+
+
+def get_last_daily_digest_date() -> Optional[str]:
+    """Return the last recorded daily digest date string (YYYY-MM-DD or slot string)."""
+    return _LAST_DAILY_DIGEST_DATE
+
+
+def set_last_daily_digest_date(val: Optional[str]) -> None:
+    """Set the last recorded daily digest date string."""
+    global _LAST_DAILY_DIGEST_DATE
+    _LAST_DAILY_DIGEST_DATE = val
 
 
 def _build_state_payload(

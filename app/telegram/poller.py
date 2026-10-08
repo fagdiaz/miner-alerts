@@ -73,7 +73,6 @@ def process_telegram_update(
         return True
 
     # 2. Text command
-    from app.miner_monitor import _parse_message_command
     message, raw_text, cmd_name, args, msg_key, cmd_meta = _parse_message_command(item)
     msg_chat_id = (message or {}).get("chat", {}).get("id")
 

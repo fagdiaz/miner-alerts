@@ -6,9 +6,9 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (90 de 90 especificaciones completadas y evidenciadas — **1525 tests PASS, 75 subtests PASS** — Spec 090 Modernización de Tests Invariantes COMPLETADA).
-- **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico (92% PWM en 26).
-- **Programa Maestro de Desacoplamiento del Monolito**: Fases 1, 2, 3 y 4 completadas (`Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`). Próxima: `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`.
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (91 de 91 especificaciones completadas y evidenciadas — **1525 tests PASS, 75 subtests PASS** — Spec 091 Disolución Definitiva del Monolito COMPLETADA — **RELEASE MAYOR V6.0**).
+- **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico.
+- **Programa Maestro de Desacoplamiento del Monolito**: **100% COMPLETADO** (Fases 1 a 5: `Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`, `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`). Monolito disuelto definitivamente: `miner_monitor.py` reducido a 324 LOC.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
 ---
@@ -1134,6 +1134,24 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 - Desacoplamiento de `inspect.getsource(main)` en `tests/test_startup_grace_period.py:222`.
 - Verificación funcional black-box determinista con `SupervisoryBehavioralHarness` para la jerarquía de 5 precedencias de auto-reboot.
 - Desbloqueo arquitectónico 100% de `main()` para el cierre definitivo en Spec 091.
+
+---
+
+### Iniciativa 43 — Pipeline Declarativo de Hooks y Cierre V6.0 (Spec 091) — COMPLETADA ✅
+
+**Documento**: `specs/091-core-daemon-hookification/spec.md`<br/>
+**Estado**: COMPLETADA Y CERTIFICADA (2026-10-07) — 1525 tests PASS, 75 subtests PASS — **RELEASE MAYOR V6.0**.<br/>
+**Prioridad**: P0 — Cierre Arquitectónico del Monolito<br/>
+**Riesgo**: MEDIO<br/>
+**Modelo ejecutado**: Gemini 3.8 Flash High<br/>
+**Dependencia**: Programa Maestro de Modularización (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`)<br/>
+
+**Alcance técnico completado**:
+- Pipeline declarativo de 7 etapas (`PRE_TICK`, `ACQUISITION`, `DETECTION`, `GOVERNANCE`, `ACTUATOR`, `PERSISTENCE`, `POST_TICK`) en `app/core/pipeline.py`.
+- Encapsulación de inicialización en `CoreSupervisoryEngine.initialize()` y ciclo en `engine.run_forever()`.
+- Disolución final de `app/miner_monitor.py` de 6.646 a **324 LOC** ($\le 450$ LOC objetivo alcanzado; -6.322 LOC netas, -8.752 LOC acumuladas).
+- Shims de re-exportación tipados para el 100% de contratos de prueba y símbolos públicos.
+- Certificación preflight 8/8 gates PASS y servicio Windows NSSM `MinerAlerts` en producción continua.
 
 ---
 

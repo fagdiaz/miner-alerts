@@ -23,6 +23,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from app.core.context import MonitorContext
@@ -331,12 +332,38 @@ class CoreSupervisoryEngine:
                         pass
 
                 sleep_seconds = max(0.0, poll_seconds - elapsed)
-                self._shutdown_event.wait(timeout=sleep_seconds)
+                if not self._shutdown_event.is_set():
+                    try:
+                        from app.telegram.poller import _WAKEUP_EVENT
+                        _WAKEUP_EVENT.wait(timeout=sleep_seconds)
+                        _WAKEUP_EVENT.clear()
+                    except Exception:
+                        self._shutdown_event.wait(timeout=sleep_seconds)
 
         except KeyboardInterrupt:
             logger.info("CoreSupervisoryEngine: KeyboardInterrupt received, stopping.")
         finally:
             self._running = False
+            if getattr(self, "watchdog_ipc_server", None) is not None:
+                try:
+                    self.watchdog_ipc_server.stop()
+                except Exception:
+                    pass
+            if getattr(self, "acquirer", None) is not None:
+                try:
+                    self.acquirer.close()
+                except Exception:
+                    pass
+            if getattr(self._ctx, "event_store", None) is not None:
+                try:
+                    self._ctx.event_store.close()
+                except Exception:
+                    pass
+            if getattr(self, "gateway_heartbeat", None) is not None:
+                try:
+                    self.gateway_heartbeat.stop()
+                except Exception:
+                    pass
             logger.info(
                 "CoreSupervisoryEngine stopped after %d ticks. Total hooks: %d",
                 self._tick_sequence,
@@ -346,6 +373,11 @@ class CoreSupervisoryEngine:
     def shutdown(self) -> None:
         """Signal the loop to stop after the current tick completes."""
         self._shutdown_event.set()
+        try:
+            from app.telegram.poller import _WAKEUP_EVENT
+            _WAKEUP_EVENT.set()
+        except Exception:
+            pass
 
     @property
     def is_running(self) -> bool:
@@ -360,22 +392,358 @@ class CoreSupervisoryEngine:
         """Lista de hooks declarativos registrados, ordenados por etapa."""
         return list(self._hooks)
 
-    # ------------------------------------------------------------------
-    # Convenience class method — compatible con Spec 060
-    # ------------------------------------------------------------------
+    def register_standard_hooks(self) -> None:
+        """Register the 7 canonical pipeline stages in deterministic sequence."""
+        from app.core.pipeline import (
+            AcquisitionHook,
+            GovernanceHook,
+            PostTickHook,
+            PreTickHook,
+        )
+        self.register_hook(TimingGuardHook(warn_threshold_seconds=25.0))
+        self.register_hook(PreTickHook())
+        self.register_hook(AcquisitionHook())
+        self.register_hook(DetectionHook())
+        self.register_hook(GovernanceInterlockHook())
+        self.register_hook(GovernanceHook())
+        self.register_hook(ActuatorHook())
+        self.register_hook(PersistenceHook())
+        self.register_hook(PostTickHook())
 
     @classmethod
-    def run_forever(
+    def initialize(
         cls,
-        context: MonitorContext,
-        tick_callable: Callable[[MonitorContext, int, float], TickResult],
-        states: Dict[str, Any],
-        last_update_id_ref: Dict[str, Optional[int]],
+        config: Optional[Dict[str, Any]] = None,
+        state_path: Optional[Path] = None,
+    ) -> CoreSupervisoryEngine:
+        import os
+        import platform
+        import queue
+        import sys
+        from app.core.config import (
+            init_logger_from_config,
+            load_config,
+            log,
+            qa_allow_real_actions,
+            qa_enabled,
+            qa_notify_enabled,
+            qa_verbose_enabled,
+        )
+        from app.core.context import build_monitor_context
+        from app.core.state_manager import StateManager, load_state, _SAVE_STATE_LOCK
+        from app.core.system import release_mutex
+        from app.core.event_store import EventStore
+        from app.core.acquisition import (
+            AcquisitionConfig,
+            Api4028Transport,
+            BoundedAcquirer,
+            MinerEndpoint,
+        )
+        from app.telegram.poller import telegram_polling_worker
+        from app.telegram.sender import telegram_sender_worker
+
+        process_start_ts = time.time()
+        if config is None:
+            config = load_config()
+        init_logger_from_config(config)
+
+        log(f"script={Path(__file__).resolve()}")
+        log(f"executable={sys.executable}")
+        log(f"cwd={os.getcwd()}")
+        log(f"sys.version={sys.version}")
+        log(f"sys._base_executable={getattr(sys, '_base_executable', None)}")
+        log(f"platform={platform.platform()}")
+        base_exe = getattr(sys, "_base_executable", None)
+        launcher_suspect = False
+        if base_exe and os.path.abspath(base_exe) != os.path.abspath(sys.executable):
+            launcher_suspect = True
+        if "py.exe" in (sys.executable or "").lower():
+            launcher_suspect = True
+        if launcher_suspect:
+            log("[WARN] Posible launcher/shim detectado. Ver README (Windows) para diagnostico.")
+
+        env_qa_mode = os.getenv("QA_MODE") or "VACIO"
+        env_qa_mode_force = os.getenv("QA_MODE_FORCE") or "VACIO"
+        env_qa_allow = os.getenv("QA_ALLOW_REAL_ACTIONS") or "VACIO"
+        log(
+            f"ENV QA_MODE={env_qa_mode} QA_MODE_FORCE={env_qa_mode_force} "
+            f"QA_ALLOW_REAL_ACTIONS={env_qa_allow}"
+        )
+        qa_mode, qa_mode_source = qa_enabled(config)
+        import app.miner_monitor as _mm
+        _mm._QA_MODE = qa_mode
+        qa_notify = qa_notify_enabled(config)
+        qa_verbose = qa_verbose_enabled(config)
+        qa_allow_actions = qa_allow_real_actions(config)
+
+        startup_guard_seconds = int(config.get("startup_guard_seconds", 600))
+        log(
+            f"Startup safety guard activo por {startup_guard_seconds} segundos: "
+            "auto-reboot deshabilitado durante este período"
+        )
+        log(
+            f"qa_mode={str(qa_mode).lower()} source={qa_mode_source} "
+            f"qa_allow_real_actions={str(qa_allow_actions).lower()} "
+            f"qa_verbose={str(qa_verbose).lower()}"
+        )
+
+        miners = config.get("miners", [])
+        telegram_cfg = config.get("telegram", {})
+        bot_token = telegram_cfg.get("bot_token")
+        chat_id = telegram_cfg.get("chat_id")
+
+        if not bot_token or not chat_id:
+            log("ERROR: telegram.bot_token y telegram.chat_id son obligatorios en app/config.json.")
+            release_mutex()
+            sys.exit(1)
+
+        if not miners:
+            log("ERROR: Debe definir al menos un minero en app/config.json.")
+            release_mutex()
+            sys.exit(1)
+
+        valid_miners = []
+        for miner in miners:
+            name = miner.get("name", "sin-nombre")
+            host = miner.get("host", "")
+            port_raw = miner.get("port", 4028)
+            try:
+                port = int(port_raw)
+            except (TypeError, ValueError):
+                port = 0
+            if not host or port <= 0:
+                log(f"[WARN] Minero invalido, se omite: {name} ({host}:{port_raw})")
+                continue
+            valid_miner = dict(miner)
+            valid_miner["name"] = name
+            valid_miner["host"] = host
+            valid_miner["port"] = port
+            valid_miners.append(valid_miner)
+
+        if not valid_miners:
+            log("ERROR: No hay mineros validos para monitorear.")
+            release_mutex()
+            sys.exit(1)
+
+        event_store_enabled = bool(config.get("event_store_enabled", True))
+        event_store: Optional[EventStore] = None
+        if event_store_enabled:
+            event_store_path_raw = str(config.get("event_store_path", "data/miner_alerts.db"))
+            event_store_path = Path(event_store_path_raw).expanduser()
+            if not event_store_path.is_absolute():
+                event_store_path = Path(__file__).resolve().parent.parent.parent / event_store_path
+            event_store = EventStore(
+                event_store_path,
+                on_error=lambda message: log(f"[ERROR] {message}"),
+            )
+            log(
+                f"EVENT_STORE enabled=true path={event_store.path} "
+                f"available={str(event_store.available).lower()} schema={event_store.schema_version}"
+            )
+            if event_store.available:
+                deleted = event_store.prune(
+                    now_ts=process_start_ts,
+                    sample_retention_days=max(1, int(config.get("telemetry_retention_days", 90))),
+                    event_retention_days=max(1, int(config.get("event_retention_days", 365))),
+                    decision_retention_days=max(1, int(config.get("decision_retention_days", 180))),
+                )
+                log(
+                    f"EVENT_STORE retention samples_deleted={deleted['samples']} "
+                    f"events_deleted={deleted['events']} decisions_deleted={deleted['decisions']} "
+                    f"firmware_events_deleted={deleted['firmware_events']} "
+                    f"collector_runs_deleted={deleted['collector_runs']}"
+                )
+        else:
+            log("EVENT_STORE enabled=false")
+
+        if state_path is None:
+            state_path = Path(__file__).resolve().parent.parent / "state.json"
+        states, last_update_id = load_state(state_path)
+        last_update_id_ref = {"value": last_update_id}
+        last_update_lock = threading.Lock()
+        snapshot_ref: Dict[str, Optional[str]] = {"value": None}
+        snapshot_lock = threading.Lock()
+        state_lock = threading.RLock()
+        pending_reboots: Dict[str, dict] = {}
+        pending_lock = threading.Lock()
+
+        tg_queue: queue.Queue = queue.Queue(maxsize=200)
+        _mm._TELEGRAM_QUEUE = tg_queue
+        import app.telegram.sender as _ts
+        _ts._TELEGRAM_QUEUE = tg_queue
+
+        from app.core.pipeline import (
+            _ACTIVE_SCHEDULED_WINDOW,
+            _ELEVATOR_CONTINGENCY_STATES,
+            _GLOBAL_INTERVENTION_GOV,
+        )
+
+        state_manager = StateManager(
+            state_path,
+            state_lock,
+            flush_lock=_SAVE_STATE_LOCK,
+            get_globals_fn=lambda: vars(_mm),
+        )
+
+        monitor_ctx = build_monitor_context(
+            config=config,
+            state_path=state_path,
+            miners=valid_miners,
+            bot_token=bot_token,
+            chat_id=str(chat_id),
+            state_lock=state_lock,
+            telegram_queue=tg_queue,
+            state_manager=state_manager,
+            event_store=event_store,
+            qa_mode=qa_mode,
+            qa_allow_actions=qa_allow_actions,
+            qa_notify=qa_notify,
+            qa_verbose=qa_verbose,
+            hashcore_cfg=config.get("hashcore", {}),
+            governance=_GLOBAL_INTERVENTION_GOV,
+            elevator_contingency=_ELEVATOR_CONTINGENCY_STATES,
+            scheduled_window=_ACTIVE_SCHEDULED_WINDOW,
+        )
+
+        sender_thread = threading.Thread(
+            target=telegram_sender_worker,
+            args=(bot_token, tg_queue, qa_mode),
+            daemon=True,
+            name="TelegramSender",
+        )
+        sender_thread.start()
+
+        telegram_thread = threading.Thread(
+            target=telegram_polling_worker,
+            args=(
+                bot_token,
+                str(chat_id),
+                state_path,
+                states,
+                last_update_id_ref,
+                last_update_lock,
+                snapshot_ref,
+                snapshot_lock,
+                state_lock,
+                valid_miners,
+                config.get("hashcore", {}),
+                pending_reboots,
+                pending_lock,
+                config,
+                qa_mode,
+                qa_allow_actions,
+                event_store,
+            ),
+            daemon=True,
+            name="TelegramPolling",
+        )
+        telegram_thread.start()
+
+        acq_config, acq_warnings = AcquisitionConfig.from_mapping(config)
+        for warning in acq_warnings:
+            log(f"[WARN] {warning}")
+        acquirer: Optional[BoundedAcquirer] = None
+        acq_endpoints: tuple = ()
+        if acq_config.enabled:
+            acq_endpoints = tuple(
+                MinerEndpoint(
+                    key=f"{m['name']}|{m['host']}:{m['port']}",
+                    host=m["host"],
+                    port=m["port"],
+                )
+                for m in valid_miners
+            )
+            acquirer = BoundedAcquirer(
+                Api4028Transport(),
+                workers=acq_config.workers,
+                timeout_seconds=acq_config.timeout_seconds,
+            )
+            log(
+                f"ADAPTIVE_ACQUISITION acquirer_ready=true "
+                f"endpoints={len(acq_endpoints)} workers={acq_config.workers}"
+            )
+
+        gateway_heartbeat = None
+        if config.get("gateway_heartbeat_enabled", False):
+            try:
+                from app.network.gateway_heartbeat import GatewayHeartbeatWorker
+                gateway_heartbeat = GatewayHeartbeatWorker(
+                    host=str(config.get("gateway_host", "192.168.100.1")),
+                    port=int(config.get("gateway_port", 80)),
+                    interval_s=float(config.get("gateway_heartbeat_interval_s", 5.0)),
+                    connect_timeout_s=float(config.get("gateway_connect_timeout_ms", 50)) / 1000.0,
+                    fallback_port=int(config.get("gateway_fallback_port", 53)),
+                )
+                gateway_heartbeat.start()
+            except Exception as _gw_exc:
+                log(f"[WARN] GATEWAY_HEARTBEAT failed to start: {_gw_exc}")
+                gateway_heartbeat = None
+
+        watchdog_ipc_server = None
+        if config.get("watchdog_ipc_enabled", True):
+            try:
+                from app.ipc.watchdog_pipe import WatchdogIPCServer
+
+                def _get_ipc_status() -> tuple[int, float, float]:
+                    return (getattr(engine, "_tick_sequence", 0), process_start_ts, getattr(engine, "_last_tick_duration", 0.0))
+
+                _ipc_pipe_name = str(config.get("watchdog_ipc_pipe_name", r"\\.\pipe\MinerAlertsWatchdog"))
+                _ipc_fallback_port = int(config.get("watchdog_ipc_fallback_port", 4029))
+                _ipc_timeout_s = float(config.get("watchdog_ipc_timeout_ms", 100)) / 1000.0
+                _ipc_forensics_dir = (
+                    Path(config["log_file_path"]).parent
+                    if config.get("log_file_path")
+                    else Path("logs")
+                )
+                watchdog_ipc_server = WatchdogIPCServer(
+                    pipe_name=_ipc_pipe_name,
+                    fallback_port=_ipc_fallback_port,
+                    timeout_s=_ipc_timeout_s,
+                    get_status_callback=_get_ipc_status,
+                    forensics_dir=_ipc_forensics_dir,
+                )
+                watchdog_ipc_server.start()
+            except Exception as _ipc_exc:
+                log(f"[WARN] WATCHDOG_IPC failed to start: {_ipc_exc}")
+                watchdog_ipc_server = None
+
+        engine = cls(monitor_ctx)
+        engine.states = states
+        engine.last_update_id_ref = last_update_id_ref
+        engine.snapshot_ref = snapshot_ref
+        engine.pending_reboots = pending_reboots
+        engine.acquirer = acquirer
+        engine.acq_config = acq_config
+        engine.acq_endpoints = acq_endpoints
+        engine.gateway_heartbeat = gateway_heartbeat
+        engine.watchdog_ipc_server = watchdog_ipc_server
+        engine.process_start_ts = process_start_ts
+        engine.register_standard_hooks()
+        return engine
+
+    def run_forever(
+        self_or_cls,
+        context: Optional[MonitorContext] = None,
+        tick_callable: Optional[Callable[[MonitorContext, int, float], TickResult]] = None,
+        states: Optional[Dict[str, Any]] = None,
+        last_update_id_ref: Optional[Dict[str, Optional[int]]] = None,
     ) -> None:
-        """Crear un engine, registrar un tick hook, y ejecutar hasta interrupción."""
-        engine = cls(context)
-        engine.register_tick_hook(tick_callable)
-        engine.run(states, last_update_id_ref)
+        """Run the supervisory pipeline until interrupt or shutdown.
+
+        Supports both instance call (engine.run_forever()) and legacy classmethod call.
+        """
+        if isinstance(self_or_cls, CoreSupervisoryEngine):
+            st = getattr(self_or_cls, "states", states or {})
+            upd = getattr(self_or_cls, "last_update_id_ref", last_update_id_ref or {"value": None})
+            self_or_cls.run(st, upd)
+        else:
+            cls = self_or_cls
+            if context is None:
+                raise ValueError("context is required when calling CoreSupervisoryEngine.run_forever as classmethod")
+            engine = cls(context)
+            if tick_callable is not None:
+                engine.register_tick_hook(tick_callable)
+            engine.run(states or {}, last_update_id_ref or {"value": None})
 
 
 # ---------------------------------------------------------------------------
@@ -605,15 +973,15 @@ class ActuatorHook(SupervisoryHook):
             ]
         startup_guard_active = (now_ts - process_start_ts) < startup_guard_seconds
 
-        from app.miner_monitor import (
+        from app.core.reboot_safety import (
             classify_auto_reboot_signal,
             auto_reboot_signal_allows_evaluation,
             reset_sustained_low_if_signal_ineligible,
             reset_sustained_hashboard_if_ineligible,
             STATE_LOW,
             STATE_HASHBOARD,
+            INTERLOCK_FIRMWARE_TRANSITION,
         )
-        from app.core.reboot_safety import INTERLOCK_FIRMWARE_TRANSITION
 
         signal = classify_auto_reboot_signal(responded, rate_ths, threshold_ths)
 
@@ -756,3 +1124,10 @@ def _check_master(gov: Any, now_ts: float) -> tuple:  # type: ignore[type-arg]
         return should_allow_intervention(ACTION_REBOOT_L2, gov, now_ts)
     except Exception:
         return True, "error_fallback_allow"
+
+
+def __getattr__(name: str) -> Any:
+    if name in ("AcquisitionHook", "GovernanceHook", "PostTickHook", "PreTickHook"):
+        import app.core.pipeline as _p
+        return getattr(_p, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

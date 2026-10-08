@@ -146,3 +146,65 @@ def set_intervention_gov(gov: "InterventionGovernance") -> None:
     global _intervention_gov
     with _intervention_gov_lock:
         _intervention_gov = gov
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Additional Governance State Accessors (Spec 091)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_elevator_contingency_states: dict = {}
+_scheduled_window: Optional[Any] = None
+_facility_budget_state: Optional[Any] = None
+_autotune_watchdog_state: Optional[Any] = None
+
+
+def get_elevator_contingency_states() -> dict:
+    """Retorna el diccionario de estados de contingencia del elevador."""
+    with _STATE_LOCK:
+        return _elevator_contingency_states
+
+
+def set_elevator_contingency_states(val: dict) -> None:
+    """Establece los estados de contingencia del elevador."""
+    global _elevator_contingency_states
+    with _STATE_LOCK:
+        _elevator_contingency_states = val
+
+
+def get_scheduled_window() -> Optional[Any]:
+    """Retorna la ventana de mantenimiento programada activa."""
+    with _STATE_LOCK:
+        return _scheduled_window
+
+
+def set_scheduled_window(val: Optional[Any]) -> None:
+    """Establece la ventana de mantenimiento programada activa."""
+    global _scheduled_window
+    with _STATE_LOCK:
+        _scheduled_window = val
+
+
+def get_facility_budget_state() -> Optional[Any]:
+    """Retorna el estado de presupuesto de potencia de la facilidad."""
+    with _STATE_LOCK:
+        return _facility_budget_state
+
+
+def set_facility_budget_state(val: Optional[Any]) -> None:
+    """Establece el estado de presupuesto de potencia de la facilidad."""
+    global _facility_budget_state
+    with _STATE_LOCK:
+        _facility_budget_state = val
+
+
+def get_autotune_watchdog_state() -> Optional[Any]:
+    """Retorna el estado del watchdog de autotune."""
+    with _STATE_LOCK:
+        return _autotune_watchdog_state
+
+
+def set_autotune_watchdog_state(val: Optional[Any]) -> None:
+    """Establece el estado del watchdog de autotune."""
+    global _autotune_watchdog_state
+    with _STATE_LOCK:
+        _autotune_watchdog_state = val

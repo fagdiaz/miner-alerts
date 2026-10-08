@@ -1001,3 +1001,373 @@ def _handle_help_callback(
             reply_markup=new_markup,
             parse_mode="Markdown",
         )
+_COMMANDS = [
+    {
+        "name": "help",
+        "summary": "Muestra ayuda general o detallada.",
+        "usage": "/help  |  /help <comando>",
+        "detail": [
+            "Detalle: lista comandos y muestra ayuda por comando.",
+        ],
+        "examples": ["/help reboot"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "status",
+        "summary": "Snapshot actual de todos los mineros.",
+        "usage": "/status",
+        "detail": [
+            "Detalle: muestra hashrate y etiquetas actuales.",
+        ],
+        "examples": ["/status"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "info",
+        "summary": "Detalle resumido de mineros.",
+        "usage": "/info  |  /info all  |  /info <miner>",
+        "detail": [
+            "Detalle: info de no-OK o del minero indicado.",
+        ],
+        "examples": ["/info", "/info all", "/info 23"],
+        "notes": ["Algunos campos dependen del firmware."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "events",
+        "summary": "Historial reciente de eventos e incidentes.",
+        "usage": "/events  |  /events <miner>",
+        "detail": [
+            "Detalle: consulta eventos locales sin conectarse al minero.",
+        ],
+        "examples": ["/events", "/events 23"],
+        "notes": ["Usa /event <id> para abrir un evento."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "event",
+        "summary": "Detalle de un incidente registrado.",
+        "usage": "/event <id>",
+        "detail": [
+            "Detalle: muestra evidencia y clasificacion del evento indicado.",
+        ],
+        "examples": ["/event 42"],
+        "notes": ["Es de solo lectura."],
+        "danger_level": "safe",
+        "aliases": [],
+        "official_aliases": ["/e<ID>"],
+    },
+    {
+        "name": "why",
+        "summary": "Explica la ultima decision de auto-reboot.",
+        "usage": "/why  |  /why <miner>",
+        "detail": [
+            "Detalle: consulta evidencia local sin conectarse al minero.",
+        ],
+        "examples": ["/why", "/why 23"],
+        "notes": ["El voltaje de cadena no representa voltaje AC de entrada."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "health",
+        "summary": "Compara la telemetria con el baseline estable del minero.",
+        "usage": "/health  |  /health all  |  /health <miner>",
+        "detail": [
+            "Detalle: diagnostico historico read-only sin conectarse al minero.",
+        ],
+        "examples": ["/health", "/health 23"],
+        "notes": ["WATCH es evidencia para revisar; no ejecuta acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "quality",
+        "summary": "Analiza shares, errores y estado de cadenas por intervalo.",
+        "usage": "/quality  |  /quality all  |  /quality <miner>",
+        "detail": [
+            "Detalle: diagnostico historico read-only de calidad de minado.",
+        ],
+        "examples": ["/quality", "/quality 23"],
+        "notes": ["Una transicion/autotune se observa; no ejecuta acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "firmware",
+        "summary": "Muestra evidencia Vnish normalizada desde SQLite.",
+        "usage": "/firmware  |  /firmware all  |  /firmware <miner>",
+        "detail": [
+            "Detalle: consulta eventos de firmware recolectados sin conectarse al minero.",
+        ],
+        "examples": ["/firmware", "/firmware 23"],
+        "notes": ["Es de solo lectura y no ejecuta acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "diagnose",
+        "summary": "Correlaciona evidencia operativa local por minero.",
+        "usage": "/diagnose  |  /diagnose all  |  /diagnose <miner>",
+        "detail": [
+            "Detalle: combina senal, eventos, decisiones y Vnish desde SQLite.",
+        ],
+        "examples": ["/diagnose", "/diagnose 23"],
+        "notes": ["Es advisory, de solo lectura y no autoriza acciones."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "chart",
+        "summary": "Genera y envia grafico visual PNG de telemetria.",
+        "usage": "/chart  |  /chart <miner> [horas]  |  /chart fleet [horas]",
+        "detail": [
+            "Detalle: genera curvas de hashrate, umbral y temperaturas desde SQLite.",
+        ],
+        "examples": ["/chart", "/chart 23", "/chart fleet 24h"],
+        "notes": ["Es visual, de solo lectura y se renderiza 100% en memoria."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "fans",
+        "summary": "Monitorea RPM, PWM %, temperatura máxima y margen térmico.",
+        "usage": "/fans  |  /fans all  |  /fans <miner>",
+        "detail": [
+            "Detalle: supervisa salud de ventiladores, saturación de flujo y margen hacia el corte de 85°C.",
+        ],
+        "examples": ["/fans", "/fans 23"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["fan"],
+    },
+    {
+        "name": "chains",
+        "summary": "Salud granular y sensores por placa/hashboard.",
+        "usage": "/chains  |  /chains all  |  /chains <miner>",
+        "detail": [
+            "Detalle: diagnostico predictivo de silicio y bus de sensores I2C por cadena.",
+        ],
+        "examples": ["/chains", "/chains 24"],
+        "notes": ["Identifica placas con sensores en error o deficit de hashrate."],
+        "danger_level": "safe",
+        "aliases": ["chain", "placas"],
+    },
+    {
+        "name": "efficiency",
+        "summary": "Analiza el consumo y ratio de eficiencia en Joules por Terahash (J/TH).",
+        "usage": "/efficiency  |  /efficiency all  |  /efficiency <miner>",
+        "detail": [
+            "Detalle: calcula J/TH en tiempo real (Watts / TH/s) y detecta degradación eléctrica de cadenas.",
+        ],
+        "examples": ["/efficiency", "/efficiency 23", "/eff"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["eff"],
+    },
+    {
+        "name": "presets",
+        "summary": "Monitorea frecuencias (MHz), tensión (V) y estado de autotuning Vnish.",
+        "usage": "/presets  |  /presets all  |  /presets <miner>",
+        "detail": [
+            "Detalle: supervisa perfiles de consumo/frecuencia inferidos y estado de calibración dinámica del firmware.",
+        ],
+        "examples": ["/presets", "/presets 23", "/preset", "/profile"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["preset", "profile"],
+    },
+    {
+        "name": "governor",
+        "summary": "Controlador térmico de lazo cerrado para coolers Vnish.",
+        "usage": "/gov  |  /gov on  |  /gov off  |  /gov set <temp>",
+        "detail": [
+            "Detalle: supervisa y modula el % PWM para sostener temperatura objetivo estable evitando oscilaciones.",
+        ],
+        "examples": ["/gov", "/gov on", "/gov off", "/gov set 82.0"],
+        "notes": ["Soporta modo dry-run para operar con total seguridad."],
+        "danger_level": "safe",
+        "aliases": ["gov"],
+    },
+    {
+        "name": "balancer",
+        "summary": "Balanceador dinámico de potencia y presets para protección de elevadores.",
+        "usage": "/balancer  |  /balancer on  |  /balancer off  |  /balancer setmax <miner> <preset>",
+        "detail": [
+            "Detalle: optimiza presets Vnish contra reinicios por sensibilidad eléctrica y maximiza hashrate neto.",
+        ],
+        "examples": ["/balancer", "/balancer on", "/balancer 23", "/balancer setmax 23 2500W"],
+        "notes": ["Arranca en dry-run seguro por defecto."],
+        "danger_level": "safe",
+        "aliases": ["bal", "power"],
+    },
+    {
+        "name": "elevadores",
+        "summary": "Diagnóstico de carga eléctrica y sensibilidad de elevadores de tensión.",
+        "usage": "/elevadores",
+        "detail": [
+            "Detalle: correlaciona carga combinada (Watts), reinicios y caídas en cascada por elevador para encontrar la configuración óptima.",
+        ],
+        "examples": ["/elevadores", "/sensibilidad"],
+        "notes": ["Es analítico y de solo lectura."],
+        "danger_level": "safe",
+        "aliases": ["elevators", "sensibilidad", "elev"],
+    },
+    {
+        "name": "snooze",
+        "summary": "Silencia alertas y autorreinicios por mantenimiento.",
+        "usage": "/snooze <miner|all> [minutos]",
+        "detail": [
+            "Detalle: suspende temporalmente alertas y autorreinicios para tareas de mantenimiento.",
+        ],
+        "examples": ["/snooze 23 60", "/snooze all 30"],
+        "notes": ["Por defecto 60 minutos (máx 1440m/24h)."],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "unsnooze",
+        "summary": "Reactiva la supervision normal de un minero silenciado.",
+        "usage": "/unsnooze <miner|all>",
+        "detail": [
+            "Detalle: cancela el silenciamiento y reactiva alertas y autorreinicios inmediatamente.",
+        ],
+        "examples": ["/unsnooze 23", "/unsnooze all"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "snoozed",
+        "summary": "Lista los mineros actualmente silenciados y tiempo restante.",
+        "usage": "/snoozed",
+        "detail": [
+            "Detalle: muestra el estado de todos los mineros bajo mantenimiento.",
+        ],
+        "examples": ["/snoozed"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": [],
+    },
+    {
+        "name": "digest",
+        "summary": "Reporte ejecutivo 24h de salud, métricas y backups.",
+        "usage": "/digest  |  /summary",
+        "detail": [
+            "Detalle: genera el resumen consolidado de las últimas 24 horas (uptime, TH/s, J/TH, shares, eventos, backup).",
+        ],
+        "examples": ["/digest", "/summary"],
+        "notes": ["Es analítico, de solo lectura y se entrega instantáneamente."],
+        "danger_level": "safe",
+        "aliases": ["summary"],
+    },
+    {
+        "name": "selftest",
+        "summary": "Chequeo rapido de Telegram/Hashcore/mineros.",
+        "usage": "/selftest  |  /test",
+        "detail": [
+            "Detalle: valida conectividad y reporte basico.",
+        ],
+        "examples": ["/selftest"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": ["test"],
+    },
+    {
+        "name": "reboot",
+        "summary": "Solicita reboot manual (con confirmacion).",
+        "usage": "/reboot  |  /reboot <miner>",
+        "detail": [
+            "Detalle: genera un codigo y pide confirmacion.",
+        ],
+        "examples": ["/rb23", "/reboot 23"],
+        "notes": ["Siempre requiere confirmacion antes de ejecutar."],
+        "danger_level": "danger",
+        "aliases": [],
+        "official_aliases": ["/rb<ID>"],
+    },
+    {
+        "name": "reboot_no_ok",
+        "summary": "Prepara un reboot agrupado de mineros NO-OK.",
+        "usage": "/reboot_no_ok",
+        "detail": [
+            "Detalle: crea un preview acotado y un codigo; no ejecuta sin confirmacion.",
+        ],
+        "examples": ["/reboot_no_ok"],
+        "notes": ["Confirmar con el atajo /c<code> recibido en el preview."],
+        "danger_level": "danger",
+        "aliases": [],
+        "official_aliases": [],
+    },
+    {
+        "name": "restart",
+        "summary": "Solicita restart manual (con confirmacion).",
+        "usage": "/restart <miner>",
+        "detail": [
+            "Detalle: genera un codigo y pide confirmacion.",
+        ],
+        "examples": ["/restart 23", "/confirm restart 23 123456"],
+        "notes": [],
+        "danger_level": "danger",
+        "aliases": [],
+        "official_aliases": [],
+    },
+    {
+        "name": "confirm",
+        "summary": "Confirma una accion pendiente.",
+        "usage": "/confirm reboot <miner> <code>  |  /confirm restart <miner> <code>",
+        "detail": [
+            "Detalle: ejecuta la accion pendiente con codigo.",
+        ],
+        "examples": ["/confirm reboot 23 123456"],
+        "notes": ["El atajo /c<code> confirma un preview de /reboot_no_ok."],
+        "danger_level": "danger",
+        "aliases": [],
+        "official_aliases": ["/c<code>"],
+    },
+    {
+        "name": "menu",
+        "summary": "Command Center interactivo con botones.",
+        "usage": "/menu  |  /start  |  /panel",
+        "detail": [
+            "Detalle: abre el panel de control táctil con métricas agregadas y accesos rápidos.",
+        ],
+        "examples": ["/menu", "/start"],
+        "notes": [],
+        "danger_level": "safe",
+        "aliases": ["start", "panel"],
+    },
+    {
+        "name": "silent",
+        "summary": "Modo silencio para coolers (30-50% PWM).",
+        "usage": "/silent <duración|off>",
+        "detail": [
+            "Detalle: limita ventiladores al 30%-50% con guarda térmica de reversión ante >80°C.",
+        ],
+        "examples": ["/silent 2h", "/silent off"],
+        "notes": ["Duraciones: 30m, 1h, 2h, 4h, 6h, indef, off."],
+        "danger_level": "safe",
+        "aliases": ["silencio", "modo_silencio"],
+    },
+]
+
+
+
+
+def _help_usage_for(cmd_name: str) -> Optional[str]:
+    needle = (cmd_name or '').strip().lstrip('/').lower()
+    for cmd in _COMMANDS:
+        name = str(cmd.get('name', '')).lower()
+        aliases = [a.lower() for a in cmd.get('aliases', [])]
+        if needle == name or needle in aliases:
+            return str(cmd.get('usage', '')).strip()
+    return None
+
+render_help_index = render_legacy_help_index
+render_help_detail = render_legacy_help_detail

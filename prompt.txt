@@ -1,47 +1,35 @@
 # ==============================================================================
-# SECUENCIA DE DESACOPLAMIENTO DEL MONOLITO: SPEC 091 (CORE DAEMON HOOKIFICATION & V6.0 CLOSEOUT)
-# FECHA: 2026-10-07 20:50 UTC-3
+# ESTADO DEL PROYECTO: SPEC 091 COMPLETADA — HORIZON V6.0 OFICIALMENTE PUBLICADO
+# FECHA: 2026-10-07 22:45 UTC-3
 # RAMA: codex/022-adaptive-acquisition
 # ESTADO DE SUITE: 1525 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
+# PREFLIGHT GATES: 8/8 PASS
 # SERVICIO NSSM: MinerAlerts en ejecución (SERVICE_RUNNING)
 # MODELO EJECUTOR RECOMENDADO: Gemini 3.8 Flash High (Primary Engine según AGENTS.md)
 # ==============================================================================
 
 ESTADO DE PRODUCCIÓN Y FLOTA:
 --------------------------------------------------------------------------------
-• Toda la flota operando nominalmente a 2700W (4x 2700W, ~400 TH/s, 10.6 kW).
-• M26 estabilizado y modulando ventiladores en 92% PWM (5580 RPM) a 77-80°C.
-• Spec 087 (Callbacks de Telegram): -1.508 LOC completada y certificada.
-• Spec 088 (Ciclos de Gobernanza): -388 LOC completada y certificada.
-• Spec 089 (Telemetría de Cadenas & Sockets ASIC): -620 LOC completada y certificada (-2.430 LOC acumuladas).
-• Spec 090 (Modernización de Tests Invariantes): 100% completada y certificada (1525 tests PASS).
-• Desbloqueo arquitectónico de `main()` conseguido (0 tests acoplados a getsource(main)).
-• Preflight de estabilización: 8/8 gates PASS (0 fallos).
+• Flota completa operando nominalmente a 2700W (4x 2700W, ~400 TH/s, 10.6 kW).
+• M26 y flota estabilizados con Fan Governor modulando en lazo cerrado térmico.
+• Servicio NSSM MinerAlerts en producción continua bajo supervisión declarativa V6.0.
+• 0 deadlocks en toda la flota, logs limpios en `logs/out.log` sin excepciones.
 
-OBJETIVO DE LA PRÓXIMA SESIÓN: SPEC 091 (CORE DAEMON HOOKIFICATION & V6.0 CLOSEOUT)
+HITOS ARQUITECTÓNICOS ALCANZADOS (PROGRAMA DE DESACOPLAMIENTO V6.0 100% CERRADO):
 --------------------------------------------------------------------------------
-Fase final del Programa Maestro de Modularización Arquitectónica
-(docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md).
-Conectar las etapas de supervisión procedurales de `main()` en `app/miner_monitor.py`
-a los hooks declarativos ya implementados en `app/core/engine.py` (PreTick, Acquisition,
-Detection, Governance, Actuator, Persistence, PostTick).
-Reducir `main()` a un runner minimalista de <= 100 líneas, llevando `miner_monitor.py`
-a <= 450 LOC totales (reducción de -4.800 LOC, de 6.644 a <450 LOC).
-Certificar el cierre definitivo del monolito y lanzamiento de V6.0.
+• Spec 087 (Telegram Callbacks): -1.508 LOC hacia `app/telegram/callbacks.py`, etc.
+• Spec 088 (Gobernanza de Planta): -388 LOC hacia `app/governance/`.
+• Spec 089 (Telemetría de Cadenas): -620 LOC hacia `app/hardware/chain_collector.py`.
+• Spec 090 (Modernización Invariantes de Test): Eliminado acoplamiento a getsource(main).
+• Spec 091 (Core Daemon Hookification & V6.0 Closeout):
+  - Procedural loop reemplazado por pipeline declarativo de 7 etapas en `app/core/pipeline.py`.
+  - Inicialización encapsulada en `CoreSupervisoryEngine.initialize()`.
+  - Monolito reducido de 6.646 a 324 LOC (-6.322 LOC netas; -8.752 LOC acumuladas).
+  - Shims de re-exportación tipados preservando 100% compatibilidad con tests.
+  - Preflight 8/8 gates PASS (1525 tests PASS, 75 subtests PASS).
 
-ARCHIVOS DE REFERENCIA:
-- Documento maestro: `docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`
-- Próxima feature: `specs/091-core-daemon-hookification/spec.md`
-- Plan de implementación: `specs/091-core-daemon-hookification/plan.md`
-- Tareas: `specs/091-core-daemon-hookification/tasks.md`
-- Arquitectura de Hooks: `app/core/engine.py`
-- Historial de cambios: `docs/audit/DEVELOPMENT_LOG.md`
-- Roadmap: `docs/speckit/ROADMAP.md`
-
-INSTRUCCIÓN DE ARRANQUE PARA LA PRÓXIMA SESIÓN:
+ESTADO OPERATIVO POST-V6.0:
 --------------------------------------------------------------------------------
-1. Actualizar `.specify/feature.json` a `specs/091-core-daemon-hookification`.
-2. Leer `specs/091-core-daemon-hookification/tasks.md` y `plan.md`.
-3. Ejecutar la transformación modular del loop principal conectando con `app/core/engine.py`.
-4. Validar con `py_compile`, `pytest -q` (>= 1525 tests PASS), `preflight_stabilize.ps1` (8/8 gates).
-5. Reiniciar NSSM service MinerAlerts, registrar en docs/audit/DEVELOPMENT_LOG.md y cerrar con `speckit-stabilize`.
+El sistema opera en producción bajo la nueva arquitectura desacoplada y modular.
+Cualquier futura intervención o mantenimiento debe adherirse al principio de máxima
+estabilidad y reglas de AGENTS.md.

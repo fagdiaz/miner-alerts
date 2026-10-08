@@ -5,6 +5,15 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
 
+STATE_OK = "OK"
+STATE_LOW = "LOW"
+STATE_OFFLINE = "OFFLINE"
+STATE_HASHBOARD = "HASHBOARD"
+
+AUTO_REBOOT_SIGNAL_ELIGIBLE = "eligible"
+AUTO_REBOOT_SIGNAL_INVALID = "invalid_signal"
+AUTO_REBOOT_SIGNAL_NOT_LOW = "not_low"
+
 INTERLOCK_HIGH_TEMPERATURE = "high_temperature"
 INTERLOCK_FIRMWARE_TRANSITION = "firmware_transition"
 INTERLOCK_FLEET_INCIDENT = "fleet_incident"
@@ -155,3 +164,86 @@ def evaluate_auto_reboot_interlocks(
         fleet_snapshot_age_seconds=snapshot_age,
         chains_transitioning_count=current_transition_count,
     )
+
+
+def classify_auto_reboot_signal(
+    responded: bool,
+    rate_ths: Optional[float],
+    threshold_ths: float,
+) -> str:
+    """Classify miner telemetry response into an auto-reboot signal category."""
+    if not responded or rate_ths is None:
+        return AUTO_REBOOT_SIGNAL_INVALID
+    try:
+        numeric_rate = float(rate_ths)
+    except (TypeError, ValueError):
+        return AUTO_REBOOT_SIGNAL_INVALID
+    if not math.isfinite(numeric_rate):
+        return AUTO_REBOOT_SIGNAL_INVALID
+    if numeric_rate >= float(threshold_ths):
+        return AUTO_REBOOT_SIGNAL_NOT_LOW
+    return AUTO_REBOOT_SIGNAL_ELIGIBLE
+
+
+def auto_reboot_signal_allows_evaluation(
+    new_state: str,
+    low_since_ts: Optional[float],
+    signal_classification: str,
+    hashboard_since_ts: Optional[float] = None,
+    active_boards: Optional[int] = None,
+    expected_boards: int = 3,
+    allow_partial_hashboard: bool = False,
+    hashboard_reboot_enabled: bool = True,
+) -> bool:
+    """Evaluate whether the given signal meets requirements for reboot evaluation."""
+    if new_state == STATE_LOW:
+        return (
+            low_since_ts is not None
+            and signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE
+        )
+    if new_state == STATE_HASHBOARD and hashboard_reboot_enabled:
+        if hashboard_since_ts is None:
+            return False
+        if signal_classification == AUTO_REBOOT_SIGNAL_INVALID:
+            return False
+        if active_boards is not None:
+            if active_boards == 0:
+                return True
+            elif active_boards < expected_boards:
+                return bool(allow_partial_hashboard)
+            else:
+                return False
+        return signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE
+    return False
+
+
+def reset_sustained_low_if_signal_ineligible(
+    state: Any,
+    signal_classification: str,
+) -> bool:
+    """Reset low_since_ts if the signal classification is no longer eligible."""
+    if signal_classification == AUTO_REBOOT_SIGNAL_ELIGIBLE:
+        return False
+    state.low_since_ts = None
+    return True
+
+
+def reset_sustained_hashboard_if_ineligible(
+    state: Any,
+    signal_classification: str,
+    active_boards: Optional[int],
+    expected_boards: int = 3,
+    allow_partial_hashboard: bool = False,
+) -> bool:
+    """Reset hashboard_since_ts if the signal classification or board count is ineligible."""
+    if signal_classification == AUTO_REBOOT_SIGNAL_INVALID:
+        state.hashboard_since_ts = None
+        return True
+    if active_boards is not None:
+        if active_boards >= expected_boards:
+            state.hashboard_since_ts = None
+            return True
+        if active_boards > 0 and not allow_partial_hashboard:
+            state.hashboard_since_ts = None
+            return True
+    return False

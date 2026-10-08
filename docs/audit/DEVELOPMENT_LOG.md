@@ -3,6 +3,32 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-07] - Spec 091: Pipeline Declarativo de Hooks y Disolución Definitiva del Monolito (Horizon V6.0)
+
+* **Contexto**:
+  - Motivación: Quinta y última fase del Programa Maestro de Desacoplamiento del Monolito (`docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md`). Reducción estructural definitiva de `app/miner_monitor.py` por debajo de 450 LOC mediante la arquitectura declarativa de hooks por etapas.
+  - Objetivo: Disolver el monolito procedural transformando `miner_monitor.py` en un ejecutor ultraliviano (324 LOC), encapsulando la inicialización en `CoreSupervisoryEngine.initialize()` y la ejecución en `engine.run_forever()` con 7 etapas de hook formalizadas (`PRE_TICK`, `ACQUISITION`, `DETECTION`, `GOVERNANCE`, `ACTUATOR`, `PERSISTENCE`, `POST_TICK`), garantizando compatibilidad retroactiva estricta con 1525 tests y cero impacto en planta.
+  - Baseline previo: 1525 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/core/pipeline.py`:
+     - Implementación del pipeline declarativo de 7 etapas de supervisión con soporte para `SupervisoryHook`, contención defensiva de fallos y garantización de la etapa `PERSISTENCE`.
+  2. `app/core/engine.py`:
+     - Implementación de `CoreSupervisoryEngine.initialize()` encapsulando arranque de servicios, configuración, adquisición paralela, hilos de Telegram y base de datos SQLite.
+     - Ciclo continuo `engine.run_forever()` desacoplado del archivo principal.
+  3. `app/core/state_manager.py` y `app/governance/_orchestrator_state.py`:
+     - Sincronización thread-safe de contingencias de elevadores, mantenimiento programado y watchdog de autotune.
+  4. `app/miner_monitor.py`:
+     - Reducción masiva de 6.646 LOC a **324 LOC** (-6.322 LOC netas; -8.752 LOC acumuladas en el programa de desacoplamiento).
+     - Conservación íntegra de shims de re-exportación tipados para el 100% de símbolos públicos y contratos de prueba.
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Sintaxis limpia verificada en `app/miner_monitor.py`, `app/core/engine.py`, `app/core/pipeline.py`, `app/core/config.py`, `app/core/models.py`, `app/core/system.py`, `app/telegram/sender.py`.
+  - Pruebas globales: `pytest -q`: 1525 passed, 75 subtests passed en 42.81s (0 fallos, 0 errores).
+  - Preflight Stabilization Gate: 8/8 gates PASS (`git-diff`, `secrets`, `py_compile`, `config`, `pytest`, `windows-service`, `fleet`, `speckit-dod`).
+  - Verificación en servicio real: NSSM `MinerAlerts` en ejecución continua (`SERVICE_RUNNING`, ~400 TH/s nominal, ticks de supervisión fluidos y sin excepciones).
+  - Hito alcanzado: Culminación definitiva del monolito y publicación de Horizon V6.0.
+
 ## [2026-10-07] - Spec 090: Modernización de Contratos de Test Invariantes (Desbloqueo de main())
 
 * **Contexto**:

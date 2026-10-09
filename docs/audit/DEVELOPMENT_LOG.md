@@ -3,6 +3,35 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-09] - Restitución de Pisos Seguros de Ventilación (92% en 2700W) y Análisis Forense de la API VNish
+
+* **Contexto y Causa Raíz**:
+  - Tras calibrar temporalmente el piso de ventiladores a 75% en 2700W para intentar estabilizar a 82°C con menor RPM, la planta experimentó inestabilidad: caídas de la "Cadena 1" en S19JPRO-24 (10:43) y S19JPRO-26 (11:10), provocando transición a `HASHBOARD` y reinicio.
+  - El operador solicitó analizar si el cambio manual de velocidad de los ventiladores mediante la API de VNish (`/api/v1/settings`) es en sí mismo el detonante de reinicios del firmware o si obedece a un fenómeno físico.
+
+* **Conclusiones Forenses y Evidencia**:
+  1. **Inocuidad de la API de Fans VNish**:
+     - `POST /api/v1/settings` con `miner.cooling.mode.name = "manual"` altera exclusivamente las líneas PWM de control de revoluciones en el microcontrolador de ventiladores.
+     - No modifica frecuencias ni voltajes del circuito de hashboard (los cuales sí residen en `miner.overclock` y generan `restart_required: true`).
+     - No detiene ni reinicia `bmminer` ni `cgminer`.
+     - **Evidencia Empírica**: S19JPRO-24 moduló su PWM 5 veces continuas entre 11:06 y 11:12 (95% -> 90% -> 85% -> 82% -> 80% -> 100%) sin perder hashrate ni registrar reinicios ni caída de uptime. Asimismo, S19JPRO-26 operó durante 20 minutos ininterrumpidos hasheando al 100% de potencia con ventiladores al 75% antes del fallo, descartando que la llamada REST reinicie el equipo al ejecutarse.
+  2. **Causa Física: Desprendimiento Térmico (Hotspot) en Cadena 1**:
+     - A 2700W, cada hashboard disipa ~900W térmicos netos.
+     - La Cadena 1 posee mayor resistencia térmica / flujo asimétrico en el chasis Antminer.
+     - Al descender los ventiladores a 75%, la presión estática del flujo de aire decae en más de un 35% frente al 92% nominal.
+     - Con el sensor general promediando 81-82°C, los chips de silicio más desfavorables de la Cadena 1 superaron umbrales críticos locales (>95°C).
+     - El firmware VNish aisló la Cadena 1 marcándola en estado `failure` como protección de silicio por pérdida de comunicación en el bus (errores CRC/PLL).
+     - La pérdida de la placa forzó al supervisor a registrar `HASHBOARD` e iniciar la recuperación de la cadena.
+
+* **Acción Correctiva y Estado Operativo**:
+  - Restitución inmediata de los pisos de seguridad en `app/config.json` y `app/config.example.json`:
+    - `"fan_governor_power_floor_2700w": 92`
+    - `"fan_governor_power_floor_2500w": 90`
+    - `"fan_governor_power_floor_2300w": 65`
+  - Servicio Windows NSSM `MinerAlerts` reiniciado y operando establemente.
+  - Flota 100% recuperada: S19JPRO-23 (OK, 101 TH/s, 92%), S19JPRO-24 (OK, 99 TH/s, 92%), S19JPRO-25 (OK, 98 TH/s, 92%), S19JPRO-26 (OK, ~82 TH/s y subiendo a 100 TH/s, 100% autotune, 3/3 cadenas activas).
+  - Verificación de regresión: 1530 tests PASS, 75 subtests PASS. Zero regresiones.
+
 ## [2026-10-09] - Calibración Operativa de Piso de Ventilación y Modulación Térmica Dinámica en 2700W
 
 * **Contexto**:

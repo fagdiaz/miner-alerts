@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (91 de 91 especificaciones completadas y evidenciadas — **1529 tests PASS, 75 subtests PASS** — Spec 091 Disolución Definitiva del Monolito COMPLETADA — **RELEASE MAYOR V6.0**).
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (91 de 91 especificaciones completadas y evidenciadas — **1530 tests PASS, 75 subtests PASS** — Spec 091 Disolución Definitiva del Monolito COMPLETADA — **RELEASE MAYOR V6.0**).
 - **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico.
 - **Programa Maestro de Desacoplamiento del Monolito**: **100% COMPLETADO** (Fases 1 a 5: `Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`, `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`). Monolito disuelto definitivamente: `miner_monitor.py` reducido a 324 LOC.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
@@ -1165,6 +1165,7 @@ Estas tareas no requieren specs nuevas pero se monitorean activamente en producc
 | Elevador 2 a 5400W (M25+M26 a 2700W) | Operación nominal a ~5397W total (~2698W por equipo). 100% estable | Eventos `unexpected_restart` o caídas de fase |
 | Estado de Deadlocks y Fans | **0 de 4 mineros en deadlock** (`is_deadlocked=0`). Modulación activa en lazo cerrado (M23 a 96% PWM en `HOLD_DWELL`, chips 80-81°C) | Activación de `RECOVERY_MAX_COOLING` $>300$s |
 | Temperaturas y Silicio | M23: 80°C, M24: 81°C, M25: 82°C, M26: 81°C. 126 chips x 3 placas en toda la flota, 0 HW errors | Temp máx sostenida $>84$°C por $>10$ min |
-| Suite de tests | **1511 passed, 75 subtests passed** (~42s de latencia) | $>90$s $\to$ split o paralelización de suite |
+| Suite de tests | **1530 passed, 75 subtests passed** (~37s de latencia) | $>90$s $\to$ split o paralelización de suite |
+| Gate de Gobernanza en ActuatorHook | `InterventionGovernance.master_enabled=False` no es evaluado por el gate de auto-reboot en `ActuatorHook` (bloquea solo el gate de qa_mode). | Evaluación de políticas de parada total $\to$ integrar `master_enabled` en `evaluate_auto_reboot_policy` |
 
 ---

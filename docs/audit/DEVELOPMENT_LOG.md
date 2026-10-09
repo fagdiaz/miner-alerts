@@ -3,6 +3,26 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-09] - Auditoría Exhaustiva de Skills y Purga de Módulos Residuales (.NET / React)
+
+* **Contexto y Motivación**:
+  - Previo al cierre de etapa del proyecto, el operador solicitó una auditoría profunda de todas las skills configuradas en el entorno.
+  - Se auditaron 21 skills totales: 2 builtin de Antigravity y 19 en `.agents/skills/`.
+
+* **Hallazgos y Acciones**:
+  1. **Purga de 3 Skills Huérfanas de Proyecto Externo**:
+     - Se detectaron 3 skills copiadas accidentalmente de un proyecto web/backend ajeno (`OneITB23`):
+       - `speckit-db-perf`: dependiente de C#, Entity Framework Core, HotChocolate GraphQL y `OneItbContext`.
+       - `speckit-state-sync`: dependiente de React, Apollo Client y hook `useForm` de un frontend ajeno.
+       - `speckit-error-boundary`: dependiente de React ErrorBoundary, C# GraphQLException y Firebase.
+     - Accion: Eliminadas permanentemente de `.agents/skills/`. Ningún archivo de producción o test de Miner Alerts se vio alterado. Se redujo el consumo de tokens en prompts del sistema y se eliminó el riesgo de alucinación de patrones de React/GraphQL en este daemon Python/SQLite.
+  2. **Verificación de Salud de Scripts PowerShell**:
+     - Se auditó la sintaxis mediante AST Parser sobre los 12 scripts `.ps1` de las skills y SpecKit. Todos (12/12) resultaron 100% válidos.
+  3. **Inventario Consolidado**:
+     - Quedan exactamente 16 skills en el proyecto: 9 SpecKit Core, 5 SpecKit Git extensions y 2 skills especializadas de calidad y releases de Miner Alerts (`speckit-qa` y `speckit-stabilize`).
+
+
+
 ## [2026-10-09] - Restitución de Pisos Seguros de Ventilación (92% en 2700W) y Análisis Forense de la API VNish
 
 * **Contexto y Causa Raíz**:

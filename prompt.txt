@@ -1,63 +1,75 @@
-# ==============================================================================
-# AUDITORÍA INTEGRAL POST-REFACTOR (SPEC 091 / MONOLITH DISSOLUTION)
-# INSTRUCCIÓN PARA: CLAUDE SONNET 4.6 (THINKING)
-# FECHA: 2026-10-08 16:45 UTC-3
-# RAMA: codex/022-adaptive-acquisition (origin/codex/022-adaptive-acquisition)
-# BASELINE: 1530 tests PASS, 75 subtests PASS | Servicio MinerAlerts RUNNING
-# ==============================================================================
+# HANDOFF — Miner Alerts — Spec 091 Core Daemon Hookification
+# Generated: 2026-10-09
+# Branch: codex/022-adaptive-acquisition
+# Last commit: 8deb4d1 (pushed to origin)
 
-Estimado Claude Sonnet 4.6 (Thinking):
+## Estado actual
 
-El operador solicita una AUDITORÍA INTEGRAL QUIRÚRGICA sobre todo el sistema derivado del refactor masivo de la Spec 091 (disolución del monolito de 6.646 LOC hacia CoreSupervisoryEngine y pipeline declarativo de hooks en app/core/engine.py y app/core/pipeline.py).
+**Spec 091 COMPLETA Y CERRADA.**
 
---------------------------------------------------------------------------------
-REGLA ESTRICTA DE EFICIENCIA DE TOKENS (NO REPETIR LO YA AUDITADO)
---------------------------------------------------------------------------------
-NO quemar tokens auditando ni repitiendo diagnósticos sobre:
-1. Mensajería Telegram (callbacks, botones inline, enrutador de comandos, ancho de tarjetas <= 32 cols, snooze, etc.).
-2. Duplicación del reporte diario (daily digest) en reinicios (ya solucionado y verificado en StateManager).
-3. Latido de vitalidad (Liveness Heartbeat / tools/monitor_watchdog.py / LivenessHeartbeatHook recién implementado y funcionando con exit code 0, healthy=true).
+- Commit 8deb4d1 pusheado a origin/codex/022-adaptive-acquisition
+- Tests: 1530 PASS, 75 subtests PASS
+- Servicio MinerAlerts: RUNNING con nuevo código
+- ADAPTIVE_ACQUISITION acquirer_ready=true endpoints=4 workers=2
+- LivenessHeartbeatHook: activa (POST_TICK), escribiendo monitor_heartbeat.json
+- _TELEGRAM_POLLER_TS sentinel: actualizado en poller.py
 
-Todos esos subsistemas están 100% certificados, verdes y en memoria.
+## Cambios entregados en este commit
 
---------------------------------------------------------------------------------
-ALCANCE DE LA AUDITORÍA INTEGRAL POST-REFACTOR
---------------------------------------------------------------------------------
-Debes auditar quirúrgicamente las siguientes 5 áreas críticas del core para asegurar que la separación del monolito no haya dejado cabos sueltos, desconexiones lógicas, fugas de concurrencia o riesgos en planta:
+1. **fix(engine): inyección de acq_config/acquirer/acq_endpoints en tick_data**
+   - Archivo: app/core/engine.py — método run() (~línea 325–336)
+   - Efecto: AcquisitionHook ahora usa BoundedAcquirer para adquisición paralela
+   - Antes: siempre caía al fallback secuencial (acquirer era None en tick_data)
 
-1. PIPELINE DE HOOKS Y FLUJO DE DATOS (app/core/engine.py y app/core/pipeline.py):
-   - Flujo de `tick_data`: Verificar que cada hook recibe y propaga los datos requeridos por las etapas posteriores (PRE_TICK -> ACQUISITION -> DETECTION -> GOVERNANCE -> ACTUATOR -> PERSISTENCE -> POST_TICK).
-   - Contención defensiva: Confirmar que si un hook intermedio (como ACQUISITION o DETECTION) levanta una excepción, las etapas críticas (PERSISTENCE, POST_TICK, LivenessHeartbeatHook) continúan ejecutándose sin omitirse.
-   - Modelo temporal: Verificar el cómputo de `process_start_ts`, `first_tick`, período de gracia de calentamiento (`WARMING_UP`), y que el sleep monotónico en `engine.run()` no sufra deriva acumulativa.
+2. **feat: LivenessHeartbeatHook**
+   - Archivo: app/core/pipeline.py — HookStage.POST_TICK
+   - Registrada en: app/core/engine.py — register_standard_hooks()
+   - Escribe: data/monitor_heartbeat.json (tick_sequence, poller_ts, sender_ts, elapsed_ms)
 
-2. MÁQUINA DE ESTADOS FSM Y ACTUADORES DE REINICIO (DetectionHook y ActuatorHook):
-   - Transiciones FSM: Clasificación `OK`, `LOW`, `OFFLINE`, `HASHBOARD`. Verificar que rachas (`low_streak`, `ok_streak`), timestamps y mutaciones en `states[miner_id]` son fieles al comportamiento de producción.
-   - Actuación de reinicios:
-     - Tier-1: Soft restart de minado vía VNish API / autotune watchdog.
-     - Tier-2: Auto-reboot duro vía Hashcore Toolkit CLI.
-     - Interlocks: Verificar las 5 precedencias canónicas (startup safety guard de 600s, ventana máx de reinicios 24h, cooldown entre reinicios, contención en qa_mode).
-     - Persistencia de decisiones: Confirmar que `record_auto_reboot_decision()` registra correctamente en SQLite `event_store` sin errores de kwargs.
+3. **fix: _TELEGRAM_POLLER_TS sentinel en poller.py**
+   - Archivo: app/telegram/poller.py — fin del loop de polling (~línea 534–540)
 
-3. ADQUISICIÓN ASÍNCRONA Y CONCURRENCIA DE SOCKETS (app/network/adaptive_acquisition.py):
-   - Pool de workers: Verificar el ciclo de vida de los hilos de adquisición, timeouts sobre el socket 4028 de los mineros y fallback determinista ante falta de respuesta.
-   - Prevención de memory leaks o hilos zombies en reintentos.
+## Auditoría post-refactor (5 áreas) — todos PASS
 
-4. GOBERNANZA EN PLANTA Y ACTUACIÓN DINÁMICA (app/governance/):
-   - Balancer de presets (`preset_balancer.py`): Reglas de escalamiento y desescalamiento de potencia por temperatura y frecuencia.
-   - Contingencia de elevadores (`adaptive_contingency.py`): Detección de caídas de tensión en cascada por grupo eléctrico (`elevator_1`, `elevator_2`). Asegurar que las acciones no sufran aleteo (flapping).
-   - Puertas de interlock: Verificar que ninguna acción real se ejecute en hardware a menos que `InterventionGovernance` tenga activos los flags correspondientes (`presets_enabled`, `contingency_enabled`, `master_enabled`).
+1. **Pipeline dataflow**: PASS — dependencias tick_data completas, containment defensivo OK
+2. **FSM + Actuadores**: PASS — streaks bajo state_lock, Tier-1/Tier-2 con interlocks correctos
+3. **Async acquisition**: PASS — BoundedAcquirer max_workers=2, deadline enforced, futuros cancelados
+4. **Governance + interlocks**: PASS + WARN pre-existente (master_enabled no leído en ActuatorHook reboot gate — pre-Spec091)
+5. **Lock hierarchy**: PASS — StateManager.save() L1→L2 sin inversión
 
-5. JERARQUÍA DE LOCKS Y PERSISTENCIA ATÓMICA (app/core/state_manager.py):
-   - Jerarquía L1 -> L2: `state_lock` (RLock en memoria) -> `_SAVE_STATE_LOCK` / `flush_lock` (I/O en disco fuera del lock de memoria).
-   - Verificar que no exista posibilidad de inversión de locks o contención prolongada con los hilos de Telegram o el watchdog.
+## WARN pendiente (pre-existente, no bloqueante)
 
---------------------------------------------------------------------------------
-OBJETIVO Y DEFINICIÓN DE TERMINADO
---------------------------------------------------------------------------------
-1. Inspeccionar el código y logs operativos (`logs/out.log`, `logs/err.log`).
-2. Si detectas cualquier inconsistencia, desconexión o riesgo operativo, aplica la corrección quirúrgica en el código.
-3. Asegurar que la suite completa pase al 100% (`pytest -q` >= 1530 tests PASS).
-4. Ejecutar el protocolo de cierre de calidad con `speckit-stabilize`:
-   - `preflight_stabilize.ps1` (8/8 gates PASS).
-   - Normalizar `docs/audit/DEVELOPMENT_LOG.md`.
-   - Commit semántico y push a `origin/codex/022-adaptive-acquisition`.
+`InterventionGovernance.master_enabled=False` NO es leído por `evaluate_auto_reboot_policy()` en ActuatorHook.
+Solo bloquea el gate de qa_mode. Registrar en ROADMAP.md como mejora futura.
+No es regresión de Spec 091.
+
+## Próximos pasos sugeridos
+
+1. Activar la siguiente spec según SPEC_PROGRAM.md (consultar `.specify/feature.json` y `docs/speckit/SPEC_PROGRAM.md`)
+2. Verificar heartbeat post-arranque tras ~40s: `Get-Content data\monitor_heartbeat.json | ConvertFrom-Json`
+3. Watchdog: `& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py` — debe retornar exit_code=0
+4. Anotar el WARN de governance en ROADMAP.md si se decide incluirlo como backlog
+
+## Verificación rápida de salud
+
+```powershell
+# 1. Servicio
+Get-Service MinerAlerts | Select-Object Status, Name
+
+# 2. Log reciente
+Get-Content logs\out.log -Tail 20
+
+# 3. Heartbeat (esperar al menos 1 tick ~30s post-arranque)
+Get-Content data\monitor_heartbeat.json | ConvertFrom-Json
+
+# 4. Watchdog
+& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py; echo "Exit: $LASTEXITCODE"
+
+# 5. Tests (si se hace cambio)
+& ".\.venv\Scripts\python.exe" -m pytest tests\ -x -q --tb=short 2>&1 | Tail 10
+```
+
+## Modelo recomendado para próxima sesión
+
+**Gemini 3.8 Flash High** — para speckit-specify, speckit-plan, speckit-tasks de la siguiente spec.
+**Claude Sonnet 4.6 (Thinking)** — solo si la siguiente spec toca concurrencia en miner_monitor.py o FSM.

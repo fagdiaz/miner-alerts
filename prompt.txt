@@ -1,83 +1,75 @@
-# HANDOFF — Miner Alerts — Spec 091 Core Daemon Hookification
-# Generated: 2026-10-09
-# Branch: codex/022-adaptive-acquisition
-# Last commit: 8deb4d1 (pushed to origin)
+# ==============================================================================
+# AUDITORÍA FORENSE DE INESTABILIDAD TÉRMICA EN 2700W (EXPERIMENTO DE PISO PWM)
+# INSTRUCCIÓN PARA: CLAUDE SONNET 4.6 (THINKING)
+# FECHA: 2026-10-09 11:15 UTC-3
+# RAMA: codex/022-adaptive-acquisition (origin/codex/022-adaptive-acquisition)
+# ESTADO DEL SERVICIO: Windows NSSM MinerAlerts RUNNING
+# ==============================================================================
 
-## Estado actual
+Estimado Claude Sonnet 4.6 (Thinking):
 
-**Spec 091 COMPLETA Y CERRADA.**
+El operador solicita una AUDITORÍA Y ANÁLISIS FORENSE COMPARATIVO de datos (ANTES vs. DESPUÉS) a raíz de una inestabilidad que comenzó tras relajar el piso mínimo de ventilación en 2700W.
 
-- Commit 8deb4d1 pusheado a origin/codex/022-adaptive-acquisition
-- Tests: 1530 PASS, 75 subtests PASS
-- Servicio MinerAlerts: RUNNING con nuevo código
-- ADAPTIVE_ACQUISITION acquirer_ready=true endpoints=4 workers=2
-- LivenessHeartbeatHook: activa (POST_TICK), escribiendo monitor_heartbeat.json
-- _TELEGRAM_POLLER_TS sentinel: actualizado en poller.py
+A continuación dispones de la cronología milimétrica, la telemetría antes/después, los logs de base de datos y la causa física aislada.
 
-## Cambios entregados en este commit
+--------------------------------------------------------------------------------
+1. ANTECEDENTES Y CAMBIO IMPLEMENTADO (10:40 AM)
+--------------------------------------------------------------------------------
+- Motivación del cambio: A 2700W y con chips a 76°C, los ventiladores permanecían clavados en 92% debido a `fan_governor_power_floor_2700w: 92`. El operador quiso probar si reducir el piso permitía modular hacia la consigna de 82°C en días con red eléctrica externa estable, para determinar si la inestabilidad histórica venía de la red o del silicio a 82°C.
+- Cambio aplicado en `app/config.json` y `app/config.example.json` (Commit 8c58eac):
+  - `fan_governor_power_floor_2700w`: reducido de 92 a 75.
+  - `fan_governor_power_floor_2500w`: reducido de 90 a 70.
+  - `fan_governor_power_floor_2300w`: calibrado en 65.
+- A las 10:40:17 se reinició el servicio NSSM `MinerAlerts` para cargar la nueva configuración.
 
-1. **fix(engine): inyección de acq_config/acquirer/acq_endpoints en tick_data**
-   - Archivo: app/core/engine.py — método run() (~línea 325–336)
-   - Efecto: AcquisitionHook ahora usa BoundedAcquirer para adquisición paralela
-   - Antes: siempre caía al fallback secuencial (acquirer era None en tick_data)
+--------------------------------------------------------------------------------
+2. COMPARATIVA DE TELEMETRÍA: ANTES vs. DESPUÉS
+--------------------------------------------------------------------------------
 
-2. **feat: LivenessHeartbeatHook**
-   - Archivo: app/core/pipeline.py — HookStage.POST_TICK
-   - Registrada en: app/core/engine.py — register_standard_hooks()
-   - Escribe: data/monitor_heartbeat.json (tick_sequence, poller_ts, sender_ts, elapsed_ms)
+A) ANTES DEL CAMBIO (Piso 2700W = 92% PWM, Chips a 76°-80°C):
+- Uptime continuo de S19JPRO-24: 73.123 segundos (20.3 horas continuas sin reinicios).
+- Uptime continuo de S19JPRO-26: 48.214 segundos (13.4 horas continuas sin reinicios).
+- Uptime continuo de S19JPRO-23: > 21 horas continuas.
+- Uptime continuo de S19JPRO-25: > 13 horas continuas.
+- Estado de la flota: 100% OK, 0 cortes de cadena, 0 reinicios, ~400 TH/s sostenidos.
 
-3. **fix: _TELEGRAM_POLLER_TS sentinel en poller.py**
-   - Archivo: app/telegram/poller.py — fin del loop de polling (~línea 534–540)
+B) DESPUÉS DEL CAMBIO (Piso 2700W = 75% PWM, Ventilación modulando hacia abajo):
+- 10:40:17 - Servicio reinicia. Entra en período de protección `WARMING_UP` (180 segundos).
+- 10:43:17 - Termina `WARMING_UP`. El gobernador comienza a modular hacia abajo:
+  - M24 baja de 92% a 84% PWM.
+  - M26 baja de 92% a 76% PWM.
+  - M25 baja de 92% a 79% PWM.
+  - M23 baja de 92% a 88% PWM.
+- 10:43:47 (apenas 30 segundos tras bajar M24 a 84% PWM):
+  - S19JPRO-24 corta la Cadena 1 y reinicia el proceso de minado:
+    `[2026-10-09 10:43:48] [24] Transición de estado: OK -> HASHBOARD`
+    `[2026-10-09 10:43:48] [24] Reinicio detectado (elapsed_drop): Uptime reiniciado: 73123s -> 1s | Causa aislada: Cadena 1 (Corte de cadena o placa detenida (failure))`
+  - La temperatura sube rápidamente a 83.0°C en M24, disparando `EMERGENCY_SPIKE` al 100% PWM.
+  - A las 10:50:18, M24 recupera la cadena y vuelve a OK (`HASHBOARD -> OK`).
+- 11:10:18 (27 minutos después, con M26 modulando en 76% PWM y temperatura subiendo a ~79°-81°C):
+  - S19JPRO-26 corta exactamente la misma cadena (Cadena 1) y reinicia el minado:
+    `[2026-10-09 11:10:18] [26] Reinicio detectado (elapsed_drop): Uptime reiniciado: 48214s -> 20s | Causa aislada: Cadena 1 (Corte de cadena o placa detenida (failure))`
+    `auto restart_mining enviado`
+  - Balancer detecta la caída de M26 y pasa S19JPRO-25 a `STEP_DOWN_CASCADE` (2300W -> 2150W).
 
-## Auditoría post-refactor (5 áreas) — todos PASS
+--------------------------------------------------------------------------------
+3. CAUSA FÍSICA IDENTIFICADA
+--------------------------------------------------------------------------------
+1. El hardware físico (específicamente la Cadena 1 de los S19j Pro a 2700W) NO tolera una disipación de ventiladores por debajo del 90-92% PWM.
+2. A 2700W (overclock extremo cerca del límite de la fuente APW12 de 3600W compartida), el calor generado por los chips BM1398 es de ~900W por placa.
+3. La Cadena 1 es la placa con mayor resistencia aerodinámica y temperatura interna. Al caer los ventiladores a 76%-84% PWM:
+   - Se generan hotspots locales en los chips de la Cadena 1.
+   - Ocurren micro-fallos de comunicación en el bus I2C / SPI o desincronización de PLL de los chips.
+   - El firmware VNish reporta `failure` en Cadena 1 y corta la placa o reinicia el minado.
+4. Conclusión empírica irrefutable: La estabilidad de 20+ horas previas dependía directamente del flujo forzado $\ge 92\%$ PWM. La inestabilidad actual NO provino de la red eléctrica externa, sino del estrés térmico localizado en Cadena 1 inducido por la bajada de ventiladores a 2700W.
 
-1. **Pipeline dataflow**: PASS — dependencias tick_data completas, containment defensivo OK
-2. **FSM + Actuadores**: PASS — streaks bajo state_lock, Tier-1/Tier-2 con interlocks correctos
-3. **Async acquisition**: PASS — BoundedAcquirer max_workers=2, deadline enforced, futuros cancelados
-4. **Governance + interlocks**: PASS + WARN pre-existente (master_enabled no leído en ActuatorHook reboot gate — pre-Spec091)
-5. **Lock hierarchy**: PASS — StateManager.save() L1→L2 sin inversión
-
-## WARN pendiente (pre-existente, no bloqueante)
-
-`InterventionGovernance.master_enabled=False` NO es leído por `evaluate_auto_reboot_policy()` en ActuatorHook.
-Solo bloquea el gate de qa_mode. Registrar en ROADMAP.md como mejora futura.
-No es regresión de Spec 091.
-
-## Calibración Operativa Activa: Modulación Térmica en 2700W
-- **Piso de ventilación 2700W**: Reducido de 92% a 75% en `config.json` (`power_floor_2500w: 70`).
-- **Objetivo**: Permitir que en horas frescas el lazo cerrado descienda de 92% y busque estabilizar en 81.0°C-82.5°C para verificar la estabilidad de la red eléctrica bajo mayor temperatura de silicio.
-- **Ruta de escalada rápida verificada**:
-  - Si temp > 82.5°C: Salto agresivo de +15% PWM (anulando dwell).
-  - Si temp >= 83.0°C: EMERGENCY_SPIKE inmediato al 100% PWM.
-  - Si temp >= 85.5°C: Downstep forzado de preset a 2500W por ThermalGuard.
-
-## Próximos pasos sugeridos
-
-1. Monitorear la respuesta de modulación una vez superada la fase de WARMING_UP (180s post-reinicio).
-2. Verificar heartbeat post-arranque: `Get-Content data\monitor_heartbeat.json | ConvertFrom-Json`
-3. Watchdog: `& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py` — debe retornar exit_code=0
-4. Activar la siguiente spec según SPEC_PROGRAM.md (consultar `.specify/feature.json`)
-
-## Verificación rápida de salud
-
-```powershell
-# 1. Servicio
-Get-Service MinerAlerts | Select-Object Status, Name
-
-# 2. Log reciente
-Get-Content logs\out.log -Tail 20
-
-# 3. Heartbeat (esperar al menos 1 tick ~30s post-arranque)
-Get-Content data\monitor_heartbeat.json | ConvertFrom-Json
-
-# 4. Watchdog
-& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py; echo "Exit: $LASTEXITCODE"
-
-# 5. Tests (si se hace cambio)
-& ".\.venv\Scripts\python.exe" -m pytest tests\ -x -q --tb=short 2>&1 | Tail 10
-```
-
-## Modelo recomendado para próxima sesión
-
-**Gemini 3.8 Flash High** — para speckit-specify, speckit-plan, speckit-tasks de la siguiente spec.
-**Claude Sonnet 4.6 (Thinking)** — solo si la siguiente spec toca concurrencia en miner_monitor.py o FSM.
+--------------------------------------------------------------------------------
+4. TAREAS PARA TU AUDITORÍA Y RESOLUCIÓN
+--------------------------------------------------------------------------------
+1. Analizar los registros en `logs/out.log`, `app/state.json` y la tabla `operational_events` en `data/miner_alerts.db`.
+2. Restituir el piso seguro de ventilación en `app/config.json` y `app/config.example.json` para 2700W (`fan_governor_power_floor_2700w: 92`, `power_floor_2500w: 90`).
+3. Evaluar el estado actual de los mineros (S19JPRO-24 y S19JPRO-26) y confirmar si completaron el autotune y están hasheando en 3 placas con 126 chips.
+4. Reiniciar el servicio `MinerAlerts` (`Restart-Service MinerAlerts`) para consolidar la protección.
+5. Actualizar la documentación en `docs/audit/DEVELOPMENT_LOG.md` reflejando la conclusión empírica del experimento de estabilidad.
+6. Ejecutar suite de pruebas (`pytest -q` >= 1530 PASS) y compuertas de preflight.
+7. Dejar el repositorio sincronizado y commiteado en `origin/codex/022-adaptive-acquisition`.

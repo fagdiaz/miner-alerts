@@ -323,7 +323,17 @@ class CoreSupervisoryEngine:
                 self._tick_sequence += 1
 
                 # Ejecutar pipeline declarativo (Spec 065)
-                result = self.execute_tick(states, last_update_id_ref, now_ts)
+                _acq_extra: Dict[str, Any] = {}
+                if getattr(self, "acq_config", None) is not None:
+                    _acq_extra["acq_config"] = self.acq_config
+                if getattr(self, "acquirer", None) is not None:
+                    _acq_extra["acquirer"] = self.acquirer
+                if getattr(self, "acq_endpoints", None) is not None:
+                    _acq_extra["acq_endpoints"] = self.acq_endpoints
+                result = self.execute_tick(
+                    states, last_update_id_ref, now_ts,
+                    extra_tick_data=_acq_extra if _acq_extra else None,
+                )
 
                 # Ejecutar hooks legados callable (Spec 060 API)
                 for hook in self._tick_hooks:
@@ -412,6 +422,7 @@ class CoreSupervisoryEngine:
         from app.core.pipeline import (
             AcquisitionHook,
             GovernanceHook,
+            LivenessHeartbeatHook,
             PostTickHook,
             PreTickHook,
         )
@@ -424,6 +435,7 @@ class CoreSupervisoryEngine:
         self.register_hook(ActuatorHook())
         self.register_hook(PersistenceHook())
         self.register_hook(PostTickHook())
+        self.register_hook(LivenessHeartbeatHook())
 
     @classmethod
     def initialize(

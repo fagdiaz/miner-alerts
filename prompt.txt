@@ -1,104 +1,63 @@
 # ==============================================================================
-# PROMPT DE AUDITORÍA Y HANDOFF PARA CLAUDE SONNET 4.6 (THINKING)
-# TEMA: ALERTA "MONITOR SIN PROGRESO" — OMISIÓN DE LATIDO (HEARTBEAT) EN SPEC 091
-# FECHA: 2026-10-08 16:25 UTC-3
+# AUDITORÍA INTEGRAL POST-REFACTOR (SPEC 091 / MONOLITH DISSOLUTION)
+# INSTRUCCIÓN PARA: CLAUDE SONNET 4.6 (THINKING)
+# FECHA: 2026-10-08 16:45 UTC-3
 # RAMA: codex/022-adaptive-acquisition (origin/codex/022-adaptive-acquisition)
-# ESTADO DE SUITE: 1530 tests PASS, 75 subtests PASS (0 fallos, 0 errores)
-# ESTADO DEL SERVICIO: Windows NSSM MinerAlerts RUNNING (~400 TH/s nominal, OK)
-# MODELO SELECCIONADO: Claude Sonnet 4.6 (Thinking)
+# BASELINE: 1530 tests PASS, 75 subtests PASS | Servicio MinerAlerts RUNNING
 # ==============================================================================
 
 Estimado Claude Sonnet 4.6 (Thinking):
 
-El operador recibió el siguiente mensaje de alerta por Telegram:
-"MONITOR SIN PROGRESO"
-Motivos: process_missing, tick_stale, telegram_poller_stale, telegram_sender_stale, collector_stale
+El operador solicita una AUDITORÍA INTEGRAL QUIRÚRGICA sobre todo el sistema derivado del refactor masivo de la Spec 091 (disolución del monolito de 6.646 LOC hacia CoreSupervisoryEngine y pipeline declarativo de hooks en app/core/engine.py y app/core/pipeline.py).
 
-A continuación tienes el diagnóstico forense completo, la causa raíz exacta, los archivos involucrados y la hoja de ruta para tu auditoría e implementación quirúrgica.
-
----
-
-1. DIAGNÓSTICO FORENSE Y CAUSA RAÍZ IDENTIFICADA
 --------------------------------------------------------------------------------
-1.1 ¿Qué significa "MONITOR SIN PROGRESO"?
-- Es una alerta emitida por el watchdog independiente de vitalidad (`tools/monitor_watchdog.py` / `app/core/liveness.py`), diseñado en la Spec 068.
-- El watchdog corre externamente (vía tarea programada o proceso independiente en Windows) y audita la vitalidad del servicio `MinerAlerts` leyendo el archivo de latido en disco: `data/monitor_heartbeat.json`.
-
-1.2 ¿Está no-funcional el minado o el bot?
-- NO. El servicio principal de supervisión (`MinerAlerts`) ESTÁ FUNCIONANDO CORRECTAMENTE:
-  - Los 4 mineros están minando a ~400 TH/s nominal en producción.
-  - La gobernanza de elevadores y presets está ejecutando ticks continuos cada 30s (`logs/out.log`).
-  - Las 8 compuertas de preflight y los 1530 tests pasan al 100%.
-
-1.3 ¿Por qué salta la alerta entonces?
-- En el commit `cb9438a` (Spec 091: Hookification del core daemon y disolución del monolito `miner_monitor.py` de 6646 a 324 LOC):
-  - El bucle original de `miner_monitor.py` escribía periódicamente el latido en `data/monitor_heartbeat.json` usando `write_heartbeat_atomic(heartbeat_path, MonitorHeartbeat(...))`.
-  - Al refactorizar `miner_monitor.py` a `CoreSupervisoryEngine`, el import de `write_heartbeat_atomic` se agregó a `app/core/pipeline.py:35` y a un bloque `if False:` en `miner_monitor.py:290-305` (como marcador AST para tests heredados).
-  - SIN EMBARGO, LA LLAMADA REAL A `write_heartbeat_atomic` NUNCA FUE CONECTADA dentro del nuevo motor ni en ninguno de los hooks (`app/core/engine.py` o `app/core/pipeline.py`).
-- Consecuencia en runtime:
-  - El archivo `data/monitor_heartbeat.json` quedó congelado con fecha `2026-10-07 22:34:22` y `pid=91408`.
-  - El watchdog independiente (`tools/monitor_watchdog.py`), al ejecutarse periódicamente, lee un timestamp con > 17 horas de antigüedad (`tick_age > 62000s`) y un PID inexistente, concluyendo erróneamente que el monitor murió o se colgó, disparando el mensaje recurrente "MONITOR SIN PROGRESO".
-
----
-
-2. ANATOMÍA DEL CÓDIGO Y EVIDENCIA EXACTA
+REGLA ESTRICTA DE EFICIENCIA DE TOKENS (NO REPETIR LO YA AUDITADO)
 --------------------------------------------------------------------------------
-2.1 Código legacy previo al commit cb9438a (en el cierre de tick de miner_monitor.py):
-```python
-if heartbeat_enabled:
-    collector_age_seconds = None
-    if event_store and getattr(event_store, "available", False):
-        try:
-            latest_run = event_store.latest_collector_run()
-            if latest_run and latest_run.get("completed_ts"):
-                collector_age_seconds = max(0.0, completed_ts - float(latest_run["completed_ts"]))
-        except Exception:
-            pass
+NO quemar tokens auditando ni repitiendo diagnósticos sobre:
+1. Mensajería Telegram (callbacks, botones inline, enrutador de comandos, ancho de tarjetas <= 32 cols, snooze, etc.).
+2. Duplicación del reporte diario (daily digest) en reinicios (ya solucionado y verificado en StateManager).
+3. Latido de vitalidad (Liveness Heartbeat / tools/monitor_watchdog.py / LivenessHeartbeatHook recién implementado y funcionando con exit code 0, healthy=true).
 
-    import app.telegram.sender as _ts
-    import app.telegram.poller as _tp
-    write_heartbeat_atomic(
-        heartbeat_path,
-        MonitorHeartbeat(
-            pid=os.getpid(),
-            process_start_ts=process_start_ts,
-            tick_sequence=tick_sequence,
-            last_tick_completed_ts=time.time(),
-            telegram_poller_ts=getattr(_tp, "_TELEGRAM_POLLER_TS", None),
-            telegram_sender_ts=getattr(_ts, "_TELEGRAM_SENDER_TS", None),
-            queue_depth=context.telegram_queue.qsize() if context.telegram_queue else 0,
-            collector_age_seconds=collector_age_seconds,
-        ),
-    )
-```
+Todos esos subsistemas están 100% certificados, verdes y en memoria.
 
-2.2 Ubicación actual en el código:
-- `data/monitor_heartbeat.json`: Archivo físico en disco (congelado en 07/10 22:34).
-- `app/core/liveness.py:15`: Definición de `MonitorHeartbeat` y `write_heartbeat_atomic(path, heartbeat)`.
-- `app/core/pipeline.py:35`: Importa `MonitorHeartbeat, write_heartbeat_atomic`, pero no los usa.
-- `app/core/engine.py`: `PostTickHook` (L731) o `CoreSupervisoryEngine.run()` (L288) es donde finaliza el tick.
-- `app/config.json` / `app/config.example.json:91`:
-  ```json
-  "liveness": {
-      "heartbeat_path": "data/monitor_heartbeat.json",
-      "heartbeat_enabled": true
-  }
-  ```
-
----
-
-3. TAREAS PARA TU AUDITORÍA Y RESOLUCIÓN
 --------------------------------------------------------------------------------
-1. Auditar cómo `MonitorContext` almacena la configuración de liveness (`heartbeat_path`, `heartbeat_enabled`).
-2. Conectar la escritura de `write_heartbeat_atomic` al finalizar cada tick de supervisión (por ejemplo en `PostTickHook.execute()` en `app/core/pipeline.py` o mediante un hook dedicado `LivenessHeartbeatHook` en `HookStage.POST_TICK`).
-3. Asegurar que los timestamps de `telegram_poller_ts`, `telegram_sender_ts`, `queue_depth` y `collector_age_seconds` se recolecten de forma segura y sin bloquear.
-4. Ejecutar manualmente el watchdog para verificar recuperación:
-   `& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py`
-   Debe arrojar `healthy=true`, `reasons=none` y generar el evento `recovery` o `MONITOR OK`.
-5. Ejecutar suite de pruebas:
-   `& ".\.venv\Scripts\python.exe" -m pytest -q` (debe mantener >= 1530 PASS).
-6. Ejecutar ciclo completo de `speckit-stabilize`:
+ALCANCE DE LA AUDITORÍA INTEGRAL POST-REFACTOR
+--------------------------------------------------------------------------------
+Debes auditar quirúrgicamente las siguientes 5 áreas críticas del core para asegurar que la separación del monolito no haya dejado cabos sueltos, desconexiones lógicas, fugas de concurrencia o riesgos en planta:
+
+1. PIPELINE DE HOOKS Y FLUJO DE DATOS (app/core/engine.py y app/core/pipeline.py):
+   - Flujo de `tick_data`: Verificar que cada hook recibe y propaga los datos requeridos por las etapas posteriores (PRE_TICK -> ACQUISITION -> DETECTION -> GOVERNANCE -> ACTUATOR -> PERSISTENCE -> POST_TICK).
+   - Contención defensiva: Confirmar que si un hook intermedio (como ACQUISITION o DETECTION) levanta una excepción, las etapas críticas (PERSISTENCE, POST_TICK, LivenessHeartbeatHook) continúan ejecutándose sin omitirse.
+   - Modelo temporal: Verificar el cómputo de `process_start_ts`, `first_tick`, período de gracia de calentamiento (`WARMING_UP`), y que el sleep monotónico en `engine.run()` no sufra deriva acumulativa.
+
+2. MÁQUINA DE ESTADOS FSM Y ACTUADORES DE REINICIO (DetectionHook y ActuatorHook):
+   - Transiciones FSM: Clasificación `OK`, `LOW`, `OFFLINE`, `HASHBOARD`. Verificar que rachas (`low_streak`, `ok_streak`), timestamps y mutaciones en `states[miner_id]` son fieles al comportamiento de producción.
+   - Actuación de reinicios:
+     - Tier-1: Soft restart de minado vía VNish API / autotune watchdog.
+     - Tier-2: Auto-reboot duro vía Hashcore Toolkit CLI.
+     - Interlocks: Verificar las 5 precedencias canónicas (startup safety guard de 600s, ventana máx de reinicios 24h, cooldown entre reinicios, contención en qa_mode).
+     - Persistencia de decisiones: Confirmar que `record_auto_reboot_decision()` registra correctamente en SQLite `event_store` sin errores de kwargs.
+
+3. ADQUISICIÓN ASÍNCRONA Y CONCURRENCIA DE SOCKETS (app/network/adaptive_acquisition.py):
+   - Pool de workers: Verificar el ciclo de vida de los hilos de adquisición, timeouts sobre el socket 4028 de los mineros y fallback determinista ante falta de respuesta.
+   - Prevención de memory leaks o hilos zombies en reintentos.
+
+4. GOBERNANZA EN PLANTA Y ACTUACIÓN DINÁMICA (app/governance/):
+   - Balancer de presets (`preset_balancer.py`): Reglas de escalamiento y desescalamiento de potencia por temperatura y frecuencia.
+   - Contingencia de elevadores (`adaptive_contingency.py`): Detección de caídas de tensión en cascada por grupo eléctrico (`elevator_1`, `elevator_2`). Asegurar que las acciones no sufran aleteo (flapping).
+   - Puertas de interlock: Verificar que ninguna acción real se ejecute en hardware a menos que `InterventionGovernance` tenga activos los flags correspondientes (`presets_enabled`, `contingency_enabled`, `master_enabled`).
+
+5. JERARQUÍA DE LOCKS Y PERSISTENCIA ATÓMICA (app/core/state_manager.py):
+   - Jerarquía L1 -> L2: `state_lock` (RLock en memoria) -> `_SAVE_STATE_LOCK` / `flush_lock` (I/O en disco fuera del lock de memoria).
+   - Verificar que no exista posibilidad de inversión de locks o contención prolongada con los hilos de Telegram o el watchdog.
+
+--------------------------------------------------------------------------------
+OBJETIVO Y DEFINICIÓN DE TERMINADO
+--------------------------------------------------------------------------------
+1. Inspeccionar el código y logs operativos (`logs/out.log`, `logs/err.log`).
+2. Si detectas cualquier inconsistencia, desconexión o riesgo operativo, aplica la corrección quirúrgica en el código.
+3. Asegurar que la suite completa pase al 100% (`pytest -q` >= 1530 tests PASS).
+4. Ejecutar el protocolo de cierre de calidad con `speckit-stabilize`:
    - `preflight_stabilize.ps1` (8/8 gates PASS).
-   - `Restart-Service MinerAlerts`.
-   - Normalizar `docs/audit/DEVELOPMENT_LOG.md` con entrada newest-first.
-   - Commit y push limpio a `origin/codex/022-adaptive-acquisition`.
+   - Normalizar `docs/audit/DEVELOPMENT_LOG.md`.
+   - Commit semántico y push a `origin/codex/022-adaptive-acquisition`.

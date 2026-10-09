@@ -796,3 +796,103 @@ class PostTickHook(SupervisoryHook):
                     log(f"DAILY_DIGEST_ERR exc={exc}")
 
         return {"last_daily_digest_date": _LAST_DAILY_DIGEST_DATE}
+
+
+class LivenessHeartbeatHook(SupervisoryHook):
+    """StagePostTick (70): Atomic heartbeat flush to data/monitor_heartbeat.json.
+
+    Reconnects the write_heartbeat_atomic call that was severed during the
+    Spec 091 monolith dissolution (commit cb9438a).  Without this hook the
+    independent watchdog (tools/monitor_watchdog.py) sees a stale heartbeat
+    and fires spurious 'MONITOR SIN PROGRESO' alerts even when the service
+    is healthy.
+
+    Design constraints:
+    - Runs inside HookStage.POST_TICK (value 70) so it executes after
+      PersistenceHook (60) and PostTickHook (70, registered before this).
+    - All timestamp reads are wrapped in try/except — heartbeat failure must
+      NEVER raise or propagate into the engine loop.
+    - heartbeat_path and heartbeat_enabled are resolved from context.config
+      each tick so a live config reload can re-enable the feature.
+    """
+
+    name = "liveness_heartbeat"
+    stage = HookStage.POST_TICK
+
+    def execute(
+        self,
+        context: MonitorContext,
+        tick_sequence: int,
+        now_ts: float,
+        tick_data: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        config = context.config
+
+        # Guard: heartbeat disabled or not configured
+        liveness_cfg = config.get("liveness", {})
+        heartbeat_enabled = bool(liveness_cfg.get("heartbeat_enabled", True))
+        if not heartbeat_enabled:
+            return {"liveness_heartbeat_skipped": True}
+
+        heartbeat_path_raw = liveness_cfg.get(
+            "heartbeat_path", "data/monitor_heartbeat.json"
+        )
+        heartbeat_path = Path(heartbeat_path_raw)
+        if not heartbeat_path.is_absolute():
+            # Resolve relative to repository root (two levels up from this file)
+            heartbeat_path = (
+                Path(__file__).resolve().parent.parent.parent / heartbeat_path
+            )
+
+        # Resolve process_start_ts from tick_data (injected by engine.execute_tick)
+        process_start_ts: float = tick_data.get("process_start_ts", now_ts)
+
+        # Safely read Telegram worker heartbeat timestamps (module-level sentinels in sender.py)
+        telegram_poller_ts: Optional[float] = None
+        telegram_sender_ts: Optional[float] = None
+        try:
+            import app.telegram.sender as _ts_mod
+            telegram_poller_ts = getattr(_ts_mod, "_TELEGRAM_POLLER_TS", None)
+            telegram_sender_ts = getattr(_ts_mod, "_TELEGRAM_SENDER_TS", None)
+        except Exception:
+            pass
+
+        # Safely resolve Telegram queue depth
+        queue_depth: int = 0
+        try:
+            tq = context.telegram_queue
+            if tq is not None:
+                queue_depth = tq.qsize()
+        except Exception:
+            pass
+
+        # Safely resolve collector age from event_store
+        collector_age_seconds: Optional[float] = None
+        try:
+            event_store = context.event_store
+            if event_store is not None and getattr(event_store, "available", False):
+                latest_run = event_store.latest_collector_run()
+                if latest_run and latest_run.get("completed_ts"):
+                    completed_ts = float(latest_run["completed_ts"])
+                    collector_age_seconds = max(0.0, now_ts - completed_ts)
+        except Exception:
+            pass
+
+        try:
+            write_heartbeat_atomic(
+                heartbeat_path,
+                MonitorHeartbeat(
+                    pid=os.getpid(),
+                    process_start_ts=process_start_ts,
+                    tick_sequence=tick_sequence,
+                    last_tick_completed_ts=now_ts,
+                    telegram_poller_ts=telegram_poller_ts,
+                    telegram_sender_ts=telegram_sender_ts,
+                    queue_depth=queue_depth,
+                    collector_age_seconds=collector_age_seconds,
+                ),
+            )
+            return {"liveness_heartbeat_written": True}
+        except Exception as exc:
+            logger.warning("LivenessHeartbeatHook: failed to write heartbeat: %s", exc)
+            return {"liveness_heartbeat_written": False, "liveness_heartbeat_error": str(exc)}

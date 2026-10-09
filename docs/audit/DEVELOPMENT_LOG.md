@@ -3,6 +3,76 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-09] - Auditoría Integral Post-Refactor Spec 091: Pipeline de Hooks, FSM, Adquisición, Gobernanza y Locks
+
+* **Contexto**:
+  - Motivación: Auditoría integral quirúrgica de las 5 áreas críticas derivadas del refactor masivo de Spec 091 (disolución del monolito de 6.646 LOC hacia `CoreSupervisoryEngine` y pipeline declarativo de hooks).
+  - Áreas auditadas: (1) Pipeline de hooks y flujo de `tick_data`, (2) FSM de estados y actuadores de reinicio, (3) Adquisición asíncrona y concurrencia de sockets, (4) Gobernanza en planta e interlocks, (5) Jerarquía de locks y persistencia atómica.
+  - Preflight automatizado: 8/8 gates PASS al inicio de la auditoría.
+
+* **Hallazgos y Corrección Aplicada**:
+  1. **[FIX P1] `acq_config`/`acquirer`/`acq_endpoints` no inyectados en `tick_data` — `engine.py` L325**:
+     - `CoreSupervisoryEngine.run()` llamaba `execute_tick(states, last_update_id_ref, now_ts)` sin `extra_tick_data`, por lo que `AcquisitionHook` leía `None` para las tres claves y **siempre caía al fallback secuencial** de sockets, nunca usando `BoundedAcquirer` paralelo aunque `adaptive_acquisition_enabled=true`.
+     - Corrección: En `engine.run()`, se construye `_acq_extra` con `acq_config`, `acquirer` y `acq_endpoints` del engine y se pasa como `extra_tick_data=_acq_extra`. Cero impacto en tests de contrato (el `AcquisitionHook` ya incluía el fallback gracioso con `None`).
+  2. **[PASS] Flujo de `tick_data` — dependencias entre hooks**:
+     - `PreTickHook` emite: `tick_start`, `startup_grace_active`, `reboot_names_tick`, `miner_lines`, `current_tick_signals`, `tick_failed_miners`, `tick_responded_miners`, `tick_maintenance_ids`.
+     - `AcquisitionHook` lee: `states`, `acq_config`, `acquirer`, `acq_endpoints`, `tick_start`. Emite: `miner_results`, `tick_responded_miners`, `tick_failed_miners`, `tick_maintenance_ids`.
+     - `DetectionHook` lee: `miner_results`, `startup_grace_active`, `states`. Emite: `detection_completed`, `current_tick_signals`.
+     - `ActuatorHook` lee: `miner_results`, `startup_grace_active`, `process_start_ts`, `previous_signals`. Emite: `actuator_completed`, `reboots_triggered`.
+     - `PersistenceHook` lee: `states`, `last_update_id_ref`, `last_daily_digest_date`. Emite: `persistence_saved`.
+     - `PostTickHook` lee: `states`, `first_tick`, `last_update_id_ref`. Emite: `last_daily_digest_date`.
+     - `LivenessHeartbeatHook` lee: `process_start_ts`. Autónomo (no depende de hooks anteriores).
+     - Todos los campos requeridos están disponibles. ✅
+  3. **[PASS] Contención defensiva — hooks críticos siempre ejecutan**:
+     - El loop `for hook in self._hooks` en `execute_tick()` captura cualquier excepción por hook individualmente (try/except genérico), registra en `result.errors` y continúa. PERSISTENCE y POST_TICK ejecutan aunque ACQUISITION o DETECTION fallen. ✅
+  4. **[PASS] FSM de estados y actuadores de reinicio (DetectionHook/ActuatorHook)**:
+     - `ok_streak`, `low_streak`, `offline_streak` se actualizan correctamente bajo `state_lock`.
+     - Tier-1 (soft restart VNish): evaluado por `evaluate_auto_restart_candidate()` con cooldown, max_retries, startup_grace y qa_mode.
+     - Tier-2 (hard reboot Hashcore CLI): evaluado por `evaluate_auto_reboot_policy()` con startup_guard (600s), not_sustained, interlock_decision (fleet/thermal/firmware), cooldown, ventana y qa_mode.
+     - `record_auto_reboot_decision()` se llama con todos los kwargs correctos (L1703-1723). ✅
+  5. **[PASS] Adquisición asíncrona (BoundedAcquirer)**:
+     - `ThreadPoolExecutor` acotado (max 1-4 workers, default 2). Lease registry evita overlapping epochs por miner. Deadline enforced en `wait()` con `timeout=wait_seconds`. Futuros vencidos se cancelan y su lease se libera. Fallback a `Quality.LATE` es determinista. ✅
+  6. **[PASS] Jerarquía de locks — L1 → L2 correcta**:
+     - `StateManager.save()` adquiere `state_lock` (L1) solo para `build_payload()`, luego lo libera antes de `flush_payload()` (L2, disk I/O bajo `flush_lock`). Sin inversión posible. ✅
+  7. **[WARN — Pre-Spec091, no introducido] `InterventionGovernance.master_enabled` no bloquea explícitamente reboot L2 en `ActuatorHook`**:
+     - Cuando el operador emite `/intervenciones off`, el flag `master_enabled=False` no es leído por `evaluate_auto_reboot_policy()`. La mitigación actual es que `GovernanceHook` procesa la expiración antes que `ActuatorHook`. Riesgo pre-existente, registrado para seguimiento en backlog.
+
+* **Verificación y Pruebas**:
+  - `py_compile app/core/engine.py`: ✅ OK
+  - `pytest -q`: ✅ **1530 passed, 75 subtests passed** (0 fallos, pre y post-fix)
+  - Preflight 8/8 gates PASS (pre y post-fix)
+  - `cleanup_transients.ps1`: 13 items, 4.4 MB liberados, archivos protegidos intactos.
+
+## [2026-10-08] - Spec 091 Regression Fix: Liveness Heartbeat Reconectado (LivenessHeartbeatHook)
+
+* **Contexto**:
+  - Motivación: El operador recibió alertas recurrentes "MONITOR SIN PROGRESO" (motivos: `process_missing, tick_stale, telegram_poller_stale, telegram_sender_stale, collector_stale`) por Telegram, a pesar de que el servicio principal funcionaba correctamente (~400 TH/s nominal, 4 mineros activos).
+  - Causa Raíz: En el commit `cb9438a` (Spec 091: Hookification y disolución del monolito), la llamada `write_heartbeat_atomic()` que actualizaba `data/monitor_heartbeat.json` al final de cada tick fue eliminada del cuerpo del main loop, pero **nunca fue reconectada** en ninguno de los hooks del nuevo pipeline declarativo. El archivo `monitor_heartbeat.json` quedó congelado con timestamp de `2026-10-07 22:34:22`, lo que llevó al watchdog independiente (`tools/monitor_watchdog.py`) a detectar un `tick_age > 62000s` y disparar la alerta falsa de forma recurrente.
+  - Diagnóstico forense confirmado: `app/core/pipeline.py:35` importaba `MonitorHeartbeat, write_heartbeat_atomic`, pero esas funciones nunca se invocaban en ningún hook activo.
+  - Baseline: 1530 tests PASS, 75 subtests PASS.
+
+* **Implementación Técnica**:
+  1. `app/core/pipeline.py`:
+     - Añadido `LivenessHeartbeatHook(SupervisoryHook)` en `HookStage.POST_TICK` (valor 70), que se ejecuta después de `PersistenceHook` (60) y `PostTickHook` (70, registrado antes).
+     - El hook lee `heartbeat_enabled` y `heartbeat_path` desde `config["liveness"]` en cada tick (soporta reactivación sin reinicio).
+     - Recolecta de forma defensiva (try/except independientes): `telegram_poller_ts` y `telegram_sender_ts` desde `app.telegram.sender`, `queue_depth` desde `context.telegram_queue`, y `collector_age_seconds` desde `context.event_store.latest_collector_run()`.
+     - Llama a `write_heartbeat_atomic(heartbeat_path, MonitorHeartbeat(...))` — mismo patrón del código legacy.
+     - Fallos del hook se registran como warning pero nunca propagan excepción al engine loop.
+  2. `app/core/engine.py`:
+     - `register_standard_hooks()` importa y registra `LivenessHeartbeatHook()` como el último hook del pipeline, garantizando que el latido se escribe tras toda la lógica de supervisión.
+  3. `app/telegram/poller.py`:
+     - Al final de cada ciclo del `while True` en `telegram_polling_worker`, se actualiza `app.telegram.sender._TELEGRAM_POLLER_TS = time.time()`.
+     - Esto habilita que el watchdog pueda verificar la vitalidad del hilo poller (sentinel que existía en `sender.py` pero nunca era escrito).
+
+* **Verificación y Pruebas**:
+  - `py_compile`: Verificada sintaxis limpia en `app/core/pipeline.py`, `app/core/engine.py`, `app/telegram/poller.py`.
+  - Suite completa: `pytest -q`: 1530 passed, 75 subtests passed (0 fallos, 0 errores, baseline preservado).
+  - Runtime evidence post-restart (pid=6264):
+    - `data/monitor_heartbeat.json` tick_sequence=5: `telegram_poller_ts=1791488178.56` ✅, `telegram_sender_ts=1791488200.97` ✅, timestamps frescos.
+    - `tools/monitor_watchdog.py` exit_code=0, sin alertas.
+    - `data/watchdog_incident.json` no existe (incidente cerrado).
+    - Servicio Windows NSSM `MinerAlerts` RUNNING, flota ~400 TH/s.
+
 ## [2026-10-08] - Spec 091: Auditoría Quirúrgica de Mensajería Telegram y Preservación de Estado de Daily Digest
 
 * **Contexto**:

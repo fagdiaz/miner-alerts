@@ -531,4 +531,10 @@ def telegram_polling_worker(
             )
             time.sleep(backoff)
             backoff = min(backoff * 2, 5.0)
+        # Update liveness sentinel so monitor_watchdog can verify the poller is alive
+        try:
+            import app.telegram.sender as _sender_mod
+            _sender_mod._TELEGRAM_POLLER_TS = time.time()
+        except Exception:
+            pass
         time.sleep(poll_sleep)

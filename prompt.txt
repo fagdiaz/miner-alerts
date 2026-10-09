@@ -43,12 +43,20 @@
 Solo bloquea el gate de qa_mode. Registrar en ROADMAP.md como mejora futura.
 No es regresión de Spec 091.
 
+## Calibración Operativa Activa: Modulación Térmica en 2700W
+- **Piso de ventilación 2700W**: Reducido de 92% a 75% en `config.json` (`power_floor_2500w: 70`).
+- **Objetivo**: Permitir que en horas frescas el lazo cerrado descienda de 92% y busque estabilizar en 81.0°C-82.5°C para verificar la estabilidad de la red eléctrica bajo mayor temperatura de silicio.
+- **Ruta de escalada rápida verificada**:
+  - Si temp > 82.5°C: Salto agresivo de +15% PWM (anulando dwell).
+  - Si temp >= 83.0°C: EMERGENCY_SPIKE inmediato al 100% PWM.
+  - Si temp >= 85.5°C: Downstep forzado de preset a 2500W por ThermalGuard.
+
 ## Próximos pasos sugeridos
 
-1. Activar la siguiente spec según SPEC_PROGRAM.md (consultar `.specify/feature.json` y `docs/speckit/SPEC_PROGRAM.md`)
-2. Verificar heartbeat post-arranque tras ~40s: `Get-Content data\monitor_heartbeat.json | ConvertFrom-Json`
+1. Monitorear la respuesta de modulación una vez superada la fase de WARMING_UP (180s post-reinicio).
+2. Verificar heartbeat post-arranque: `Get-Content data\monitor_heartbeat.json | ConvertFrom-Json`
 3. Watchdog: `& ".\.venv\Scripts\python.exe" tools\monitor_watchdog.py` — debe retornar exit_code=0
-4. Anotar el WARN de governance en ROADMAP.md si se decide incluirlo como backlog
+4. Activar la siguiente spec según SPEC_PROGRAM.md (consultar `.specify/feature.json`)
 
 ## Verificación rápida de salud
 

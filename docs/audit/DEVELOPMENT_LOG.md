@@ -3,6 +3,31 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-09] - Calibración Operativa de Piso de Ventilación y Modulación Térmica Dinámica en 2700W
+
+* **Contexto**:
+  - Motivación: El operador observó que con temperaturas de silicio frescas (76°C) los ventiladores permanecían fijos en 92% PWM sin descender para estabilizar en la consigna objetivo de 82.0°C a máxima potencia (2700W).
+  - Causa Raíz: En la calibración post-incidente del 28 de septiembre (Commit `97a3781`), `fan_governor_power_floor_2700w` se configuró en 92% (y 2500W en 90%) como defensa estricta contra escape térmico diurno en horas de calor extremo. Esta cota dura (`eff_min_duty = 92%`) impedía que el algoritmo de lazo cerrado en `app/governance/fan_governor.py` aplicara `STEP_DOWN` cuando los chips operaban por debajo de la banda objetivo `[81.0, 82.5]°C`.
+  - Hipótesis y Directiva Operativa del Operador: Reducir el piso de ventilación a 2700W a 75% (y 2500W a 70%) para verificar si aumentar la temperatura de operación hacia 82.0°C en días con red eléctrica estable mantiene la confiabilidad sin inducir reinicios espurios. Se exige respuesta rápida y agresiva ante aumentos bruscos de temperatura.
+
+* **Implementación y Calibración**:
+  1. `app/config.json` y `app/config.example.json`:
+     - `"fan_governor_power_floor_2700w"`: reducido de 92% a 75%.
+     - `"fan_governor_power_floor_2500w"`: reducido de 90% a 70%.
+     - `"fan_governor_power_floor_2300w"`: calibrado en 65%.
+  2. Mecanismo de escalada térmica rápida (Invariante P0 verificado):
+     - $\le 81.0^\circ\text{C}$: Modulación descendente gradual (-2% a -5% por ventana de dwell) hacia el piso de 75%.
+     - $81.0^\circ\text{C} - 82.5^\circ\text{C}$: Banda de estabilidad (`HOLD_TARGET`) que fija el PWM de equilibrio.
+     - $> 82.5^\circ\text{C}$: Anulación instantánea de dwell y salto ascendente agresivo de $+15\%$ PWM (ej. de 75% a 90%).
+     - $\ge 83.0^\circ\text{C}$: Disparo inmediato de `EMERGENCY_SPIKE` al 100% PWM.
+     - $\ge 85.5^\circ\text{C}$ (o $\ge 84.0^\circ\text{C}$): Intervención de `ThermalGuard` desescalando el preset forzadamente.
+     - $\ge 87.0^\circ\text{C}$: Pausa de minería en <1s.
+
+* **Validación y Verificación en Planta**:
+  - Compilación de sintaxis (`py_compile`): 100% OK.
+  - Pruebas unitarias: 75/75 tests del fan governor PASS (`pytest tests/test_fan_governor*.py`).
+  - Servicio Windows NSSM `MinerAlerts`: reiniciado exitosamente. Verificado período inicial `WARMING_UP` (180s) que protege el silicio antes de liberar la modulación dinámica hacia 82°C.
+
 ## [2026-10-09] - Auditoría Integral Post-Refactor Spec 091: Pipeline de Hooks, FSM, Adquisición, Gobernanza y Locks
 
 * **Contexto**:

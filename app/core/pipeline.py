@@ -178,6 +178,10 @@ _LAST_FGA_ACTUATOR_TS: float = 0.0
 _LAST_DEADLOCK_ALERT_TS: Dict[str, float] = {}
 _DEADLOCK_ALERT_ACTIVE: Dict[str, bool] = {}
 _LAST_DAILY_DIGEST_DATE: Optional[str] = None
+_LAST_CHAIN_TELEMETRY_TS: float = 0.0
+_LAST_PREDICTIVE_CHAIN_TS: float = 0.0
+_LAST_WAL_PASSIVE_TS: float = 0.0
+_LAST_WAL_TRUNCATE_DATE: Optional[str] = None
 _INCIDENT_AUTOPSY_ENGINE: Any = None
 
 
@@ -794,6 +798,105 @@ class PostTickHook(SupervisoryHook):
                         context.state_manager.save(states, last_update_id, _LAST_DAILY_DIGEST_DATE)
                 except Exception as exc:
                     log(f"DAILY_DIGEST_ERR exc={exc}")
+
+        # ---------------------------------------------------------------------
+        # Spec 054 / 092: Periodic Hashboard Chain Telemetry Collection
+        # ---------------------------------------------------------------------
+        chain_telemetry_enabled = bool(config.get("chain_telemetry_enabled", True))
+        chain_telemetry_interval_s = float(config.get("chain_telemetry_interval_s", 300.0))
+        event_store = context.event_store
+        vnish_api_password = str(config.get("vnish_api_password", "admin"))
+
+        global _LAST_CHAIN_TELEMETRY_TS
+        if (
+            chain_telemetry_enabled
+            and event_store is not None
+            and getattr(event_store, "available", False)
+            and not first_tick
+        ):
+            if (now_ts - _LAST_CHAIN_TELEMETRY_TS) >= chain_telemetry_interval_s:
+                _LAST_CHAIN_TELEMETRY_TS = now_ts
+                threading.Thread(
+                    target=_async_collect_chain_telemetry,
+                    args=(
+                        miners,
+                        event_store,
+                        vnish_api_password,
+                        None,
+                        config,
+                        bot_token,
+                        chat_id,
+                        qa_mode,
+                        qa_notify,
+                        states,
+                        state_lock,
+                    ),
+                    daemon=True,
+                    name="ChainTelemetryScheduled",
+                ).start()
+
+        # ---------------------------------------------------------------------
+        # Spec 069 / 092: Periodic Predictive Chain Break Evaluation
+        # ---------------------------------------------------------------------
+        predictive_chain_enabled = bool(config.get("predictive_chain_enabled", True))
+        predictive_chain_eval_interval_s = float(config.get("predictive_chain_eval_interval_s", 300.0))
+
+        global _LAST_PREDICTIVE_CHAIN_TS
+        if (
+            predictive_chain_enabled
+            and event_store is not None
+            and getattr(event_store, "available", False)
+            and not first_tick
+        ):
+            if (now_ts - _LAST_PREDICTIVE_CHAIN_TS) >= predictive_chain_eval_interval_s:
+                _LAST_PREDICTIVE_CHAIN_TS = now_ts
+                threading.Thread(
+                    target=_async_evaluate_predictive_chain_break,
+                    args=(
+                        miners,
+                        event_store,
+                        states,
+                        state_lock,
+                        config,
+                        bot_token,
+                        chat_id,
+                        qa_mode,
+                        qa_notify,
+                    ),
+                    daemon=True,
+                    name="PredictiveChainBreakScheduled",
+                ).start()
+
+        # ---------------------------------------------------------------------
+        # Spec 061 / 092: Periodic SQLite WAL Checkpoint Maintenance
+        # ---------------------------------------------------------------------
+        global _LAST_WAL_PASSIVE_TS, _LAST_WAL_TRUNCATE_DATE
+        if event_store is not None and getattr(event_store, "available", False):
+            # Hourly PASSIVE checkpoint
+            if (now_ts - _LAST_WAL_PASSIVE_TS) >= 3600.0:
+                _LAST_WAL_PASSIVE_TS = now_ts
+                try:
+                    cp_busy, cp_log, cp_done = event_store.checkpoint_wal("PASSIVE")
+                    log(
+                        f"[EVENT_STORE] wal_checkpoint mode=PASSIVE "
+                        f"busy={cp_busy} log={cp_log} checkpointed={cp_done}"
+                    )
+                except Exception as _wal_exc:
+                    log(f"[EVENT_STORE_ERR] wal_checkpoint PASSIVE failed: {_wal_exc}")
+
+            # Daily TRUNCATE checkpoint during off-peak window (03:00 - 05:00 UTC)
+            now_utc = datetime.now(timezone.utc)
+            today_utc_str = now_utc.strftime("%Y-%m-%d")
+            if 3 <= now_utc.hour < 5 and _LAST_WAL_TRUNCATE_DATE != today_utc_str:
+                _LAST_WAL_TRUNCATE_DATE = today_utc_str
+                try:
+                    cp_busy, cp_log, cp_done = event_store.checkpoint_wal("TRUNCATE")
+                    log(
+                        f"[EVENT_STORE] wal_checkpoint mode=TRUNCATE "
+                        f"busy={cp_busy} log={cp_log} checkpointed={cp_done}"
+                    )
+                except Exception as _wal_exc:
+                    log(f"[EVENT_STORE_ERR] wal_checkpoint TRUNCATE failed: {_wal_exc}")
 
         return {"last_daily_digest_date": _LAST_DAILY_DIGEST_DATE}
 

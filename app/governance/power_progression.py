@@ -26,6 +26,7 @@ from app.governance.thermal_policy import (
 PROFILE_C4_MAX_POWER = "C4_MAX_POWER"          # 2700 / 2700 / 2700 / 2700 (10.8 kW, ~400 TH/s)
 PROFILE_C1_ASYMMETRIC = "C1_ASYMMETRIC"        # 2700 / 2700 / 2500 / 2700 (10.6 kW, ~392 TH/s)
 PROFILE_C2_ELEV1_BALANCED = "C2_ELEV1_BALANCED"# 2700 / 2500 / 2500 / 2700 (10.4 kW, ~384 TH/s)
+PROFILE_C3_ASYMMETRIC_SPLIT = "C3_ASYMMETRIC_SPLIT"# 2700 / 2500 / 2700 / 2500 (10.4 kW, ~384 TH/s)
 PROFILE_C0_BASE_STABLE = "C0_BASE_STABLE"      # 2500 / 2500 / 2500 / 2500 (10.0 kW, ~376 TH/s)
 PROFILE_EMERGENCY_COOL = "EMERGENCY_COOL"      # 2300 / 2300 / 2300 / 2300 (9.2 kW, ~350 TH/s)
 
@@ -33,16 +34,19 @@ PROFILE_ALIASES: Dict[str, str] = {
     "c0": PROFILE_C0_BASE_STABLE,
     "c1": PROFILE_C1_ASYMMETRIC,
     "c2": PROFILE_C2_ELEV1_BALANCED,
+    "c3": PROFILE_C3_ASYMMETRIC_SPLIT,
     "c4": PROFILE_C4_MAX_POWER,
     "c0_base_stable": PROFILE_C0_BASE_STABLE,
     "c1_asymmetric": PROFILE_C1_ASYMMETRIC,
     "c2_elev1_balanced": PROFILE_C2_ELEV1_BALANCED,
+    "c3_asymmetric_split": PROFILE_C3_ASYMMETRIC_SPLIT,
     "c4_max_power": PROFILE_C4_MAX_POWER,
     "base": PROFILE_C0_BASE_STABLE,
     "max": PROFILE_C4_MAX_POWER,
     "max_power": PROFILE_C4_MAX_POWER,
     "asymmetric": PROFILE_C1_ASYMMETRIC,
     "balanced": PROFILE_C2_ELEV1_BALANCED,
+    "split": PROFILE_C3_ASYMMETRIC_SPLIT,
     "emergency": PROFILE_EMERGENCY_COOL,
 }
 
@@ -64,6 +68,12 @@ PROFILE_TARGETS: Dict[str, Dict[str, str]] = {
         "S19JPRO-24": "2500W",
         "S19JPRO-25": "2500W",
         "S19JPRO-26": "2700W",
+    },
+    PROFILE_C3_ASYMMETRIC_SPLIT: {
+        "S19JPRO-23": "2700W",
+        "S19JPRO-24": "2500W",
+        "S19JPRO-25": "2700W",
+        "S19JPRO-26": "2500W",
     },
     PROFILE_C0_BASE_STABLE: {
         "S19JPRO-23": "2500W",

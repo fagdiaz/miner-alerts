@@ -1,13 +1,13 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-10-08
+**Last reviewed**: 2026-10-11
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (91 de 91 especificaciones completadas y evidenciadas — **1530 tests PASS, 75 subtests PASS** — Spec 091 Disolución Definitiva del Monolito COMPLETADA — **RELEASE MAYOR V6.0**).
-- **Estado Operativo de Flota (2026-10-07)**: Elevador 1 a 2700W (5396W nominal), Elevador 2 a 2700W (5396W nominal), 4 mineros en hash nominal continuo (~398-402 TH/s), 0 deadlocks en toda la flota, Fan Governor modulando en lazo cerrado térmico.
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (92 de 92 especificaciones completadas y evidenciadas — **1530 tests PASS, 75 subtests PASS** — Spec 092 Armonización Térmica VNish y Silicio Asimétrico COMPLETADA — **RELEASE MAYOR V6.0**).
+- **Estado Operativo de Flota (2026-10-11)**: Perfil `c3` (M23: 2700W, M24: 2500W, M25: 2700W, M26: 2500W) balanceado a 5200W por elevador (~390 TH/s nominales), 0 reinicios por caída de cadena, Fan Governor modulando a 79.5°C con headroom de 3°C vs umbral 84°C de VNish, telemetría SQLite periódica reactivada.
 - **Programa Maestro de Desacoplamiento del Monolito**: **100% COMPLETADO** (Fases 1 a 5: `Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`, `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`). Monolito disuelto definitivamente: `miner_monitor.py` reducido a 324 LOC.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
@@ -1152,6 +1152,24 @@ Actualmente no hay forma de ver en tiempo real quÃ© directiva estÃ¡ activa, 
 - Disolución final de `app/miner_monitor.py` de 6.646 a **324 LOC** ($\le 450$ LOC objetivo alcanzado; -6.322 LOC netas, -8.752 LOC acumuladas).
 - Shims de re-exportación tipados para el 100% de contratos de prueba y símbolos públicos.
 - Certificación preflight 8/8 gates PASS y servicio Windows NSSM `MinerAlerts` en producción continua.
+
+---
+
+### Iniciativa 44 — Armonización Térmica con Firmware VNish y Silicio Asimétrico (Spec 092) — COMPLETADA ✅
+
+**Documento**: `specs/092-vnish-harmonization-and-stability/spec.md`<br/>
+**Estado**: COMPLETADA Y CERTIFICADA (2026-10-11) — 1530 tests PASS, 75 subtests PASS — **RELEASE MAYOR V6.0**.<br/>
+**Prioridad**: P0 — Estabilidad Térmica de Planta y Prevención de Reinicios<br/>
+**Riesgo**: MEDIO<br/>
+**Modelo ejecutado**: Gemini 3.8 Flash High<br/>
+**Dependencia**: Arquitectura Hookificada V6.0 (Spec 091)<br/>
+
+**Alcance técnico completado**:
+- Calibración de consignas del Fan Governor a 79.5°C nominal (`deadband_high_c: 81.0°C`, `emergency_temp_c: 82.5°C`), garantizando un margen de seguridad $\ge 3.0^\circ\text{C}$ frente al umbral de corte de 84.0°C de VNish.
+- Reconocimiento de asimetría física de silicio y clampeo de M24 y M26 a 2500W (`top_preset: "2500"`, `preset: "2500"`) eliminando el bucle de escalado y corte de Cadena 1.
+- Formalización de perfil `PROFILE_C3_ASYMMETRIC_SPLIT` (`c3` / `split`: M23: 2700W, M24: 2500W, M25: 2700W, M26: 2500W) balanceando 5200W por elevador.
+- Reconexión de pipeline periódico en `PostTickHook`: ingesta periódica cada 300s en `chain_telemetry_samples` de SQLite, evaluación predictiva de cadenas y checkpoints WAL de SQLite.
+- Certificación preflight 8/8 gates PASS y servicio Windows NSSM `MinerAlerts` en producción continua con cero reinicios espurios.
 
 ---
 

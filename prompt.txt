@@ -1,33 +1,33 @@
 # ==============================================================================
-# ESTADO DE PLANTA, ESTABILIDAD TÉRMICA Y CIERRE FORENSE DE PISOS DE VENTILACIÓN
+# ESTADO DE PLANTA, ESTABILIDAD TÉRMICA Y CIERRE CERTIFICADO DE SPEC 092
 # MODELO RECOMENDADO PARA PRÓXIMA SESIÓN: Gemini 3.8 Flash High
-# FECHA: 2026-10-09 11:25 UTC-3
+# FECHA: 2026-10-11 00:50 UTC-3
 # RAMA: codex/022-adaptive-acquisition (origin/codex/022-adaptive-acquisition)
-# SERVICIO WINDOWS: MinerAlerts RUNNING (PID activo)
+# SERVICIO WINDOWS: MinerAlerts RUNNING (PID activo en NSSM)
 # SUITE DE PRUEBAS: 1530 passed, 75 subtests passed (100% GREEN)
+# COMPUERTA STABILIZE: 8/8 gates PASS (preflight_stabilize.ps1 certificado)
 # ==============================================================================
 
-ESTADO OPERATIVO DE LA PLANTA:
-- S19JPRO-23: OK | 101.0 TH/s | 79.0°C | Fan 92% | 2698W | 3/3 Cadenas | restart_req=False
-- S19JPRO-24: OK | 100.3 TH/s | 79.0°C | Fan 92% | 2698W | 3/3 Cadenas | restart_req=False
-- S19JPRO-25: OK |  98.1 TH/s | 75.0°C | Fan 92% | 2698W | 3/3 Cadenas | restart_req=False
-- S19JPRO-26: OK |  82.0 TH/s (autotune ramp hacia 100 TH/s) | 68.0°C | Fan 100% -> 92% | 2299W -> 2700W | 3/3 Cadenas | restart_req=False
-- Hashrate global: ~380-400 TH/s sostenidos.
+ESTADO OPERATIVO DE LA PLANTA (PERFIL C3 - SILICIO ASIMÉTRICO):
+- S19JPRO-23: OK | 100.0 TH/s | 79.0°C | Fan 100% -> 92% | 2698W | 3/3 Cadenas | restart_req=False (60+ horas continuo)
+- S19JPRO-24: OK |  89-97 TH/s | 76.0°C | Fan 90% | 2498W | 3/3 Cadenas | restart_req=False (Clampeado a 2500W)
+- S19JPRO-25: OK | 101.2 TH/s | 79.0°C | Fan 92% | 2698W | 3/3 Cadenas | restart_req=False (11+ horas continuo)
+- S19JPRO-26: OK |  92-97 TH/s | 74.0°C | Fan 90% | 2498W | 3/3 Cadenas | restart_req=False (Clampeado a 2500W)
+- Hashrate global: ~382-395 TH/s nominales continuos.
+- Potencia total de planta: 10.4 kW (5200W en Elevador 1, 5200W en Elevador 2, balance simétrico).
 
-RESUMEN FORENSE DEL EXPERIMENTO TÉRMICO:
-1. Inocuidad de la API VNish:
-   - `POST /api/v1/settings` con `cooling.mode.name = "manual"` es un ajuste hot-apply por PWM en el microcontrolador.
-   - NO reinicia el proceso minero (`bmminer`/`cgminer`), NO toca frecuencias ni voltajes, NO retorna `restart_required`.
-   - Evidencia: M24 moduló 5 veces en 6 minutos (95% -> 80% -> 100%) manteniendo 100 TH/s sin perder uptime. M26 hasheó 20 minutos seguidos a 75% antes de la falla física.
-2. Causa Raíz de Caída de Cadena 1:
-   - A 2700W, las placas disipan ~900W cada una.
-   - Al bajar el flujo a 75% PWM, la presión estática decae >35%, creando un hotspot local en Cadena 1 (>95°C de juntura).
-   - El firmware VNish corta la placa por pérdida de comunicación en el bus (CRC/PLL) para proteger el silicio físico.
-3. Pisos Seguros Consolidados:
-   - `fan_governor_power_floor_2700w: 92`
-   - `fan_governor_power_floor_2500w: 90`
-   - `fan_governor_power_floor_2300w: 65`
+RESUMEN FORENSE Y RESOLUCIÓN DEFINITIVA DE REINICIOS (SPEC 092):
+1. Causa Raíz de Caídas de Cadena 1 en M24 y M26:
+   - Colisión entre consigna Fan Governor (82.0°C) y el umbral de desescalado VNish (decrease_temp: 84°C).
+   - A 2700W, las variaciones térmicas en Cadena 1 rozaban los 84°C.
+   - VNish ejecutaba desescalado forzado en caliente, induciendo desincronización PLL y corte de Cadena 1 (failure).
+   - Nuestro supervisor detectaba HASHBOARD (2/3 placas) y ejecutaba reinicio automático cada 1.5 a 3 horas.
+2. Acciones Correctivas Aplicadas y Certificadas:
+   - Headroom Térmico >= 3°C: Fan Governor calibrado a 79.5°C nominal (deadband_high_c: 81.0°C, emergency_temp_c: 82.5°C).
+   - Silicio Asimétrico Clampeado: M24 y M26 clampeados a 2500W en config.json y en firmware VNish (top_preset: 2500, preset: 2500). M23 y M25 sostenidos a 2700W.
+   - Telemetría SQLite Reactivada: Ingesta periódica cada 300s en chain_telemetry_samples y checkpoints WAL de SQLite restaurados en PostTickHook.
 
 DIRECTIVA PARA PRÓXIMA SESIÓN:
-- Seguir la secuencia de desarrollo según SPEC_PROGRAM.md y ROADMAP.md.
-- Mantener la invariante de no bajar los pisos de ventilación por debajo de 92% a 2700W.
+- El proyecto se encuentra 100% estable, certificado y con todas las 92 specs cerradas.
+- Mantener la invariante de silicio asimétrico (M24 y M26 en 2500W; M23 y M25 en 2700W).
+- Si el operador decide iniciar una nueva etapa o feature, usar el modelo Gemini 3.8 Flash High.

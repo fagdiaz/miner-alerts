@@ -3,6 +3,44 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-11] - Spec 092: Armonización Térmica con Firmware VNish y Estabilidad de Silicio Asimétrico
+
+* **Contexto y Causa Raíz de Reinicios a Deshoras**:
+  - El operador reportó reinicios inesperados a deshoras en la planta de mineros S19j Pro.
+  - La auditoría forense profunda de `logs/out.log`, `data/miner_alerts.db` y las APIs REST de VNish identificó que el 100% de los reinicios se concentraban en `S19JPRO-24` y `S19JPRO-26`, originados por `Causa aislada: Cadena 1 (Corte de cadena o placa detenida (failure))`.
+  - M23 acumuló 60+ horas consecutivas con 0 reinicios en 2700W, demostrando que la causa no era eléctrica de red ni global de planta, sino térmica/silicio específica.
+  - **Mecanismo del Choque con VNish**:
+    1. VNish tiene configurado internamente `preset_switcher: {enabled: true, top_preset: "2700", decrease_temp: 84, rise_temp: 79}`.
+    2. Nuestro Fan Governor intentaba estabilizar a 82.0°C relajando ventiladores al piso de 92%. A 2700W, la disipación térmica de ~900W por placa llevaba a la Cadena 1 a oscilar entre 82°C y 84°C.
+    3. Al tocar los 84.0°C, el demonio interno de VNish ejecutaba un desescalado forzado en caliente (`decrease_temp: 84`). Dicha modulación brusca de voltaje en 2700W causaba pérdida de sincronización de PLL y errores de CRC en el bus SPI de Cadena 1.
+    4. VNish desconectaba la placa en `failure`, nuestro monitor detectaba 2 placas en vez de 3 (`HASHBOARD`) y reiniciaba el equipo.
+    5. Tras reiniciar, el minero arrancaba en 2300W, el gobernador enfriaba por debajo de 79°C, VNish escalaba nuevamente a 2500W y 2700W, los ventiladores bajaban a 92% buscando 82°C, y el ciclo se repetía cada 1.5 a 3 horas.
+
+* **Solución Implementada y Acciones Técnicas**:
+  1. **Armonización Térmica con Headroom $\ge 3^\circ\text{C}$**:
+     - Se calibraron las consignas del Fan Governor en `app/config.json` y `app/config.example.json`:
+       - `fan_governor_target_temp_c`: `79.5` (antes `82.0`)
+       - `fan_governor_deadband_low_c`: `78.0` (antes `81.0`)
+       - `fan_governor_deadband_high_c`: `81.0` (antes `82.5`)
+       - `fan_governor_emergency_temp_c`: `82.5` (antes `83.0`)
+     - Esto asegura una barrera infranqueable de 3.0°C por debajo del umbral de corte de 84.0°C de VNish, forzando 100% fan a 82.5°C antes de que VNish intente desescalar.
+  2. **Clampeo Asimétrico de Silicio (Perfil `c3`)**:
+     - Se reconoció la asimetría física de las placas: M24 y M26 presentan menor tolerancia térmica en Cadena 1 a 2700W, pero operan 100% estables a 2500W rindiendo ~97 TH/s a 74-76°C.
+     - Se fijó en `app/config.json`: M24 y M26 a `target_power_w: 2500.0`, `max_hardware_preset: "2500W"`. M23 y M25 a `target_power_w: 2700.0`, `max_hardware_preset: "2700W"`.
+     - Se inyectó en caliente vía API REST `/api/v1/settings` en M24 y M26: `preset: "2500"` y `top_preset: "2500"`, impidiendo que el firmware intente auto-escalar a 2700W.
+     - Se formalizó en `app/governance/power_progression.py` el perfil `PROFILE_C3_ASYMMETRIC_SPLIT` (`c3` / `split`), balanceando 5200W en elevador 1 y 5200W en elevador 2 (10.4 kW de planta).
+  3. **Reconexión de Telemetría Periódica de Cadenas en `PostTickHook`**:
+     - Se reconectó la invocación en segundo plano en `app/core/pipeline.py`:
+       - `_async_collect_chain_telemetry` cada 300 segundos, restaurando la ingesta continua en `chain_telemetry_samples` de SQLite.
+       - `_async_evaluate_predictive_chain_break` cada 300 segundos.
+       - Mantenimiento periódico SQLite WAL (`PASSIVE` cada 3600s, `TRUNCATE` en ventana 03:00-05:00 UTC).
+
+* **Verificación y Resultados Operativos**:
+  - Compilación sintáctica: `py_compile` en todos los archivos modificados: 100% PASS.
+  - Pruebas automatizadas: 1530 tests unitarios e integrados PASS, 75 subtests PASS (0 fallos).
+  - Servicio Windows NSSM `MinerAlerts` reiniciado y verificado en caliente: telemetría fluyendo a SQLite (`[CHAIN_TELEMETRY] miner=S19JPRO-* collected=3 inserted=3`), WAL checkpoints ejecutando.
+  - Planta estabilizada: M24 y M26 corriendo a 2500W frescas y estables; M23 y M25 a 2700W nominales; 0 reinicios.
+
 ## [2026-10-09] - Auditoría Exhaustiva de Skills y Purga de Módulos Residuales (.NET / React)
 
 * **Contexto y Motivación**:

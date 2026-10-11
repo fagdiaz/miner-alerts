@@ -186,8 +186,8 @@
       "max_hardware_preset": "2500W"
     }
   ],
-  "power_progression_profile": "c4",
-  "_comment_progression": "Perfil de progresiÃ³n de potencia (Spec 079 / PROP-014): c0 (base 2500W), c1 (asym 2700/2700/2500/2700), c2 (elev1 balanced 2700/2500/2500/2700), c4 (max power 4x 2700W)",
+  "power_progression_profile": "c3",
+  "_comment_progression": "Perfil de progresión de potencia (Spec 079 / 092): c0 (base 2500W), c1 (asym 2700/2700/2500/2700), c2 (elev1 balanced 2700/2500/2500/2700), c3 (asym split 2700/2500/2700/2500), c4 (max power 4x 2700W)",
   "metrics_snapshot_enabled": false,
   "metrics_snapshot_path": "diagnostics/metrics/current.json",
   "metrics_snapshot_stale_seconds": 60,
@@ -202,16 +202,16 @@
     "max_run_seconds": 300
   },
   "vnish_api": {
-    "_comment": "Credenciales Vnish REST para Fan Governor y Preset Balancer. NUNCA commitar con contraseÃ±a real.",
+    "_comment": "Credenciales Vnish REST para Fan Governor y Preset Balancer. NUNCA commitar con contraseña real.",
     "password": "CHANGE_ME"
   },
   "fan_governor_enabled": true,
   "fan_governor_dry_run": false,
-  "_comment_fan_governor": "Gobernador tÃ©rmico de lazo cerrado (Spec 039). Activo por defecto con modulaciÃ³n a 82Â°C. Desactivable en caliente con /gov off.",
-  "fan_governor_target_temp_c": 82.0,
-  "fan_governor_deadband_low_c": 81.0,
-  "fan_governor_deadband_high_c": 82.5,
-  "fan_governor_emergency_temp_c": 83.0,
+  "_comment_fan_governor": "Gobernador térmico de lazo cerrado (Spec 039 / 092). Activo por defecto con modulación a 79.5°C (headroom >= 3°C vs 84°C VNish). Desactivable en caliente con /gov off.",
+  "fan_governor_target_temp_c": 79.5,
+  "fan_governor_deadband_low_c": 78.0,
+  "fan_governor_deadband_high_c": 81.0,
+  "fan_governor_emergency_temp_c": 82.5,
   "fan_governor_min_duty_pct": 30,
   "fan_governor_step_down_pct": 2,
   "fan_governor_step_up_pct": 3,

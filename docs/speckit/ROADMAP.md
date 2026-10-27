@@ -1,13 +1,13 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-10-11
+**Last reviewed**: 2026-10-27
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (92 de 92 especificaciones completadas y evidenciadas — **1530 tests PASS, 75 subtests PASS** — Spec 092 Armonización Térmica VNish y Silicio Asimétrico COMPLETADA — **RELEASE MAYOR V6.0**).
-- **Estado Operativo de Flota (2026-10-11)**: Perfil `c3` (M23: 2700W, M24: 2500W, M25: 2700W, M26: 2500W) balanceado a 5200W por elevador (~390 TH/s nominales), 0 reinicios por caída de cadena, Fan Governor modulando a 79.5°C con headroom de 3°C vs umbral 84°C de VNish, telemetría SQLite periódica reactivada.
+- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (93 de 93 especificaciones completadas y evidenciadas — **1536 tests PASS, 75 subtests PASS** — Spec 093 Watchdog de Elevadores Eléctricos y Auto-Recuperación de Firmware COMPLETADA — **RELEASE MAYOR V6.0.1**).
+- **Estado Operativo de Flota (2026-10-27)**: Perfil `c3` (M23: 2700W, M24: 2500W, M25: 2700W, M26: 2500W) balanceado a 5200W por elevador (~400 TH/s nominales), S19JPRO-26 auto-recuperado en VNish 1.2.6 con perfil dorado intacto, Watchdog de elevadores activo con bypass de histeresis y detección determinista de rachas.
 - **Programa Maestro de Desacoplamiento del Monolito**: **100% COMPLETADO** (Fases 1 a 5: `Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`, `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`). Monolito disuelto definitivamente: `miner_monitor.py` reducido a 324 LOC.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 

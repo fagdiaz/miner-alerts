@@ -85,7 +85,12 @@ from app.governance.maintenance_scheduler import (
     ScheduledWindow,
     process_maintenance_scheduler_cycle,
 )
-from app.governance.phase_drop_discriminator import process_phase_drop_cycle
+from app.governance.phase_drop_discriminator import (
+    parse_phase_drop_config,
+    process_phase_drop_cycle,
+)
+from app.governance.firmware_recovery import handle_stock_firmware_recovery
+from app.network.firmware_flasher import is_stock_bitmain
 from app.governance.post_blackout_guard import (
     PostBlackoutTracker,
     execute_post_blackout_cycle,
@@ -722,6 +727,61 @@ class GovernanceHook(SupervisoryHook):
             )
         except Exception as _atw_exc:
             log(f"[AUTOTUNE_WATCHDOG_ERR] Autotune watchdog cycle failed: {_atw_exc}")
+
+        # Fast Phase Drop & Elevator Outage Cycle (Spec 051 / Spec 093)
+        try:
+            pd_cfg = parse_phase_drop_config(config)
+            global _LAST_PHASE_DROP_ALERT_TS, _ACTIVE_PHASE_DROPS
+            tick_failed_miners = tick_data.get("tick_failed_miners", [])
+            tick_responded_miners = tick_data.get("tick_responded_miners", [])
+            tick_maintenance_ids = tick_data.get("tick_maintenance_ids", set())
+            process_phase_drop_cycle(
+                miners=valid_miners,
+                states=states,
+                tick_failed_miners=tick_failed_miners,
+                tick_responded_miners=tick_responded_miners,
+                maintenance_miner_ids=tick_maintenance_ids,
+                phase_drop_config=pd_cfg,
+                last_alert_ts=_LAST_PHASE_DROP_ALERT_TS,
+                active_phase_drops=_ACTIVE_PHASE_DROPS,
+                now_ts=now_ts,
+                fails_before_alert=int(config.get("fails_before_alert", 3)),
+                send_telegram_fn=send_telegram,
+                record_event_fn=context.event_store.record_event if context.event_store else None,
+                log_fn=log,
+                bot_token=bot_token,
+                chat_id=str(chat_id),
+                qa_mode=qa_mode,
+                qa_notify=qa_notify,
+            )
+        except Exception as _pd_exc:
+            log(f"[PHASE_DROP_ERR] Phase drop cycle failed: {_pd_exc}")
+
+        # Autonomous Stock Firmware Recovery Cycle (Spec 093)
+        try:
+            for miner in valid_miners:
+                m_name = miner.get("name", "")
+                m_host = miner.get("host", "")
+                m_sk = f"{m_name}|{m_host}:{miner.get('port', 4028)}"
+                m_st = states.get(m_sk)
+                if m_st is not None and (
+                    getattr(m_st, "last_active_boards", 3) < int(config.get("expected_boards", 3))
+                    or getattr(m_st, "stock_firmware_fallback", False)
+                ):
+                    if is_stock_bitmain(m_host):
+                        handle_stock_firmware_recovery(
+                            host=m_host,
+                            miner_name=m_name,
+                            config=config,
+                            bot_token=bot_token,
+                            chat_id=str(chat_id),
+                            send_telegram_fn=send_telegram,
+                            qa_mode=qa_mode,
+                            qa_notify=qa_notify,
+                            now_ts=now_ts,
+                        )
+        except Exception as _fwr_exc:
+            log(f"[FIRMWARE_RECOVERY_ERR] Stock firmware recovery cycle failed: {_fwr_exc}")
 
         return {"governance_completed": True}
 

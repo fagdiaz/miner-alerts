@@ -1085,8 +1085,9 @@ class DetectionHook(SupervisoryHook):
                 state.state = new_state
 
                 if new_state == STATE_OK:
-                    state.low_streak = 0
-                    state.offline_streak = 0
+                    if prev_state != STATE_OK:
+                        state.low_streak = 0
+                        state.offline_streak = 0
                     state.hashboard_since_ts = None
                     state.auto_restart_count = 0
 
@@ -1095,7 +1096,6 @@ class DetectionHook(SupervisoryHook):
                         state.low_since_ts = now_ts
                 else:
                     state.low_since_ts = None
-                    state.low_streak = 0
 
                 if new_state == STATE_HASHBOARD:
                     if state.hashboard_since_ts is None:

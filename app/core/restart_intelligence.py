@@ -286,6 +286,22 @@ def _async_execute_mining_restart(
             )
         else:
             logger.warning("[WARN] [AUTO-RESTART] %s (%s) fallo soft restart de minado: %s", disp_name, host, err)
+            if "stock_firmware_fallback_detected" in str(err):
+                try:
+                    from app.governance.firmware_recovery import handle_stock_firmware_recovery
+                    handle_stock_firmware_recovery(
+                        host=host,
+                        miner_name=miner_name,
+                        config={},
+                        bot_token=bot_token,
+                        chat_id=str(chat_id),
+                        send_telegram_fn=_send_tg,
+                        qa_mode=qa_mode,
+                        qa_notify=qa_notify,
+                        now_ts=ts,
+                    )
+                except Exception as _fwr_err:
+                    logger.warning("[WARN] [FIRMWARE_RECOVERY] Fallo al invocar recovery: %s", _fwr_err)
             if (not qa_mode) or qa_notify:
                 _send_tg(
                     bot_token,

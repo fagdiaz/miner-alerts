@@ -3,6 +3,39 @@
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
 La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
 
+## [2026-10-27] - Spec 093: Watchdog de Elevadores Eléctricos, Corrección de Rachas y Auto-Recuperación de Firmware
+
+* **Contexto y Evento en Planta**:
+  - Falla física de un relé en el elevador 2 (`elevator_2`), cortando el suministro a `S19JPRO-25` (192.168.100.25) y `S19JPRO-26` (192.168.100.26) durante ~95 minutos.
+  - Telegram no emitió la alerta `MINERO OFFLINE` ni la alerta de corte de circuito.
+  - Al reenergizarse, `S19JPRO-26` arrancó en firmware stock de Bitmain (`BMMiner 1.0.0`) en lugar de VNish 1.2.6.
+
+* **Causas Raíz Detectadas y Resueltas**:
+  1. **Reseteo Prematuro de Rachas en `DetectionHook` (`app/core/engine.py`)**:
+     - `if new_state == STATE_OK:` reseteaba incondicionalmente `state.offline_streak = 0` y `state.low_streak = 0`.
+     - En el primer tick de falla, la histeresis de alerta (`fails_before_alert = 3`) hacía que `classify_state` devolviera el estado previo (`STATE_OK`).
+     - `DetectionHook` interpretaba esto como "OK" y ponía la racha en 0 en el mismo tick, impidiendo que llegara a 3 y silenciando permanentemente la alerta de caída.
+     - **Solución**: Se condicionó el reseteo de rachas exclusivamente a transiciones reales de recuperación desde estados anómalos o cuando el minero efectivamente respondió (`responded=True`).
+  2. **Discriminador de Corte Eléctrico de Elevador Desconectado (`app/core/pipeline.py`)**:
+     - `process_phase_drop_cycle` (Spec 051) no estaba conectado en el pipeline desacoplado V6.0.
+     - **Solución**: Se conectó formalmente en `GovernanceHook.execute`, evaluando caídas simultáneas por grupo eléctrico (`elevator_1`, `elevator_2`) y disparando `⚡ DISPARO DE CIRCUITO` con bypass inmediato de histeresis.
+  3. **Auto-Recuperación de Firmware Stock (`app/governance/firmware_recovery.py`)**:
+     - Implementación de escalera autónoma:
+       a) Detección de Bitmain stock (`BMMiner 1.0.0` / HTTP Digest en `/cgi-bin/reboot.cgi`).
+       b) Primer intento: HTTP Digest POST `/cgi-bin/reboot.cgi` (`root:root`) para inducir arranque de partición NAND primaria con VNish.
+       c) Segundo intento: En caso de persistencia, reflash desatendido desde paquete oficial `C:\asicto\asicto-s19jpro-bb-nand-v1.2.6-install.tar.gz`.
+       d) Restauración automática del perfil dorado desde `data/miner_profiles/S19JPRO-*.json` (presets, credenciales, pools).
+
+* **Acción Inmediata en Vivo**:
+  - `S19JPRO-26` recuperado con reboot HTTP Digest; VNish 1.2.6 arrancó con su perfil dorado íntegro.
+  - 3/3 cadenas activas y hashrate normalizado a ~90-95 TH/s. Flota completa en ~400 TH/s nominales.
+
+* **Verificación y Calidad**:
+  - Sintaxis: `py_compile` en todos los archivos modificados: 100% PASS.
+  - Pruebas unitarias e integración: `tests/test_spec093_elevator_and_firmware_recovery.py` (6/6 PASS).
+  - Regresión completa: 1536 tests PASS, 75 subtests PASS (0 fallos).
+  - Preflight QA (`speckit-qa`): PASS (Checklist 0/0, Diff clean, Builds PASS).
+
 ## [2026-10-11] - Spec 092: Armonización Térmica con Firmware VNish y Estabilidad de Silicio Asimétrico
 
 * **Contexto y Causa Raíz de Reinicios a Deshoras**:

@@ -1,33 +1,35 @@
 # ==============================================================================
-# ESTADO DE PLANTA, ESTABILIDAD TÉRMICA Y CIERRE CERTIFICADO DE SPEC 092
+# ESTADO DE PLANTA, ESTABILIDAD Y CIERRE CERTIFICADO DE SPEC 093
 # MODELO RECOMENDADO PARA PRÓXIMA SESIÓN: Gemini 3.8 Flash High
-# FECHA: 2026-10-11 00:50 UTC-3
-# RAMA: codex/022-adaptive-acquisition (origin/codex/022-adaptive-acquisition)
-# SERVICIO WINDOWS: MinerAlerts RUNNING (PID activo en NSSM)
-# SUITE DE PRUEBAS: 1530 passed, 75 subtests passed (100% GREEN)
+# FECHA: 2026-10-27 00:25 UTC-3
+# RAMA: codex/022-adaptive-acquisition (origin/codex/022-adaptive-acquisition - commit 77eeda5)
+# SERVICIO WINDOWS: MinerAlerts RUNNING (PID activo bajo NSSM)
+# SUITE DE PRUEBAS: 1536 passed, 75 subtests passed (100% GREEN)
 # COMPUERTA STABILIZE: 8/8 gates PASS (preflight_stabilize.ps1 certificado)
 # ==============================================================================
 
 ESTADO OPERATIVO DE LA PLANTA (PERFIL C3 - SILICIO ASIMÉTRICO):
-- S19JPRO-23: OK | 100.0 TH/s | 79.0°C | Fan 100% -> 92% | 2698W | 3/3 Cadenas | restart_req=False (60+ horas continuo)
-- S19JPRO-24: OK |  89-97 TH/s | 76.0°C | Fan 90% | 2498W | 3/3 Cadenas | restart_req=False (Clampeado a 2500W)
-- S19JPRO-25: OK | 101.2 TH/s | 79.0°C | Fan 92% | 2698W | 3/3 Cadenas | restart_req=False (11+ horas continuo)
-- S19JPRO-26: OK |  92-97 TH/s | 74.0°C | Fan 90% | 2498W | 3/3 Cadenas | restart_req=False (Clampeado a 2500W)
-- Hashrate global: ~382-395 TH/s nominales continuos.
-- Potencia total de planta: 10.4 kW (5200W en Elevador 1, 5200W en Elevador 2, balance simétrico).
+- S19JPRO-23: OK | ~98-100 TH/s | 78-79°C | Fan 92% | 2698W | 3/3 Cadenas | VNish 1.2.6
+- S19JPRO-24: OK |  90-94 TH/s | 75-76°C | Fan 90% | 2498W | 3/3 Cadenas | VNish 1.2.6 (Clampeado 2500W)
+- S19JPRO-25: OK | ~99-101 TH/s | 78-79°C | Fan 92% | 2698W | 3/3 Cadenas | VNish 1.2.6
+- S19JPRO-26: OK |  88-93 TH/s | 74-75°C | Fan 90% | 2498W | 3/3 Cadenas | VNish 1.2.6 (Auto-recuperado)
+- Hashrate global: ~385-400 TH/s nominales continuos.
+- Potencia total de planta: ~10.4 kW (5200W Elevador 1, 5200W Elevador 2, balance simétrico).
 
-RESUMEN FORENSE Y RESOLUCIÓN DEFINITIVA DE REINICIOS (SPEC 092):
-1. Causa Raíz de Caídas de Cadena 1 en M24 y M26:
-   - Colisión entre consigna Fan Governor (82.0°C) y el umbral de desescalado VNish (decrease_temp: 84°C).
-   - A 2700W, las variaciones térmicas en Cadena 1 rozaban los 84°C.
-   - VNish ejecutaba desescalado forzado en caliente, induciendo desincronización PLL y corte de Cadena 1 (failure).
-   - Nuestro supervisor detectaba HASHBOARD (2/3 placas) y ejecutaba reinicio automático cada 1.5 a 3 horas.
-2. Acciones Correctivas Aplicadas y Certificadas:
-   - Headroom Térmico >= 3°C: Fan Governor calibrado a 79.5°C nominal (deadband_high_c: 81.0°C, emergency_temp_c: 82.5°C).
-   - Silicio Asimétrico Clampeado: M24 y M26 clampeados a 2500W en config.json y en firmware VNish (top_preset: 2500, preset: 2500). M23 y M25 sostenidos a 2700W.
-   - Telemetría SQLite Reactivada: Ingesta periódica cada 300s en chain_telemetry_samples y checkpoints WAL de SQLite restaurados en PostTickHook.
+RESUMEN FORENSE Y RESOLUCIÓN DEFINITIVA DE INCIDENTE FÍSICO (SPEC 093):
+1. Evento Real:
+   - Relé de Elevador 2 se trabó anunciando sobretensión, cortando energía a M25 y M26 por ~95 min.
+   - Telegram no alertó la caída por reseteo prematuro de racha en DetectionHook (histeresis).
+   - Al retornar energía, M26 arrancó en partición de fábrica Bitmain Stock (BMMiner 1.0.0).
+2. Acciones Implementadas y Certificadas:
+   - Recuperación en Vivo de M26: Reboot HTTP Digest POST /cgi-bin/reboot.cgi (root:root) forzó arranque de partición primaria VNish 1.2.6 con perfil dorado íntegro.
+   - Corrección de Rachas: DetectionHook (app/core/engine.py) ya no resetea offline_streak / low_streak durante la ventana de histeresis; únicamente tras respuesta confirmada (responded=True) o recuperación real de estado.
+   - Watchdog de Elevadores Conectado: process_phase_drop_cycle conectado en GovernanceHook (app/core/pipeline.py), emitiendo de inmediato "⚡ DISPARO DE CIRCUITO" ante caídas grupales de elevador con bypass de histeresis.
+   - Escalera de Auto-Recuperación de Firmware Stock (app/governance/firmware_recovery.py):
+     a) Detección de BMMiner stock y envío de HTTP Digest reboot.
+     b) Fallback automático a FirmwareFlasher (C:\asicto\asicto-s19jpro-bb-nand-v1.2.6-install.tar.gz).
+     c) Clonado y restauración automática de credenciales, pools y matrices de chips desde data/miner_profiles/.
 
 DIRECTIVA PARA PRÓXIMA SESIÓN:
-- El proyecto se encuentra 100% estable, certificado y con todas las 92 specs cerradas.
-- Mantener la invariante de silicio asimétrico (M24 y M26 en 2500W; M23 y M25 en 2700W).
-- Si el operador decide iniciar una nueva etapa o feature, usar el modelo Gemini 3.8 Flash High.
+- Todo el stack se encuentra 100% certificado, servicio MinerAlerts corriendo y 1536 tests verdes.
+- Motor primario recomendado: Gemini 3.8 Flash High.

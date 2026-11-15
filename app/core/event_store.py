@@ -780,6 +780,39 @@ class EventStore:
             self._report_error("record_event", exc)
             return None
 
+    def get_unattributed_mining_restart_ts(
+        self, miner_key: str, *, now_ts: float, elapsed: int,
+    ) -> Optional[float]:
+        """Successful soft action near this uptime reset, not an attempted action.
+
+        Each success can explain only one detection. No state_lock is held by
+        the caller; this method uses only the existing SQLite lock.
+        """
+        if self._connection is None:
+            return None
+        reset_ts = now_ts - elapsed
+        try:
+            with self._lock:
+                row = self._connection.execute(
+                    """
+                    SELECT s.occurred_ts FROM operational_events s
+                    WHERE s.miner_key = ? AND s.event_type = 'auto_restart_mining_success'
+                      AND s.occurred_ts BETWEEN ? AND ?
+                      AND s.occurred_ts BETWEEN ? AND ?
+                      AND NOT EXISTS (
+                        SELECT 1 FROM operational_events r
+                        WHERE r.miner_key = s.miner_key AND r.event_type = 'restart_detected'
+                          AND r.occurred_ts >= s.occurred_ts AND r.occurred_ts <= ?
+                      )
+                    ORDER BY s.occurred_ts DESC LIMIT 1
+                    """,
+                    (miner_key, now_ts - 120, now_ts, reset_ts - 120, reset_ts + 10, now_ts),
+                ).fetchone()
+            return float(row[0]) if row else None
+        except sqlite3.Error as exc:
+            self._report_error("mining_restart_attribution", exc)
+            return None
+
     def list_events(
         self,
         *,

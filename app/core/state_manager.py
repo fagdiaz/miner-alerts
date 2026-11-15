@@ -293,6 +293,7 @@ def _serialise_miner_state(state: Any) -> Dict[str, Any]:
         "last_thermal_downstep_ts": getattr(state, "last_thermal_downstep_ts", 0.0),
         "last_thermal_pause_ts": getattr(state, "last_thermal_pause_ts", 0.0),
         "thermal_pause_until_ts": getattr(state, "thermal_pause_until_ts", None),
+        "thermal_resume_preset": getattr(state, "thermal_resume_preset", None),
         "thermal_lockout_until_ts": getattr(state, "thermal_lockout_until_ts", None),
         # Spec 081: Pending Preset Restart Watchdog
         "vnish_restart_required": getattr(state, "vnish_restart_required", False),
@@ -624,6 +625,7 @@ def load_state(state_path: Path) -> Tuple[Dict[str, Any], Optional[int]]:
                 ),
                 last_thermal_downstep_ts=float(data.get("last_thermal_downstep_ts", 0.0)),
                 last_thermal_pause_ts=float(data.get("last_thermal_pause_ts", 0.0)),
+                thermal_resume_preset=str(data.get("thermal_resume_preset") or "") or None,
                 thermal_pause_until_ts=(
                     float(data.get("thermal_pause_until_ts"))
                     if data.get("thermal_pause_until_ts") is not None

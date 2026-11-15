@@ -1187,3 +1187,81 @@ Estas tareas no requieren specs nuevas pero se monitorean activamente en producc
 | Gate de Gobernanza en ActuatorHook | `InterventionGovernance.master_enabled=False` no es evaluado por el gate de auto-reboot en `ActuatorHook` (bloquea solo el gate de qa_mode). | Evaluación de políticas de parada total $\to$ integrar `master_enabled` en `evaluate_auto_reboot_policy` |
 
 ---
+
+
+## Incidente térmico 2026-11-12 — prioridad P0
+Hotfix probado (1557 tests y 75 subtests PASS) y activado a las 17:12:30 UTC-3.
+Contención: techos de 2300/2000/2150/2000 W, piso nativo de 1740 W, ventilación al 100 %
+y deduplicación térmica de 900 s por minero/tipo. ViaBTC activa en toda la flota.
+No avanzar a otra spec hasta cierre. Observación inmediata: al menos 15 minutos desde
+activación; calibración de M24 y revisión D+1 (13 de noviembre) quedan sujetas a evidencia.
+El bloqueo administrativo inicial está resuelto. No hubo commit/push automático.
+Ver docs/audit/STABILIZATION_REPORT_20261112_HEAT.md y evidencia de Spec 093.
+
+
+## Revisión 2026-11-14 — powerups y avisos
+La intención vigente es C3 dinámico (2700/2500/2700/2500), no los caps de calor del día12.
+Suite1561+75 PASS; avisos de potencia real y gracia600 preparados. Recarga administrativa
+pendiente; M26 sigue limitado a2000 hasta completar activación y observación escalonada.
+No activar otra spec ni certificar release mientras R004 siga pendiente. La ventana de
+observación se cuenta desde la recarga efectiva; no backdatear D+1 del incidente anterior.
+Ver STABILIZATION_REPORT_20261114_POWERUP.md.
+
+
+## Actualización efectiva — 2026-11-14 18:11 UTC-3
+Superado el bloqueo anterior: servicio recargado17:59:24 con shaefa85f7d y nuevos avisos/gracia600.
+Techos firmware y config alineados2700/2500/2700/2500; piso1740. M25 subió a2300W sin
+reiniciar y generó aviso confirmado a18:08:56. M26 alineado sin reinicio. Cierre de la
+observación y preflight final en curso; la política C3 dinámica sustituye caps temporales
+del día12. No activar otra spec ni restaurar configuración antigua de contención.
+
+
+## Cierre de reconciliación — 2026-11-14 18:17 UTC-3
+PASS operativo/preflight8/8,1561tests+75subtests. Recarga17:59, observación18min,
+powerupsM25/M26 y avisos confirmados. H004/R004 completadas; no quedan activaciones
+pendientes. C3 dinámico2700/2500/2700/2500, piso1740; no restaurar caps temporales del día12.
+RevisiónD+1 sugerida para15/11, sujeta a evidencia futura. Release/commit/push manuales;
+no implementar otra spec antes del cierre de release exigido por la constitución.
+
+
+## Reapertura por incidente compartido — 14/11/2026 noche
+El cierre de18:19fue una verificación inmediata, no garantía de estabilidad prolongada.
+A21:48:47/51,M25/M26 sufrieron chainbreak simultáneo a79°C y2300W estables. Se prioriza
+estabilización093: correlación, None/QA, aislamiento de dry-run y techo empíricoM25a2500.
+M23rise78por respuesta térmica; máximos2700/2500/2500/2500, ambos elevadores conprotecciones.
+La identidad calle/elevador/protección queda pendiente de registroAC externo; no especular.
+Ventana inmediata desde activación final22:11:33; revisiónD+1el15/11sujeta a evidencia futura.
+No iniciar otra spec mientras haya implementación/release actual sin cerrar manualmente.
+Ver docs/audit/PRODUCTION_STABILITY_20261114.md.
+
+
+### Actualización nocturna — 14/11/2026 22:32 UTC-3
+Despliegue final22:31:50 incluye potencia medida y tier persistido de recuperación segura.
+Regresión1583+75PASS, preflight final en curso. La observación física de la tarde no cerró
+el incidente compartido: sigue pendiente mediciónAC, fuera de la evidencia disponible.
+Operación actual: máximos2700/2500/2500/2500, M23rise78 y resto79. Mantener regulación
+nativa y protecciones; no forzar nominal ni deshabilitar guardas para subir rendimiento.
+
+
+### Cierre técnico nocturno — 14/11/2026 22:37 UTC-3
+SoftwarepreflightPASS8/8,1583+75PASS. Config997550ad y código final activos22:31:50.
+Régimen físico observado~26min sin reinicios; cuatro mineros produciendo, M25/M26a2500W.
+La causa física compartida sigue ABIERTA hasta mediciónAC. RevisiónD+1el15/11sujeta a
+nueva evidencia; no declarar problema eléctrico resuelto por una prueba inmediata exitosa.
+Sin commit/push automático; no ampliar límites antes de revisar estabilidad y evidencia.
+
+
+## Revisión vigente — 2026-11-15, secuencia de estabilización
+
+El resumen histórico de93completadas no cierra los hallazgos de producción recientes.
+- 093activa: iteraciónM corrige entregaTelegram, snooze, digest, spam de transiciones
+  y atribución softrestart; validación/activación se registra en evidencia093.
+- 094planificada: eventstore-backup-reliability (respaldo, frescura, restauraciónstaging).
+- 095planificada: sustainable-production-evidence (rendimiento efectivo ycorrelaciónAC).
+Máximo unaimplementación. Las dos planificadas no están activas ni desplegadas.
+Release093ycommit/push siguen manuales; no avanzar otra spec antes del cierre.
+
+
+Cierre de la iteración M,15/11 15:19 UTC-3: software y observación inmediata PASS;
+gate8/8 y1604+75 pruebas PASS. Correcciones activas desde15:13:46. D+1 pendiente.
+094/095 siguen solo planificadas, dependientes de release093manual. Causa física abierta.

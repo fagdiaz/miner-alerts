@@ -14,8 +14,11 @@ Multi-layered defense:
 from __future__ import annotations
 
 import time
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+
+from app.governance.preset_balancer import DEFAULT_PRESET_LADDER
 
 
 ACTION_NONE = "NONE"
@@ -36,6 +39,24 @@ class ThermalGuardDecision:
     lockout_duration_s: float = 7200.0
 
 
+def _lower_thermal_preset(preset: Optional[str], power_w: Optional[float]) -> str:
+    """Use the hardware-validated ladder; never increase power during recovery."""
+    try:
+        measured = float(power_w) if power_w is not None else 0.0
+    except (ValueError, TypeError):
+        measured = 0.0
+    if math.isfinite(measured) and measured >= 1000.0:
+        watts = measured
+    else:
+        try:
+            watts = float(str(preset).upper().rstrip("W").strip())
+        except (ValueError, TypeError):
+            watts = 1740.0
+    lower = [tier.nominal_power_w for tier in DEFAULT_PRESET_LADDER
+             if tier.nominal_power_w < watts]
+    return str(max(lower) if lower else 1740)
+
+
 def evaluate_emergency_thermal_action(
     max_temp_c: Optional[float],
     current_preset: Optional[str] = None,
@@ -48,6 +69,7 @@ def evaluate_emergency_thermal_action(
     thermal_lockout_until_ts: Optional[float] = None,
     current_top_preset: Optional[str] = None,
     max_hardware_preset: Optional[str] = None,
+    thermal_resume_preset: Optional[str] = None,
 ) -> ThermalGuardDecision:
     """
     Pure deterministic decision engine for emergency thermal tripwire.
@@ -78,15 +100,17 @@ def evaluate_emergency_thermal_action(
         is_cool = max_temp_c is not None and max_temp_c <= resume_temp_c
         if time_elapsed and is_cool:
             # Ready to safely resume
-            curr_str = str(current_preset or "")
-            if "2700" in curr_str:
-                resume_p = "2500"
-            elif "2500" in curr_str:
-                resume_p = "2300"
-            elif "2300" in curr_str:
-                resume_p = "2100"
-            else:
-                resume_p = "2300"
+            resume_p = _lower_thermal_preset(current_preset, None)
+            if thermal_resume_preset is not None:
+                valid_tiers = {str(t.nominal_power_w) for t in DEFAULT_PRESET_LADDER}
+                hint = str(thermal_resume_preset).upper().rstrip("W").strip()
+                try:
+                    ceiling = float(str(max_hardware_preset or "2700").upper().rstrip("W"))
+                except (ValueError, TypeError):
+                    ceiling = 1740.0
+                allowed = [t.nominal_power_w for t in DEFAULT_PRESET_LADDER
+                           if t.nominal_power_w <= ceiling]
+                resume_p = str(min(int(hint), max(allowed or [1740]))) if hint in valid_tiers else "1740"
             return ThermalGuardDecision(
                 action=ACTION_THERMAL_RESUME,
                 target_preset=resume_p,
@@ -147,16 +171,7 @@ def evaluate_emergency_thermal_action(
                 target_duty=100,
                 reason=f"Cooldown de step-down térmico activo ({time_since_downstep:.0f}s < {cooldown_downstep_s:.0f}s; anti-doble-bajada)",
             )
-        curr_pwr = current_power_w or 2700.0
-        curr_pre = str(current_preset or "")
-        if "2700" in curr_pre or curr_pwr >= 2600.0:
-            target_p = "2500"
-        elif "2500" in curr_pre or curr_pwr >= 2400.0:
-            target_p = "2300"
-        elif "2300" in curr_pre or curr_pwr >= 2200.0:
-            target_p = "2100"
-        else:
-            target_p = "1800"
+        target_p = _lower_thermal_preset(current_preset, current_power_w)
 
         return ThermalGuardDecision(
             action=ACTION_EMERGENCY_DOWNSTEP,
@@ -217,6 +232,7 @@ def process_emergency_thermal_guard(
     qa_notify: bool = False,
     bot_token: Optional[str] = None,
     chat_id: Optional[str] = None,
+    observed_power_w: Optional[float] = None,
 ) -> Optional[str]:
     """
     Executes physical thermal safety interventions if chip temperatures exceed safe thresholds.
@@ -235,11 +251,12 @@ def process_emergency_thermal_guard(
     host = miner.get("host", "")
 
     current_preset = (
-        getattr(state, "balancer_preset", None)
-        or getattr(state, "vnish_discovered_preset", None)
+        getattr(state, "vnish_discovered_preset", None)
+        or getattr(state, "balancer_preset", None)
         or miner.get("target_power_w")
     )
-    current_power_w = getattr(state, "governor_last_power_w", None)
+    current_power_w = (observed_power_w if observed_power_w is not None
+                       else getattr(state, "governor_last_power_w", None))
 
     # Anti-doble-bajada: track the latest of explicit thermal downsteps OR any discovered firmware preset change
     effective_downstep_ts = max(
@@ -259,6 +276,7 @@ def process_emergency_thermal_guard(
         thermal_lockout_until_ts=getattr(state, "thermal_lockout_until_ts", None),
         current_top_preset=getattr(state, "vnish_discovered_top_preset", None),
         max_hardware_preset=miner.get("max_hardware_preset", "2700W"),
+        thermal_resume_preset=getattr(state, "thermal_resume_preset", None) or "1740",
     )
 
     if decision.action == ACTION_NONE:
@@ -275,7 +293,7 @@ def process_emergency_thermal_guard(
     from app.vnish.client import (
         safe_set_miner_preset as _default_set_preset,
         safe_stop_mining as _default_stop_mining,
-        safe_resume_mining as _default_resume_mining,
+        safe_restart_mining as _default_resume_mining,
         safe_set_fan_duty as _default_set_fan,
     )
     from app.miner_monitor import (
@@ -288,7 +306,25 @@ def process_emergency_thermal_guard(
     resume_mining = safe_resume_fn or _default_resume_mining
     set_fan = safe_set_fan_fn or _default_set_fan
     log = log_fn or _default_log
-    send_tg = send_telegram_fn or _default_send_tg
+    sender = send_telegram_fn or _default_send_tg
+
+    def send_tg(token: str, chat: str, message: str, kind: str, key: str) -> None:
+        # Single detection-loop owner. Separate slots preserve first critical alerts.
+        sent = getattr(state, "_thermal_notification_times", {})
+        cooldown = max(0.0, float(config.get("thermal_notification_cooldown_seconds", 900.0)))
+        if key in sent and now_ts - sent[key] < cooldown:
+            return
+        sender(token, chat, message, kind, f"{key}_{name}")
+        sent[key] = now_ts
+        state._thermal_notification_times = sent
+
+    def failed(action: str, error: Optional[str]) -> None:
+        log(f"[THERMAL_GUARD] {action} FAILED for {name}: {error}")
+        if bot_token and chat_id and (not qa_mode or qa_notify):
+            send_tg(bot_token, str(chat_id),
+                    f"⚠️ Protección térmica: {name}. {action} falló ({error}). "
+                    "No se confirmó la acción; se mantiene la protección y se reintentará.",
+                    "THERMAL_GUARD", f"thermal_failure_{action}")
 
     if decision.action == ACTION_EMERGENCY_DOWNSTEP:
         target_preset = decision.target_preset or "2500"
@@ -299,23 +335,18 @@ def process_emergency_thermal_guard(
             getattr(state, "hw_error_lock_until_ts", None) or 0.0,
             now_ts + decision.lockout_duration_s,
         )
-        state.balancer_preset = target_preset
-        state.vnish_discovered_preset = target_preset
-        state.vnish_discovered_top_preset = target_preset
 
         if qa_mode:
             log(f"[THERMAL_GUARD] (QA) EMERGENCY DOWNSTEP for {name} to {target_preset}W (temp={max_temp_c:.1f}°C)")
         else:
-            # Clamping both top_preset and min_preset to target_preset prevents VNish from either:
-            # 1. Bouncing back to 2700W when temp drops below 79°C (bounded by top_preset).
-            # 2. Downstepping a second time to 2300W during the thermal settling window (bounded by min_preset).
+            # Preserve native thermal downshifts below the emergency ceiling.
             ok_p, err_p = set_preset(
                 host,
                 vnish_pw,
                 target_preset,
                 clamp_top_preset=True,
                 top_preset=target_preset,
-                min_preset=target_preset,
+                min_preset="1740",
             )
             ok_f, err_f = set_fan(host, vnish_pw, 100)
             state.governor_duty = 100
@@ -325,6 +356,13 @@ def process_emergency_thermal_guard(
                 f"[THERMAL_GUARD] EMERGENCY DOWNSTEP dispatched for {name} to {target_preset}W "
                 f"(temp={max_temp_c:.1f}°C): preset_ok={ok_p} err={err_p} fans_100_ok={ok_f}"
             )
+
+        if not qa_mode and not ok_p:
+            failed("DOWNSTEP", err_p)
+            return decision.action
+        state.balancer_preset = target_preset
+        state.vnish_discovered_preset = target_preset
+        state.vnish_discovered_top_preset = target_preset
 
         if bot_token and chat_id and (not qa_mode or qa_notify):
             lockout_h = decision.lockout_duration_s / 3600.0
@@ -362,6 +400,13 @@ def process_emergency_thermal_guard(
                 f"(temp={max_temp_c:.1f}°C): stop_ok={ok_s} err={err_s} fans_100_ok={ok_f}"
             )
 
+        if not qa_mode and not ok_s:
+            state.thermal_pause_until_ts = None
+            failed("PAUSE", err_s)
+            return decision.action
+
+        state.thermal_resume_preset = _lower_thermal_preset(str(current_preset), current_power_w)
+
         if bot_token and chat_id and (not qa_mode or qa_notify):
             msg = (
                 f"🚨 *EMERGENCIA TÉRMICA CRÍTICA: PAUSA FORZADA*\n"
@@ -376,16 +421,23 @@ def process_emergency_thermal_guard(
 
     elif decision.action == ACTION_THERMAL_RESUME:
         resume_preset = decision.target_preset or "2300"
-        state.thermal_pause_until_ts = None
-        state.last_preset_change_ts = now_ts
-        state.balancer_preset = resume_preset
-        state.is_shutdown_maintenance = False
 
         if qa_mode:
             log(f"[THERMAL_GUARD] (QA) RESUME MINING for {name} at {resume_preset}W (temp={max_temp_c:.1f}°C)")
         else:
-            set_preset(host, vnish_pw, resume_preset, clamp_top_preset=True, top_preset=resume_preset, min_preset=resume_preset)
+            ok_p, err_p = set_preset(host, vnish_pw, resume_preset, clamp_top_preset=True,
+                                     top_preset=resume_preset, min_preset="1740")
+            if not ok_p:
+                state.thermal_pause_until_ts = now_ts + 180.0
+                failed("RESUME_PRESET", err_p)
+                return ACTION_PAUSED_COOLING
+            # A plain resume may leave VNish settings staged (restart_required).
+            # Restart the stopped mining process to load the reduced preset.
             ok_r, err_r = resume_mining(host, vnish_pw)
+            if not ok_r:
+                state.thermal_pause_until_ts = now_ts + 180.0
+                failed("RESUME", err_r)
+                return ACTION_PAUSED_COOLING
             set_fan(host, vnish_pw, 100)
             state.governor_duty = 100
             state.governor_last_change_ts = now_ts
@@ -394,6 +446,14 @@ def process_emergency_thermal_guard(
                 f"[THERMAL_GUARD] RESUMED MINING for {name} at {resume_preset}W "
                 f"(temp={max_temp_c:.1f}°C): resume_ok={ok_r} err={err_r}"
             )
+
+        state.thermal_pause_until_ts = None
+        state.thermal_resume_preset = None
+        state.last_preset_change_ts = now_ts
+        state.balancer_preset = resume_preset
+        state.vnish_discovered_preset = resume_preset
+        state.vnish_discovered_top_preset = resume_preset
+        state.is_shutdown_maintenance = False
 
         if bot_token and chat_id and (not qa_mode or qa_notify):
             msg = (
@@ -407,9 +467,6 @@ def process_emergency_thermal_guard(
 
     elif decision.action == ACTION_THERMAL_UNCLAMP:
         target_hw_max = decision.target_preset or "2700"
-        state.thermal_lockout_until_ts = None
-        state.hw_error_lock_until_ts = None
-        state.vnish_discovered_top_preset = target_hw_max
         curr_p = (
             getattr(state, "balancer_preset", None)
             or getattr(state, "vnish_discovered_preset", None)
@@ -430,6 +487,13 @@ def process_emergency_thermal_guard(
                 f"[THERMAL_GUARD] UNCLAMP TOP PRESET dispatched for {name} to {target_hw_max}W "
                 f"(temp={max_temp_c:.1f}°C): preset_ok={ok_p} err={err_p}"
             )
+
+        if not qa_mode and not ok_p:
+            failed("UNCLAMP", err_p)
+            return decision.action
+        state.thermal_lockout_until_ts = None
+        state.hw_error_lock_until_ts = None
+        state.vnish_discovered_top_preset = target_hw_max
 
         if bot_token and chat_id and (not qa_mode or qa_notify):
             msg = (

@@ -102,6 +102,7 @@ class MinerState:
     last_thermal_downstep_ts: float = 0.0
     last_thermal_pause_ts: float = 0.0
     thermal_pause_until_ts: Optional[float] = None
+    thermal_resume_preset: Optional[str] = None  # Next safe tier measured before thermal stop
     thermal_lockout_until_ts: Optional[float] = None
     # Spec 081: Pending Preset Restart Watchdog (PROP-017)
     vnish_restart_required: bool = False

@@ -1,3 +1,141 @@
+## 2026-11-15 15:19 — Gate final de mensajería aprobado
+
+Spec093: speckit-stabilize PASS8/8 a15:17:59;1604pruebas+75subpruebas PASS95.59s.
+Captura15:19:11:4/4mining,12cadenas,345.04TH/s,80/83/81/81C,ViaBTC activa,
+sin ajustes pendientes ni reinicios por la recarga15:13:46. Cola0 ywatchdog saludable.
+Observación inmediata~5min25s; D+1 y causa físicaM26 siguen abiertos. Sin commit/push.
+Cleanup dry-run conserva evidencias. Reporte: STABILIZATION_REPORT_20261115_MESSAGING.md.
+
+## 2026-11-15 — Correcciones de Telegram y reportes, spec 093
+
+Entrega sendMessage con hasta3intentos y confirmaciónok=true; dedupe solo tras éxito.
+Status corrige snooze vencido; digest separa detecciones de acciones; compuerta de
+transiciones conserva primeraLOW/primeraHASHBOARD y recuperación, con todos los eventos.
+Atribución de soft restart por éxito reciente no consumido, sin tocar actuadores.
+1604tests+75subtests PASS antes de recarga; 21regresiones específicas, QA y sintaxisPASS.
+Servicio recargado15:13:46, mineros sin reinicio; captura15:14:51 4/4,12cadenas,
+344.93TH/s,80/83/81/81C, cola0. Gate final en evidence.md. Specs094/095 solo diseñadas.
+Riesgos: retries pueden duplicar; sin outbox persistente. Causa físicaM26 abierta.
+Detalle: [informe](STABILIZATION_REPORT_20261115_MESSAGING.md). Commit/pushmanuales.
+
+## 2026-11-15 — Contraste del historial real de Telegram
+
+Recepción de alertas y respuestasStatus confirmada porTelegramDesktop. Detectados
+falsoSilenciado por snooze vencido, digest0reinicios que omite restart_detected,
+cincoavisosLOW/HASHBOARDenM26durante unepisodio y ausencias00:18/12:06coincidentes
+conerroresenvío. Sin cambios de código ni despliegue. Ver OPERATIONAL_CHECK_20261115.md.
+
+## 2026-11-15 — Verificación operativa y Telegram (solo lectura)
+
+Servicio activo16h, flota4/4,12cadenas, promedio30min345.56TH/s.
+Telegram API200 y cola0; dos envíos con RemoteDisconnected sin reencolado.
+M26 sufrió chain_break11:38 y recuperó11:47. Soft restartM26del14/11 23:25
+incorrectamente clasificado unexpected. Hallazgos pendientes, sin modificación de
+código/config ni reinicios. Historial visibleTelegram no accesible en esta sesión.
+Detalle: [verificación](OPERATIONAL_CHECK_20261115.md).
+
+## 2026-11-14 22:37UTC-3 — Cierre técnico de software; causa física abierta
+
+
+PreflightPASS8/8 a22:35:16;1583pruebas+75subpruebasPASS92.84s. Código finalrecargado22:31:50.
+Captura22:37:44:360.11TH/s,9443W reportados,4/4mining,12cadenas,ViaBTCactiva4/4,
+sin settings pendientes. M25/M26a2500W;M23bajó nativamente a2300W por temperatura.
+Cero reinicios desde22:11:33 (~26min de observación física); versión final~6min en vivo.
+Incidente compartido de21:49 sigue sin identificaciónAC: no se certifica reparación física.
+N003/N004completadas dentro de alcance software/operación inmediata. InformePRODUCTION_STABILITY_20261114.md
+y STABILIZATION_REPORT_20261114_NIGHT.md. Config/state/backups locales no versionados;
+commit/push manuales y sin activar otra spec hasta cierre de release aplicable.
+
+## 2026-11-14 22:32UTC-3 — Validación y activación final del incidente nocturno
+
+Regresión final1583tests+75subtestsPASS44.61s. Incluye estado persistido del siguiente tier
+seguro de recuperación y prioridad de potencia medida para el guardián térmico.
+Recarga final22:31:50, configsha997550ad; servicioRUNNING y4/4OK. Perfiles dorados y
+techo físicoM25a2500alineados;M23rise78persistido. Cambios sin reiniciar los mineros.
+Preflight final en curso. La perturbación física de rama2 sigue sin mediciónAC; no se
+certifica reparada. Diagnóstico y medidas en PRODUCTION_STABILITY_20261114.md.
+
+## 2026-11-14 22:15UTC-3 — Incidente compartido y rendimiento sostenible
+
+Evidencia de firmware: M25/M26 chain#1 break a21:48:47/51, con79C y potencia2300estable
+porhoras; M23/M24 sin reiniciar. Perturbación compartida de rama2 probable, origenAC no medido.
+TechoM25a2500 por tasas de reinicio normalizadas (17.33vs4.23/100h a2700vs2500), no prueba
+de óptimoeconómico global. Restoflota mantiene máximos2700/2500/2500. M23rise78 evita
+promociones con margen insuficiente según respuesta térmica observada; no se fuerza nominal.
+Hotfix: None<int, QA/reflash-disabled, eventos correlacionados45s y dry-run sin mutar
+estadoaplicado ni presupuesto. Final1577tests+75subtestsPASS; activado22:11:33hash997550ad.
+Ajustes sin reiniciarmineros; perfiles de recuperación alineados. Observación en curso.
+
+### Actualización final2026-11-14 18:19UTC-3
+M26 subió un segundo escalón nativo a2300W/79°C sin reiniciar; cooldown evita aviso
+repetido inmediato. Flota4/4OK, ~343.5TH/s y8894W reportados. PreflightPASS8/8 vigente.
+
+## 2026-11-14 18:17 UTC-3 — Cierre operativo PASS8/8
+
+Preflight completoPASS8/8 (18:16:33),1561 pruebas+75 subpruebasPASS en93.88s.
+Flota4/4mining,12cadenas produciendo, ViaBTC4/4 y restart_required=False4/4.
+M25 powerup2150→2300 y M26 2000→2150 sin reinicios durante alineación de la tarde;
+avisos confirmados90s a18:08:56/18:15:26. Desde recarga17:59:0reinicios,0pausas,
+0acciones térmicas fallidas y0errores Telegram registrados. Captura final343.16TH/s,
+8744W reportados porASIC; temperaturas80/80/80/78°C. CapsC3 alineados, piso1740.
+H004/R004 cerradas con política vigente. Sin certificación histórica inventada, sin
+commit/push automático. Instalación Codex responde; su cadena de procesos no estaba
+elevada. No se cambió instalación ni seguridad. InformeSTABILIZATION_REPORT_20261114_POWERUP.md.
+
+### Cierre operativo 2026-11-14 18:14 UTC-3
+Ambos powerups confirmados: M25 2150→2300W y M26 2000→2150W, sin reinicios, tres
+cadenas produciendo por equipo y sin settings pendientes. Observación supera15min desde
+recarga17:59. H004 reconciliada con políticaC3 actual, sin certificación retroactiva del día12.
+Preflight completo final se registra en evidencia; no commit/push automático.
+
+## 2026-11-14 18:11 UTC-3 — Recarga y recuperación de powerups confirmadas
+
+El servicio cargó17:59:24 la configuraciónshaefa85f7d. Gracia600 y avisos activos.
+M25/M26 alineados con preset REAL2150/2000 y techos2700/2500; sin reinicio de minado.
+M25 subió por VNish a2300 W a18:07:30; aviso confirmado90s en log a18:08:56.
+No errores Telegram detectados tras el evento. Alineación escalonada en observación final.
+Verificación Codex: paquete principalOk, runtime nuevoOk, ejecutable responde versión;
+tokens app/agente/ejecutor NO elevados. No se estableció corrupción ni se modificó instalación.
+La recarga del monitor ya ocurrió y no requiere privilegios administrativos adicionales.
+
+## 2026-11-14 — Reconciliación de powerups y avisos de potencia
+
+Operador reporta dos equipos a77 C sin powerup y ausencia de avisos. Diagnóstico confirma
+servicio con config vieja (12/11 17:12), archivo dinámico posterior y caps VNish residuales.
+Potencias reales M25/M26:2148/1998 W, ambos en sus techos2150/2000; configC3 pide2700/2500.
+Alertas generales habilitadas; cambios nativos de VNish no tenían notificación específica.
+Se implementó observación de potencia real, confirmación90s y cooldown900s por minero,
+sin nuevos actuadores ni threads. Startup, pausas, mantenimiento, QA y ruido cubiertos.
+Suite1561 PASS +75 subtests PASS (47.76s); compilación PASS. Despliegue y observación en curso.
+Cambios previos del operador preservados. Commit/push manuales.
+
+### 2026-11-12 17:12 UTC-3 — Activación final confirmada
+UAC aceptado; servicio recargado17:12:30 con CONFIG sha810b32c6. Caps físicos/locales
+2300/2000/2150/2000 W, piso1740, ventilación mínima100%, preclamp1800.
+Contrato de recuperación VNish corregido: reinicio del proceso detenido para cargar
+preset guardado (plain resume dejaba restart_required). QA41 PASS, suite1557+75 PASS.
+M24 calibrando2000W, flags pendientes limpios; monitor detecta los cuatroOK.
+Bloqueo administrativo inicial superado. Observación final en curso, H004 aún abierta.
+
+### Actualización 2026-11-12 16:56 UTC-3
+Suite final: 1556 PASS + 75 subtests PASS; QA térmico/Telegram: 40 PASS. Preflight 6/7;
+DoD pendiente por activación. Windows denegó Stop-Service y UAC terminó cancelado.
+Servicio anterior sigue RUNNING. Caps locales y hotfix NO activos; M24 volvió a 2300 W
+por automatización vieja tras el intento de contención. Reporte STABILIZATION_REPORT_20261112_HEAT.md.
+
+## 2026-11-12 — Contención de calor y corrección de bucle térmico (Spec 093)
+
+Incidente: M24 repite pausas a 87–88 C; downstep a preset inexistente 2100 W retorna 400.
+Se observó piso/techo 2300 W bloqueando reducción nativa y recuperación que ignoraba fallo
+al guardar preset. ViaBTC activa con shares aceptados en los cuatro mineros.
+Hotfix: escalera validada compartida, prioridad a preset observado, piso 1740 W,
+no reanudar si falla ajuste, no declarar éxito tras fallos y cooldown térmico de 900 s
+por minero/tipo (primera pausa crítica independiente). QA focalizada: 40 PASS.
+Configuración local autorizada: techos temporales M23 2300, M24 2150, M25 2150, M26 2000 W.
+Pruebas globales inicialmente afectadas por sandbox SQLite/IPC y permisos temporales;
+se repiten con temporales aislados. Activación/observación pendientes de registro final.
+Sin commit/push automático; config, state, backups y evidencia cruda permanecen ignorados.
+
 # Historial de Desarrollo y Cambios - Miner Alerts
 
 Este archivo registra las specs y cambios completados que tienen respaldo en el codigo, la documentacion o evidencia operativa vigente, en orden cronologico inverso.
@@ -91,8 +229,6 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
      - Se auditó la sintaxis mediante AST Parser sobre los 12 scripts `.ps1` de las skills y SpecKit. Todos (12/12) resultaron 100% válidos.
   3. **Inventario Consolidado**:
      - Quedan exactamente 16 skills en el proyecto: 9 SpecKit Core, 5 SpecKit Git extensions y 2 skills especializadas de calidad y releases de Miner Alerts (`speckit-qa` y `speckit-stabilize`).
-
-
 
 ## [2026-10-09] - Restitución de Pisos Seguros de Ventilación (92% en 2700W) y Análisis Forense de la API VNish
 
@@ -1399,8 +1535,6 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Suite de pruebas completa: **1397 tests PASS en 43.53s** (100% éxito, 0 fallos).
   - Compilación Python: `py_compile app\miner_monitor.py` exitoso (código 0).
   - Servicio NSSM `MinerAlerts` reiniciado y verificado: `INTERVENTIONS master=True reason=operator_lock_fans_only`, Fan Governor activo con `[GOV]` modulando coolers según temperatura y cero escrituras en presets.
-
-
 
 * **Contexto & Solicitud del Operador**:
   - Tras la observación de 14.5 horas de la flota (384.9 TH/s, 100% silicio sano), el operador reportó volumen excesivo de mensajes en Telegram (~35 mensajes recibidos, ~2.4/h), instruyendo:
@@ -3373,8 +3507,6 @@ La entrada mas reciente debe agregarse inmediatamente debajo de este bloque.
   - Compilación sintáctica: 100% OK (`miner_monitor.py` y `miner_diagnostics.py`).
   - Suite completa del repositorio: **675/675 tests PASS** en 10.69s (0 fallos, 0 errores, +15 tests netos sobre baseline).
   - Auditoría de liberación: **PASS** (`tools/release_audit.py --check-only`), digest `57cc9185739a9685bb4d5f013298233dcf074aa00bea03c1441492a6710706ea`, 63 payload files.
-
-
 
 * **Objetivo**: Diseñar, implementar e integrar el Centro de Ayuda Mobile-First para Telegram, incorporando navegación interactiva por categorías temáticas en 1-2 toques, tarjetas verticales acotadas a `<= 32` columnas visibles, registro canónico exhaustivo de comandos del dispatcher (incluyendo `/menu` y `/silent` con sus aliases), protocolo de callbacks `help:` acotado a 64 bytes UTF-8 y fallback de entrega segura de markups según las condiciones C1-C10 del RFC `RFC_TELEGRAM_MOBILE_UX_OPTIMIZATION.md`.
 * **Cumplimiento de Condiciones Técnicas Obligatorias RFC**:

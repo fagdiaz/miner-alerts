@@ -395,7 +395,7 @@ class TestStatePersistenceAndAntiCascade(unittest.TestCase):
         )
         self.assertTrue(decision.allowed)
 
-    def test_execute_balancer_cycle_tripwire_and_telegram_dispatch(self):
+    def test_live_balancer_cycle_tripwire_and_telegram_dispatch(self):
         """execute_balancer_cycle triggers tripwire, sets lockout, and dispatches telegram notification."""
         import threading
         from unittest.mock import patch
@@ -408,7 +408,7 @@ class TestStatePersistenceAndAntiCascade(unittest.TestCase):
         state_lock = threading.Lock()
         config = {
             "preset_balancer_enabled": True,
-            "preset_balancer_dry_run": True,
+            "preset_balancer_dry_run": False,
             "preset_balancer_hw_error_rate_threshold_pct": 0.5,
             "preset_balancer_hw_error_delta_threshold": 200,
             "preset_balancer_hw_error_lock_hours": 48.0,
@@ -432,7 +432,8 @@ class TestStatePersistenceAndAntiCascade(unittest.TestCase):
         ]
 
         with patch("app.miner_monitor.extract_miner_stability_metrics", return_value=mock_metrics), \
-             patch("app.miner_monitor.refresh_vnish_overclock_settings"):
+             patch("app.miner_monitor.refresh_vnish_overclock_settings"), \
+             patch("app.miner_monitor.safe_set_miner_preset", return_value=(True, None)):
             decisions = execute_balancer_cycle(
                 miners=miners,
                 states=states,

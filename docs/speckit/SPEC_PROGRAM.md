@@ -398,3 +398,12 @@ The program requires three documentation sweeps.
   rollback and one continuous seven-day review with an hour-72 checkpoint.
 - No future-spec planning change activated code, changed local runtime config or
   restarted the production service.
+
+
+## Secuencia posterior confirmada — 2026-11-15
+
+093continúa como única specactiva hasta estabilización yrelease manual.
+094eventstore-backup-reliability: depende093;HIGH, datos/scheduler; gatesbackupintegridad,
+restorestaging ysaludWindows.095sustainable-production-evidence: depende093/094;MEDIUM
+mientras sea sololectura, concausafísica abierta hasta registroAC. Ambas sonPLANEADAS,
+no implementadas; specs/094*/ yspecs/095*/ contienen diseños y tareaspendientes.

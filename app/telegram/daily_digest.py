@@ -164,6 +164,7 @@ def fetch_daily_digest_metrics(
         "hw_errors_delta": 0,
         "incidents_24h": 0,
         "reboots_24h": 0,
+        "restarts_detected_24h": 0,
         "backup_status": inspect_latest_backup(backup_root),
         "snoozed_miners": [],
     }
@@ -284,6 +285,16 @@ def fetch_daily_digest_metrics(
         if inc_row:
             res["incidents_24h"] = inc_row[0]
 
+        # Observed process restarts are distinct from reboot commands.
+        execute_readonly_with_retry(
+            cursor,
+            "SELECT count(id) FROM operational_events "
+            "WHERE occurred_ts >= ? AND occurred_ts <= ? "
+            "AND event_type = 'restart_detected'",
+            (start_ts, curr_ts),
+        )
+        res["restarts_detected_24h"] = cursor.fetchone()[0]
+
         # 6. Reboots executed in 24h
         execute_readonly_with_retry(
             cursor,
@@ -291,7 +302,8 @@ def fetch_daily_digest_metrics(
             SELECT count(id)
             FROM operational_events
             WHERE occurred_ts >= ? AND occurred_ts <= ?
-              AND event_type IN ('reboot_action', 'reboot_execute')
+              AND event_type IN ('reboot_action', 'reboot_execute',
+                                 'auto_reboot_success', 'manual_reboot_success')
             """,
             (start_ts, curr_ts),
         )
@@ -387,6 +399,7 @@ def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None)
 
     incidents = metrics.get("incidents_24h", 0)
     reboots = metrics.get("reboots_24h", 0)
+    restarts = metrics.get("restarts_detected_24h", 0)
 
     backup = metrics.get("backup_status", {})
     if backup.get("verified"):
@@ -420,7 +433,8 @@ def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None)
         f"• Shares: {acc_pct:.2f}% OK",
         f"  ({rej_pct:.2f}% rechazos)",
         f"• Eventos 24h: {incidents} anomalías",
-        f"  ({reboots} reinicios)",
+        f"• Reinicios detectados: {restarts}",
+        f"• Reboots ejecutados: {reboots}",
     ]
     lines.extend(backup_lines)
 

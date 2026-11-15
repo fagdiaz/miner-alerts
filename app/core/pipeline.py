@@ -89,7 +89,7 @@ from app.governance.phase_drop_discriminator import (
     parse_phase_drop_config,
     process_phase_drop_cycle,
 )
-from app.governance.firmware_recovery import handle_stock_firmware_recovery
+from app.governance.firmware_recovery import handle_stock_firmware_recovery, stock_recovery_candidate
 from app.network.firmware_flasher import is_stock_bitmain
 from app.governance.post_blackout_guard import (
     PostBlackoutTracker,
@@ -764,9 +764,10 @@ class GovernanceHook(SupervisoryHook):
                 m_host = miner.get("host", "")
                 m_sk = f"{m_name}|{m_host}:{miner.get('port', 4028)}"
                 m_st = states.get(m_sk)
-                if m_st is not None and (
-                    getattr(m_st, "last_active_boards", 3) < int(config.get("expected_boards", 3))
-                    or getattr(m_st, "stock_firmware_fallback", False)
+                if m_st is not None and stock_recovery_candidate(
+                    getattr(m_st, "last_active_boards", None),
+                    getattr(m_st, "stock_firmware_fallback", False),
+                    int(config.get("expected_boards", 3)),
                 ):
                     if is_stock_bitmain(m_host):
                         handle_stock_firmware_recovery(

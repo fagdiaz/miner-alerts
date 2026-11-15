@@ -22,6 +22,7 @@ import requests
 from app.core.config import log, log_pid
 from app.core.system import now_str
 from app.telegram.messages import classify_delivery, split_telegram_message
+from app.telegram.delivery import post_message
 
 logger = logging.getLogger("miner-alerts")
 
@@ -268,7 +269,9 @@ def _send_telegram_direct(
             payload["reply_markup"] = reply_markup
         t0 = time.perf_counter()
         try:
-            resp = session.post(tg_send_url, json=payload, timeout=(1.5, 4.0))
+            resp = post_message(session, tg_send_url, payload, log=log_fn, timeout=(1.5, 4.0))
+            if resp is None:
+                return False
             ms = int((time.perf_counter() - t0) * 1000)
             if resp.status_code == 200:
                 log(
@@ -492,6 +495,11 @@ def edit_telegram_photo(
         return False
 
 
+def _sender_heartbeat() -> None:
+    global _TELEGRAM_SENDER_TS
+    _TELEGRAM_SENDER_TS = time.time()
+
+
 def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> None:
     """Background worker continuously pulling from _TELEGRAM_QUEUE and sending to Telegram."""
     global _TELEGRAM_SENDER_TS
@@ -566,7 +574,11 @@ def telegram_sender_worker(bot_token: str, q: queue.Queue, qa_mode: bool) -> Non
             if reply_markup is not None:
                 payload["reply_markup"] = reply_markup
             start = time.monotonic()
-            resp = session.post(tg_send_url, json=payload, timeout=(2.0, 6.0))
+            resp = post_message(session, tg_send_url, payload, log=log, heartbeat=_sender_heartbeat)
+            if resp is None:
+                log(f"TG SEND_FAILED type={msg_type} reason={_reason}")
+                continue
+            log(f"TG SENT type={msg_type} reason={_reason}")
             _TELEGRAM_SENDER_TS = time.time()
             duration = time.monotonic() - start
             if qa_mode:

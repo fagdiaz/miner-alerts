@@ -152,7 +152,8 @@ class TestPresetBalancerIntegration(unittest.TestCase):
         self.assertEqual(m23_decision.target_preset, "2500W")
 
         st23 = self.states["S19JPRO-23|192.168.100.23:4028"]
-        self.assertEqual(st23.balancer_preset, "2500W")
+        self.assertEqual(st23.balancer_preset, "2700W")
+        self.assertIsNone(st23.last_preset_change_ts)
         self.assertEqual(st23.balancer_last_action, ACTION_STEP_DOWN_RESTARTS)
 
     def test_execute_balancer_cycle_active_write(self):

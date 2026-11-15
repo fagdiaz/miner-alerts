@@ -40,6 +40,13 @@ DEFAULT_REBOOT_COOLDOWN_SECONDS = 180.0
 DEFAULT_FLASH_COOLDOWN_SECONDS = 300.0
 
 
+def stock_recovery_candidate(active_boards: Optional[int], stock_fallback: bool,
+                             expected_boards: int = 3) -> bool:
+    """Missing telemetry is not evidence of stock firmware or broken boards."""
+    return bool(stock_fallback) or (
+        active_boards is not None and 0 <= active_boards < expected_boards)
+
+
 def reboot_stock_bitmain(
     host: str,
     username: str = "root",
@@ -77,6 +84,8 @@ def handle_stock_firmware_recovery(
     
     Returns (action_taken, status_description).
     """
+    if qa_mode:
+        return False, "blocked_by_qa"
     current_ts = now_ts or time.time()
     auto_recovery_enabled = bool(config.get("stock_firmware_auto_recovery_enabled", True))
     if not auto_recovery_enabled:
@@ -122,6 +131,8 @@ def handle_stock_firmware_recovery(
 
         # Step 2: Second attempt -> Flash VNish NAND package + restore golden profile
         elif attempts == 1:
+            if not bool(config.get("stock_firmware_reflash_enabled", True)):
+                return False, "Reflash automático desactivado en config"
             if (current_ts - last_ts) < DEFAULT_FLASH_COOLDOWN_SECONDS:
                 return False, f"Esperando resultado de reboot ({current_ts - last_ts:.0f}s < {DEFAULT_FLASH_COOLDOWN_SECONDS}s)"
 

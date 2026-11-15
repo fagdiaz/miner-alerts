@@ -1,35 +1,49 @@
-# ==============================================================================
-# ESTADO DE PLANTA, ESTABILIDAD Y CIERRE CERTIFICADO DE SPEC 093
-# MODELO RECOMENDADO PARA PRÓXIMA SESIÓN: Gemini 3.8 Flash High
-# FECHA: 2026-10-27 00:25 UTC-3
-# RAMA: codex/022-adaptive-acquisition (origin/codex/022-adaptive-acquisition - commit 77eeda5)
-# SERVICIO WINDOWS: MinerAlerts RUNNING (PID activo bajo NSSM)
-# SUITE DE PRUEBAS: 1536 passed, 75 subtests passed (100% GREEN)
-# COMPUERTA STABILIZE: 8/8 gates PASS (preflight_stabilize.ps1 certificado)
-# ==============================================================================
+# Miner Alerts — 15/11/2026 15:19 UTC-3
 
-ESTADO OPERATIVO DE LA PLANTA (PERFIL C3 - SILICIO ASIMÉTRICO):
-- S19JPRO-23: OK | ~98-100 TH/s | 78-79°C | Fan 92% | 2698W | 3/3 Cadenas | VNish 1.2.6
-- S19JPRO-24: OK |  90-94 TH/s | 75-76°C | Fan 90% | 2498W | 3/3 Cadenas | VNish 1.2.6 (Clampeado 2500W)
-- S19JPRO-25: OK | ~99-101 TH/s | 78-79°C | Fan 92% | 2698W | 3/3 Cadenas | VNish 1.2.6
-- S19JPRO-26: OK |  88-93 TH/s | 74-75°C | Fan 90% | 2498W | 3/3 Cadenas | VNish 1.2.6 (Auto-recuperado)
-- Hashrate global: ~385-400 TH/s nominales continuos.
-- Potencia total de planta: ~10.4 kW (5200W Elevador 1, 5200W Elevador 2, balance simétrico).
+Modelo elegido por el operador: GPT 6.1 Sol, razonamiento alto. Mantenerlo.
+Leer AGENTS.md, .specify/feature.json y evidence.md de la spec activa 093.
+Luego docs/audit/STABILIZATION_REPORT_20261115_MESSAGING.md.
+Preservar cambios anteriores; commits y push manuales, ninguno ejecutado.
+No hay UAC ni despliegues pendientes. No relanzar scripts viejos.
 
-RESUMEN FORENSE Y RESOLUCIÓN DEFINITIVA DE INCIDENTE FÍSICO (SPEC 093):
-1. Evento Real:
-   - Relé de Elevador 2 se trabó anunciando sobretensión, cortando energía a M25 y M26 por ~95 min.
-   - Telegram no alertó la caída por reseteo prematuro de racha en DetectionHook (histeresis).
-   - Al retornar energía, M26 arrancó en partición de fábrica Bitmain Stock (BMMiner 1.0.0).
-2. Acciones Implementadas y Certificadas:
-   - Recuperación en Vivo de M26: Reboot HTTP Digest POST /cgi-bin/reboot.cgi (root:root) forzó arranque de partición primaria VNish 1.2.6 con perfil dorado íntegro.
-   - Corrección de Rachas: DetectionHook (app/core/engine.py) ya no resetea offline_streak / low_streak durante la ventana de histeresis; únicamente tras respuesta confirmada (responded=True) o recuperación real de estado.
-   - Watchdog de Elevadores Conectado: process_phase_drop_cycle conectado en GovernanceHook (app/core/pipeline.py), emitiendo de inmediato "⚡ DISPARO DE CIRCUITO" ante caídas grupales de elevador con bypass de histeresis.
-   - Escalera de Auto-Recuperación de Firmware Stock (app/governance/firmware_recovery.py):
-     a) Detección de BMMiner stock y envío de HTTP Digest reboot.
-     b) Fallback automático a FirmwareFlasher (C:\asicto\asicto-s19jpro-bb-nand-v1.2.6-install.tar.gz).
-     c) Clonado y restauración automática de credenciales, pools y matrices de chips desde data/miner_profiles/.
+ITERACIÓN M IMPLEMENTADA Y ACTIVA desde15:13:46:
+- Status compara snooze con la hora; no falso Silenciado por fecha vencida.
+- Digest separa restart_detected de órdenes de reboot, con claves compatibles.
+- sendMessage común para worker/fallback:3intentos ante fallas transitorias;
+  solo HTTP200/ok=true confirma éxito/dedupe. Logs sin contenido/token.
+  Retry-After hasta30s; si mayor, falla explícita sin adelantar el reintento.
+  Heartbeat vivo, timeouts y contrato de cola conservados. Sin outbox persistente;
+  una respuesta perdida puede duplicar un aviso. No reenvía comandos a ASIC.
+- Limiter por minero/tipo: primeraLOW y primeraHASHBOARD;300s sin repetir el tipo.
+  Recuperación limpia compuerta; OFFLINE conserva histéresis/alerta. Respeta snooze/QA.
+  Estado, historial, streaks y decisiones de hardware conservados.
+- Atribución soft restart: éxito EventStore reciente120s, consistente con uptime,
+  no consumido por otra detección. Sin usar intentos como evidencia ni editar históricos.
 
-DIRECTIVA PARA PRÓXIMA SESIÓN:
-- Todo el stack se encuentra 100% certificado, servicio MinerAlerts corriendo y 1536 tests verdes.
-- Motor primario recomendado: Gemini 3.8 Flash High.
+VALIDACIÓN:
+QApreflight PASS; suite de release1604+75PASS47.19s. Gate final speckit-stabilize
+PASS8/8 a15:17:59, suite raíz1604+75PASS95.59s.21regresiones nuevas del incidente.
+DBG_TELEGRAM=1 y DBG_TELEGRAM_COMMANDS_ONLY=1 en pruebas con red simulada.
+Artefactos ignorados: diagnostics/messaging-20261115 (JSONde gate/capturas/tests).
+Cleanup dry-run, evidencias preservadas. No provocar fallas reales para probar alertas.
+
+RUNTIME15:19:11:
+4/4mining,12cadenas,ViaBTCactiva,sin restart_required.345.04TH/s instantáneos;
+2298/2148/2298/2299W reportados;80/83/81/81C. Uptime creció en todos después
+recarga. PID33444,cola0,watchdog saludable15:18:54. Observación nueva~5min25s;
+D+1 pendiente. No afirmar reparación física ni máximo monetario global.
+Caps vigentes2700/2500/2500/2500; VNish controla potencia, balancerDRY.
+
+SECUENCIA:
+093 sigue única activa hasta cierre manual de release.094/095 tienen spec/plan/tasks
+solo DISEÑADOS; no activos ni implementados.094respaldo verificable: no backupconfig,
+no backups/, no tarea específica identificada.095rendimiento sostenible: análisis
+sololectura y registroAC por técnico para distinguir calle/elevador/protección.
+No activar otra spec antes de release093; roadmap y programa tienen dependencias.
+
+CONTEXTO FÍSICO:
+14/11 21:48:47/51 chainbreakM25/M26 a79C y2300W estables>3h: rama2probable,
+calle/elevador/protección no separables sin mediciónAC.15/11 M26chainbreak11:38:21,
+recupera11:47 sin caídaM25. No confundir correlación con causa eléctrica confirmada.
+2500M25 es compromiso de continuidad, no prueba de máximo SHA ni lucro.
+Telegram Desktop abierto y leído; no volver a preguntar dónde está.

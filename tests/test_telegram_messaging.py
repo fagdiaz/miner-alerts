@@ -70,6 +70,7 @@ class TelegramQueueAdmissionTests(unittest.TestCase):
         outbound = queue.Queue(maxsize=1)
         outbound.put(("occupied",))
         response = Mock(status_code=200, text="ok")
+        response.json.return_value = {"ok": True}
         session = Mock()
         session.post.return_value = response
         miner_monitor._TELEGRAM_QUEUE = outbound
@@ -91,6 +92,7 @@ class TelegramQueueAdmissionTests(unittest.TestCase):
 
     def test_command_direct_send_preserves_reply_markup_on_fallback(self) -> None:
         response = Mock(status_code=200, text="ok")
+        response.json.return_value = {"ok": True}
         session = Mock()
         session.post.return_value = response
         miner_monitor._TELEGRAM_QUEUE = None

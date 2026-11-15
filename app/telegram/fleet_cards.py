@@ -385,7 +385,7 @@ def render_fleet_status_card(
             lines.append("  • Modo: ⏸️ Parada Segura")
         elif silent:
             lines.append("  • Modo: 🔇 Silencio")
-        elif snooze_until is not None:
+        elif snooze_until is not None and snooze_until > time.time():
             lines.append("  • Estado: 🔕 Silenciado")
 
     # Summary section

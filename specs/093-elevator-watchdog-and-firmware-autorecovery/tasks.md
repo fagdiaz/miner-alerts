@@ -18,3 +18,33 @@
 - [x] **T008** [P0] [Riesgo Alto]: Reiniciar el servicio Windows NSSM `MinerAlerts` y verificar adquisición normal y logs limpios.
 - [x] **T009** [P0] [Riesgo Alto]: Ejecutar la compuerta de certificación y release `speckit-stabilize` (`preflight_stabilize.ps1` 8/8 gates PASS).
 - [x] **T010** [P0] [Riesgo Bajo]: Documentar la sesión en `docs/audit/DEVELOPMENT_LOG.md`, actualizar `docs/speckit/ROADMAP.md` y refrescar `prompt.txt`.
+
+
+## Hotfix térmico 2026-11-12
+- [x] H001: Diagnosticar logs y confirmar escala real de VNish y pools activas.
+- [x] H002: Corregir escalera, piso térmico, confirmación de fallos y deduplicación.
+- [x] H003: Verificar regresiones focalizadas y QA sin acciones reales (40 PASS).
+- [x] H004: Activación y verificación reconciliadas el 2026-11-14 con la política C3 dinámica vigente; sin certificación retroactiva de caps temporales del día 12.
+
+
+## Reconciliación 2026-11-14
+- [x] R001: Diagnóstico de configuración cargada, firmware, temperatura y avisos.
+- [x] R002: Observador de potencia real con confirmación y cooldown, sin actuadores nuevos.
+- [x] R003: Suite completa 1561 PASS +75 subtests; compilación PASS.
+- [x] R004: Recarga confirmada 17:59, alineación escalonada M25/M26 sin reinicios y powerups reales observados; resultado del preflight final en evidence.md.
+
+
+## Incidente nocturno2026-11-14
+- [x] N001: Correlacionar logs de firmware, telemetría y exposición histórica.
+- [x] N002: Evitar None<int, proteger QA/reflash deshabilitado y correlacionar reinicios.
+- [x] N003: Compilación y regresión1577+75PASS antes de la activación final; preflight de cierre en evidencia.
+- [x] N004: Recarga final22:31:50, capM25alineado, producción y observación inmediata verificadas; diagnóstico físicoAC abierto. Resultado preflight final en evidencia.
+
+
+## Iteración M — Mensajería, 2026-11-15
+- [x] M001: QA del alcance y contratos de concurrencia/entrega antes de código.
+- [x] M002: Corregir snooze vencido en app/telegram/fleet_cards.py y contar restart_detected en daily_digest.py.
+- [x] M003: Transporte Telegram acotado, éxito confirmado, dedupe correcto, pruebas con DBG_TELEGRAM=1 y DBG_TELEGRAM_COMMANDS_ONLY=1.
+- [x] M004: Agrupar avisos de recuperación sin modificar estados/actuadores; atribuir soft restart solo a éxito no consumido.
+- [x] M005: Regresiones, py_compile, suite completa y speckit-stabilize; registrar limitaciones.
+- [x] M006: Recargar servicio, observar runtime, actualizar evidencia, DEVELOPMENT_LOG, ROADMAP y prompt.txt.

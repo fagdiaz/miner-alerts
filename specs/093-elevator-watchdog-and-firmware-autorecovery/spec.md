@@ -3,7 +3,7 @@
 **Feature Name**: Elevator Outage Watchdog, Detection Streak Hotfix & Autonomous Firmware Recovery  
 **Feature Code**: `093-elevator-watchdog-and-firmware-autorecovery`  
 **Tracking Issue / Incident**: Falla de Relé en Elevador 2, Caída Silenciosa de M25/M26 y Reversión a Firmware Stock en M26  
-**Status**: IN IMPLEMENTATION  
+**Status**: RELEASE DE SOFTWARE VALIDADO — cierre Git autorizado el 2026-11-15
 **Author**: Antigravity Assistant & Production Engineering  
 **Baseline**: V6.0 Hookified Architecture (1530 tests PASS, NSSM Service RUNNING)  
 **Target Outcome**:
@@ -78,3 +78,106 @@ El 26 de octubre de 2026, la planta experimentó una falla física en un relé d
 1. **Invariante de Test Suite**: $\ge 1530$ tests PASS, 0 fallos, 0 regresiones.
 2. **Invariante de No Bloqueo**: El flasheo o reinicio de firmware debe ejecutarse en hilos desacoplados (`threading.Thread`), sin bloquear el bucle de supervisión ni el poller de Telegram.
 3. **Invariante de Cooldown de Elevador**: Las alertas de disparo de circuito deben respetar un cooldown mínimo de 300 segundos para evitar tormentas de mensajes.
+
+
+## Contención P0 del incidente térmico — 2026-11-12
+
+El operador autoriza resolver en esta sesión, incluyendo ajustes locales y reinicios controlados.
+Logs muestran M24 a 87–88 C, downstep 2100 W rechazado HTTP 400 y ciclos pausa/reanudación.
+La API de firmware confirma que 2100 no existe; escala inferior válida: 2300, 2150, 2000,
+1850, 1800, 1740. Piso igual al techo impedía la reducción nativa.
+Alcance del hotfix de estabilización de la spec activa: escalera compartida ya validada,
+prioridad al preset observado, piso nativo libre, no confirmar estados/recuperación ante fallos
+API y deduplicación térmica por minero/tipo durante 900 s. No nueva spec concurrente.
+La primera alerta de pausa crítica usa un slot independiente y no queda silenciada por downsteps.
+Los contadores de avisos viven en el estado del único loop de detección; se reinician al arrancar
+el servicio para conservar la primera alerta tras startup. No nuevos hilos ni cambios de locks.
+Pruebas contractuales actualizadas únicamente para permitir el piso térmico inferior.
+Las pools ViaBTC están activas y aceptan shares. La causa eléctrica no está confirmada.
+
+Contrato de recuperación verificado en vivo el 12 de noviembre: tras guardar el preset
+reducido, usar reinicio del proceso de minado detenido para cargar los ajustes. Plain
+resume/start podía retornar éxito dejando restart_required activo. El actuador conserva
+la guarda QA y el gate de enfriamiento; no se reinicia el sistema operativo del ASIC.
+
+
+## Reconciliación operativa 2026-11-14
+
+Intención del operador: recuperar powerups cuando exista margen térmico y avisos útiles,
+preservando seguridad de los elevadores y evitando spam. La configuración dinámica
+posterior al hotfix del día12 es la intención vigente; no restaurar caps temporales viejos.
+
+Hallazgos: servicio cargado desde12/11 17:12 con hash810b32c6, archivo modificado después.
+Firmware conserva techos2300/2500/2150/2000 aunque config indica2700/2500/2700/2500.
+M25/M26 a77 C ya consumen2148/1998 W: el preset configurado1800 no refleja el tier
+activo del switcher. Balancer en dry-run; no habilitar un segundo controlador de potencia.
+Alertas globales habilitadas, snoozes vencidos. Cambios nativos de potencia no tenían aviso.
+
+Solución: recarga del servicio y alineación solo de límites VNish (no forzar preset activo
+ni reiniciar ASIC). VNish decide con rise79/decrease84/check300, piso1740 y techosC3;
+presupuesto nominal máximo5200W por elevador (por debajo de5400W en off-peak).
+Aplicar M25 primero y observar antes de habilitar el techo M26. No cambiar pools.
+
+Nuevo observador de potencia en DetectionHook: lee chain_power_w_total; requiere minero
+respondiendo, tres cadenas, hashrate>=umbral y elapsed>=180. Estado transitorio por minero,
+propiedad exclusiva del loop de detección; no nuevos threads, locks ni actuadores.
+No persiste baseline al reiniciar: primera muestra silenciosa evita tormenta de startup.
+Confirmación90s, resolución50W, cambio mínimo100W; cooldown900s conserva último cambio.
+No interpreta 0W por pausa o falta de telemetría como cambio de perfil. Respeta snooze,
+mantenimiento y QA. Usa la cola Telegram existente; no envía directamente desde otro hilo.
+
+
+## Incidente compartido y techo empírico — 2026-11-14 noche
+
+El operador solicita diagnóstico causal y máximo rendimiento sostenible. Continúa la
+estabilización de la spec093 (watchdog de elevadores y firmware), sin otra spec concurrente.
+Datos: logs21:48:47/21:48:51 registran chain#1 break enM25/M26. Mismos ticks de reinicio,
+79C antes del fallo, potencia de ambos2300W estable, M23/M24 sin reinicio. No afirmar corte
+AC, sobrecarga o cambio de potencia como causa confirmada. Falta medición de entrada.
+
+Se agregan: correlación de reinicios inesperados por grupo en45s, cooldown900 independiente
+por grupo, evento elevator_cascade_detected compatible con el analizador existente y aviso
+neutral de evidencia (no declara circuito disparado). Estado acotado, propiedad del único
+DetectionHook, sin nuevos threads/actuadores ni modificación de clasificación individual.
+No se deriva intervención física de la correlación ni se usa estado persistido como trigger.
+
+Recuperación firmware: last_active_boards=None no es evidencia de stock ni falla de placas;
+helper puro evita comparación None<int. QA retorna antes de crear threads/actuar. La opción
+stock_firmware_reflash_enabled=False se respeta antes de iniciar flasheo.
+
+Política operativa: conservarM23hasta2700 yM24/M26hasta2500 si temperatura lo permite;
+limitarM25a2500 por concentración de fallos a2700. Ambos del elevador2 quedan con máximo
+5000W reportados. No sacrificar toda la flota ni fijar potencia baja permanentemente.
+La selección es un compromiso de estabilidad, no prueba de óptimo económico global.
+Comparaciones normalizadas por exposición son observacionales y pueden tener sesgos de
+clima/selección/atribución de reinicios. No se estiman ganancias monetarias sin tarifa/pool.
+
+Guardia térmica: para stepdown activo, potencia medida prevalece sobre el preset configurado.
+Durante pausa se guarda el tier de reanudación medido en campoopcionalthermal_resume_preset;
+validación de escalera/techo y defaults conservadores para estados legados. No nuevo trigger
+persistido ni cambio de criterio de pausa/cooldown/QA. Se usa señal fresca de adquisición.
+
+
+## Estabilización de mensajería del incidente — 2026-11-15
+
+Una sola spec activa. Corregir hallazgos confirmados del chat: snooze vencido en Status;
+digest separa reinicios detectados de acciones reboot; entrega con hasta tres intentos
+por mensaje, timeouts acotados y espera Retry-After hasta30s (mayores no se adelantan).
+Solo respuesta HTTP200 y ok=true confirma entrega. Fallo final explícito y sin dedupe
+de éxito. Reintentos son al-menos-una-vez: respuesta perdida puede duplicar un aviso,
+nunca ejecutar ni reenviar comandos del operador a los mineros. Sin nuevos threads.
+
+Agrupar alternancia LOW/HASHBOARD por minero durante300s, conservando primera
+alerta de cada severidad, OFFLINE inmediato según histéresis existente y recuperación.
+No cambiar clasificación, streaks ni actuadores. Respetar snooze/mantenimiento.
+Atribuir soft restart únicamente con evento de éxito reciente120s y todavía no asociado
+a otra caída de uptime; no usar timestamp de intento como prueba de éxito. Sin escribir
+estado vivo ni cambiar límites de potencia.
+
+
+## Cierre de release de software autorizado — 2026-11-15
+
+El operador autoriza expresamente commit y push del cierre 093 para continuar con094.
+Gate de software8/8 PASS,1604 pruebas y75subpruebas PASS; versión activa desde15:13:46.
+La observación D+1 y la causa física deM26 permanecen abiertas como seguimiento operativo,
+sin afirmar reparación física. La próxima spec de respaldos no cambia controles de mineros.

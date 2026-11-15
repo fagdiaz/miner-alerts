@@ -1007,6 +1007,7 @@ class DetectionHook(SupervisoryHook):
         vnish_api_password = str(config.get("vnish_api_password", "admin"))
 
         reboot_names_tick: List[str] = []
+        unexpected_restarts: List[str] = []
         current_tick_signals: Dict[str, str] = {}
 
         for state_key, res in miner_results.items():
@@ -1133,8 +1134,16 @@ class DetectionHook(SupervisoryHook):
                     except Exception:
                         pass
 
+                # Notification-only limiter: state/history and recovery policy stay intact.
+                from app.telegram.transition_notices import TransitionNotices
+                from app.telegram.snooze import is_miner_snoozed
+                notices = getattr(state, "_transition_notices", None)
+                if notices is None:
+                    notices = TransitionNotices()
+                    state._transition_notices = notices
+                notify_transition = notices.allow(new_state, now_ts)
                 # Telegram alert dispatch for state changes
-                if (not qa_mode) or qa_notify:
+                if ((not qa_mode) or qa_notify) and notify_transition and not is_miner_snoozed(state, now_ts):
                     if new_state == STATE_OK:
                         all_ok = all(
                             getattr(s, "state", None) == STATE_OK
@@ -1187,6 +1196,35 @@ class DetectionHook(SupervisoryHook):
                             f"offline_{name}",
                         )
 
+            # Only this detection loop owns the transient power observer. Firmware
+            # settings expose the configured preset, not necessarily the active tier.
+            from app.governance.power_notifications import PowerObservation, observe_power
+            observation = getattr(state, "_power_observation", None)
+            if observation is None:
+                observation = PowerObservation()
+                state._power_observation = observation
+            notice = observe_power(
+                observation,
+                vnish_telemetry.chain_power_w_total if vnish_telemetry else None,
+                now_ts,
+                valid=bool(config.get("power_change_notifications_enabled", True))
+                and responded and elapsed is not None and elapsed >= 180
+                and rate_ths is not None and rate_ths >= threshold_ths
+                and active_boards == expected_boards
+                and not getattr(state, "is_shutdown_maintenance", False)
+                and not (state.snooze_until_ts is not None and now_ts < state.snooze_until_ts),
+                cooldown_seconds=float(config.get("power_change_notification_cooldown_seconds", 900)),
+            )
+            if notice and (not qa_mode or qa_notify):
+                previous_power, observed_power = notice
+                direction = "SUBIDA" if observed_power > previous_power else "BAJADA"
+                log(f"[POWER_CHANGE] miner={name} {previous_power}->{observed_power}W confirmed=90s")
+                send_telegram(bot_token, str(chat_id),
+                              f"⚡ POTENCIA: {direction} CONFIRMADA\nMinero: {name_display}\n"
+                              f"{previous_power} → {observed_power} W (reportados por ASIC)\n"
+                              f"Hashrate: {rate_ths:.1f} TH/s",
+                              "POWER_CHANGE", f"power_change_{name}")
+
             # Preventative health checks
             cooling_alert_enabled = bool(config.get("cooling_alert_enabled", True))
             if cooling_alert_enabled and responded and vnish_telemetry:
@@ -1231,6 +1269,7 @@ class DetectionHook(SupervisoryHook):
                         miner=miner,
                         state=state,
                         max_temp_c=vnish_telemetry.max_temp_c if (responded and vnish_telemetry) else getattr(state, "governor_last_temp_c", None),
+                        observed_power_w=vnish_telemetry.chain_power_w_total if (responded and vnish_telemetry) else None,
                         config=config,
                         now_ts=now_ts,
                         vnish_pw=vnish_api_password,
@@ -1245,11 +1284,20 @@ class DetectionHook(SupervisoryHook):
             # Restart detection
             if reboot_reason and previous_elapsed is not None and elapsed is not None:
                 restart_attribution_window_seconds = int(config.get("restart_attribution_window_seconds", 3600))
+                soft_restart_ts = None
+                lookup_soft_restart = getattr(event_store, "get_unattributed_mining_restart_ts", None)
+                if callable(lookup_soft_restart) and getattr(event_store, "available", False):
+                    candidate_ts = lookup_soft_restart(state_key, now_ts=now_ts, elapsed=elapsed)
+                    if isinstance(candidate_ts, (int, float)):
+                        soft_restart_ts = candidate_ts
                 restart_classification = classify_restart(
                     restart_reason=reboot_reason,
                     detected_ts=now_ts,
                     last_manual_action_ts=state.last_manual_reboot_ts,
-                    last_auto_action_ts=state.last_auto_reboot_ts,
+                    last_auto_action_ts=max(
+                        (t for t in (state.last_auto_reboot_ts, soft_restart_ts) if t is not None),
+                        default=None,
+                    ),
                     last_preset_change_ts=getattr(state, "last_preset_change_ts", None),
                     last_shutdown_ts=getattr(state, "shutdown_maintenance_ts", None),
                     attribution_window_seconds=restart_attribution_window_seconds,
@@ -1317,6 +1365,9 @@ class DetectionHook(SupervisoryHook):
                     except Exception:
                         pass
                 log(f"[{name_display}] Reinicio detectado ({reboot_reason}): {incident_summary}")
+                if restart_classification.classification == "unexpected":
+                    unexpected_restarts.append(name)
+
 
                 if notify_reboot:
                     if (now_ts - (state.last_reboot_ts or 0.0)) >= reboot_cooldown_seconds:
@@ -1332,6 +1383,32 @@ class DetectionHook(SupervisoryHook):
                             state.reboot_pending_elapsed = elapsed
 
             current_tick_signals[state_key] = new_state
+
+        from app.governance.correlated_restarts import RestartCorrelation
+        if not hasattr(self, "_restart_correlation"):
+            self._restart_correlation = RestartCorrelation()
+        for group, members in self._restart_correlation.observe(
+                context.miners, unexpected_restarts, now_ts):
+            log(f"[CORRELATED_RESTART] group={group} miners={','.join(members)} window=45s")
+            if event_store is not None and getattr(event_store, "available", False):
+                try:
+                    event_store.record_event(
+                        occurred_ts=now_ts, event_type="elevator_cascade_detected",
+                        severity="critical", classification="correlated_restart",
+                        summary=f"Reinicios correlacionados en {group}",
+                        details={"electrical_group": group, "miners": members,
+                                 "window_seconds": 45, "cause_confirmed": False},
+                    )
+                except Exception as exc:
+                    log(f"[CORRELATED_RESTART_STORE_ERR] {type(exc).__name__}")
+            if (not qa_mode or qa_notify) and bool(config.get("notify_reboot", True)):
+                send_telegram(bot_token, str(chat_id),
+                              f"⚡ REINICIOS CORRELACIONADOS\nCircuito: {group}\n"
+                              f"Equipos: {', '.join(members)}\n"
+                              "Reinicios inesperados dentro de 45 segundos. "
+                              "Revisar alimentación compartida y logs de firmware. "
+                              "La causa eléctrica no está confirmada por medición.",
+                              "REBOOT", f"correlated_restart_{group}")
 
         return {
             "detection_completed": True,
@@ -1529,7 +1606,7 @@ class ActuatorHook(SupervisoryHook):
         threshold_ths = context.threshold_ths
         expected_boards = int(config.get("expected_boards", 3))
         auto_restart_mining_enabled = bool(config.get("auto_restart_mining_enabled", True))
-        auto_restart_min_elapsed_seconds = int(config.get("auto_restart_min_elapsed_seconds", 120))
+        auto_restart_min_elapsed_seconds = int(config.get("auto_restart_min_elapsed_seconds", 600))
         auto_restart_cooldown_seconds = int(config.get("auto_restart_cooldown_seconds", 300))
         auto_restart_max_retries = int(config.get("auto_restart_max_retries_before_reboot", 3))
         safe_recovery_pre_clamp_preset = str(config.get("safe_recovery_pre_clamp_preset", "2300W"))

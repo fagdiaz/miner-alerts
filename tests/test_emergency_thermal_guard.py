@@ -286,7 +286,7 @@ class TestProcessEmergencyThermalGuard(unittest.TestCase):
             "2500",
             clamp_top_preset=True,
             top_preset="2500",
-            min_preset="2500",
+            min_preset="1740",
         )
         self.mock_set_fan.assert_called_once_with("192.168.100.25", "admin", 100)
         self.assertEqual(self.state.last_thermal_downstep_ts, 1000.0)
@@ -347,6 +347,7 @@ class TestProcessEmergencyThermalGuard(unittest.TestCase):
 
     def test_process_thermal_resume_dispatches_correctly(self):
         self.state.thermal_pause_until_ts = 2090.0
+        self.state.thermal_resume_preset = "2300"
         self.state.balancer_preset = "2500"
 
         action = process_emergency_thermal_guard(
@@ -367,7 +368,7 @@ class TestProcessEmergencyThermalGuard(unittest.TestCase):
         )
         self.assertEqual(action, ACTION_THERMAL_RESUME)
         self.mock_set_preset.assert_called_once_with(
-            "192.168.100.25", "admin", "2300", clamp_top_preset=True, top_preset="2300", min_preset="2300"
+            "192.168.100.25", "admin", "2300", clamp_top_preset=True, top_preset="2300", min_preset="1740"
         )
         self.mock_resume_mining.assert_called_once_with("192.168.100.25", "admin")
         self.mock_set_fan.assert_called_once_with("192.168.100.25", "admin", 100)

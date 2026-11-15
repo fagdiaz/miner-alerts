@@ -123,7 +123,7 @@
   "auto_restart_mining_enabled": true,
   "auto_restart_cooldown_seconds": 300,
   "auto_restart_max_retries_before_reboot": 2,
-  "auto_restart_min_elapsed_seconds": 180,
+  "auto_restart_min_elapsed_seconds": 600,
   "safe_recovery_settle_window_seconds": 120.0,
   "safe_recovery_pre_clamp_preset": "1800",
   "safe_recovery_ramp_up_soak_seconds": 180.0,
@@ -155,6 +155,7 @@
       "{host}-{host}"
     ]
   },
+  "_comment_operational_ceiling": "Set each miner target_power_w and max_hardware_preset from measured stability, not peak hashrate alone; the third/fourth examples use 2500W. Keep firmware top_preset aligned.",
   "miners": [
     {
       "name": "S19JPRO-1",
@@ -241,6 +242,11 @@
   "fan_governor_recovery_max_cooling_timeout_seconds": 0.0,
   "_comment_emergency_thermal_protection": "ProtecciÃ³n P0 anti-sobrecalentamiento de hardware. VNish switcher nativo a 84.0Â°C; guardiÃ¡n supervisor a 85.5Â°C y pausa a 87.0Â°C para garantizar que ningÃºn minero alcance 90Â°C y prevenir doble bajada.",
   "emergency_thermal_protection_enabled": true,
+  "_comment_thermal_notifications": "Cooldown per miner and thermal event type; first critical pause remains immediate. Resets on service startup.",
+  "thermal_notification_cooldown_seconds": 900,
+  "_comment_power_notifications": "Observed ASIC power changes: confirm for 90 seconds, ignore startup/stops, coalesce repeated changes per miner.",
+  "power_change_notifications_enabled": true,
+  "power_change_notification_cooldown_seconds": 900,
   "emergency_thermal_downstep_temp_c": 85.5,
   "emergency_thermal_pause_temp_c": 87.0,
   "emergency_thermal_resume_temp_c": 75.0,

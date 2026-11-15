@@ -14,6 +14,7 @@ Design:
 from __future__ import annotations
 
 import concurrent.futures
+import copy
 import logging
 import threading
 import time
@@ -113,6 +114,10 @@ def execute_balancer_cycle(
     # Hardware ceiling locks from autotune watchdog state
     autotune_state = getattr(mm, "_AUTOTUNE_WATCHDOG_STATE", None)
     facility_state = getattr(mm, "_FACILITY_BUDGET_STATE", None)
+    if dry_run and facility_state is not None:
+        with state_lock:
+            facility_state = copy.deepcopy(facility_state)
+
 
     miner_hw_limits = {}
     if isinstance(config.get("miners"), list):
@@ -185,7 +190,7 @@ def execute_balancer_cycle(
             facility_state=facility_state,
         )
         decisions.append((m_metrics, decision))
-        if getattr(decision, "boost_cooling_requested", False) and st is not None:
+        if not dry_run and getattr(decision, "boost_cooling_requested", False) and st is not None:
             with state_lock:
                 st.boost_cooling_active = True
                 st.boost_cooling_expires_ts = now_ts + 180.0
@@ -270,7 +275,7 @@ def execute_balancer_cycle(
             if st is not None:
                 st.balancer_last_action = decision.action
                 st.balancer_last_reason = decision.reason
-                if decision.requires_write and (dry_run or write_ok):
+                if decision.requires_write and not dry_run and write_ok:
                     st.balancer_preset = decision.target_preset
                     st.balancer_last_change_ts = now_ts
                     st.last_preset_change_ts = now_ts  # Spec: atribuir reinicios post-preset a esta acción
@@ -278,10 +283,10 @@ def execute_balancer_cycle(
                         if not st.hw_error_lock_until_ts or st.hw_error_lock_until_ts <= now_ts:
                             st.hw_error_lock_until_ts = now_ts + (bal_cfg.hw_error_lock_hours * 3600.0)
                         st.hw_error_locked_preset = decision.target_preset
-                elif not st.balancer_preset:
+                elif not dry_run and not st.balancer_preset:
                     st.balancer_preset = decision.current_preset
 
-            if decision.action == ACTION_STEP_DOWN_HW_ERRORS and (dry_run or write_ok):
+            if decision.action == ACTION_STEP_DOWN_HW_ERRORS and not dry_run and write_ok:
                 try:
                     card_msg = render_hw_error_tripwire_card(
                         miner_name=m_name,

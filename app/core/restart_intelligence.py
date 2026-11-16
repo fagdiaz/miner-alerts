@@ -1,5 +1,24 @@
 from dataclasses import dataclass
-from typing import Optional
+import math
+from typing import Any, Optional, Tuple
+
+
+def is_native_transition(miner_state: str) -> bool:
+    """States owned by native startup/autotune, not generic restart recovery."""
+    return (miner_state or "").strip().lower().replace("-", "_") in {
+        "starting", "init", "initializing", "benchmarking", "rebooting",
+        "booting", "tuning", "auto_tuning", "autotuning", "warmup", "warming_up",
+    }
+
+
+def _worker_restart_allowed(qa_mode: bool, qa_allow_actions: bool, now_ts: float) -> bool:
+    from app.governance.intervention_policy import ACTION_REBOOT_L1, should_allow_intervention
+    from app.governance._orchestrator_state import get_intervention_gov
+
+    if qa_mode and not qa_allow_actions:
+        return False
+    gov = get_intervention_gov()
+    return gov is None or should_allow_intervention(ACTION_REBOOT_L1, gov, now_ts)[0]
 
 
 @dataclass(frozen=True)
@@ -115,17 +134,7 @@ def evaluate_auto_restart_candidate(
         return False, "miner_warming_up", None
 
     norm_state = (miner_state or "").strip().lower()
-    if norm_state in (
-        "starting",
-        "init",
-        "initializing",
-        "benchmarking",
-        "rebooting",
-        "booting",
-        "tuning",
-        "warmup",
-        "warming_up",
-    ):
+    if is_native_transition(norm_state):
         return False, "transient_starting", None
 
     # Check degradation triggers
@@ -134,7 +143,11 @@ def evaluate_auto_restart_candidate(
     is_zero_boards = (active_boards is not None and active_boards <= 0)
     has_restart_flag = bool(restart_required)
 
-    if not (is_stopped or is_zero_hash or is_zero_boards or has_restart_flag):
+    if not (is_stopped or is_zero_hash or is_zero_boards):
+        # A pending settings flag is not evidence that mining stopped. Only the
+        # preset watchdog may act on it, with its thermal, soak and cooldown gates.
+        if has_restart_flag:
+            return False, "handled_by_preset_watchdog", None
         return False, "not_needed", None
 
     # Check retry limit before escalating to hardware reboot
@@ -177,6 +190,8 @@ def evaluate_preset_restart_candidate(
         return False, "thermal_pause_active"
     if is_warming_up:
         return False, "warming_up"
+    if max_chip_temp_c is None or not math.isfinite(max_chip_temp_c) or max_chip_temp_c <= 0:
+        return False, "temperature_unavailable"
     if max_chip_temp_c is not None and max_chip_temp_c >= max_safe_temp_c:
         return False, f"chip_temp_too_high_{max_chip_temp_c:.1f}C"
     if detected_ts is not None and (now_ts - detected_ts) < soak_window_seconds:
@@ -202,6 +217,7 @@ def _async_execute_mining_restart(
     qa_notify: bool,
     event_store: Any,
     pre_clamp_preset: str = "1800",
+    qa_allow_actions: bool = False,
 ) -> None:
     """Asynchronously execute soft mining restart with APW12 pre-clamp protection."""
     import logging
@@ -221,6 +237,9 @@ def _async_execute_mining_restart(
     logger = logging.getLogger("miner-alerts")
     try:
         ts = time.time()
+        if not _worker_restart_allowed(qa_mode, qa_allow_actions, ts):
+            logger.info("[AUTO-RESTART] %s blocked by QA/governance at execution", miner_name)
+            return
         disp_name = display_name(miner_name)
         logger.info(
             "[AUTO-RESTART] %s (%s) iniciando soft restart de minado (intento %d/%d, razon=%s)...",
@@ -241,8 +260,9 @@ def _async_execute_mining_restart(
                 "[SAFE-RECOVERY] %s (%s) aplicando pre-clamp defensivo a %sW para proteger fuente APW12...",
                 disp_name, host, pre_clamp_preset,
             )
-            _pre_hw_max = miner_dict.get("max_hardware_preset", "2700W").rstrip("W") if isinstance(miner_dict, dict) else "2700"
-            clamp_ok, clamp_err = _safe_set_preset(host, password, pre_clamp_preset, clamp_top_preset=False, top_preset=_pre_hw_max)
+            # Preserve any live thermal/electrical ceiling. Recovery must not
+            # silently restore the configured hardware maximum over a safety clamp.
+            clamp_ok, clamp_err = _safe_set_preset(host, password, pre_clamp_preset, clamp_top_preset=False)
             if clamp_ok:
                 logger.info(
                     "[SAFE-RECOVERY] %s (%s) pre-clamp a %sW aplicado con exito. Asentando voltajes (2.0s)...",
@@ -260,6 +280,9 @@ def _async_execute_mining_restart(
                 disp_name, host,
             )
 
+        if not _worker_restart_allowed(qa_mode, qa_allow_actions, time.time()):
+            logger.info("[AUTO-RESTART] %s blocked before restart by QA/governance", miner_name)
+            return
         ok, err = _safe_restart(host, password)
         if ok:
             logger.info(
@@ -338,21 +361,47 @@ def _async_execute_preset_restart(
     qa_mode: bool,
     qa_notify: bool,
     event_store: Any,
+    qa_allow_actions: bool = False,
+    max_safe_temp_c: float = 80.0,
 ) -> None:
     """Execute soft mining restart to apply a pending Vnish preset (Spec 081 / PROP-017)."""
     import logging
     import time
     from app.telegram.fleet_cards import display_name
-    from app.vnish.client import safe_restart_mining
+    from app.vnish.client import (
+        safe_restart_mining, get_miner_status, parse_miner_status_flags,
+        read_miner_status_summary,
+    )
 
     logger = logging.getLogger("miner-alerts")
     try:
         ts = time.time()
+        if not _worker_restart_allowed(qa_mode, qa_allow_actions, ts):
+            logger.info("[PRESET-WATCHDOG] %s blocked by QA/governance at execution", miner_name)
+            return
+        # Cached restart_required may have cleared while native switching settled.
+        ok, status, _ = get_miner_status(host, timeout=2.5)
+        native_state, pending, reboot = parse_miner_status_flags(status)
+        if not ok or not pending or reboot or native_state != "mining":
+            logger.info("[PRESET-WATCHDOG] %s skipped: native pending/state changed", miner_name)
+            return
+        ok, summary, _ = read_miner_status_summary(host, timeout=2.5)
+        temp = summary.get("chip_temp", {}).get("max") if ok and summary else None
+        if (
+            not ok or not summary or summary.get("miner_state") != "mining"
+            or summary.get("hr_realtime_ths", 0.0) <= 0.0
+            or not isinstance(temp, (int, float)) or not (0 < temp < max_safe_temp_c)
+        ):
+            logger.info("[PRESET-WATCHDOG] %s skipped: fresh mining/thermal evidence unsafe", miner_name)
+            return
         disp_name = display_name(miner_name)
         logger.info(
             "[PRESET-WATCHDOG] %s (%s) ejecutando soft restart para aplicar preset pendiente (%s)...",
             disp_name, host, target_preset,
         )
+        if not _worker_restart_allowed(qa_mode, qa_allow_actions, time.time()):
+            logger.info("[PRESET-WATCHDOG] %s blocked before restart by QA/governance", miner_name)
+            return
         ok, err = safe_restart_mining(host, password)
         if ok:
             logger.info(

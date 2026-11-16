@@ -1585,6 +1585,7 @@ class ActuatorHook(SupervisoryHook):
             _async_execute_preset_restart,
             evaluate_auto_restart_candidate,
             evaluate_preset_restart_candidate,
+            is_native_transition,
         )
         from app.core.system import run_hashcore_cli
         from app.telegram.fleet_cards import display_name
@@ -1628,15 +1629,58 @@ class ActuatorHook(SupervisoryHook):
             name_display = display_name(name)
             host = miner["host"]
 
+            if (
+                getattr(state, "is_shutdown_maintenance", False)
+                or (state.snooze_until_ts is not None and now_ts < state.snooze_until_ts)
+                or (getattr(state, "thermal_pause_until_ts", None) is not None
+                    and now_ts < state.thermal_pause_until_ts)
+            ):
+                continue
+            last_downstep = float(getattr(state, "last_thermal_downstep_ts", 0.0) or 0.0)
+            if last_downstep > 0 and now_ts - last_downstep < float(
+                config.get("emergency_thermal_downstep_cooldown_seconds", 180.0)
+            ):
+                # A thermal downstep is already an intervention. Let it settle
+                # before either restart path can interfere with native switching.
+                continue
+
             is_hash_degraded = (
                 state.state in (STATE_LOW, STATE_HASHBOARD)
                 or (rate_ths is not None and rate_ths <= 0.0)
                 or (active_boards is not None and active_boards == 0)
             )
 
+            # Read native state only when an intervention may be considered.
+            # Never infer "mining" from TCP responsiveness. HTTP stays outside
+            # state_lock; a failed observation cannot authorize a soft restart.
+            native_status_ok = False
+            native_state = ""
+            native_restart_required = False
+            native_reboot_required = False
+            if responded and (
+                is_hash_degraded
+                or (auto_restart_mining_enabled and getattr(state, "vnish_restart_required", False))
+            ):
+                from app.vnish.client import get_miner_status, parse_miner_status_flags
+                native_status_ok, native_status, _ = get_miner_status(host, timeout=2.5)
+                if native_status_ok:
+                    native_state, native_restart_required, native_reboot_required = parse_miner_status_flags(native_status)
+                    native_status_ok = bool(native_state)
+                    if native_status_ok:
+                        with state_lock:
+                            state.vnish_restart_required = native_restart_required
+                            if not native_restart_required:
+                                state.vnish_restart_detected_ts = None
+                            elif state.vnish_restart_detected_ts is None:
+                                state.vnish_restart_detected_ts = now_ts
+                if native_status_ok and is_native_transition(native_state):
+                    # The dedicated autotune watchdog owns genuinely stalled tuning.
+                    # Neither generic L1 nor hardware L2 may interrupt live tuning.
+                    continue
+
             # 1. Preset Watchdog (Spec 081 / PROP-017)
-            if not is_hash_degraded:
-                if getattr(state, "vnish_restart_required", False) and responded and auto_restart_mining_enabled:
+            if not is_hash_degraded and native_status_ok and not native_reboot_required:
+                if native_restart_required and responded and auto_restart_mining_enabled:
                     miner_is_warming = (elapsed is not None and elapsed < auto_restart_min_elapsed_seconds) or startup_grace_active
                     curr_chip_t = (
                         vnish_telemetry.max_temp_c
@@ -1680,13 +1724,15 @@ class ActuatorHook(SupervisoryHook):
                                     qa_mode,
                                     qa_notify,
                                     event_store,
+                                    qa_allow_actions,
+                                    float(config.get("preset_restart_max_temp_c", 80.0)),
                                 ),
                                 daemon=True,
                                 name=f"PresetRestart_{name}",
                             ).start()
 
             # 2. Level 1: Soft Auto-Restart (Vnish API)
-            if auto_restart_mining_enabled and responded:
+            if auto_restart_mining_enabled and responded and native_status_ok:
                 is_restart_cand, restart_reason, restart_cd = evaluate_auto_restart_candidate(
                     now_ts=now_ts,
                     responded=responded,
@@ -1694,15 +1740,19 @@ class ActuatorHook(SupervisoryHook):
                     threshold_ths=threshold_ths,
                     active_boards=active_boards,
                     expected_boards=expected_boards,
-                    miner_state="mining" if responded else "stopped",
-                    restart_required=getattr(state, "vnish_restart_required", False),
-                    reboot_required=False,
+                    miner_state=native_state,
+                    restart_required=native_restart_required,
+                    reboot_required=native_reboot_required,
                     auto_restart_enabled=auto_restart_mining_enabled,
                     last_auto_restart_ts=state.last_auto_restart_ts,
                     auto_restart_cooldown_seconds=auto_restart_cooldown_seconds,
                     auto_restart_count=state.auto_restart_count,
                     max_retries_before_reboot=auto_restart_max_retries,
-                    in_maintenance=getattr(state, "is_shutdown_maintenance", False),
+                    in_maintenance=(
+                        getattr(state, "is_shutdown_maintenance", False)
+                        or (getattr(state, "thermal_pause_until_ts", None) is not None
+                            and now_ts < state.thermal_pause_until_ts)
+                    ),
                     is_snoozed=(state.snooze_until_ts is not None and now_ts < state.snooze_until_ts),
                     elapsed=elapsed,
                     min_elapsed_seconds=auto_restart_min_elapsed_seconds,
@@ -1731,10 +1781,18 @@ class ActuatorHook(SupervisoryHook):
                                 qa_notify,
                                 event_store,
                                 safe_recovery_pre_clamp_preset,
+                                qa_allow_actions,
                             ),
                             daemon=True,
                             name=f"AutoRestart_{name}",
                         ).start()
+
+            if (
+                state.last_auto_restart_ts is not None
+                and now_ts - state.last_auto_restart_ts < auto_restart_cooldown_seconds
+            ):
+                # Give L1 its recovery window; never dispatch L2 alongside it.
+                continue
 
             # 3. Level 2: Auto-Reboot (Hashcore CLI)
             curr_signal = classify_auto_reboot_signal(responded, rate_ths, threshold_ths)

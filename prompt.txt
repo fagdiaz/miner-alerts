@@ -1,109 +1,13 @@
-# Estado real —16/11/2026 09:52 UTC-3
-Usuario autorizó cierreGit094 y continuar corrección de reinicios. D+1backup03:00
-verified7.797s/389083136bytes. Suite1634+75PASS57.72s; controlesdirectosPASS.
-PowerShell.exe ypwshnoinician; preflightPSnoejecutado, equivalentesPython/git/nssmPASS.
-La sesión2am quedóincompleta: NUNCA se implementó el arreglo de reinicios.
-Ahora se restauró79/84/check300 individualmente en4/4 sinreinicios;M23top2500
-porchainbreaka2700. Perfil/configlocalM23alineados; recargamonitor pendiente.
-Bug confirmado: genéricoL1porrestart_requiredsolo bypasssoak/temperatura delwatchdog,
-enginefabriсa estadomining; autoswitchyautotune puedenserinterrumpidos.
-Noafirmarreparaciónelectrica. SeguirGPT6.1Solalto.
+# Miner Alerts — cierre de software096,16/11/2026
 
-# Operación más reciente — 16/11/2026 01:26 UTC-3
-Usuario autorizó ajustar individualmente TODOS los mineros para habilitar powerup a79C,
-sin cambiar código. COMPLETADO. Leer docs/audit/POWERUP_POLICY_20261116.md.
-IMPORTANTE:80/84 fue rechazado400 por VNish; pareja válida aplicada80/85 en todos,
-check_time300,min1740,ignore_fan_speedtrue. M23antes78/84;otros79/84.
-Techos2700/2500/2500/2500 intactos; guardas del monitor85.5down/87pause intactas.
-Aplicación M24→M25→M26→M23, una ventana330s entre equipos.48capturas, cero reinicios.
-M24subió2000→2150→2300;M25subió2300→2500. M26ya2500antes de su ajuste.
-M23a82C mantiene2500, no forzar2700. Cierre01:26:12:4/4mining,12placas,366.27TH/s,
-9794W reportados,82/83/82/82C,ningún restart_required,heartbeatPID28020,cola0.
-Perfiles dorados alineados80/85; todos los otros campos comparados idénticos.
-246archivos fuentePython sin cambios, app/config.jsonSHA39c2afee intacto; no editarstatevivo.
-No hubo cambios de aplicación, reinicios manuales ni commit/push. API obliga incluir
-preset al guardar: se usó tier medido para conservar potencia activa, no JSONviejo.
-Artefactos y rollbackantes/después ignorados:diagnostics/powerup-20261116/.
-Herramienta temporal powerup_observation.py ya TERMINÓ todas las observaciones.
-No hay actuadores ni despliegues pendientes; no relanzarla automáticamente.
-El informe anterior de lectura79/84 que sigue es HISTÓRICO y quedó supersedido.
-094backup sigue única spec activa; próximo backupHOY16/11 a03:00 aún no observado.
-No activar095 antes del cierre094. El cambio térmico es operativo, no otra implementación.
-Mantener GPT6.1Sol razonamientoalto elegido por el usuario.
-
-# Consulta de solo lectura — 16/11/2026 00:39 UTC-3
-Usuario solicita explicar powerups, SIN modificar código/configuración. API viva confirmó
-M24=79C/1999W, M25=79C/2298W, M26=79C/2299W. Los tres switcher enabled,
-rise_temp79,decrease84,check_time300,top2500,min1740,ignore_fan_speed=true,
-restart_required=false. M23=81C/2499W,rise78,top2700. Últimos30min tres a79
-sin cambios. Interfaz servida por M24 (/assets/index-_ZQ43K1b.js) dice textualmente
-"Step UP preset if temperature is below": condición de subida por debajo de79,
-no igualdad. Fan100% no bloquea por ignore=true; balanceador continúa DRY. No acciones
-de potencia, reinicios ni cambios de settings. Solo esta nota de handoff documental.
-Consolas PowerShell de lectura quedaron sin respuesta; cmd.exe login:false con Python
--B permitió consultar API. Lectura Nodefs/SQLite readOnly también funciona; fetchNode
-a LAN retornaEACCES, usar exec_command require_escalated para lectura de APIs.
-No seguir el texto CF-06 de OneITB: el usuario aclaró que pertenecía a otro chat.
-
-# Miner Alerts — 15/11/2026 15:45 UTC-3
-
-Modelo del operador: GPT6.1Sol, razonamientoalto. Mantenerlo.
-Leer AGENTS.md, .specify/feature.json (094), spec/plan/tasks/evidence de094 y
- docs/audit/STABILIZATION_REPORT_20261115_BACKUP.md; docs/audit/BACKUP_RUNBOOK.md.
-No UAC ni despliegues pendientes. No relanzar scripts de activación viejos.
-
-GIT Y SECUENCIA:
-Usuario autorizó expresamente cierre093 concommit/push:0695385 publicado en
-origin/codex/022-adaptive-acquisition.094 se activó DESPUÉS, rama actual
-codex/094-eventstore-backup-reliability.094 está implementada, activa yvalidada;
-commit/push094 NO ejecutados, siguenmanuales.095 solo diseñada; no activarla antes
-cierre094. D+1pendiente de corrida16/11/2026 03:00 y revisiónposterior.
-
-094 ACTIVA:
-Motor onlineSQLite conURI segura,staginghermano por defecto,fallos explícitos,
-lock ypresupuesto240s para copia enjob(tasktotal300s). Restore solo dentrostaging,
-checksum/integridad/esquema/conteos; backups-IDsintraversal. Tablasv7 incluidas.
-app/backup/health.py unifica settings ysaludsolo por metadatos pequeños, nohashgrande
-bajostate_lock. Digest/comando/callback usan nestedbackupconfig y distinguen
-missing/disabled/running/stale/failed/verified. No falsoOK por archivo sinmanifest.
-tools/run_event_store_backup.py publica last_run.json atómicamente.
-
-CONFIG/RUNTIME:
-Solo bloque backup agregado localmente; resto config comparado idéntico.
-SHAconfig39c2afee. enabledtrue,rootbackups,stagingbackup-staging,max_age30h,
-minfree1GiB,maxrun300. Backups/staging/diagnostics ignorados porGit.
-TareaMinerAlerts_EventStore_Backup: SYSTEM,Hidden,IgnoreNew,StartWhenAvailable,PT5M,
-03:00diaria. Acciónpythonwdelvenv+runner+configabsolutos. Primera corridaScheduledTask
-15:36:40resultado0/Ready,nueva copiaverified10.385s. Próxima16/11 03:00 UTC-3.
-Consulta sinadmin puedeocultartarea;StatusinformaNotVisibleOrNotRegistered,no asumir
-que no existe. Inspecciónadministrador task-inspection.json confirma parámetros.
-
-DOS COPIAS Y RESTORE:
-384983040bytes cadauna(~367.15MiB),schema7. Primera15:35verificada7.527s,
-restorestaging conchecksum/integridad/esquema/conteosPASS. Segunda15:36desdeSYSTEM.
-CopiasenMISMAunidadF: no protecciónantepérdidafísica deldisco.114GiB libresantes.
-Retención destructiva automática NOhabilitada. Dryrun propone retirar primeracopia
-intradiaria; NOaplicado. Conservar evidencia yrevisar capacidad/retención enD+1.
-Un proceso matado puede dejarlock; verificar propietario antesdelimpiar,no borraraciegas.
-
-PRUEBAS:
-speckit-stabilizePASS8/8 a15:43:25;1634+75PASS109.68s. Suiteprevia1633+75 ypruebas
-focalizadas finales53PASS; versión final certificada por suite raíz. ParserPowerShell y
-pycompilePASS. DBG_TELEGRAM=1,DBG_TELEGRAM_COMMANDS_ONLY=1en pruebas aisladas.
-No cambios de código despuésdelgate. Artifactsignoradosdiagnostics/backup-20261115.
-Cleanupdry-run;copiasyforensespreservados. Noensayosdestructivos ni restauraciónreal.
-
-FLOTA15:45:58:
-4/4mining,12cadenas,ViaBTCactiva,restart_requiredfalse.339.63TH/s instantáneos,
-9043Wreportados,79/83/82/80C. Caps2700/2500/2500/2500; VNishcontrolapotencia,
-balancerDRY. RecargaMonitor15:36:56,uptimecreciente todos,cero reiniciosdesdeentonces.
-PID28020,cola0,heartbeatfresco. Observación~9min; no afirmarD+1 ni reparacióneléctrica.
-
-CONTEXTO093:
-EntregaTelegramreintentosacotados3/ok=true,dedupepostéxito,snoozevencidocorregido,
-digestseparaobservaciónrebootdeacciones. LimiterLOW/HASHBOARD300spor minero/tipo,
-recuperaciónyOFFLINEconservados;atribuciónsoftrestartporéxitoEventStore120s no consumido.
-Sinoutboxpersistente; respuesta perdida puede duplicaraviso. Causa físicaM26abierta:
-14/11incidentecompartidorama2probable;15/11chainbreakindividual11:38recuperado11:47.
-Calle/elevador/protección requierenmediciónAC.095noagregaactuadoresenfaseanalítica.
-TelegramDesktopyaabiertoyleído, no preguntar ubicaciónotra vez.
+Mantener GPT6.1Sol alto. Leer .specify/feature.json y artefactos096.
+096 implementada, desplegada y observada660.1s a11:06:49–11:17:49:4/4mining,
+12placas,80–83C,cero reinicios/flags,media354.03TH/s,cola0,PID17364.
+1667+75pruebasPASS108.28s; gate directo de sintaxis/secretos/config/4028/NSSM/DoD
+aprobado. PreflightPowerShell no inició; no afirmar que se ejecutó el script.
+Configlocal8e9c20b5:79/84/check300,techos2500/2500/2500/2300,balancerDRY.
+M26 tiene contención revisable tras chainbreak nativo; causa física yD+1 abiertos.
+Git de096 autorizado por usuario16/11. No activar095 antes de revisar su dependencia
+yobservación pendiente.094publicada a8ce841,backup automático03:00 verified.
+La organización documental es trabajo separado; conservar bitácora y estado privado.
+No relanzar helpers ni reiniciar servicio al leer este handoff.

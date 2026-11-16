@@ -206,3 +206,13 @@ corrida16/11 03:00 UTC-3 y completar revisiónD+1.095 espera ese cierre yrelease
 Las fechas no certifican éxito futuro. Registro de evidencia094 es autoritativo.
 
 094: gate de software PASS8/8 a15:43:25,1634+75PASS. Observación inmediata aprobada; D+1 ycommit/push pendientes.095 no activada.
+
+## Ventana prioritaria — 16/11/2026
+
+094 cerrada: respaldo de las 03:00 verificado; publicación a8ce841.
+096 intercalada por incidente P0: código y suite final validados; recarga del
+monitor y observación de al menos 600 segundos pendientes. Luego revisión D+1
+con calor diurno y sin forzar pruebas eléctricas. 095 permanece en espera.
+
+Verificación16/11 11:17:49:096 desplegada yventana660.1s
+completa sin reinicios. D+1 no certificado; no se programa automatización nueva.

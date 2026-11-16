@@ -1,6 +1,8 @@
 # Plan 095
 
-1. Reconciliar históricos y atribución después de 093; respaldar mediante 094.
+1. Reconciliar históricos y atribución después de093/096; respaldar mediante094.
+   Considerar las ventanas con80/85 (16/11 00:59–09:47) y el cambio de techos
+   de096 como exposiciones diferentes; no mezclar sus resultados sin etiquetar.
 2. Calcular rendimiento efectivo sobre tiempo total, evitando seleccionar solo muestras
    minando. Declarar sesgos, cobertura y datos faltantes.
 3. Correlacionar con registros de un técnico cuando estén disponibles.

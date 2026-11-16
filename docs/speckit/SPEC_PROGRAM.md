@@ -414,3 +414,13 @@ Gates de094 incluyen backup/restorestaging reales y ejecuciónWindows confirmada
 con D+1 todavía pendiente. No se cambia el controlador de potencia con esta spec.
 
 094: gate de software PASS8/8 a15:43:25,1634+75PASS. Observación inmediata aprobada; D+1 ycommit/push pendientes.095 no activada.
+
+## Secuencia canónica — 16/11/2026
+
+094 cerrada y publicada como a8ce841; D+1 del respaldo verificado. Se intercala
+096-native-switcher-restart-safety (P0, HIGH) antes de 095 por incidentes de planta.
+096 es la única implementación activa y depende de 094. 095 conserva su alcance
+analítico y espera el cierre de 096. No hay implementaciones concurrentes.
+
+096: código desplegado y observado660s el16/11; cierreGit manual yD+1 pendientes.
+La contención deM26 a2300W no identifica causaAC.095 no activada.

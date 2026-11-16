@@ -6,7 +6,7 @@
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Estado vigente**: 093 publicada como `0695385`; 094 implementada y activa, con gate 8/8 y 1634 pruebas +75 subpruebas PASS. D+1 de094 verificado16/11; cierreGit autorizado. Incidente térmico requiere corrección prioritaria secuencial;095 planificada.
+- **Estado vigente**: 094 publicada como a8ce841; 096 es la única spec activa, desplegada y verificada durante660s sin reinicios, con1667+75 pruebas PASS. Techos2500/2500/2500/2300W y banda79/84/check300. ReleaseGit096, D+1 y causa físicaM26 pendientes;095 planificada.
 - **Flota al 15/11/2026 15:45**: cuatro mineros, doce cadenas, ViaBTC activa, ~340 TH/s instantáneos y 79–83 °C. Sin ajustes pendientes ni reinicios por la activación del respaldo. La causa física de M26 sigue abierta.
 - **Programa Maestro de Desacoplamiento del Monolito**: **100% COMPLETADO** (Fases 1 a 5: `Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`, `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`). Monolito disuelto definitivamente: `miner_monitor.py` reducido a 324 LOC.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).

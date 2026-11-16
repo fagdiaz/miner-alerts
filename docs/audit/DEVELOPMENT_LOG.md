@@ -1,3 +1,33 @@
+## [2026-11-16] Spec096 — arreglo cargado y ventana de producción verificada
+
+Primera recarga11:00:01/PID34524 y final11:06:28/PID17364, ambas UAC aceptado
+yNSSM exit0. ConfigSHA8e9c20b5 cargada. M26 repitió chainbreak nativo10:07:47
+antes de la recarga, sin orden del monitor; se contuvo individualmente en2300W
+a11:04:01 sin reinicio. Techos2500/2500/2500/2300; pareja79/84/check300
+yperfiles alineados. La causa física no fue identificada ni reparada.
+
+Observación 660.1s/23 capturas:12placas,4/4mining,
+cero reinicios/flags,80–83C,media354.03TH/s,
+cola0 yheartbeat fresco. Watchdoghealthy yViaBTCactiva.1667+75testsPASS;
+sintaxis/config/secretos/conexiones/servicio PASS. Gate directo documentado;
+PowerShellpreflight no ejecutable. Cleanupdryrun sin borrar evidencias.
+D+1 ycausa físicaM26 abiertos;Git096manual/no ejecutado;095noactiva.
+
+## [2026-11-16] Spec096 — reinicios durante cambios nativos, código validado
+
+094 cerrada y publicada comoa8ce841 por autorización expresa;096 activada después,
+sin implementación concurrente. Restaurados79/84/check300 en4/4 sinreinicios;
+M23 limitado2500 traschainbreak a2700. M24 bajó nativamente a2150 a84C.
+Se corrigieron flag sano como disparadorL1, estado fabricado desdeTCP, interferencia
+conautotune/pausas/asentamiento, simultaneidadL1/L2 yrestauración indebida de techos.
+Workers verifican QA/gobernanza ywatchdog revalida evidencia fresca.
+Suite final1667+75PASS108.28s; sintaxis/secretos/diff/config/4028/NSSM PASS.
+PreflightPSnoinició; controles directos registrados sin afirmar script8/8.
+DespliegueNOrealizado: UACcancelado1223, sinPIDnuevo. TareasR004–R006 mantienen
+pendientes de gatefinal/observación/cierre. Usuario consultado por disponibilidad
+frente aPC; no relanzar elevación hasta respuesta. Sincommit/push096.
+Informe: STABILIZATION_REPORT_20261116_RESTART_SAFETY.md. Causa físicaAC abierta.
+
 ## [2026-11-16] Spec094 — observación automática D+1 cumplida
 
 Corrida del16/11 a03:00 verificada por last_run.json: backup20261116T060001Z_305aa41c,

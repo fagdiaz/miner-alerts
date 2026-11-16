@@ -202,7 +202,7 @@ class TestEvaluateAutoRestartCandidate(unittest.TestCase):
         self.assertEqual(reason, "stopped_state")
         self.assertIsNone(cd)
 
-    def test_restart_required_flag_triggers_restart(self) -> None:
+    def test_healthy_restart_required_flag_defers_to_watchdog(self) -> None:
         cand, reason, cd = evaluate_auto_restart_candidate(
             now_ts=1000.0,
             responded=True,
@@ -219,8 +219,8 @@ class TestEvaluateAutoRestartCandidate(unittest.TestCase):
             auto_restart_count=0,
             max_retries_before_reboot=2,
         )
-        self.assertTrue(cand)
-        self.assertEqual(reason, "restart_required_flag")
+        self.assertFalse(cand)
+        self.assertEqual(reason, "handled_by_preset_watchdog")
         self.assertIsNone(cd)
 
     def test_zero_hashrate_triggers_restart(self) -> None:

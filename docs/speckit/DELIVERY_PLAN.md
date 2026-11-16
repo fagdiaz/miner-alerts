@@ -199,3 +199,10 @@ sinfecha prometida. No comprimir observación para cumplir estimaciones.
 Cierre de la iteración M,15/11 15:19 UTC-3: software y observación inmediata PASS;
 gate8/8 y1604+75 pruebas PASS. Correcciones activas desde15:13:46. D+1 pendiente.
 094/095 siguen solo planificadas, dependientes de release093manual. Causa física abierta.
+
+
+094: implementación y primera ejecución de tarea completadas15/11; observar próxima
+corrida16/11 03:00 UTC-3 y completar revisiónD+1.095 espera ese cierre yrelease094.
+Las fechas no certifican éxito futuro. Registro de evidencia094 es autoritativo.
+
+094: gate de software PASS8/8 a15:43:25,1634+75PASS. Observación inmediata aprobada; D+1 ycommit/push pendientes.095 no activada.

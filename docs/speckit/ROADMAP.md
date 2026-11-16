@@ -1,13 +1,13 @@
 # Miner Alerts Speckit Roadmap
 
-**Last reviewed**: 2026-10-27
+**Last reviewed**: 2026-11-16
 **Specification program**: `docs/speckit/SPEC_PROGRAM.md`
 **Delivery calendar**: `docs/speckit/DELIVERY_PLAN.md`
 
 ## Resumen Ejecutivo y Progreso del Programa
 
-- **Progreso Acumulado del Proyecto (desde Spec 001)**: `100%` (93 de 93 especificaciones completadas y evidenciadas — **1536 tests PASS, 75 subtests PASS** — Spec 093 Watchdog de Elevadores Eléctricos y Auto-Recuperación de Firmware COMPLETADA — **RELEASE MAYOR V6.0.1**).
-- **Estado Operativo de Flota (2026-10-27)**: Perfil `c3` (M23: 2700W, M24: 2500W, M25: 2700W, M26: 2500W) balanceado a 5200W por elevador (~400 TH/s nominales), S19JPRO-26 auto-recuperado en VNish 1.2.6 con perfil dorado intacto, Watchdog de elevadores activo con bypass de histeresis y detección determinista de rachas.
+- **Estado vigente**: 093 publicada como `0695385`; 094 implementada y activa, con gate 8/8 y 1634 pruebas +75 subpruebas PASS. D+1 de094 verificado16/11; cierreGit autorizado. Incidente térmico requiere corrección prioritaria secuencial;095 planificada.
+- **Flota al 15/11/2026 15:45**: cuatro mineros, doce cadenas, ViaBTC activa, ~340 TH/s instantáneos y 79–83 °C. Sin ajustes pendientes ni reinicios por la activación del respaldo. La causa física de M26 sigue abierta.
 - **Programa Maestro de Desacoplamiento del Monolito**: **100% COMPLETADO** (Fases 1 a 5: `Spec 087: Callbacks`, `Spec 088: Ciclos de Gobernanza`, `Spec 089: Telemetría de Hardware`, `Spec 090: Desbloqueo de main()`, `Spec 091: Pipeline Declarativo de Hooks (Cierre V6.0)`). Monolito disuelto definitivamente: `miner_monitor.py` reducido a 324 LOC.
 - **Auditoría Arquitectónica y Armonización**: Todas las directivas armonizadas y fricciones F-01 y F-02 resueltas. Ver [`docs/audit/DIRECTIVES_HARMONIZATION_AUDIT.md`](../audit/DIRECTIVES_HARMONIZATION_AUDIT.md).
 
@@ -1265,3 +1265,21 @@ Release093ycommit/push siguen manuales; no avanzar otra spec antes del cierre.
 Cierre de la iteración M,15/11 15:19 UTC-3: software y observación inmediata PASS;
 gate8/8 y1604+75 pruebas PASS. Correcciones activas desde15:13:46. D+1 pendiente.
 094/095 siguen solo planificadas, dependientes de release093manual. Causa física abierta.
+
+
+## Estado vigente — 15/11/2026, Spec 094
+
+093 publicada como0695385 con autorización del operador;094 implementada y activa
+(sujeta al gate final en evidencia094), con copia/restauración reales y tarea03:00.
+Primera ejecución de tarea15:36resultado0; D+1 pendiente de la ejecución16/11 03:00.
+095 permanece planificada y no implementada. No activar hasta cierre de094.
+Respaldo local en mismaunidad; retención automática destructiva no habilitada.
+
+
+## Ajuste operativo autorizado — 16/11/2026 01:26 UTC-3
+
+Firmware nativo de los cuatro mineros: subida80/bajada85/check300; techos intactos.
+Guardas del monitor85.5/87 conservadas. Aplicación escalonada y48capturas sin reinicios.
+M24en2300W, M23/M25/M26en2500W;82–83C al cierre. Sin cambios de código;
+perfiles locales alineados. Ver docs/audit/POWERUP_POLICY_20261116.md.
+094backup permanece activa yD+1 pendiente de su ejecución03:00;095noimplementada.

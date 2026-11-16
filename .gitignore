@@ -54,3 +54,7 @@ scratch/
 ~$*
 Thumbs.db
 .DS_Store
+
+# Local verified backups and restore drills
+/backups/
+/backup-staging/

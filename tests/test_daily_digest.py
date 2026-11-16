@@ -85,17 +85,23 @@ class TestDailyDigestBackupInspection(unittest.TestCase):
             backup_root = Path(tmpdir)
             verified_dir = backup_root / "verified" / "20260908T030000Z_abcd"
             verified_dir.mkdir(parents=True)
+            (backup_root / ".miner-alerts-backup-root-v1").write_text("version=1")
 
+            timestamp = datetime.datetime(2026, 9, 8, 6, tzinfo=datetime.timezone.utc).timestamp()
+            database = verified_dir / "miner_alerts.db"
+            database.write_bytes(b"test" * 256)
+            import os
+            os.utime(database, (timestamp, timestamp))
             manifest = {
-                "file_size_bytes": 24_326_963,
-                "integrity_check": "ok",
-                "start_iso": "2026-09-08T06:00:00+00:00",  # 03:00 in Argentina UTC-3
+                "manifest_version": 1, "backup_id": verified_dir.name,
+                "database_file": "miner_alerts.db", "sha256": "a" * 64,
+                "size_bytes": 1024, "integrity_result": "ok",
+                "completed_ts": "2026-09-08T06:00:00+00:00",
             }
             (verified_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-
-            res = inspect_latest_backup(backup_root)
+            res = inspect_latest_backup(backup_root, now_ts=timestamp + 60)
             self.assertTrue(res["verified"])
-            self.assertAlmostEqual(res["size_mb"], 23.2, delta=0.5)
+            self.assertAlmostEqual(res["size_mb"], 1024 / (1024 * 1024))
             self.assertEqual(res["time_str"], "03:00")
 
 

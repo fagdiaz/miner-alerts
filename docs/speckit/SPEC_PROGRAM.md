@@ -407,3 +407,10 @@ The program requires three documentation sweeps.
 restorestaging ysaludWindows.095sustainable-production-evidence: depende093/094;MEDIUM
 mientras sea sololectura, concausafísica abierta hasta registroAC. Ambas sonPLANEADAS,
 no implementadas; specs/094*/ yspecs/095*/ contienen diseños y tareaspendientes.
+
+
+Actualización15/11:093 publicada0695385;094 única spec activa.095 sigue planificada.
+Gates de094 incluyen backup/restorestaging reales y ejecuciónWindows confirmada,
+con D+1 todavía pendiente. No se cambia el controlador de potencia con esta spec.
+
+094: gate de software PASS8/8 a15:43:25,1634+75PASS. Observación inmediata aprobada; D+1 ycommit/push pendientes.095 no activada.

@@ -1,3 +1,45 @@
+## [2026-11-16] Spec094 — observación automática D+1 cumplida
+
+Corrida del16/11 a03:00 verificada por last_run.json: backup20261116T060001Z_305aa41c,
+389083136bytes, esquema7,7.797s, resultado verified. Sin retención destructiva.
+Usuario autoriza cierreGit094 y continuación del arreglo de reinicios. La corrección
+térmica operativa restauró79/84/check300; M23techo2500 tras chainbreaka2700.
+Cambios de aplicación para reinicios aún NOimplementados; no confundirlos con094.
+
+## 2026-11-16 01:26 — Powerup individual autorizado, configuración de firmware
+
+Aplicados secuencialmente M24/M25/M26/M23: rise_temp80/decrease_temp85/check_time300.
+VNish rechazó80/84; se informó la restricción antes de usar la pareja válida80/85.
+Techos2700/2500/2500/2500 y protecciones del monitor85.5/87 conservados.
+Cuatro ventanas330s,48capturas de flota, cero reinicios ni pérdida de placas.
+M24subió2000→2150→2300;M25subió2300→2500;M26ya2500;M23continúa2500a82C.
+Cierre01:26:12:4/4mining,12placas,366.27TH/s,9794W reportados,82/83/82/82C,cola0.
+Hashes de246archivosPython yconfig del monitor intactos; perfiles locales alineados
+solo en dos umbrales. Sin cambio de código ni commits. Observación diurna pendiente.
+Detalle: [informe](POWERUP_POLICY_20261116.md). Operación autorizada; ninguna nueva spec.
+
+## 2026-11-15 15:45 — Spec 094, gate de software aprobado
+
+speckit-stabilize PASS8/8 a15:43:25;1634pruebas+75subpruebas PASS109.68s.
+Dos copias reales verificadas yrestorestaging PASS; tareaSYSTEM diaria03:00,
+primera corridaWindowsresultado0. Config39c2afee;recarga15:36:56sin reiniciarASIC.
+Captura15:45:58:4/4mining,12cadenas,339.63TH/s,79/83/82/80C,cola0,cero reinicios.
+D+1pendiente; copias enmismaunidad ysin retención destructiva automática.
+093publicada0695385;094rama propia sincommit/push;095planificada.
+Detalle: [informe](STABILIZATION_REPORT_20261115_BACKUP.md).
+
+## 2026-11-15 — Spec 094: respaldos verificables activados
+
+093 publicada como0695385 por autorización expresa;094 activa en rama propia.
+Motor con staging disjunto,URI segura yfallos explícitos; restore restringido a staging.
+Salud usa manifest real y frescura; fallos del job prevalecen. Digest/comando/callback
+usan misma configuración. TareaSYSTEM oculta03:00 con tiempo acotado yresultadoatómico.
+Copia real yrestore verificados; primera ejecuciónScheduledTask resultado0 a15:36,
+próxima16/11 03:00. Servicio recargado15:36:56;4mineros/12cadenas continúan,cola0.
+Regresión1633+75PASS más53focalizadasfinalesPASS; gate final en evidence094.
+D+1pendiente; respaldo en mismaunidad, no protege contra pérdida física del disco.
+Sin retención destructiva automática ni commit/push094.095 no implementada.
+
 ## 2026-11-15 15:19 — Gate final de mensajería aprobado
 
 Spec093: speckit-stabilize PASS8/8 a15:17:59;1604pruebas+75subpruebas PASS95.59s.

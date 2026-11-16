@@ -203,7 +203,8 @@
     "daily_generations": 14,
     "weekly_generations": 8,
     "monthly_generations": 12,
-    "max_run_seconds": 300
+    "max_run_seconds": 300,
+    "max_age_hours": 30
   },
   "vnish_api": {
     "_comment": "Credenciales Vnish REST para Fan Governor y Preset Balancer. NUNCA commitar con contraseña real.",

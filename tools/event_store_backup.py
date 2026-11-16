@@ -45,6 +45,10 @@ ALLOWLISTED_TABLES = (
     "collector_runs",
     "incident_assessments",
     "assessment_fact_refs",
+    "chain_telemetry_samples",
+    "governance_snapshots",
+    "facility_agent_knowledge",
+    "facility_agent_actions",
 )
 
 
@@ -126,14 +130,18 @@ class EventStoreBackup:
         chunk_pages: int = DEFAULT_CHUNK_PAGES,
         sleep_seconds: float = DEFAULT_SLEEP_SECONDS,
         retention_policy: Optional[RetentionPolicy] = None,
+        max_run_seconds: float = 300,
     ):
         self.source_db_path = Path(source_db_path).resolve()
         self.backup_root = Path(backup_root).resolve()
-        self.staging_root = Path(staging_root).resolve() if staging_root else (self.backup_root / "staging")
+        self.staging_root = Path(staging_root).resolve() if staging_root else self.backup_root.with_name(self.backup_root.name + "-staging")
         self.minimum_free_bytes = minimum_free_bytes
         self.chunk_pages = chunk_pages
         self.sleep_seconds = sleep_seconds
         self.retention_policy = retention_policy or RetentionPolicy()
+        self.max_run_seconds = max_run_seconds
+        if not 0 < max_run_seconds <= 300:
+            raise ValueError("invalid_max_run_seconds")
 
     @contextlib.contextmanager
     def _acquire_lock(self) -> Generator[None, None, None]:
@@ -233,13 +241,17 @@ class EventStoreBackup:
         try:
             with self._acquire_lock():
                 return self._execute_backup_internal(start_ts, start_iso, step_callback)
-        except OSError:
+        except FileExistsError:
             return {
                 "result": "skipped_locked",
                 "reason_code": "lock_active",
                 "backup_id": None,
                 "duration_seconds": time.time() - start_ts,
             }
+
+        except (OSError, sqlite3.Error, TimeoutError) as exc:
+            return {"result": "failed", "reason_code": type(exc).__name__,
+                    "backup_id": None, "duration_seconds": time.time() - start_ts}
 
     def _execute_backup_internal(
         self, start_ts: float, start_iso: str, step_callback: Optional[Callable[[], None]]
@@ -253,15 +265,21 @@ class EventStoreBackup:
         partial_db = temp_dir / "miner_alerts.db.partial"
 
         # Open source database in URI read-only mode to prevent write lock conflicts
-        source_uri = f"file:{self.source_db_path}?mode=ro"
+        source_uri = self.source_db_path.as_uri() + "?mode=ro"
         src_conn = sqlite3.connect(source_uri, uri=True, timeout=10.0)
-        tgt_conn = sqlite3.connect(str(partial_db), timeout=10.0)
+        try:
+            tgt_conn = sqlite3.connect(str(partial_db), timeout=10.0)
+        except BaseException:
+            src_conn.close()
+            raise
 
         page_size = 4096
         page_count = 0
         schema_version = 0
 
         def progress_handler(status: int, remaining: int, total: int) -> None:
+            if time.time() - start_ts > self.max_run_seconds:
+                raise TimeoutError("backup_time_limit")
             if step_callback:
                 step_callback()
 
@@ -276,7 +294,7 @@ class EventStoreBackup:
                     tgt_conn,
                     pages=self.chunk_pages,
                     sleep=self.sleep_seconds,
-                    progress=progress_handler if step_callback else None,
+                    progress=progress_handler,
                 )
         finally:
             src_conn.close()
@@ -288,7 +306,6 @@ class EventStoreBackup:
             check_cur = check_conn.cursor()
             integrity = check_cur.execute("PRAGMA integrity_check").fetchone()[0]
             if integrity != "ok":
-                shutil.rmtree(temp_dir, ignore_errors=True)
                 return {
                     "result": "failed",
                     "reason_code": f"integrity_check_failed: {integrity}",
@@ -308,6 +325,10 @@ class EventStoreBackup:
                     pass  # Table does not exist in this schema version
         finally:
             check_conn.close()
+
+        if not self._check_free_space():
+            return {"result": "blocked_space", "reason_code": "insufficient_free_space_post",
+                    "backup_id": None, "duration_seconds": time.time() - start_ts}
 
         # Step 6: Rename to final miner_alerts.db
         final_db = temp_dir / "miner_alerts.db"
@@ -403,10 +424,19 @@ class EventStoreBackup:
         if target_path == self.source_db_path or target_path == self.source_db_path.parent:
             return {"result": "failed", "reason_code": "target_equals_source_or_repo"}
 
+        if (not backup_id or Path(backup_id).name != backup_id
+                or any(c in backup_id for c in ("/", "\\", ":")) or backup_id in (".", "..")):
+            return {"result": "failed", "reason_code": "invalid_backup_id"}
+        if target_path == self.staging_root or not target_path.is_relative_to(self.staging_root):
+            return {"result": "failed", "reason_code": "target_outside_staging"}
+        if target_path.exists() and not target_path.is_dir():
+            return {"result": "failed", "reason_code": "target_not_directory"}
         if target_path.exists() and any(target_path.iterdir()):
             return {"result": "failed", "reason_code": "target_directory_already_exists"}
 
         backup_dir = self.backup_root / "verified" / backup_id
+        if backup_dir.resolve().parent != (self.backup_root / "verified").resolve():
+            return {"result": "failed", "reason_code": "backup_path_escape"}
         if not backup_dir.exists():
             return {"result": "failed", "reason_code": "backup_not_found"}
 
@@ -416,7 +446,14 @@ class EventStoreBackup:
         if not manifest_file.exists() or not db_file.exists():
             return {"result": "failed", "reason_code": "corrupt_backup_files"}
 
-        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        try:
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+            if not isinstance(manifest, dict) or manifest.get("integrity_result") != "ok":
+                raise ValueError("invalid_manifest")
+            if any(tbl not in ALLOWLISTED_TABLES for tbl in manifest.get("table_counts", {})):
+                raise ValueError("invalid_table")
+        except (OSError, ValueError, TypeError):
+            return {"result": "failed", "reason_code": "invalid_manifest"}
 
         # Step 1: Checksum verification
         actual_sha = compute_file_sha256(db_file)

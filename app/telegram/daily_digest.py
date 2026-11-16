@@ -68,71 +68,14 @@ def is_digest_due(
     return get_due_digest_slot(now_dt, target_time_str, last_sent_date) is not None
 
 
-def inspect_latest_backup(backup_root: Optional[Path | str] = None) -> Dict[str, Any]:
-    """Inspect backup root directory and return latest verified backup metadata."""
-    root = Path(backup_root) if backup_root else Path("backups")
-    verified_dir = root / "verified"
-    if not verified_dir.exists():
-        return {"verified": False, "reason": "no_verified_dir"}
-
-    candidates = [p for p in verified_dir.iterdir() if p.is_dir()]
-    if not candidates:
-        return {"verified": False, "reason": "no_backups"}
-
-    # Candidate directory names start with ISO timestamp: YYYYMMDDTHHMMSSZ_...
-    candidates.sort(key=lambda p: p.name, reverse=True)
-    latest_dir = candidates[0]
-
-    manifest_file = latest_dir / "manifest.json"
-    db_file = latest_dir / "miner_alerts.db"
-
-    if manifest_file.exists():
-        try:
-            data = json.loads(manifest_file.read_text(encoding="utf-8"))
-            size_bytes = data.get("file_size_bytes", 0)
-            if not size_bytes and db_file.exists():
-                size_bytes = db_file.stat().st_size
-            size_mb = size_bytes / (1024 * 1024)
-            start_iso = data.get("start_iso", "")
-            # Format time
-            time_str = "03:00"
-            date_str = ""
-            if start_iso:
-                try:
-                    dt = datetime.datetime.fromisoformat(start_iso)
-                    if dt.tzinfo is not None:
-                        dt_local = dt.astimezone(ARGENTINA_TZ)
-                    else:
-                        dt_local = dt
-                    time_str = dt_local.strftime("%H:%M")
-                    date_str = dt_local.strftime("%d/%m")
-                except Exception:
-                    time_str = "03:00"
-
-            is_ok = data.get("integrity_check") == "ok"
-            return {
-                "verified": is_ok,
-                "size_mb": size_mb,
-                "time_str": time_str,
-                "date_str": date_str,
-                "backup_id": latest_dir.name,
-            }
-        except Exception:
-            pass
-
-    if db_file.exists():
-        stat = db_file.stat()
-        size_mb = stat.st_size / (1024 * 1024)
-        dt = datetime.datetime.fromtimestamp(stat.st_mtime, tz=ARGENTINA_TZ)
-        return {
-            "verified": True,
-            "size_mb": size_mb,
-            "time_str": dt.strftime("%H:%M"),
-            "date_str": dt.strftime("%d/%m"),
-            "backup_id": latest_dir.name,
-        }
-
-    return {"verified": False, "reason": "empty_backup_dir"}
+def inspect_latest_backup(
+    backup_root: Optional[Path | str] = None, *, now_ts: Optional[float] = None,
+    max_age_seconds: float = 108000, enabled: bool = True,
+) -> Dict[str, Any]:
+    """Inspect verified producer metadata without hashing inside the monitor."""
+    from app.backup.health import inspect_backup
+    return inspect_backup(backup_root or "backups", now_ts=now_ts,
+                          max_age_seconds=max_age_seconds, enabled=enabled)
 
 
 def fetch_daily_digest_metrics(
@@ -141,10 +84,21 @@ def fetch_daily_digest_metrics(
     now_ts: Optional[float] = None,
     backup_root: Optional[Path | str] = None,
     states: Optional[Dict[str, Any]] = None,
+    backup_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Query SQLite database for 24h executive telemetry metrics."""
     curr_ts = now_ts if now_ts is not None else time.time()
     start_ts = curr_ts - 86400.0
+    from app.backup.health import BackupSettings
+    try:
+        if backup_config is not None:
+            settings = BackupSettings.from_config(backup_config)
+            backup_health = inspect_latest_backup(settings.root, now_ts=curr_ts,
+                max_age_seconds=settings.max_age_hours * 3600, enabled=settings.enabled)
+        else:
+            backup_health = inspect_latest_backup(backup_root, now_ts=curr_ts)
+    except (ValueError, TypeError):
+        backup_health = {"verified": False, "state": "failed", "reason": "invalid_config"}
 
     nominal_ths_total = sum(float(m.get("threshold_ths", 100.0)) for m in miners)
     total_miners_count = len(miners)
@@ -165,7 +119,7 @@ def fetch_daily_digest_metrics(
         "incidents_24h": 0,
         "reboots_24h": 0,
         "restarts_detected_24h": 0,
-        "backup_status": inspect_latest_backup(backup_root),
+        "backup_status": backup_health,
         "snoozed_miners": [],
     }
 
@@ -410,10 +364,13 @@ def format_daily_digest(metrics: Dict[str, Any], date_str: Optional[str] = None)
             f"  ({b_size:.1f} MB a las {b_time})",
         ]
     else:
-        backup_lines = [
-            "• Backup SQLite:",
-            "  ⚠️ Sin backups recientes",
-        ]
+        labels = {
+            "disabled": "Deshabilitado", "missing": "Sin copias verificadas",
+            "stale": "Copia vencida", "failed": "Falló la verificación o tarea",
+            "running": "Respaldo en curso",
+        }
+        label = labels.get(backup.get("state"), "Sin backups recientes")
+        backup_lines = ["• Backup SQLite:", f"  ⚠️ {label}"]
 
     snoozed = metrics.get("snoozed_miners", [])
     degraded = metrics.get("degraded_sensors", [])

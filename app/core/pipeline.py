@@ -834,6 +834,7 @@ class PostTickHook(SupervisoryHook):
                             miners=miners,
                             now_ts=now_ts,
                             backup_root=b_root,
+                            backup_config=config,
                             states=states,
                         )
                     today_ar_str = ar_now.strftime("%Y-%m-%d")

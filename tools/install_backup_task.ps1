@@ -26,7 +26,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet("Register", "Unregister", "Status", "RunNow")]
+    [ValidateSet("Register", "Unregister", "Status", "RunNow", "Plan")]
     [string]$Action = "Status",
 
     [string]$TaskName = "MinerAlerts_EventStore_Backup",
@@ -41,10 +41,12 @@ $ProjectRoot = Split-Path -Parent $ScriptDir
 # Resolve pythonw.exe
 $VenvPythonw = Join-Path $ProjectRoot ".venv\Scripts\pythonw.exe"
 if (-not (Test-Path $VenvPythonw)) {
-    $VenvPythonw = "pythonw.exe"
+    throw "Required virtualenv pythonw.exe is missing: $VenvPythonw"
 }
 
-$BackupScript = Join-Path $ProjectRoot "tools\event_store_backup.py"
+$BackupScript = Join-Path $ProjectRoot "tools\run_event_store_backup.py"
+if (-not [IO.Path]::IsPathRooted($ConfigPath)) { $ConfigPath = Join-Path $ProjectRoot $ConfigPath }
+$ConfigPath = [IO.Path]::GetFullPath($ConfigPath)
 
 function Get-TaskStatus {
     param([string]$Name)
@@ -52,8 +54,9 @@ function Get-TaskStatus {
     if ($null -eq $task) {
         return [PSCustomObject]@{
             TaskName = $Name
-            Exists   = $false
-            State    = "NotRegistered"
+            Exists   = $null
+            State    = "NotVisibleOrNotRegistered"
+            Note     = "Run Status from an elevated PowerShell to distinguish missing task from access denied."
         }
     }
     $info = Get-ScheduledTaskInfo -TaskName $Name -ErrorAction SilentlyContinue
@@ -83,61 +86,31 @@ switch ($Action) {
         }
     }
 
-    "Register" {
-        if (-not (Test-Path $BackupScript)) {
-            throw "Backup script not found at '$BackupScript'."
+    { $_ -in "Register", "Plan" } {
+        if (-not (Test-Path -LiteralPath $BackupScript)) { throw "Backup runner missing." }
+        $ValidatorPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+        $checkRaw = & $ValidatorPython $BackupScript --config $ConfigPath --check
+        if ($LASTEXITCODE -ne 0) { throw "Backup configuration validation failed: $checkRaw" }
+        $check = $checkRaw | ConvertFrom-Json
+        if ($BackupRoot -and [IO.Path]::GetFullPath($BackupRoot) -ne $check.root) {
+            throw "BackupRoot differs from config. Align the local backup configuration first."
         }
-
-        # Resolve backup root from config if not provided
-        $ResolvedBackupRoot = $BackupRoot
-        if ([string]::IsNullOrWhiteSpace($ResolvedBackupRoot) -and (Test-Path $ConfigPath)) {
-            try {
-                $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-                $ResolvedBackupRoot = $cfg.backup.root
-            } catch {
-                Write-Verbose "Could not parse backup root from config."
-            }
+        $Arguments = "`"$BackupScript`" --config `"$ConfigPath`""
+        if ($Action -eq "Plan") {
+            [ordered]@{TaskName=$TaskName;Execute=$VenvPythonw;Arguments=$Arguments;
+                WorkingDirectory=$ProjectRoot;DailyAt='03:00';Principal='SYSTEM';
+                MultipleInstances='IgnoreNew';MaxSeconds=300;Hidden=$true} | ConvertTo-Json
+            break
         }
-
-        if ([string]::IsNullOrWhiteSpace($ResolvedBackupRoot)) {
-            $ResolvedBackupRoot = Join-Path $ProjectRoot "backups"
-        }
-
-        # Arguments: --backup-root <path>
-        $Arguments = "`"$BackupScript`" --backup-root `"$ResolvedBackupRoot`" --action backup"
-
         $TaskAction = New-ScheduledTaskAction -Execute $VenvPythonw -Argument $Arguments -WorkingDirectory $ProjectRoot
-        $TaskTrigger = New-ScheduledTaskTrigger -Daily -At "03:00AM"
+        $TaskTrigger = New-ScheduledTaskTrigger -Daily -At "03:00"
         $TaskSettings = New-ScheduledTaskSettingsSet `
-            -AllowStartIfOnBatteries `
-            -DontStopIfGoingOnBatteries `
+            -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
             -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
-            -MultipleInstances IgnoreNew `
-            -StartWhenAvailable
-
+            -MultipleInstances IgnoreNew -StartWhenAvailable -Hidden
         $Principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-
-        try {
-            Register-ScheduledTask `
-                -TaskName $TaskName `
-                -Action $TaskAction `
-                -Trigger $TaskTrigger `
-                -Settings $TaskSettings `
-                -Principal $Principal `
-                -Force | Out-Null
-            Write-Host "[OK] Scheduled task '$TaskName' registered successfully under SYSTEM."
-        } catch {
-            Write-Warning "Could not register as SYSTEM (may require Administrator). Falling back to current user."
-            Register-ScheduledTask `
-                -TaskName $TaskName `
-                -Action $TaskAction `
-                -Trigger $TaskTrigger `
-                -Settings $TaskSettings `
-                -RunLevel Highest `
-                -Force | Out-Null
-            Write-Host "[OK] Scheduled task '$TaskName' registered for current user."
-        }
-
+        Register-ScheduledTask -TaskName $TaskName -Action $TaskAction -Trigger $TaskTrigger `
+            -Settings $TaskSettings -Principal $Principal -Force | Out-Null
         Get-TaskStatus -Name $TaskName | Format-List
     }
 

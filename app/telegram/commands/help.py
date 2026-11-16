@@ -104,6 +104,7 @@ class DigestCommand(BaseCommandHandler):
                 miners=context.miners,
                 now_ts=time.time(),
                 backup_root=b_root,
+                backup_config=context.config,
                 states=context.states,
             )
         digest_msg = format_daily_digest(digest_metrics)

@@ -365,6 +365,7 @@ def _handle_diagnostic_callback(
                     miners=miners,
                     now_ts=time.time(),
                     backup_root=b_root,
+                    backup_config=config,
                     states=states,
                 )
             new_text = format_daily_digest(digest_metrics)

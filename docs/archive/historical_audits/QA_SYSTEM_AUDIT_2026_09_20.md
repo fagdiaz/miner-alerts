@@ -5,15 +5,15 @@
 - **Estado**: Documento de Auditoría y Diagnóstico Preventivo (**Sin Implementación de Código**)
 - **Línea Base Analizada**: 1358 tests unitarios PASS (100%), Servicio Windows `MinerAlerts` en producción, Firmware VNish 1.2.6 sobre 4x Antminer S19j Pro.
 - **Archivos Auditados**:
-  - [`app/miner_monitor.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py) (8.633 líneas)
-  - [`app/governance/preset_balancer.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/preset_balancer.py)
-  - [`app/governance/elevator_budget.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/elevator_budget.py)
-  - [`app/governance/fan_governor.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/fan_governor.py)
-  - [`app/governance/autotune_watchdog.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/autotune_watchdog.py)
-  - [`app/governance/facility_agent.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/facility_agent.py)
-  - [`app/governance/power_progression.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/power_progression.py)
-  - [`app/telegram/poller.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/poller.py) y [`app/telegram/router.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/router.py)
-  - [`app/core/event_store.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/core/event_store.py)
+  - [`app/miner_monitor.py`](../../../app/miner_monitor.py) (8.633 líneas)
+  - [`app/governance/preset_balancer.py`](../../../app/governance/preset_balancer.py)
+  - [`app/governance/elevator_budget.py`](../../../app/governance/elevator_budget.py)
+  - [`app/governance/fan_governor.py`](../../../app/governance/fan_governor.py)
+  - [`app/governance/autotune_watchdog.py`](../../../app/governance/autotune_watchdog.py)
+  - [`app/governance/facility_agent.py`](../../../app/governance/facility_agent.py)
+  - [`app/governance/power_progression.py`](../../../app/governance/power_progression.py)
+  - [`app/telegram/poller.py`](../../../app/telegram/poller.py) y [`app/telegram/router.py`](../../../app/telegram/router.py)
+  - [`app/core/event_store.py`](../../../app/core/event_store.py)
 
 ---
 
@@ -47,10 +47,10 @@ Actualmente coexisten en el sistema **cuatro lazos de decisión independientes**
 └─────────────────┘ └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
-1. **Preset Balancer** ([`app/governance/preset_balancer.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/preset_balancer.py)): Evalúa reinicios en las últimas 24h, soak de 72h, delta de errores HW. Si `restarts_24h >= 2`, decide `STEP_DOWN_RESTARTS` a 2300W.
-2. **Soft Contingency** ([`app/miner_monitor.py#L8230-L8430`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L8230-L8430)): En horario valle y fuera de franja solar, si un minero está a `< 2500W`, decide escalarlo a 2500W o 2700W.
-3. **Power Progression** ([`app/governance/power_progression.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/power_progression.py)): Modela perfiles integrales de planta (C0, C1, C2, C4) con compuertas de ventiladores ($<90\%$) y remojo térmico de 15 minutos.
-4. **Facility Governance Agent (FGA)** ([`app/governance/facility_agent.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/facility_agent.py)): Calcula $R_{th}$ y asignación asimétrica por silicio.
+1. **Preset Balancer** ([`app/governance/preset_balancer.py`](../../../app/governance/preset_balancer.py)): Evalúa reinicios en las últimas 24h, soak de 72h, delta de errores HW. Si `restarts_24h >= 2`, decide `STEP_DOWN_RESTARTS` a 2300W.
+2. **Soft Contingency** ([`app/miner_monitor.py#L8230-L8430`](../../../app/miner_monitor.py#L8230-L8430)): En horario valle y fuera de franja solar, si un minero está a `< 2500W`, decide escalarlo a 2500W o 2700W.
+3. **Power Progression** ([`app/governance/power_progression.py`](../../../app/governance/power_progression.py)): Modela perfiles integrales de planta (C0, C1, C2, C4) con compuertas de ventiladores ($<90\%$) y remojo térmico de 15 minutos.
+4. **Facility Governance Agent (FGA)** ([`app/governance/facility_agent.py`](../../../app/governance/facility_agent.py)): Calcula $R_{th}$ y asignación asimétrica por silicio.
 
 #### El Riesgo Operativo Latente
 En los logs de producción se observó:
@@ -75,7 +75,7 @@ Unificar la gobernanza en un único **Pipeline Jerárquico de Decisión (Single 
 
 ### 🔴 Hallazgo 2: Tormenta de Escritura a Disco por Lote en el Poller de Telegram (`state.json` Churn)
 
-#### El Problema ([`app/miner_monitor.py#L5307-L5315`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L5307-L5315))
+#### El Problema ([`app/miner_monitor.py#L5307-L5315`](../../../app/miner_monitor.py#L5307-L5315))
 En el bucle de recepción de comandos de Telegram:
 ```python
 for item in result:
@@ -106,8 +106,8 @@ Mover la invocación de `_flush_state_payload` **fuera del bucle `for item in re
 En cada ciclo nominal de 30 segundos, el monitor ejecuta múltiples consultas HTTP independientes hacia el puerto 80 de cada minero:
 1. **Adaptive Acquisition**: Sondeo de puerto 4028 (CGMiner).
 2. **Fan Governor**: Consulta y ajuste vía `/api/v1/cooling`.
-3. **Autotune Watchdog** ([`app/miner_monitor.py#L3795`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L3795)): Consulta serial sincrónica a `/api/v1/summary`.
-4. **Overclock Sync** ([`app/miner_monitor.py#L3353`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L3353)): Consulta a `/api/v1/settings`.
+3. **Autotune Watchdog** ([`app/miner_monitor.py#L3795`](../../../app/miner_monitor.py#L3795)): Consulta serial sincrónica a `/api/v1/summary`.
+4. **Overclock Sync** ([`app/miner_monitor.py#L3353`](../../../app/miner_monitor.py#L3353)): Consulta a `/api/v1/settings`.
 5. **Chain Telemetry Worker**: Consulta a `/api/v1/chains`.
 
 #### El Riesgo
@@ -127,8 +127,8 @@ Implementar **Adquisición Unificada de Paso Único (Single-Pass Ingestion)**:
 ### 🟡 Hallazgo 4: Código Duplicado entre `app/telegram/poller.py` y `app/miner_monitor.py`
 
 #### El Problema
-En la Spec 058 se creó el módulo desacoplado [`app/telegram/poller.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/poller.py) con las funciones `fetch_telegram_updates()` y `process_telegram_update()`.
-Sin embargo, [`app/miner_monitor.py#L5230-L5500`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L5230-L5500) contiene una implementación **inline idéntica de 270 líneas** del bucle de sondeo, cálculo de offset y backoff exponencial.
+En la Spec 058 se creó el módulo desacoplado [`app/telegram/poller.py`](../../../app/telegram/poller.py) con las funciones `fetch_telegram_updates()` y `process_telegram_update()`.
+Sin embargo, [`app/miner_monitor.py#L5230-L5500`](../../../app/miner_monitor.py#L5230-L5500) contiene una implementación **inline idéntica de 270 líneas** del bucle de sondeo, cálculo de offset y backoff exponencial.
 
 #### El Riesgo
 `app/telegram/poller.py` es **código muerto** en producción. Cualquier mejora de timeout, manejo de errores HTTP o sanitización de tokens aplicada en `poller.py` no tiene ningún efecto en el monitor real.
@@ -140,7 +140,7 @@ Conectar `miner_monitor.py` directamente con `fetch_telegram_updates()` de `poll
 
 ### 🟡 Hallazgo 5: Lista Blanca Estática `CMD_WHITELIST` Desincronizada
 
-#### El Problema ([`app/miner_monitor.py#L158-L217`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L158-L217))
+#### El Problema ([`app/miner_monitor.py#L158-L217`](../../../app/miner_monitor.py#L158-L217))
 El monitor define un set de strings fijo:
 ```python
 CMD_WHITELIST = {
@@ -166,7 +166,7 @@ Eliminar la lista estática y hacer que `_is_command_like(cmd_name)` consulte di
 
 ### 🟡 Hallazgo 6: Asimetría en el Despachador de Comandos de Telegram
 
-#### El Problema ([`app/miner_monitor.py#L5425-L5449`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L5425-L5449))
+#### El Problema ([`app/miner_monitor.py#L5425-L5449`](../../../app/miner_monitor.py#L5425-L5449))
 ```python
 if False:
     pass
@@ -225,7 +225,7 @@ Crear un módulo centralizado de dominio térmico (ej. `app/domain/thermal_thres
 ### 🔵 Hallazgo 8: Monolito de 8.633 Líneas
 
 #### El Problema
-El archivo principal [`app/miner_monitor.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py) ha crecido a lo largo de 79 especificaciones hasta alcanzar **8.633 líneas y 411 KB**.
+El archivo principal [`app/miner_monitor.py`](../../../app/miner_monitor.py) ha crecido a lo largo de 79 especificaciones hasta alcanzar **8.633 líneas y 411 KB**.
 Contiene simultáneamente:
 - Red TCP por sockets raw.
 - Cliente REST HTTP y autenticación Bearer de VNish.
@@ -241,7 +241,7 @@ Contiene simultáneamente:
 - Dificultad para pruebas unitarias aisladas sin recurrir a complejas baterías de mocks.
 
 #### Recomendación de Ingeniería
-Aprovechar la arquitectura de hooks supervisores ([Spec 065](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/065-supervisory-hooks)) para segregar `miner_monitor.py` en etapas de pipeline modulares e independientes:
+Aprovechar la arquitectura de hooks supervisores ([Spec 065](../../../specs/065-supervisory-hooks)) para segregar `miner_monitor.py` en etapas de pipeline modulares e independientes:
 - `app/pipeline/acquisition_stage.py`
 - `app/pipeline/detection_stage.py`
 - `app/pipeline/governance_stage.py`

@@ -3,8 +3,8 @@
 - **Fecha de Creación**: 2026-09-19 17:15 hs
 - **Autor**: Antigravity Engineering (Gemini 3.8 Flash High)
 - **Estado**: Propuesta Activa / Laboratorio de Pruebas en Ejecución
-- **Componentes Afectados**: [app/governance/elevator_budget.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/elevator_budget.py), [app/governance/preset_balancer.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/preset_balancer.py), [app/miner_monitor.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py), [data/miner_alerts.db](file:///F:/02-ASIC%20-%20mineros/miner-alerts/data/miner_alerts.db)
-- **Marco de Referencia**: [PROP-009 (Diagnóstico de Cascadas)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-009-contingency-stabilization-hypotheses.md), [PROP-012 (Soft-Contingencia y Presupuesto de Elevador)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-012-staggered-elevator-governance-and-soft-contingency.md), [PROP-013 (Protección Anti-Stall y Térmica Solar)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-013-elevator-noise-autotune-stall-and-thermal-protection.md)
+- **Componentes Afectados**: [app/governance/elevator_budget.py](../../../app/governance/elevator_budget.py), [app/governance/preset_balancer.py](../../../app/governance/preset_balancer.py), [app/miner_monitor.py](../../../app/miner_monitor.py), [data/miner_alerts.db](../../../data/miner_alerts.db)
+- **Marco de Referencia**: [PROP-009 (Diagnóstico de Cascadas)](PROP-009-contingency-stabilization-hypotheses.md), [PROP-012 (Soft-Contingencia y Presupuesto de Elevador)](PROP-012-staggered-elevator-governance-and-soft-contingency.md), [PROP-013 (Protección Anti-Stall y Térmica Solar)](PROP-013-elevator-noise-autotune-stall-and-thermal-protection.md)
 
 ---
 
@@ -86,7 +86,7 @@ A continuación se calcula el mapa completo de combinaciones posibles a evaluar 
   1. Esperar que la temperatura de chips de S19JPRO-25 descienda por debajo de $65^\circ\text{C}$ durante la noche.
   2. Verificar que S19JPRO-26 esté en estado estacionario estable (`holds >= 10`).
   3. Desbloquear temporalmente el cerrojo de hardware en configuración local para S19JPRO-25 (`max_hardware_preset: 2700W`).
-  4. Monitorear mediante [app/governance/autotune_watchdog.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/autotune_watchdog.py). Si el hashrate no supera los $20\text{ TH/s}$ a los 600s, el watchdog rescatará automáticamente a 2500W y sellará la conclusión de que es un límite físico de silicio no superable.
+  4. Monitorear mediante [app/governance/autotune_watchdog.py](../../../app/governance/autotune_watchdog.py). Si el hashrate no supera los $20\text{ TH/s}$ a los 600s, el watchdog rescatará automáticamente a 2500W y sellará la conclusión de que es un límite físico de silicio no superable.
 * **Criterio de Aceptación**: S19JPRO-25 completa autotune en $< 400\text{s}$ y produce $> 96\text{ TH/s}$ con 0 errores HW. En caso contrario, se descarta definitivamente 2700W para este equipo.
 * **Estado**: **PLANIFICADA** (Ventana tentativa: 22:00 - 23:00 hs).
 

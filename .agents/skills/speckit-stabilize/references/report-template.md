@@ -7,17 +7,17 @@ Generate this document at `docs/audit/STABILIZATION_REPORT_<TIMESTAMP>.md` whene
 ```markdown
 # Stabilization Audit & Remediation Report: [FEATURE / RELEASE NAME]
 
-**Audit Timestamp**: YYYY-MM-DD HH:MM:SS  
-**Audit Status**: 🛑 BLOCKED (Remediation Required Before Commit/Push)  
-**Git Branch**: `[branch-name]`  
-**Head Commit**: `[commit-hash]`  
-**Feature Directory**: `specs/[feature-dir]`  
+**Audit Timestamp**: YYYY-MM-DD HH:MM:SS
+**Audit Status**: 🛑 BLOCKED (Remediation Required Before Commit/Push)
+**Git Branch**: `[branch-name]`
+**Head Commit**: `[commit-hash]`
+**Feature Directory**: `specs/[feature-dir]`
 
 ---
 
 ## 1. Executive Summary
 
-A comprehensive pre-stabilization QA audit was executed across the codebase since the last stabilization baseline. One or more critical verification gates failed or detected residual operational risk. 
+A comprehensive pre-stabilization QA audit was executed across the codebase since the last stabilization baseline. One or more critical verification gates failed or detected residual operational risk.
 
 **Commit and push are strictly BLOCKED until all pending items listed below are cleanly addressed and certified.**
 
@@ -42,7 +42,7 @@ A comprehensive pre-stabilization QA audit was executed across the codebase sinc
 
 ### [FINDING-01]: [Short Descriptive Title]
 - **Severity**: P0 (Blocker) | P1 (Critical) | P2 (Hygiene)
-- **Affected File(s)**: [`path/to/file.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/path/to/file.py#L100-L120)
+- **Affected File(s)**: [`path/to/file.py`](../../path/to/file.py)
 - **Root Cause & Impact**: Detailed technical explanation of what is wrong or why it is unsafe in production.
 - **Required Remediation**: Exact step or code patch needed to resolve this finding.
 

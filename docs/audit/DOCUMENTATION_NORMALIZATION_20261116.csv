@@ -1,0 +1,13 @@
+﻿origin,canonical,compatibility,snapshot,action
+README.md,README.md,same_path,docs/archive/documentation-20261116/ROOT_README.md,rewrite_with_snapshot
+docs/README.md,docs/README.md,same_path,docs/archive/documentation-20261116/docs/README.md,rewrite_with_snapshot
+docs/speckit/README.md,docs/speckit/README.md,same_path,docs/archive/documentation-20261116/docs/speckit/README.md,rewrite_with_snapshot
+docs/speckit/ROADMAP.md,docs/speckit/ROADMAP.md,same_path,docs/archive/documentation-20261116/docs/speckit/ROADMAP.md,rewrite_with_snapshot
+docs/speckit/SPEC_PROGRAM.md,docs/speckit/SPEC_PROGRAM.md,same_path,docs/archive/documentation-20261116/docs/speckit/SPEC_PROGRAM.md,rewrite_with_snapshot
+docs/speckit/DELIVERY_PLAN.md,docs/speckit/DELIVERY_PLAN.md,same_path,docs/archive/documentation-20261116/docs/speckit/DELIVERY_PLAN.md,rewrite_with_snapshot
+docs/speckit/RUNBOOK.md,docs/operations/RUNBOOK.md,yes,docs/archive/documentation-20261116/docs/speckit/RUNBOOK.md,canonical_move_with_reference
+docs/speckit/MINER_DIAGNOSTICS.md,docs/operations/DIAGNOSTICS.md,yes,docs/archive/documentation-20261116/docs/speckit/MINER_DIAGNOSTICS.md,canonical_move_with_reference
+docs/speckit/TECHNOLOGY_STRATEGY.md,docs/architecture/TECHNOLOGY_STRATEGY.md,yes,docs/archive/documentation-20261116/docs/speckit/TECHNOLOGY_STRATEGY.md,canonical_move_with_reference
+docs/audit/BACKUP_RUNBOOK.md,docs/operations/BACKUP_AND_RESTORE.md,yes,docs/archive/documentation-20261116/docs/audit/BACKUP_RUNBOOK.md,canonical_move_with_reference
+docs/proposals/README.md,docs/proposals/README.md,same_path,docs/archive/documentation-20261116/docs/proposals/README.md,rewrite_with_snapshot
+docs/speckit/MONOLITH_DECOUPLING_MASTER_PLAN.md,docs/archive/historical_plans/MONOLITH_DECOUPLING_MASTER_PLAN.md,yes,docs/archive/historical_plans/MONOLITH_DECOUPLING_MASTER_PLAN.md,archive_closed_plan

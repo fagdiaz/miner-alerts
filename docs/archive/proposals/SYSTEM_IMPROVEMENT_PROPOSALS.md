@@ -150,7 +150,7 @@ El discriminador de caídas de fase (Spec 051) verifica la conectividad del gate
 Actualmente, `/chart <id>` genera un gráfico PNG para un minero individual. Cuando los operadores sospechan un desbalance térmico o de carga en un elevador (ej. Elevador 1: Mineros 23 y 24), deben pedir `/chart 23` y `/chart 24` por separado, dificultando la comparación visual en pantallas de teléfonos móviles.
 
 #### 2. Solución Propuesta
-Extender [`app/telegram/charts.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/charts.py):
+Extender [`app/telegram/charts.py`](../../../app/telegram/charts.py):
 * Comando `/chart elevator_1` o `/chart fleet`:
   - Renderiza en memoria un gráfico multi-línea con matplotlib:
     * Eje Y1: Hashrate (TH/s) de ambos mineros superpuestos.
@@ -166,7 +166,7 @@ Extender [`app/telegram/charts.py`](file:///F:/02-ASIC%20-%20mineros/miner-alert
 ### PROP-007: Canal IPC de Alta Frecuencia Monitor ↔ Watchdog (Named Pipes)
 
 #### 1. Contexto y Problema
-Actualmente, el watchdog independiente ([`tools/monitor_watchdog.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/tools/monitor_watchdog.py)) se ejecuta mediante el Programador de Tareas de Windows leyendo el archivo `monitor_heartbeat.json` y ejecutando `sc.exe queryex`. Aunque es seguro y desacoplado, tiene una latencia de detección de hasta 2 a 5 minutos. Si el monitor entra en un interbloqueo o bucle cerrado de CPU, la detección tarda más de lo deseable.
+Actualmente, el watchdog independiente ([`tools/monitor_watchdog.py`](../../../tools/monitor_watchdog.py)) se ejecuta mediante el Programador de Tareas de Windows leyendo el archivo `monitor_heartbeat.json` y ejecutando `sc.exe queryex`. Aunque es seguro y desacoplado, tiene una latencia de detección de hasta 2 a 5 minutos. Si el monitor entra en un interbloqueo o bucle cerrado de CPU, la detección tarda más de lo deseable.
 
 #### 2. Solución Propuesta
 * Crear un servidor de Named Pipe local en Windows dentro del monitor: `\\.\pipe\MinerAlertsWatchdog`.
@@ -207,7 +207,7 @@ Actualmente, el monitor captura únicamente métricas consolidadas (hashrate tot
 ### PROP-009: Contingencia Coordinada de Pares y Estabilización Rápida de Elevadores
 
 #### 1. Contexto y Problema
-Durante perturbaciones de red o reinicios en un elevador eléctrico, el sistema experimenta múltiples reinicios en bucle (2 a 4 por equipo) y caídas en cascada del compañero entre 700s y 1000s después. La contingencia asimétrica actual ([Spec 057](../specs/057-adaptive-elevator-contingency/spec.md)) presentaba un desacople de software que silenciaba la llamada REST a la API de VNish y dejaba al minero compañero a plena carga (2700W), induciendo un transitorio inductivo ($L \cdot di/dt$) al reanudar el minado.
+Durante perturbaciones de red o reinicios en un elevador eléctrico, el sistema experimenta múltiples reinicios en bucle (2 a 4 por equipo) y caídas en cascada del compañero entre 700s y 1000s después. La contingencia asimétrica actual (`Spec 057` (referencia histórica de ruta no disponible)) presentaba un desacople de software que silenciaba la llamada REST a la API de VNish y dejaba al minero compañero a plena carga (2700W), induciendo un transitorio inductivo ($L \cdot di/dt$) al reanudar el minado.
 
 #### 2. Hipótesis y Diagnóstico Técnico
 Se han formulado y documentado 5 hipótesis analíticas respaldadas por telemetría de producción:
@@ -237,7 +237,7 @@ Herramienta de auditoría continua: `tools/audit_contingency_night.py`.
    - ✅ **PROP-005** (`Latido de Gateway y Supresión de Tormentas`) -> Implementada y certificada en **Spec 067**.
    - ✅ **PROP-007** (`Canal IPC Alta Frecuencia Monitor ↔ Watchdog`) -> Implementada y certificada en **Spec 068**.
    - ✅ **PROP-008** (`Telemetría Profunda por Cadena & Diagnóstico Chain Break`) -> Implementada y certificada en **Spec 069**.
-   - Ver detalle de ejecución en [`docs/speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md`](../speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md).
+   - Ver detalle de ejecución en [`docs/speckit/archive/plans/ACTION_PLAN_V5_1_HORIZON.md`](../historical_plans/plans/ACTION_PLAN_V5_1_HORIZON.md).
 
 3. **Iniciativas Recientes y en Ejecución Activa**:
    - ✅ **PROP-010** (`Soft-Landing Recovery & PSU Latch-Off Defense`) -> Certificada en **Spec 075**.
@@ -251,3 +251,6 @@ Herramienta de auditoría continua: `tools/audit_contingency_night.py`.
 ---
 
 *Documento archivado en `docs/proposals/SYSTEM_IMPROVEMENT_PROPOSALS.md` como repositorio formal de iniciativas técnicas del proyecto Miner Alerts.*
+
+
+> La referencia anterior a057-adaptive-elevator-contingency se conserva como antecedente, sin reconstruir una equivalencia técnica no demostrada. Consultar el [registro actual de propuestas](../../proposals/README.md).

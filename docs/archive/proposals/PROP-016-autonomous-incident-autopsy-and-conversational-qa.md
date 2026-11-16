@@ -3,8 +3,8 @@
 - **Fecha de Creación**: 2026-09-25 17:05 hs
 - **Autor**: Antigravity Engineering (Gemini 3.8 Flash High)
 - **Estado**: Propuesta de Arquitectura y Especificación Técnica (Listo para Auditoría Multi-Agente)
-- **Componentes Afectados**: [app/miner_monitor.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py), [tools/vnish_log_collector.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/tools/vnish_log_collector.py), [app/telegram/dispatcher.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/dispatcher.py), [data/miner_alerts.db](file:///F:/02-ASIC%20-%20mineros/miner-alerts/data/miner_alerts.db)
-- **Marco de Referencia**: [PROP-015 (Agente Autónomo de Gobernanza)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-015-autonomous-facility-agent-and-interactive-supervisor.md), [Spec 016 (Vnish Log Intelligence)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/016-vnish-log-intelligence/spec.md), [Spec 079 (Facility Governance Agent)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/079-facility-governance-agent/spec.md)
+- **Componentes Afectados**: [app/miner_monitor.py](../../../app/miner_monitor.py), [tools/vnish_log_collector.py](../../../tools/vnish_log_collector.py), `app/telegram/dispatcher.py` (ruta histórica retirada), [data/miner_alerts.db](../../../data/miner_alerts.db)
+- **Marco de Referencia**: [PROP-015 (Agente Autónomo de Gobernanza)](PROP-015-autonomous-facility-agent-and-interactive-supervisor.md), [Spec 016 (Vnish Log Intelligence)](../../../specs/016-vnish-log-intelligence/spec.md), [Spec 079 (Facility Governance Agent)](../../../specs/079-facility-governance-agent/spec.md)
 
 ---
 
@@ -163,3 +163,6 @@ Siguiendo la instrucción del operador de *"cranearlo, auditarlo con distintos a
 - Enriquecimiento de alertas de Telegram.
 - Integración del despachador conversacional en Telegram.
 - Certificación final con la compuerta `speckit-stabilize`.
+
+
+> Referencia histórica: app/telegram/dispatcher.py ya no existe. Para la organización actual consultar [router](../../../app/telegram/router.py) y [arquitectura](../../architecture/SYSTEM_OVERVIEW.md). La propuesta conserva su contexto original.

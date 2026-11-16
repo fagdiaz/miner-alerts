@@ -211,23 +211,17 @@ Check if `.specify/extensions.yml` exists in the project root.
 
 Report final status with summary of completed work.
 
-**REQUIRED (Roadmap Percentage Calculation)**:
-- Read the roadmap document `docs/project_docs/ROADMAP.md`.
-- Read the task lists inside the modules in `docs/project_docs/ROADMAP.md`.
-- For each task in each module (represented by checklists like `- [ ]` and `- [x]`):
-  - Count the total number of tasks in that module.
-  - Count the number of completed tasks (marked with `[x]` or `[X]`).
-  - Calculate the percentage of completion for that module: `(Completed / Total) * 100`.
-  - Update the module's line (e.g. `* 🟡 **Módulo 2: Perfiles de Usuario**: 50%` with the calculated percentage, and adjust the status icon (🔴 0%, 🟡 1% - 99%, 🟢 100%)).
-- Calculate the global completion percentage: `(Total Completed Tasks Across All Modules / Total Tasks Across All Modules) * 100` rounded to the nearest integer.
-- Update the header `## 1. Estado Global de Avance: X%` with this calculated percentage.
-- Overwrite `docs/project_docs/ROADMAP.md` with these updated values.
+**REQUIRED (Project Status Update)**:
+- Read `docs/speckit/ROADMAP.md` and `docs/speckit/SPEC_PROGRAM.md`.
+- Update only state and backlog items supported by this feature's implementation and evidence.
+- Distinguish tests, deployment, observation and release; do not compute a global completion percentage from unrelated checklists.
+- Preserve the history through dated evidence and the development log; do not overwrite the roadmap with a different project's module model.
 
 **REQUIRED (Development Log Entry)**:
 - Write a brief summary of the completed implementation to `docs/audit/DEVELOPMENT_LOG.md` (create this file if it does not exist yet).
-- Insert exactly one new entry immediately below the file's title, introductory text, and initial separator. Never append it to the end of the file.
-- Keep every `## [YYYY-MM-DD]` entry ordered newest to oldest. Preserve the existing order between entries that share the same date, with the newly completed spec first.
-- Before reporting completion, verify that the dates are monotonically descending and that the active spec appears in the first entry.
+- Insert one new entry newest-first, preserving every existing record. Do not truncate or rewrite the complete log.
+- Place the new dated entry before prior entries. Preserve existing records and their internal context; use the external log index for historical navigation.
+- Before reporting completion, verify the new entry and preservation of the previous log. Do not reorder the historical body as an automatic side effect.
 - The entry must include:
   - The date of completion (YYYY-MM-DD)
   - The name of the feature / active branch
@@ -239,8 +233,8 @@ Report final status with summary of completed work.
 
 - [ ] All tasks in tasks.md completed and marked `[X]`
 - [ ] Implementation validated against specification, plan, and test coverage
-- [ ] `docs/project_docs/ROADMAP.md` updated with the recalculated completion percentages
+- [ ] `docs/speckit/ROADMAP.md` updated only with evidence-supported state changes
 - [ ] `docs/audit/DEVELOPMENT_LOG.md` updated with the new implementation log entry
-- [ ] `DEVELOPMENT_LOG.md` is ordered newest to oldest and the active spec is the first entry
+- [ ] The new entry is newest-first and the previous `DEVELOPMENT_LOG.md` content is preserved
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with summary of completed work

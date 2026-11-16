@@ -1,48 +1,42 @@
 ---
-description: "Auto-commit changes after a Spec Kit command completes"
+description: "Prepare feature-scoped commits subject to Miner Alerts manual Git authorization"
 ---
 
-# Auto-Commit Changes
+# Prepare Authorized Commits
 
-Automatically stage and commit all changes after a Spec Kit command completes.
+## Miner Alerts project override
+
+AGENTS.md and the constitution require manual, feature-scoped Git publication.
+An automatic hook or skill invocation does not grant commit/push authorization.
+Prepare and validate the concrete change first; execute Git publication only when
+the user has explicitly authorized that feature's commit/push. Otherwise preserve
+the reviewable work and report publication as pending. Never stage config/state.
+Documentation-only edits do not require a service restart or hardware checks.
+
+Prepare a reviewable, feature-scoped change after a Spec Kit command. A hook
+may request preparation, but only explicit project authorization permits publication.
 
 ## Behavior
 
-This command is invoked as a hook after (or before) core commands. It:
+1. Identify the feature, event and concrete changed files.
+2. Review diff, secrets, validation and authorization scope before staging.
+3. Preserve unrelated work and all private config/state files outside the commit.
+4. If publication is not authorized, leave the validated result reviewable and report Git as pending.
+5. When authorized, stage explicit feature paths and use a reviewed message; push only within its authorized scope.
 
-1. Determines the event name from the hook context (e.g., if invoked as an `after_specify` hook, the event is `after_specify`; if `before_plan`, the event is `before_plan`)
-2. Checks `.specify/extensions/git/git-config.yml` for the `auto_commit` section
-3. Looks up the specific event key to see if auto-commit is enabled
-4. Falls back to `auto_commit.default` if no event-specific key exists
-5. Uses the per-command `message` if configured, otherwise a default message
-6. If enabled and there are uncommitted changes, runs `git add .` + `git commit`
+## Legacy extension interface
 
-## Execution
+The repository still contains auto-commit scripts and an auto_commit configuration
+section. Their existence or an enabled event is not project authorization. The legacy
+scripts stage the complete worktree using git add .; do not invoke them against a
+mixed checkout. Use explicit feature-scoped staging under the manual project policy.
+No executable script or hook configuration was changed during documentation normalization.
 
-Determine the event name from the hook that triggered this command, then run the script:
+Script locations for maintenance reference:
 
-- **Bash**: `.specify/extensions/git/scripts/bash/auto-commit.sh <event_name>`
-- **PowerShell**: `.specify/extensions/git/scripts/powershell/auto-commit.ps1 <event_name>`
+- Bash: `.specify/extensions/git/scripts/bash/auto-commit.sh <event_name>`.
+- PowerShell: `.specify/extensions/git/scripts/powershell/auto-commit.ps1 <event_name>`.
+- Configuration: `.specify/extensions/git/git-config.yml`.
 
-Replace `<event_name>` with the actual hook event (e.g., `after_specify`, `before_plan`, `after_implement`).
-
-## Configuration
-
-In `.specify/extensions/git/git-config.yml`:
-
-```yaml
-auto_commit:
-  default: false          # Global toggle — set true to enable for all commands
-  after_specify:
-    enabled: true          # Override per-command
-    message: "[Spec Kit] Add specification"
-  after_plan:
-    enabled: false
-    message: "[Spec Kit] Add implementation plan"
-```
-
-## Graceful Degradation
-
-- If Git is not available or the current directory is not a repository: skips with a warning
-- If no config file exists: skips (disabled by default)
-- If no changes to commit: skips with a message
+Missing Git/configuration, no changes, or incomplete validation must result in an
+explicit pending/skipped outcome, never a claim that a commit or push completed.

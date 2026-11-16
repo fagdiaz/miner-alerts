@@ -9,6 +9,15 @@ metadata:
 
 # Speckit Stabilize & Release Closeout Gate
 
+## Miner Alerts project override
+
+AGENTS.md and the constitution require manual, feature-scoped Git publication.
+An automatic hook or skill invocation does not grant commit/push authorization.
+Prepare and validate the concrete change first; execute Git publication only when
+the user has explicitly authorized that feature's commit/push. Otherwise preserve
+the reviewable work and report publication as pending. Never stage config/state.
+Documentation-only edits do not require a service restart or hardware checks.
+
 Perform an exhaustive, multi-tier QA audit, documentary normalization, safe transient depuration, and certified commit/push closeout.
 
 ```text
@@ -71,7 +80,7 @@ Perform an exhaustive, multi-tier QA audit, documentary normalization, safe tran
    Execute from the repository root:
    ```powershell
    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-   & ".agents/skills/speckit-stabilize/scripts/preflight_stabilize.ps1" -RunTests -CheckFleet
+   & ".agents/skills/speckit-stabilize/scripts/preflight_stabilize.ps1" -RunTests $true -CheckFleet $true
    ```
 
 3. **Perform Exhaustive Subsystem Audits**:
@@ -96,7 +105,7 @@ Evaluate preflight results and findings:
    using the template in [report-template.md](references/report-template.md).
 3. **Report Structure**:
    - **Summary Table**: List all failed gates with severity (`P0 Blocker`, `P1 Critical`, `P2 Hygiene`).
-   - **Detailed Findings**: Explain root causes, affected code with clickable links (`file:///...`), and exact required remediation.
+   - **Detailed Findings**: Explain root causes, affected code with relative repository Markdown links, and exact required remediation.
    - **Pending Closeout Checklist**: Concrete `- [ ]` tasks required to unblock stabilization.
 4. **Interactive Guidance**:
    Instruct the operator:

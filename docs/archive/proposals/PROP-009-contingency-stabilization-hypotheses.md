@@ -4,8 +4,8 @@
 - **Última Actualización**: 2026-09-17 00:38 hs
 - **Autor**: Antigravity Engineering (Gemini 3.8 Flash High)
 - **Estado**: Recopilación de Datos Activa / Hipótesis Formuladas / Herramienta de Auditoría Operativa
-- **Herramienta de Verificación**: [tools/audit_contingency_night.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/tools/audit_contingency_night.py)
-- **Alcance**: Algoritmo de Contingencia Asimétrica ([Spec 057](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/057-adaptive-elevator-contingency/spec.md)), Preset Balancer ([Spec 040](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/040-dynamic-power-preset-balancer/spec.md)), Interacción Firmware VNish REST API y Gobernador Térmico ([Spec 039](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/039-fan-governor-pid-tuning/spec.md)).
+- **Herramienta de Verificación**: [tools/audit_contingency_night.py](../../../tools/audit_contingency_night.py)
+- **Alcance**: Algoritmo de Contingencia Asimétrica ([Spec 057](../../../specs/057-intervention-governance-contingency/spec.md)), Preset Balancer ([Spec 040](../../../specs/040-dynamic-voltage-presets/spec.md)), Interacción Firmware VNish REST API y Gobernador Térmico ([Spec 039](../../../specs/039-vnish-fan-governor/spec.md)).
 
 ---
 
@@ -23,7 +23,7 @@ Este fenómeno se caracteriza por:
 
 ## 2. Evidencia Empírica de Producción (16/09 y 17/09)
 
-La ejecución de la herramienta de auditoría [tools/audit_contingency_night.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/tools/audit_contingency_night.py) sobre `data/miner_alerts.db` arroja la siguiente cronología de precisión:
+La ejecución de la herramienta de auditoría [tools/audit_contingency_night.py](../../../tools/audit_contingency_night.py) sobre `data/miner_alerts.db` arroja la siguiente cronología de precisión:
 
 ### Episodio A: Madrugada 2026-09-16 (03:00 - 06:30 hs)
 - **03:09:13**: S19JPRO-25 (`elevator_2`) reinicia (uptime: 3871s $\to$ 15s).
@@ -79,7 +79,7 @@ La ejecución de la herramienta de auditoría [tools/audit_contingency_night.py]
 ## 3. Las 5 Hipótesis Técnicas Formuladas
 
 ### 🔴 Hipótesis 1 (Software - Bug Crítico): Desacople de Nombre (`display_name`) Silencia la Escritura del Preset
-- **Ubicación**: [app/miner_monitor.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L6145-L6167) y línea 7557.
+- **Ubicación**: [app/miner_monitor.py](../../../app/miner_monitor.py#L6145-L6167) y línea 7557.
 - **Mecanismo de Falla**:
   ```python
   _decision = evaluate_canary_contingency(
@@ -102,7 +102,7 @@ La ejecución de la herramienta de auditoría [tools/audit_contingency_night.py]
 ---
 
 ### 🟡 Hipótesis 2 (Firmware): Conflicto con el `preset_switcher` interno de VNish
-- **Ubicación**: [app/vnish/client.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/vnish/client.py#L248-L260) y [app/state.json](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/state.json).
+- **Ubicación**: [app/vnish/client.py](../../../app/vnish/client.py#L248-L260) y [app/state.json](../../../app/state.json).
 - **Mecanismo de Falla**:
   En `app/state.json`, los 4 mineros reportan:
   ```json
@@ -135,7 +135,7 @@ La ejecución de la herramienta de auditoría [tools/audit_contingency_night.py]
 ---
 
 ### 🟡 Hipótesis 4 (Térmica / Hardware): El Ventilador al 100% (`RECOVERY_MAX_COOLING`) enfría excesivamente el silicio
-- **Ubicación**: [app/miner_monitor.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L5880-L5920).
+- **Ubicación**: [app/miner_monitor.py](../../../app/miner_monitor.py#L5880-L5920).
 - **Mecanismo de Falla**:
   Al detectar caída de hashrate o estado `LOW`, el Fan Governor activa la acción de seguridad `RECOVERY_MAX_COOLING`, fijando ventiladores al 100% PWM (~6000 RPM).
   * Los disipadores térmicos de las placas bajan abruptamente a temperatura ambiente (50°C - 53°C).
@@ -146,7 +146,7 @@ La ejecución de la herramienta de auditoría [tools/audit_contingency_night.py]
 ---
 
 ### 🟡 Hipótesis 5 (Coordinación de Procesos): Ventana de Calentamiento del Monitor vs Duración de Autotune de VNish
-- **Ubicación**: [app/miner_monitor.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L5303) (`auto_restart_min_elapsed_seconds = 180`).
+- **Ubicación**: [app/miner_monitor.py](../../../app/miner_monitor.py#L5303) (`auto_restart_min_elapsed_seconds = 180`).
 - **Mecanismo de Falla**:
   El monitor considera que a partir de 180 segundos el minero debería estar operativo. Sin embargo, un ciclo completo de inicialización con calibración de voltajes por chip en VNish puede demorar entre **180 y 240 segundos**.
   Si a los 180 segundos una placa aún está en fase de sintonización (`chains_transitioning_count > 0`), el monitor clasifica `active_boards < expected_boards` (`HASHBOARD`) y programa una intervención (`auto_restart_mining`), interrumpiendo el booteo legítimo del firmware.

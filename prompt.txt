@@ -1,13 +1,46 @@
-# Miner Alerts — cierre de software096,16/11/2026
+# Miner Alerts — handoff documental16/11/2026
 
-Mantener GPT6.1Sol alto. Leer .specify/feature.json y artefactos096.
-096 implementada, desplegada y observada660.1s a11:06:49–11:17:49:4/4mining,
-12placas,80–83C,cero reinicios/flags,media354.03TH/s,cola0,PID17364.
-1667+75pruebasPASS108.28s; gate directo de sintaxis/secretos/config/4028/NSSM/DoD
-aprobado. PreflightPowerShell no inició; no afirmar que se ejecutó el script.
-Configlocal8e9c20b5:79/84/check300,techos2500/2500/2500/2300,balancerDRY.
-M26 tiene contención revisable tras chainbreak nativo; causa física yD+1 abiertos.
-Git de096 autorizado por usuario16/11. No activar095 antes de revisar su dependencia
-yobservación pendiente.094publicada a8ce841,backup automático03:00 verified.
-La organización documental es trabajo separado; conservar bitácora y estado privado.
-No relanzar helpers ni reiniciar servicio al leer este handoff.
+Mantener GPT6.1Sol, razonamientoalto, elegido por el usuario.
+
+## Última tarea
+
+Usuario autorizó normalizar y profesionalizar la documentación fuera de specs/,
+sin quitar contenido de DEVELOPMENT_LOG. Trabajo documental completado; leer:
+- docs/README.md
+- docs/governance/DOCUMENTATION_POLICY.md
+- docs/audit/DOCUMENTATION_NORMALIZATION_20261116.md y su CSV
+- docs/audit/DOCUMENTATION_STATUS.md
+
+Estructura:operations/architecture/development/governance; speckit mantiene rutas
+contractuales de roadmap/programa/calendario. Audit indexa cortes e historial;
+archive conserva once copias de documentos sustituidos y planes cerrados.
+Cinco rutas antiguas son referencias de compatibilidad; no duplicar allí manuales.
+DEVELOPMENT_LOG no fue editado:554353bytes, SHA9387431334099110dced2d640674ce409c5fc56b0a698c8c743bce8d223610d5.
+Índice externo:195 entradas/actualizaciones. Skills/plantillas alineados con paths
+reales y reglas ya existentes; sin referencias académicas a docs/project_docs.
+
+Validación final:127 Markdown,958 enlaces locales y195 anchors sin errores;
+829 archivos de código/config/specs comparados, sin cambios; gitdiffcheckPASS.
+Evidencia local:diagnostics/documentation-normalization-20261116/validation.json.
+Código/config/specs sin cambios por esta tarea; estado vivo evoluciona solo.
+Sin llamadas a mineros/Telegram, recargas o scheduler durante la normalización.
+Usuario autorizó publicación16/11:096 publicado3028a18; documentación en commit
+posterior independiente, consultar git log y upstream. No relanzar despliegues.
+
+## Contexto de producción anterior (no lectura nueva)
+
+Último corte16/11 a11:18:docs/operations/PRODUCTION_BASELINE.md.
+096 es la única feature activa, seleccionada por .specify/feature.json.
+Rama codex/096-native-switcher-restart-safety, código desplegado y observado660.1s.
+1667+75pruebasPASS;PID17364;4/4mining,12placas,80–83C,media354.03TH/s,cola0.
+ConfigSHA8e9c20b5. VNish79/84/check300; máximos2500/2500/2500/2300W.
+M26 está contenido porchainbreak nativo anterior al despliegue. Causa física/D+1
+sin certificar.096 publicado3028a18 con autorización.095solo planificada; noactivar
+antescierre096.094publicada comoa8ce841 ybackup automático03:00 verificado.
+No relanzar helpers de diagnostics/ leyendo este handoff. No editar state vivo.
+
+## Pendientes técnicos identificados en la documentación
+
+El stackDocker opcional no fue revalidado: Dockerfile.metrics copia un módulo
+retirado yGrafana no está ligado solo a loopback. No se modificó infraestructura.
+Ver operations/OBSERVABILITY.md yspeckit/ROADMAP.md antes de otra tarea.

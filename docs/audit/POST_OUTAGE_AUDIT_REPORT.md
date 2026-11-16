@@ -1,8 +1,8 @@
 # Informe de Auditoría Post-Corte de Luz: Estado del Proyecto y Comparativa Código vs Documentación
 
-**Fecha y Hora**: 2026-10-08 14:05 UTC-3  
-**Rama**: `codex/022-adaptive-acquisition` (Sincronizada con `origin`)  
-**Último Commit**: `f8dea18 fix(pipeline): align record_auto_reboot_decision signature and handle kwargs defensively`  
+**Fecha y Hora**: 2026-10-08 14:05 UTC-3
+**Rama**: `codex/022-adaptive-acquisition` (Sincronizada con `origin`)
+**Último Commit**: `f8dea18 fix(pipeline): align record_auto_reboot_decision signature and handle kwargs defensively`
 **Estado General**: **OPERATIVO / ESTABILIZADO (V6.0)** con un **hallazgo correctivo puntual detectado en runtime**.
 
 ---
@@ -25,7 +25,7 @@
 
 ### A. Estructura y Modularización del Monolito
 * **Objetivo de Spec 091**: Disolver el bucle procedural de `main()` en [`app/miner_monitor.py`](../../app/miner_monitor.py) sustituyéndolo por [`CoreSupervisoryEngine`](../../app/core/engine.py).
-* **Verificación**: 
+* **Verificación**:
   - `(Get-Content app\miner_monitor.py).Count` arroja exactamente **324 líneas** (de las >9.000 líneas históricas y 6.646 pre-Spec 091).
   - Los shims de re-exportación se encuentran en su lugar, manteniendo intactos los contratos públicos y de herramientas.
   - La arquitectura de 7 hooks (`PRE_TICK`, `ACQUISITION`, `DETECTION`, `GOVERNANCE`, `ACTUATOR`, `PERSISTENCE`, `POST_TICK`) está cableada y activa.

@@ -1,25 +1,18 @@
-# Repositorio de Archivo Histórico — Miner Alerts
+# Archivo histórico
 
-Este directorio centraliza los registros, propuestas cerradas, diagnósticos tempranos, solicitudes de comentarios (RFCs) y planes de fases previas ya completadas y certificadas en producción. Su propósito es preservar la trazabilidad histórica completa sin contaminar el backlog activo ni confundir a los operadores y agentes de IA.
+> Tipo: índice histórico · Revisión:2026-11-16.
 
----
+| Colección | Contenido |
+|---|---|
+| [Corte documental16/11](documentation-20261116/README.md) | Documentos sustituidos, con procedencia y enlace actual |
+| [Planes cerrados](historical_plans/README.md) | Estrategias y programas de fases anteriores |
+| [RFCs](historical_rfcs/README.md) | Diseño histórico de interacciónTelegram |
+| [Propuestas](proposals/README.md) | ArchivosPROP y registro de decisiones |
+| [Auditorías](historical_audits/README.md) | Revisiones anteriores de calidad y directivas |
+| [Diagnósticos](historical_diagnostics/README.md) | Capturas y baselines históricos |
+| [Artefactos](historical_artifacts/README.md) | Resultados, scripts y manifests de pruebas históricas |
 
-## Estructura del Archivo Histórico
-
-```
-docs/archive/
-├── proposals/               <-- Propuestas históricas completadas (PROP-001 a PROP-021)
-├── historical_rfcs/         <-- RFCs de Telegram y UX móvil implementadas (V3.x)
-├── historical_plans/        <-- Planes de acción de fases cerradas (V3, V4, V5, V5.1)
-├── historical_audits/       <-- Auditorías previas de directivas y QA consolidadas
-├── historical_diagnostics/  <-- Capturas y baselines de telemetría de julio/agosto 2026
-└── historical_artifacts/    <-- Artefactos de pruebas de recuperación y fases previas
-```
-
----
-
-## Política de Inmutabilidad y Trazabilidad
-
-1. Los archivos bajo este directorio son de **solo lectura histórica**. No deben modificarse a menos que se requiera corregir enlaces rotos o normalizar codificaciones.
-2. Para consultar la bitácora canónica inmutable de desarrollo, remitirse a [`docs/audit/DEVELOPMENT_LOG.md`](../audit/DEVELOPMENT_LOG.md).
-3. Para consultar el estado vivo y la planificación activa, remitirse a [`docs/speckit/ROADMAP.md`](../speckit/ROADMAP.md) y [`docs/speckit/SPEC_PROGRAM.md`](../speckit/SPEC_PROGRAM.md).
+El archivo conserva evidencia y contexto; sus declaraciones de completitud o estado
+actual corresponden a la fecha del documento. Para el presente usar el [centro documental](../README.md).
+No ejecutar scripts archivados ni restaurar configuraciones antiguas por encontrar un
+comando en esta colección. La [bitácora](../audit/DEVELOPMENT_LOG.md) se conserva completa.

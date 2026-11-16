@@ -11,12 +11,13 @@
 6. Use `docs/speckit/SPEC_PROGRAM.md` for the definitive future-spec sequence, dependencies, risk classes, and shared completion gates.
 
 Active implementation plan:
-Declarado en `.specify/feature.json` (Actualmente: `specs/087-telegram-callbacks-decoupling/plan.md`)
+Declarado exclusivamente en `.specify/feature.json`. Consultar el plan de esa feature; no mantener aquí un número de spec fijo.
 
 Active production observation gate:
-V5.2.0 Operational Baseline (1522 tests PASS, 75 subtests PASS, Windows Service RUNNING, ~400 TH/s nominal).
+Consultar `docs/operations/PRODUCTION_BASELINE.md` para el último corte fechado y sus límites. La salud en vivo requiere evidencia actual; este archivo no fija una versión, cantidad de tests o rendimiento permanente.
 
 Do not infer runtime safety from checked tasks alone. Runtime evidence and logs take precedence.
+Documentation navigation and maintenance rules: `docs/README.md` and `docs/governance/DOCUMENTATION_POLICY.md`. Documentation-only edits do not require a service restart.
 
 ## Current Technical Baseline
 

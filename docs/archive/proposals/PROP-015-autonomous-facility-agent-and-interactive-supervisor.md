@@ -3,8 +3,8 @@
 - **Fecha de Creación**: 2026-09-19 17:25 hs
 - **Autor**: Antigravity Engineering (Gemini 3.8 Flash High)
 - **Estado**: Propuesta de Arquitectura y Especificación Técnica
-- **Componentes Afectados**: [app/miner_monitor.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py), [app/governance/elevator_budget.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/elevator_budget.py), [app/telegram/dispatcher.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/dispatcher.py), [data/miner_alerts.db](file:///F:/02-ASIC%20-%20mineros/miner-alerts/data/miner_alerts.db)
-- **Marco de Referencia**: [PROP-012 (Gobernanza de Elevador)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-012-staggered-elevator-governance-and-soft-contingency.md), [PROP-013 (Watchdog Anti-Stall y Envolvente Solar)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-013-elevator-noise-autotune-stall-and-thermal-protection.md), [PROP-014 (Roadmap de Máxima Potencia)](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-014-maximum-power-and-asymmetric-combination-roadmap.md)
+- **Componentes Afectados**: [app/miner_monitor.py](../../../app/miner_monitor.py), [app/governance/elevator_budget.py](../../../app/governance/elevator_budget.py), `app/telegram/dispatcher.py` (ruta histórica retirada), [data/miner_alerts.db](../../../data/miner_alerts.db)
+- **Marco de Referencia**: [PROP-012 (Gobernanza de Elevador)](PROP-012-staggered-elevator-governance-and-soft-contingency.md), [PROP-013 (Watchdog Anti-Stall y Envolvente Solar)](PROP-013-elevator-noise-autotune-stall-and-thermal-protection.md), [PROP-014 (Roadmap de Máxima Potencia)](PROP-014-maximum-power-and-asymmetric-combination-roadmap.md)
 
 ---
 
@@ -51,7 +51,7 @@ Esta definición coincide con la mejor práctica de ingeniería de sistemas aut�
 
 ### Pilar 1: El Motor Autónomo Determinístico (24/7 Zero Cost)
 * **Principio de Diseño**: Las decisiones críticas de voltaje, frecuencia, relés y térmicas **NUNCA** deben depender de una llamada de red a un LLM externo que pueda demorar 5 segundos, fallar por timeout o alucinar un valor fuera de rango.
-* **Operación**: Se ejecuta cada 30 segundos en el bucle principal de [app/miner_monitor.py](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py).
+* **Operación**: Se ejecuta cada 30 segundos en el bucle principal de [app/miner_monitor.py](../../../app/miner_monitor.py).
 * **Función Objetivo de Optimización**:
   $$\max \sum_{i=1}^{4} \text{Hashrate}_i(\text{TH/s})$$
   **Sujeta a los Invariantes Físicos**:
@@ -98,7 +98,7 @@ El agente no toma decisiones "a ciegas", sino basándose en la experiencia acumu
 | :---: | :--- | :---: |
 | **Fase 1** | **Invariantes de Gobernanza y Guardias Físicas**: Gate 0 (margen térmico), Watchdog anti-autotune stall, Reposo de elevador 300s, Desescalada por sobrecalentamiento individual. | **100% COMPLETADA (En Producción)** |
 | **Fase 2** | **Optimizador Autónomo de Combinaciones**: El agente explora autónomamente presets intermedios (ej: 2600W), prueba transiciones escalonadas y evalúa el delta de TH/s vs temperatura en SQLite. | **En Diseño (PROP-014 / PROP-015)** |
-| **Fase 3** | **Interfaz Conversacional en Telegram**: Implementar el comando `/agent` y `/why` en [app/telegram/commands/](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/telegram/commands/) para que el operador pueda interactuar en tiempo real con las decisiones del agente. | **Siguiente Paso Operativo** |
+| **Fase 3** | **Interfaz Conversacional en Telegram**: Implementar el comando `/agent` y `/why` en [app/telegram/commands/](../../../app/telegram/commands) para que el operador pueda interactuar en tiempo real con las decisiones del agente. | **Siguiente Paso Operativo** |
 | **Fase 4** | **Síntesis Inteligente On-Demand**: Hook opcional para preguntas abiertas en Telegram mediante API Gemini Flash sobre el historial factual de SQLite. | **Fase Final** |
 
 ---
@@ -110,3 +110,6 @@ Este enfoque satisface integralmente la visión del usuario:
 2. **Económicamente Inteligente**: No gasta tokens en bucle 24/7.
 3. **Completamente Independiente**: Puede gestionar contingencias, caídas de relé, picos solares y autotune stalls de forma 100% autónoma.
 4. **Transparente y Comunicativo**: Responde con exactitud matemática a cualquier pregunta del operador a través de Telegram.
+
+
+> Referencia histórica: app/telegram/dispatcher.py ya no existe. Para la organización actual consultar [router](../../../app/telegram/router.py) y [arquitectura](../../architecture/SYSTEM_OVERVIEW.md). La propuesta conserva su contexto original.

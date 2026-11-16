@@ -7,9 +7,9 @@
 - **Línea Base Operativa**: Flota en producción supervisada con Spec 074 activa (1221 tests PASS, Servicio Windows `MinerAlerts` PID 19204).
 - **Incidentes de Origen**: Bloqueo de fuente Bitmain APW12 en Minero 25 (17/09 19:11 hs y 18/09 05:50 hs).
 - **Documentos Relacionados**:
-  - [PROP-009: Diagnóstico Exhaustivo de Reinicios Múltiples en Contingencia](file:///F:/02-ASIC%20-%20mineros/miner-alerts/docs/proposals/PROP-009-contingency-stabilization-hypotheses.md)
-  - [Spec 074: Amortiguador de Inrush Pareado](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/074-paired-elevator-contingency/spec.md)
-  - [Spec 066: Cold-Boot Fleet Grace Period](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/066-cold-boot-grace/spec.md)
+  - [PROP-009: Diagnóstico Exhaustivo de Reinicios Múltiples en Contingencia](PROP-009-contingency-stabilization-hypotheses.md)
+  - [Spec 074: Amortiguador de Inrush Pareado](../../../specs/074-paired-elevator-contingency/spec.md)
+  - [Spec 066: Cold-Boot Fleet Grace Period](../../../specs/066-cold-boot-grace/spec.md)
 
 ---
 
@@ -131,7 +131,7 @@ Para resolver este problema sin perder hashrate ni arriesgar el hardware, la arq
 ## 5. Coordinación Termo-Energética: Preset Balancer ↔ Fan Governor (Headroom Chilling)
 
 ### 5.1 El Problema de Suboptimización en Estado Estacionario
-Actualmente, el **Fan Governor** ([Spec 039](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/039-fan-governor-pid-tuning/spec.md)) y el **Preset Balancer** ([Spec 040](file:///F:/02-ASIC%20-%20mineros/miner-alerts/specs/040-dynamic-power-preset-balancer/spec.md)) operan de forma desacoplada:
+Actualmente, el **Fan Governor** ([Spec 039](../../../specs/039-vnish-fan-governor/spec.md)) y el **Preset Balancer** ([Spec 040](../../../specs/040-dynamic-voltage-presets/spec.md)) operan de forma desacoplada:
 - **Fan Governor**: Modula ventiladores para buscar el punto de equilibrio térmico (`target_temp_c = 82.0°C`, `deadband_low = 81.0°C`, `deadband_high = 82.5°C`). Si la temperatura está en 81°C, retiene (*HOLD*) los ventiladores al 88-90% para ahorrar ruido y energía de ventiladores.
 - **Preset Balancer**: Evalúa si es seguro subir de preset (ej. de 2500W a 2700W). Requiere un margen térmico mínimo hacia 84.0°C de al menos 3.0°C (`step_up_min_thermal_margin_c = 3.0°C`), lo que exige $T_{max} \le 81.0°C$.
 - **Falso Atascamiento (Sub-optimal Trap)**:

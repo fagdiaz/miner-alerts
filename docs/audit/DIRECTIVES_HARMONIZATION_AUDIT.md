@@ -124,7 +124,7 @@ El nudo se forma por la intersección de 3 diseños correctos individualmente qu
 
 2. **`auto_restart_mining=False` por diseño**: La función `safe_set_miner_preset` tiene este parámetro en `False` para evitar que ajustes rutinarios del balanceador generen microreinicios frecuentes (anti-flapping correcto).
 
-3. **`evaluate_auto_restart_candidate` requiere degradación**: La condición de entrada ([`miner_monitor.py` L6955-6958](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py#L6955-L6958)) es:
+3. **`evaluate_auto_restart_candidate` requiere degradación**: La condición de entrada ([`miner_monitor.py` L6955-6958](../../app/miner_monitor.py#L6955-L6958)) es:
    ```python
    is_hash_degraded = (
        new_state in (STATE_LOW, STATE_HASHBOARD)
@@ -168,7 +168,7 @@ restart_required = True (VNish)
 
 #### Causa Raíz Técnica
 
-En [`fan_governor.py` L300](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/fan_governor.py#L300):
+En [`fan_governor.py` L300](../../app/governance/fan_governor.py#L300):
 ```python
 if current_power_w < (target_power_w - cfg.power_margin_w):
 ```
@@ -249,7 +249,7 @@ El riesgo eléctrico no es despreciable, pero el Elevador 1 tiene un historial l
 
 #### Causa Raíz
 
-El Facility Governance Agent ([`facility_agent.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/facility_agent.py)) recibe telemetría de `miners_telemetry` que incluye: `chip_temp_c`, `inlet_temp_c`, `power_w`, `preset`, y `electrical_group`. No recibe:
+El Facility Governance Agent ([`facility_agent.py`](../../app/governance/facility_agent.py)) recibe telemetría de `miners_telemetry` que incluye: `chip_temp_c`, `inlet_temp_c`, `power_w`, `preset`, y `electrical_group`. No recibe:
 - `vnish_restart_required`
 - `vnish_discovered_preset` (preset real en ejecución vs configurado)
 - Estado de `restart_required` de VNish
@@ -432,9 +432,9 @@ Una vez ejecutado el restart de M24 y verificada la estabilidad, implementar el 
 ### 6.2 Spec Propuesta: `restart_required_watchdog`
 
 **Archivos a modificar**:
-- [`app/miner_monitor.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/miner_monitor.py): Nuevo bloque watchdog separado del bloque `is_hash_degraded`
-- [`app/governance/fan_governor.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/governance/fan_governor.py): Parámetro opcional `preset_pending_restart: bool` (Opción B) O parche en `miner_monitor.py` (Opción A, sin tocar fan_governor.py puro)
-- [`app/config.example.json`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/app/config.example.json): Nuevo campo `restart_required_watchdog_soak_seconds: 300`
+- [`app/miner_monitor.py`](../../app/miner_monitor.py): Nuevo bloque watchdog separado del bloque `is_hash_degraded`
+- [`app/governance/fan_governor.py`](../../app/governance/fan_governor.py): Parámetro opcional `preset_pending_restart: bool` (Opción B) O parche en `miner_monitor.py` (Opción A, sin tocar fan_governor.py puro)
+- [`app/config.example.json`](../../app/config.example.json): Nuevo campo `restart_required_watchdog_soak_seconds: 300`
 - Nuevos tests en `tests/test_restart_required_watchdog.py`
 
 **Estimación**: 4-6 horas de implementación + QA + Stabilize.

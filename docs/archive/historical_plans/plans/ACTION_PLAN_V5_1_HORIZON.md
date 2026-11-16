@@ -73,7 +73,7 @@ flowchart TD
 
 * **Prioridad**: P3 (Baja) | **Riesgo**: Medio | **Módulos**: `app/ipc/watchdog_pipe.py`, `tools/monitor_watchdog.py`
 * **Contexto y Problema**:
-  - Actualmente, el watchdog fuera de proceso ([`tools/monitor_watchdog.py`](file:///F:/02-ASIC%20-%20mineros/miner-alerts/tools/monitor_watchdog.py)) se invoca periódicamente mediante el Programador de Tareas de Windows leyendo `data/monitor_heartbeat.json` y ejecutando `sc.exe queryex`.
+  - Actualmente, el watchdog fuera de proceso ([`tools/monitor_watchdog.py`](../../../../tools/monitor_watchdog.py)) se invoca periódicamente mediante el Programador de Tareas de Windows leyendo `data/monitor_heartbeat.json` y ejecutando `sc.exe queryex`.
   - Aunque este mecanismo es robusto y desacoplado, su latencia de detección es de 2 a 5 minutos.
   - Si el monitor entra en un deadlock de hilos, bloqueo del GIL en una llamada nativa o bucle de CPU cerrado, el watchdog tarda demasiado en actuar.
 * **Auditoría Arquitectónica Profunda**:

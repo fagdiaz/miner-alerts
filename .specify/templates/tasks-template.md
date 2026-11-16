@@ -72,9 +72,9 @@ alone is insufficient for Telegram delivery, Hashcore actions, polling behavior,
 - [ ] T014 Run the applicable Windows/Python validation commands
 - [ ] T015 Execute the affected Telegram, Hashcore, polling, or QA flow end to end when relevant
 - [ ] T016 Record the executed validation evidence in this feature
-- [ ] T017 Recalculate `docs/project_docs/ROADMAP.md` from its checklists
+- [ ] T017 Update `docs/speckit/ROADMAP.md` with evidence-supported state and priorities
 - [ ] T018 Insert one feature entry at the top of `docs/audit/DEVELOPMENT_LOG.md`
-- [ ] T019 Verify `DEVELOPMENT_LOG.md` is ordered newest to oldest
+- [ ] T019 Verify the new log entry is newest-first and all previous content is preserved
 - [ ] T020 Update `docs/audit/DOCUMENTATION_STATUS.md` when status or canonical docs changed
 
 ---
@@ -97,5 +97,5 @@ alone is insufficient for Telegram delivery, Hashcore actions, polling behavior,
 - [ ] Persistence survives reload when the feature stores data
 - [ ] `ROADMAP.md` reflects checklist evidence
 - [ ] `DEVELOPMENT_LOG.md` contains exactly one new feature entry at the top
-- [ ] Every log entry is ordered newest to oldest
+- [ ] The new entry is newest-first; no prior log content was removed
 - [ ] Unverified or blocked behavior is not reported as complete

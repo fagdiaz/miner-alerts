@@ -60,7 +60,7 @@ de Telegram con DBG_TELEGRAM y DBG_TELEGRAM_COMMANDS_ONLY habilitados.
 
 Artefactos locales: `diagnostics/backup-20261115/`, `backups/` y `backup-staging/`.
 El ensayo de limpieza fue dry-run; se preservaron las copias y evidencias iniciales.
-[Runbook operativo](BACKUP_RUNBOOK.md).
+[Runbook operativo](../operations/BACKUP_AND_RESTORE.md).
 
 ## Límites y seguimiento
 
